@@ -1,0 +1,14 @@
+{
+  "name": "crabden",
+  "version": "1.0.0",
+  "description": "Wake up as a thousand-year-old crab in a world with no ocean. Make water, restore the desert, collect what survived.",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "http-server -p 8080 -c-1 .",
+    "build": "node build.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2"
+  }
+}

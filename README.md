@@ -18,18 +18,26 @@ strange things that survived, and finding out where the sea went.
 
 ## Play it
 
-No build step, no dependencies, no asset files. Serve the folder and open it:
+**The quickest way:** open `dist/crabden.html`. It is the whole game in one
+self-contained file — no server, no install. Double-click it, or drag it into a
+browser tab, or mail it to someone.
+
+**From source**, serve the folder (the game loads as ES modules, so it needs
+HTTP rather than `file://`):
 
 ```sh
-python3 -m http.server 8080
-# then open http://localhost:8080
+python3 -m http.server 8080   # then open http://localhost:8080
 ```
 
-(It has to be served over HTTP rather than opened as a `file://` URL, because
-the game is loaded as ES modules.)
+**Rebuilding the single file** after changing anything under `js/`:
 
-Everything you see is generated at runtime — the terrain, the animals, the
-plants, the font, the sound. The repository is text.
+```sh
+npm install   # once; pulls esbuild
+npm run build # -> dist/crabden.html
+```
+
+There are no asset files anywhere. The terrain, the animals, the plants, the
+font and the sound are all generated at runtime, so the source is text.
 
 ## Controls
 
@@ -178,6 +186,7 @@ js/render/
 js/ui/
   hud.js  panels.js  cutscene.js  portraits.js
 js/cutscenes/script.js the story
+build.mjs              inlines everything into dist/crabden.html
 ```
 
 ## Saving
