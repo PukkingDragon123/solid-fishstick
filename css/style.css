@@ -1,0 +1,80 @@
+/* CRABDEN - the page is only a frame around one canvas. */
+
+:root {
+  color-scheme: dark;
+  --sand: #e8c88d;
+  --ink: #1a120c;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: #0a0705;
+  overflow: hidden;
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  color: var(--sand);
+  -webkit-font-smoothing: none;
+}
+
+body {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* a faint warm glow behind the letterboxing */
+  background:
+    radial-gradient(ellipse at 50% 45%, #241812 0%, #0a0705 70%);
+}
+
+#game {
+  display: block;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  touch-action: none;
+  cursor: crosshair;
+  box-shadow: 0 0 0 1px #2e2016, 0 12px 60px rgba(0, 0, 0, 0.75);
+}
+
+#boot {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  gap: 0.6rem;
+  text-align: center;
+  background: #0a0705;
+  z-index: 10;
+}
+
+#boot h1 {
+  margin: 0;
+  font-size: 2rem;
+  letter-spacing: 0.35em;
+  color: #6fd8ee;
+}
+
+#boot p { margin: 0; opacity: 0.6; font-size: 0.8rem; }
+
+.crash {
+  position: fixed;
+  inset: 6vh 6vw;
+  overflow: auto;
+  padding: 1.4rem 1.6rem;
+  background: #140c08;
+  border: 1px solid #7a3324;
+  color: #e8c0b8;
+  z-index: 100;
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
+.crash h1 { margin: 0 0 0.8rem; font-size: 1rem; color: #ff8a7a; letter-spacing: 0.1em; }
+.crash pre { white-space: pre-wrap; color: #d8b0a8; background: #0d0705; padding: 0.8rem; border-radius: 2px; }
+.crash code { color: #6fd8ee; }
+
+/* Small screens: let the canvas fill what it can. */
+@media (max-width: 640px) {
+  #game { box-shadow: none; }
+}
