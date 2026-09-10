@@ -36,6 +36,7 @@ export class Cutscene {
     this.onDone = onDone || null;
     this.game.state = 'cutscene';
     this.game.input.consumeClick();
+    this._enterZoom = this.game.cam.targetZoom;
     this.next();
   }
 
@@ -60,6 +61,12 @@ export class Cutscene {
       if (b && b.do) b.do(this.game);
     }
     this.game.renderer.fade = 0;
+    // camera moves are not side effects, so a skip would otherwise strand the
+    // view wherever the last played beat left it
+    const cam = this.game.cam;
+    cam.cineCancel();
+    cam.targetZoom = this._enterZoom || 2;
+    cam.followEntity(this.game.crab, false);
     this.finish();
   }
 
@@ -210,7 +217,8 @@ export class Cutscene {
       this._drawDialogue(ctx, game, vw, vh, lb);
     }
 
-    if (this.active && this.skippable) {
+    // on touch the on-screen SKIP button says this instead
+    if (this.active && this.skippable && !game.touch.active) {
       drawText(ctx, 'esc  skip', vw - 6, vh - lb - 10, {
         color: 'rgba(240,226,192,0.5)', align: 'right', scale: 1,
       });

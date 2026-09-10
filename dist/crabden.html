@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="description" content="Wake up as a thousand-year-old crab in a world with no ocean. Make water, restore the desert, and collect the strange things that survived.">
 <meta name="theme-color" content="#0a0705">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' fill='%23e8c88d'/><rect x='4' y='6' width='8' height='5' fill='%23b8543a'/><rect x='5' y='3' width='2' height='2' fill='%231b1016'/><rect x='9' y='3' width='2' height='2' fill='%231b1016'/><rect x='6' y='4' width='4' height='2' fill='%2357c8d8'/></svg>">
@@ -24,18 +24,27 @@ html, body {
   height: 100%;
   background: #0a0705;
   overflow: hidden;
+  overscroll-behavior: none;
   font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
   color: var(--sand);
   -webkit-font-smoothing: none;
 }
 
 body {
+  /* fixed rather than merely full-height: stops mobile browsers scrolling
+     the page as their chrome slides in and out */
+  position: fixed;
+  inset: 0;
   display: flex;
   align-items: center;
   justify-content: center;
   /* a faint warm glow behind the letterboxing */
   background:
     radial-gradient(ellipse at 50% 45%, #241812 0%, #0a0705 70%);
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
 }
 
 #game {
@@ -84,9 +93,11 @@ body {
 .crash pre { white-space: pre-wrap; color: #d8b0a8; background: #0d0705; padding: 0.8rem; border-radius: 2px; }
 .crash code { color: #6fd8ee; }
 
-/* Small screens: let the canvas fill what it can. */
-@media (max-width: 640px) {
-  #game { box-shadow: none; }
+/* Small screens: let the canvas fill what it can, and drop the cursor
+   affordance that a finger cannot use. */
+@media (max-width: 700px), (pointer: coarse) {
+  #game { box-shadow: none; cursor: default; }
+  #boot h1 { font-size: 1.5rem; }
 }
 </style>
 </head>
@@ -805,6 +816,8 @@ body {
   }
 
   // js/core/input.js
+  var MOVE_SLOP = 4;
+  var TAP_MS = 400;
   var Input = class {
     constructor(canvas2) {
       this.canvas = canvas2;
@@ -830,23 +843,108 @@ body {
       this.released = /* @__PURE__ */ new Set();
       this.anyInput = false;
       this._lastClickTime = 0;
-      this._touchZoomDist = 0;
+      this.pointers = /* @__PURE__ */ new Map();
+      this.lastPointerType = "mouse";
+      this.touchPan = false;
+      this.pinchDist = 0;
+      this.claimHandler = null;
+      this.moveHandler = null;
+      this.releaseHandler = null;
+      this.virtualHeld = /* @__PURE__ */ new Set();
+      this.virtualPressed = /* @__PURE__ */ new Set();
+      this.virtualAxis = { x: 0, y: 0, len: 0 };
       this._install();
+    }
+    // -- helpers used by the on-screen controls -------------------------------
+    /** Hold or release a virtual key. */
+    setVirtual(k, down) {
+      if (down) {
+        if (!this.virtualHeld.has(k)) this.virtualPressed.add(k);
+        this.virtualHeld.add(k);
+      } else {
+        this.virtualHeld.delete(k);
+      }
+    }
+    /** Fire a virtual key for exactly one frame. */
+    pulseVirtual(k) {
+      this.virtualPressed.add(k);
+    }
+    clearVirtual() {
+      this.virtualHeld.clear();
+      this.virtualAxis = { x: 0, y: 0, len: 0 };
+    }
+    /** Synthesise a click at a screen point (used by on-screen buttons). */
+    clickAt(sx, sy) {
+      this.sx = sx;
+      this.sy = sy;
+      this.clicked = true;
+    }
+    // -- wiring ---------------------------------------------------------------
+    _pos(e) {
+      const r = this.canvas.getBoundingClientRect();
+      return {
+        x: (e.clientX - r.left) / this.scale,
+        y: (e.clientY - r.top) / this.scale
+      };
+    }
+    _touchPointers() {
+      const out = [];
+      for (const p of this.pointers.values()) if (p.type !== "mouse" && !p.claimed) out.push(p);
+      return out;
     }
     _install() {
       const c = this.canvas;
-      const pos = (e) => {
-        const r = c.getBoundingClientRect();
-        this.sx = (e.clientX - r.left) / this.scale;
-        this.sy = (e.clientY - r.top) / this.scale;
-      };
       c.addEventListener("contextmenu", (e) => e.preventDefault());
       c.addEventListener("pointerdown", (e) => {
-        pos(e);
-        c.setPointerCapture?.(e.pointerId);
+        const { x, y } = this._pos(e);
+        this.lastPointerType = e.pointerType || "mouse";
         this.anyInput = true;
+        try {
+          c.setPointerCapture?.(e.pointerId);
+        } catch {
+        }
+        const p = {
+          id: e.pointerId,
+          type: this.lastPointerType,
+          x,
+          y,
+          x0: x,
+          y0: y,
+          t0: performance.now(),
+          moved: false,
+          claimed: false,
+          control: null,
+          button: e.button
+        };
+        this.pointers.set(e.pointerId, p);
+        if (p.type !== "mouse" && this.claimHandler) {
+          const control = this.claimHandler(p);
+          if (control) {
+            p.claimed = true;
+            p.control = control;
+            return;
+          }
+        }
+        if (p.type !== "mouse") {
+          const fingers = this._touchPointers();
+          if (fingers.length === 1) {
+            this.sx = x;
+            this.sy = y;
+            this.moved = false;
+            this.pressPos = { x, y };
+            this.down = true;
+          } else if (fingers.length === 2) {
+            this.down = false;
+            this.moved = true;
+            this.pinchDist = Math.hypot(fingers[0].x - fingers[1].x, fingers[0].y - fingers[1].y);
+          }
+          e.preventDefault();
+          return;
+        }
+        this.sx = x;
+        this.sy = y;
         this.moved = false;
-        this.pressPos = { x: this.sx, y: this.sy };
+        this.pressPos = { x, y };
         if (e.button === 0) this.down = true;
         else if (e.button === 2) this.rightDown = true;
         else if (e.button === 1) {
@@ -855,22 +953,94 @@ body {
         }
       });
       window.addEventListener("pointermove", (e) => {
-        const px2 = this.sx, py = this.sy;
-        pos(e);
-        if (this.down || this.rightDown || this.midDown) {
-          this.dragDX += this.sx - px2;
-          this.dragDY += this.sy - py;
-          if (Math.hypot(this.sx - this.pressPos.x, this.sy - this.pressPos.y) > 3) {
-            this.moved = true;
-            this.dragging = true;
+        const p = this.pointers.get(e.pointerId);
+        const { x, y } = this._pos(e);
+        if (p) {
+          const dx = x - p.x, dy = y - p.y;
+          p.x = x;
+          p.y = y;
+          if (!p.moved && Math.hypot(x - p.x0, y - p.y0) > MOVE_SLOP) p.moved = true;
+          if (p.claimed) {
+            if (this.moveHandler) this.moveHandler(p);
+            return;
+          }
+          if (p.type !== "mouse") {
+            const fingers = this._touchPointers();
+            if (fingers.length >= 2) {
+              const d = Math.hypot(fingers[0].x - fingers[1].x, fingers[0].y - fingers[1].y);
+              if (this.pinchDist) {
+                const diff = d - this.pinchDist;
+                if (Math.abs(diff) > 22) {
+                  this.wheel += diff > 0 ? -1 : 1;
+                  this.pinchDist = d;
+                }
+              } else this.pinchDist = d;
+              this.dragDX += dx / 2;
+              this.dragDY += dy / 2;
+              this.touchPan = true;
+              this.dragging = true;
+              this.moved = true;
+            } else if (fingers.length === 1) {
+              this.sx = x;
+              this.sy = y;
+              this.dragDX += dx;
+              this.dragDY += dy;
+              if (p.moved) {
+                this.moved = true;
+                this.dragging = true;
+                this.touchPan = true;
+              }
+            }
+            return;
+          }
+        }
+        if (this.lastPointerType === "mouse") {
+          const px2 = this.sx, py = this.sy;
+          this.sx = x;
+          this.sy = y;
+          if (this.down || this.rightDown || this.midDown) {
+            this.dragDX += x - px2;
+            this.dragDY += y - py;
+            if (Math.hypot(x - this.pressPos.x, y - this.pressPos.y) > 3) {
+              this.moved = true;
+              this.dragging = true;
+            }
           }
         }
       });
-      window.addEventListener("pointerup", (e) => {
-        pos(e);
+      const endPointer = (e, cancelled) => {
+        const p = this.pointers.get(e.pointerId);
+        this.pointers.delete(e.pointerId);
+        if (!p) return;
+        if (p.claimed) {
+          if (this.releaseHandler) this.releaseHandler(p, cancelled);
+          return;
+        }
+        if (p.type !== "mouse") {
+          const held = performance.now() - p.t0;
+          const stillDown = this._touchPointers().length > 0;
+          if (!stillDown) {
+            if (this.down && !p.moved && !cancelled && held < TAP_MS) {
+              this.sx = p.x;
+              this.sy = p.y;
+              this.clicked = true;
+              const now = performance.now();
+              if (now - this._lastClickTime < 320) this.dblClicked = true;
+              this._lastClickTime = now;
+            }
+            this.down = false;
+            this.dragging = false;
+            this.touchPan = false;
+            this.pinchDist = 0;
+          } else {
+            this.pinchDist = 0;
+            this.moved = true;
+          }
+          return;
+        }
         if (e.button === 0 && this.down) {
           this.down = false;
-          if (!this.moved) {
+          if (!this.moved && !cancelled) {
             this.clicked = true;
             const now = performance.now();
             if (now - this._lastClickTime < 300) this.dblClicked = true;
@@ -879,11 +1049,13 @@ body {
         }
         if (e.button === 2 && this.rightDown) {
           this.rightDown = false;
-          if (!this.moved) this.rightClicked = true;
+          if (!this.moved && !cancelled) this.rightClicked = true;
         }
         if (e.button === 1) this.midDown = false;
         if (!this.down && !this.rightDown && !this.midDown) this.dragging = false;
-      });
+      };
+      window.addEventListener("pointerup", (e) => endPointer(e, false));
+      window.addEventListener("pointercancel", (e) => endPointer(e, true));
       window.addEventListener("wheel", (e) => {
         if (e.target === c) e.preventDefault();
         this.wheel += Math.sign(e.deltaY);
@@ -894,6 +1066,7 @@ body {
         if (!this.keys.has(k)) this.pressed.add(k);
         this.keys.add(k);
         this.anyInput = true;
+        this.lastPointerType = "mouse";
         if ([" ", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Tab"].includes(e.key)) e.preventDefault();
       });
       window.addEventListener("keyup", (e) => {
@@ -903,41 +1076,44 @@ body {
       });
       window.addEventListener("blur", () => {
         this.keys.clear();
-        this.down = this.rightDown = false;
+        this.pointers.clear();
+        this.clearVirtual();
+        this.down = this.rightDown = this.midDown = false;
         this.dragging = false;
+        this.touchPan = false;
       });
-      c.addEventListener("touchmove", (e) => {
-        if (e.touches.length === 2) {
-          const d = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
-          if (this._touchZoomDist) {
-            const diff = d - this._touchZoomDist;
-            if (Math.abs(diff) > 30) {
-              this.wheel += diff > 0 ? -1 : 1;
-              this._touchZoomDist = d;
-            }
-          } else this._touchZoomDist = d;
-          e.preventDefault();
-        }
-      }, { passive: false });
-      c.addEventListener("touchend", () => {
-        this._touchZoomDist = 0;
-      });
+      c.addEventListener("touchstart", (e) => e.preventDefault(), { passive: false });
+      c.addEventListener("touchmove", (e) => e.preventDefault(), { passive: false });
+    }
+    get isTouch() {
+      return this.lastPointerType === "touch";
     }
     key(k) {
-      return this.keys.has(k);
+      return this.keys.has(k) || this.virtualHeld.has(k);
     }
     justPressed(k) {
-      return this.pressed.has(k);
+      return this.pressed.has(k) || this.virtualPressed.has(k);
     }
-    /** Axis helper for WASD / arrows. */
+    /**
+     * Swallow a press so nothing later in the same frame sees it. Without this
+     * one Escape both opens a panel and closes it again.
+     */
+    consumeKey(k) {
+      this.pressed.delete(k);
+      this.virtualPressed.delete(k);
+    }
+    /** Axis helper: WASD / arrows / the on-screen stick. */
     axis() {
       let x = 0, y = 0;
-      if (this.key("a") || this.key("ArrowLeft")) x -= 1;
-      if (this.key("d") || this.key("ArrowRight")) x += 1;
-      if (this.key("w") || this.key("ArrowUp")) y -= 1;
-      if (this.key("s") || this.key("ArrowDown")) y += 1;
+      if (this.keys.has("a") || this.keys.has("ArrowLeft")) x -= 1;
+      if (this.keys.has("d") || this.keys.has("ArrowRight")) x += 1;
+      if (this.keys.has("w") || this.keys.has("ArrowUp")) y -= 1;
+      if (this.keys.has("s") || this.keys.has("ArrowDown")) y += 1;
       const m = Math.hypot(x, y);
-      return m > 0 ? { x: x / m, y: y / m, len: 1 } : { x: 0, y: 0, len: 0 };
+      if (m > 0) return { x: x / m, y: y / m, len: 1 };
+      const v = this.virtualAxis;
+      if (v.len > 0.08) return v;
+      return { x: 0, y: 0, len: 0 };
     }
     consumeClick() {
       const c = this.clicked;
@@ -959,6 +1135,7 @@ body {
       this.dragDY = 0;
       this.pressed.clear();
       this.released.clear();
+      this.virtualPressed.clear();
       this.anyInput = false;
     }
   };
@@ -4686,7 +4863,7 @@ body {
       const bodyLift = this.bodyZ * 0.55 * z;
       const bx = bs.x;
       const by = bs.y - bodyLift;
-      const R8 = this.size * z;
+      const R9 = this.size * z;
       const buried = this.buried;
       const pal = this.pal;
       const flash = this.hurtFlash > 0 && Math.floor(game2.time * 22) % 2 === 0;
@@ -4695,8 +4872,8 @@ body {
       const shellLo = flash ? "#ffc8c8" : pal.shellLo;
       const legCol = flash ? "#ffc0c0" : pal.leg;
       const rot = this.bodyAngle + this.tiltX * 0.6;
-      const RX = R8 * (1.02 - Math.abs(this.tiltY) * 0.5);
-      const RY = R8 * 1.32;
+      const RX = R9 * (1.02 - Math.abs(this.tiltY) * 0.5);
+      const RY = R9 * 1.32;
       const cos = Math.cos(rot), sin = Math.sin(rot);
       const rim = (a, k = 1) => {
         const lx = Math.cos(a) * RX * k, ly = Math.sin(a) * RY * k;
@@ -4705,7 +4882,7 @@ body {
       ctx.save();
       if (buried > 0.01) {
         ctx.beginPath();
-        ctx.rect(0, 0, cam.vw, by + R8 * (1 - buried * 1.8));
+        ctx.rect(0, 0, cam.vw, by + R9 * (1 - buried * 1.8));
         ctx.clip();
       }
       const legLen = this.size * s.legLength * z;
@@ -4750,7 +4927,7 @@ body {
       }
       ctx.restore();
       const organAt = rim(Math.PI, 0.52);
-      this._drawOrgan(ctx, cam, game2, organAt.x, organAt.y - R8 * 0.14, R8, rot, z);
+      this._drawOrgan(ctx, cam, game2, organAt.x, organAt.y - R9 * 0.14, R9, rot, z);
       const armW = Math.max(1, Math.round(z * (0.8 + s.clawSize * 0.25)));
       for (const c of this.claws) {
         const sh = rim(c.side * 0.5, 0.9);
@@ -4775,10 +4952,10 @@ body {
           pxLine(ctx, palmX, palmY, tipX, tipY, sgn < 0 ? shellHi : shellCol, armW);
         }
       }
-      const er = Math.max(1.2, R8 * 0.24);
+      const er = Math.max(1.2, R9 * 0.24);
       for (const e of this.eyes) {
         const es = cam.worldToScreen(e.x, e.y);
-        const ey = es.y - bodyLift - R8 * 0.5;
+        const ey = es.y - bodyLift - R9 * 0.5;
         const base = rim(e.side * 0.34, 0.45);
         pxLine(ctx, base.x, base.y, es.x, ey, pal.rim, Math.max(2, Math.round(z * 0.9)));
         pxLine(ctx, base.x, base.y, es.x, ey, legCol, Math.max(1, Math.round(z * 0.5)));
@@ -4788,14 +4965,14 @@ body {
         px(ctx, es.x - er * 0.4, ey - er * 0.5, pal.eyeHi, 1, 1);
       }
       ctx.restore();
-      if (this.pouring && this.pourPoint) this._drawPour(ctx, cam, game2, bx, by, R8);
-      this._drawEmote(ctx, game2, bx, by, R8, z);
+      if (this.pouring && this.pourPoint) this._drawPour(ctx, cam, game2, bx, by, R9);
+      this._drawEmote(ctx, game2, bx, by, R9, z);
     }
-    _drawEmote(ctx, game2, bx, by, R8, z) {
+    _drawEmote(ctx, game2, bx, by, R9, z) {
       if (!this.emote || this.emote === "wave") return;
       const t = clamp01(this.emoteT / 0.3);
-      const ey = by - R8 * 2.6 - (1 - t) * 3;
-      const rr = Math.max(4, R8 * 0.55);
+      const ey = by - R9 * 2.6 - (1 - t) * 3;
+      const rr = Math.max(4, R9 * 0.55);
       pxEllipse(ctx, bx, ey, rr + 1, rr * 0.85 + 1, "#2a1c14");
       pxEllipse(ctx, bx, ey, rr, rr * 0.85, "#fdf6e4");
       px(ctx, bx - 1, ey + rr * 0.85, "#fdf6e4", 2, 3);
@@ -4816,11 +4993,11 @@ body {
         ctx.fillRect(Math.round(bx - 1), Math.round(ey + 1), 3, 2);
       }
     }
-    _drawOrgan(ctx, cam, game2, ox, oy, R8, rot, z) {
+    _drawOrgan(ctx, cam, game2, ox, oy, R9, rot, z) {
       const s = this.stats;
       const pal = this.pal;
       const fill = this.waterMax > 0 ? clamp01(this.water / this.waterMax) : 0;
-      const baseR = R8 * (0.34 + s.organSize * 0.16);
+      const baseR = R9 * (0.34 + s.organSize * 0.16);
       const squash = 1 + this.organSquash * 0.24;
       const orx = baseR * (0.95 + fill * 0.26) * squash;
       const ory = baseR * (0.82 + fill * 0.24) / squash;
@@ -4853,15 +5030,15 @@ body {
         });
       }
     }
-    _drawPour(ctx, cam, game2, bx, by, R8) {
+    _drawPour(ctx, cam, game2, bx, by, R9) {
       const p = this.pourPoint;
       const ps = cam.worldToScreen(p.x, p.y);
       const z = cam.zoom;
-      const sx = bx, sy = by - R8 * 1.1;
+      const sx = bx, sy = by - R9 * 1.1;
       const steps = 9;
       for (let i = 0; i <= steps; i++) {
         const t = i / steps;
-        const arc = Math.sin(Math.PI * t) * R8 * 2.2;
+        const arc = Math.sin(Math.PI * t) * R9 * 2.2;
         const x = lerp(sx, ps.x, t) + Math.sin(game2.time * 22 + i) * 0.8;
         const y = lerp(sy, ps.y, t) - arc;
         px(ctx, x, y, i > steps - 3 ? "#d8f6ff" : this.pal.organ, Math.max(1, Math.round(z * 0.7)), Math.max(1, Math.round(z * 0.7)));
@@ -5856,9 +6033,9 @@ body {
     }
     _doWork(dt, game2) {
       const grove = game2.groveCenter;
-      const R8 = Math.max(120, game2.eco.groveRadius(grove.x, grove.y));
+      const R9 = Math.max(120, game2.eco.groveRadius(grove.x, grove.y));
       const d = Math.hypot(this.x - grove.x, this.y - grove.y);
-      if (d > R8 + 60) {
+      if (d > R9 + 60) {
         this._seek(grove.x, grove.y, dt, 1);
         this.state = "return";
         return;
@@ -6004,15 +6181,15 @@ body {
     _updateFeet(dt, game2, speed) {
       if (!this.feet.length) return;
       const world = game2.world;
-      const R8 = this.size;
-      const thresh = R8 * (0.55 + speed * 4e-3);
+      const R9 = this.size;
+      const thresh = R9 * (0.55 + speed * 4e-3);
       let stepping = 0;
       for (const f of this.feet) if (f.stepping) stepping++;
       for (let i = 0; i < this.feet.length; i++) {
         const f = this.feet[i];
         const a = this.facing + f.side * (Math.PI / 2) + f.spread * -f.side;
-        const anchorX = this.x + Math.cos(a) * R8 * 0.95 + this.vx * 0.09;
-        const anchorY = this.y + Math.sin(a) * R8 * 0.95 + this.vy * 0.09;
+        const anchorX = this.x + Math.cos(a) * R9 * 0.95 + this.vx * 0.09;
+        const anchorY = this.y + Math.sin(a) * R9 * 0.95 + this.vy * 0.09;
         if (f.stepping) {
           f.t += dt / f.dur;
           const t = clamp01(f.t);
@@ -6035,7 +6212,7 @@ body {
             f.ay = f.fy;
             f.bx = anchorX + (anchorX - f.fx) * 0.28;
             f.by = anchorY + (anchorY - f.fy) * 0.28;
-            f.lift = R8 * 0.5;
+            f.lift = R9 * 0.5;
           }
         }
         f.ground = world.elevAt(f.fx, f.fy);
@@ -7938,6 +8115,7 @@ body {
       id: "pump",
       title: "Make water",
       hint: "Click and hold the glowing organ on your back (or hold F).",
+      touchHint: "Hold the PUMP button, bottom right.",
       scene: "tutWater",
       enter: (g) => {
         g.pell.followCrab(true);
@@ -7949,6 +8127,7 @@ body {
       id: "pour",
       title: "Water the sand",
       hint: "Hold right mouse (or Q) on bare ground to pour.",
+      touchHint: "Hold POUR. Water lands just in front of you.",
       scene: "tutPour",
       check: (g) => g.eco.cells.size > 6
     },
@@ -7956,6 +8135,7 @@ body {
       id: "moss",
       title: "Grow moss",
       hint: "Keep a wet patch wet. Moss finds it on its own.",
+      touchHint: "Keep a wet patch wet. Moss finds it on its own.",
       check: (g) => g.eco.plants.some((p) => p.type === "moss" && p.growth > 0.85 && !p.dead),
       onDone: (g) => {
         g.tutorial.lastPlant = g.eco.plants.find((p) => p.type === "moss" && p.growth > 0.85);
@@ -7966,6 +8146,7 @@ body {
       id: "berry",
       title: "Grow a berry bush",
       hint: "Water ground that already has grown moss on it.",
+      touchHint: "Water ground that already has grown moss on it.",
       scene: "tutBerry",
       check: (g) => g.eco.plants.some((p) => p.type === "berry" && p.growth > 0.85 && !p.dead)
     },
@@ -7973,6 +8154,7 @@ body {
       id: "bird",
       title: "Attract a bird",
       hint: "Ripe berries bring birds. Wait, or plant more bushes.",
+      touchHint: "Ripe berries bring birds. Wait, or plant more bushes.",
       check: (g) => g.creatures.some((c) => c.sp.form === "bird" && !c.dead),
       onDone: (g) => {
         g.tutorial.lastBird = g.creatures.find((c) => c.sp.form === "bird" && !c.dead);
@@ -7983,24 +8165,28 @@ body {
       id: "harvest",
       title: "Pick some berries",
       hint: "Stand next to a ripe bush and press H. Birds want paying.",
+      touchHint: "Stand by a ripe bush and tap the round PICK button.",
       check: (g) => (g.res.food || 0) >= 1
     },
     {
       id: "tame",
       title: "Befriend the bird",
       hint: "Walk close to it and press T to offer berries.",
+      touchHint: "Walk up to it and tap the round TAME button.",
       check: (g) => g.creatures.some((c) => c.tamed && !c.dead)
     },
     {
       id: "work",
       title: "Give it a job",
       hint: "Open your companions with C and assign a task.",
+      touchHint: "Tap the menu button, then PALS, and give it a job.",
       check: (g) => g.creatures.some((c) => c.tamed && c.work)
     },
     {
       id: "evolve",
       title: "Evolve",
       hint: "Press E and spend nutrients on your first trait.",
+      touchHint: "Tap the menu button, then EVO, and spend nutrients.",
       scene: "tutEvolve",
       check: (g) => g.evo.unlocked.size > 0
     },
@@ -8008,6 +8194,7 @@ body {
       id: "night",
       title: "Survive the night",
       hint: "Click yourself to take control. Left click swings your claw.",
+      touchHint: "The stick walks you. The first square button swings your claw.",
       scene: "tutNight",
       enter: (g) => {
         g.pell.followCrab(false);
@@ -8019,6 +8206,7 @@ body {
       id: "explore",
       title: "Find an oasis",
       hint: "Leave the grove. Look for green on the horizon.",
+      touchHint: "Leave the grove. Look for green on the horizon.",
       check: (g) => g.world.pois.some((p) => p.kind === "oasis" && p.discovered)
     }
   ];
@@ -8158,11 +8346,13 @@ body {
       const vw = game2.renderer.vw, vh = game2.renderer.vh;
       if (game2.state === "title" || game2.state === "cutscene") return;
       if (game2.panels.open) return;
+      this.compact = vw < 300;
+      this.touch = game2.touch.active;
       this._drawVitals(ctx, game2, vw, vh);
       this._drawWorldInfo(ctx, game2, vw, vh);
-      this._drawAbilities(ctx, game2, vw, vh);
-      this._drawObjective(ctx, game2, vw, vh);
-      this._drawContext(ctx, game2, vw, vh);
+      if (!this.touch) this._drawAbilities(ctx, game2, vw, vh);
+      const objBottom = this._drawObjective(ctx, game2, vw, vh);
+      this._drawContext(ctx, game2, vw, vh, objBottom);
       this._drawNotes(ctx, game2, vw, vh);
       this._drawCompass(ctx, game2, vw, vh);
       if (game2.spawner.raid) this._drawRaid(ctx, game2, vw, vh);
@@ -8171,52 +8361,85 @@ body {
     // -- vitals ---------------------------------------------------------------
     _drawVitals(ctx, game2, vw, vh) {
       const c = game2.crab;
-      const x = 6, y = 6, w = 96;
-      panel(ctx, x, y, w, 50, "rgba(22,16,12,0.78)", "rgba(201,160,106,0.6)");
+      const compact = this.compact;
+      const x = 6, y = 6;
+      const w = compact ? 80 : 96;
+      const h = compact ? 42 : 50;
+      panel(ctx, x, y, w, h, "rgba(22,16,12,0.78)", "rgba(201,160,106,0.6)");
       const inner = w - 12;
       drawText(ctx, "WATER", x + 6, y + 3, { color: "#9fe4f4", scale: 1 });
       drawText(ctx, `${fmt(c.water)}/${fmt(c.waterMax)}`, x + w - 6, y + 3, { color: "#cfeff8", align: "right", scale: 1 });
       bar(ctx, x + 6, y + 11, inner, 4, c.water / Math.max(1, c.waterMax), "#57c8d8", "rgba(0,0,0,0.5)", "rgba(0,0,0,0.6)", { gloss: true });
-      bar(ctx, x + 6, y + 18, 40, 3, c.vigor, c.vigor > 0.25 ? "#9fd45c" : "#e2683c", "rgba(0,0,0,0.5)", "rgba(0,0,0,0.6)");
-      drawText(ctx, c.pumping ? "pumping" : "vigor", x + 50, y + 17, { color: "rgba(214,226,190,0.75)", scale: 1 });
-      drawText(ctx, "SHELL", x + 6, y + 25, { color: "#f0b8ac", scale: 1 });
-      drawText(ctx, `${fmt(Math.ceil(c.hp))}/${fmt(c.hpMax)}`, x + w - 6, y + 25, { color: "#f0b8ac", align: "right", scale: 1 });
-      bar(ctx, x + 6, y + 33, inner, 4, c.hp / Math.max(1, c.hpMax), "#d8543c", "rgba(0,0,0,0.5)", "rgba(0,0,0,0.6)", { gloss: true });
-      drawText(ctx, "nutrients", x + 6, y + 40, { color: "rgba(224,200,144,0.7)", scale: 1 });
-      drawText(ctx, fmt(game2.res.nutrients), x + w - 6, y + 40, { color: "#e0c890", align: "right", scale: 1 });
+      const vigorW = compact ? inner : 40;
+      bar(ctx, x + 6, y + 18, vigorW, 3, c.vigor, c.vigor > 0.25 ? "#9fd45c" : "#e2683c", "rgba(0,0,0,0.5)", "rgba(0,0,0,0.6)");
+      if (!compact) {
+        drawText(ctx, c.pumping ? "pumping" : "vigor", x + 50, y + 17, { color: "rgba(214,226,190,0.75)", scale: 1 });
+      }
+      const shellY = compact ? y + 24 : y + 25;
+      if (!compact) {
+        drawText(ctx, "SHELL", x + 6, shellY, { color: "#f0b8ac", scale: 1 });
+        drawText(ctx, `${fmt(Math.ceil(c.hp))}/${fmt(c.hpMax)}`, x + w - 6, shellY, { color: "#f0b8ac", align: "right", scale: 1 });
+      }
+      bar(
+        ctx,
+        x + 6,
+        compact ? y + 24 : y + 33,
+        inner,
+        4,
+        c.hp / Math.max(1, c.hpMax),
+        "#d8543c",
+        "rgba(0,0,0,0.5)",
+        "rgba(0,0,0,0.6)",
+        { gloss: true }
+      );
+      const nutY = compact ? y + 32 : y + 40;
+      if (!compact) drawText(ctx, "nutrients", x + 6, nutY, { color: "rgba(224,200,144,0.7)", scale: 1 });
+      else drawText(ctx, "nut", x + 6, nutY, { color: "rgba(224,200,144,0.7)", scale: 1 });
+      drawText(ctx, fmt(game2.res.nutrients), x + w - 6, nutY, { color: "#e0c890", align: "right", scale: 1 });
       if (game2.res.food >= 1) {
-        drawText(ctx, `berries ${fmt(game2.res.food)}`, x + 6, y + 54, { color: "#e2707a", scale: 1 });
+        drawText(ctx, `berries ${fmt(game2.res.food)}`, x + 6, y + h + 4, { color: "#e2707a", scale: 1 });
       }
     }
     // -- world info -----------------------------------------------------------
     _drawWorldInfo(ctx, game2, vw, vh) {
       const w = game2.weather;
-      const pw = 104;
+      const compact = this.compact;
+      const pw = compact ? 80 : 104;
       const bx = vw - pw - 6, by = 6;
-      panel(ctx, bx, by, pw, 34, "rgba(22,16,12,0.78)", "rgba(201,160,106,0.6)");
+      const ph = compact ? 28 : 34;
+      panel(ctx, bx, by, pw, ph, "rgba(22,16,12,0.78)", "rgba(201,160,106,0.6)");
       const name = game2.currentRegion.name.replace(/^The /, "");
-      drawText(ctx, name, bx + 5, by + 4, { color: "#f0e2c0", scale: 1 });
-      drawText(ctx, `Day ${w.day}`, bx + 5, by + 13, { color: "#cbb896", scale: 1 });
-      drawText(ctx, formatTime(w.hour), bx + 5 + 30, by + 13, { color: "#cbb896", scale: 1 });
-      drawText(ctx, w.label(), bx + 5, by + 22, { color: w.dangerous ? "#ff9a7a" : "#a8c4d0", scale: 1 });
-      const dx = bx + pw - 12, dy = by + 19;
-      const ang = w.hour / 24 * TAU - Math.PI / 2;
-      ctx.fillStyle = "rgba(0,0,0,0.45)";
-      ctx.beginPath();
-      ctx.arc(dx + 0.5, dy + 0.5, 7, 0, TAU);
-      ctx.fill();
-      ctx.fillStyle = "rgba(255,255,255,0.16)";
-      ctx.fillRect(R5(dx) - 7, R5(dy), 15, 1);
-      ctx.fillStyle = w.isNight ? "#cfd8e8" : "#ffd06a";
-      const px2 = dx + Math.cos(ang) * 5, py2 = dy + Math.sin(ang) * 5;
-      ctx.fillRect(R5(px2) - 1, R5(py2) - 1, 3, 3);
+      drawText(ctx, ellipsize(name, pw - 10, 1), bx + 5, by + 4, { color: "#f0e2c0", scale: 1 });
+      if (compact) {
+        drawText(ctx, `D${w.day}`, bx + 5, by + 13, { color: "#cbb896", scale: 1 });
+        drawText(ctx, formatTime(w.hour), bx + pw - 5, by + 13, { color: "#cbb896", align: "right", scale: 1 });
+        drawText(ctx, ellipsize(w.label(), pw - 10, 1), bx + 5, by + 21, {
+          color: w.dangerous ? "#ff9a7a" : "#a8c4d0",
+          scale: 1
+        });
+      } else {
+        drawText(ctx, `Day ${w.day}`, bx + 5, by + 13, { color: "#cbb896", scale: 1 });
+        drawText(ctx, formatTime(w.hour), bx + 35, by + 13, { color: "#cbb896", scale: 1 });
+        drawText(ctx, w.label(), bx + 5, by + 22, { color: w.dangerous ? "#ff9a7a" : "#a8c4d0", scale: 1 });
+        const dx = bx + pw - 12, dy = by + 19;
+        const ang = w.hour / 24 * TAU - Math.PI / 2;
+        ctx.fillStyle = "rgba(0,0,0,0.45)";
+        ctx.beginPath();
+        ctx.arc(dx + 0.5, dy + 0.5, 7, 0, TAU);
+        ctx.fill();
+        ctx.fillStyle = "rgba(255,255,255,0.16)";
+        ctx.fillRect(R5(dx) - 7, R5(dy), 15, 1);
+        ctx.fillStyle = w.isNight ? "#cfd8e8" : "#ffd06a";
+        ctx.fillRect(R5(dx + Math.cos(ang) * 5) - 1, R5(dy + Math.sin(ang) * 5) - 1, 3, 3);
+      }
       const t = game2.eco.tier;
-      const ty = by + 36;
-      panel(ctx, bx, ty, pw, 20, "rgba(22,16,12,0.7)", "rgba(122,190,120,0.5)");
-      drawText(ctx, t.name, bx + 5, ty + 3, { color: "#a8e090", scale: 1 });
+      const ty = by + ph + 2;
+      panel(ctx, bx, ty, pw, compact ? 18 : 20, "rgba(22,16,12,0.7)", "rgba(122,190,120,0.5)");
+      drawText(ctx, ellipsize(t.name, pw - 10, 1), bx + 5, ty + 3, { color: "#a8e090", scale: 1 });
       const nextTier = game2.nextTierAt();
       const frac = nextTier ? clamp01((game2.eco.biomass - t.at) / (nextTier - t.at)) : 1;
-      bar(ctx, bx + 5, ty + 13, pw - 10, 3, frac, "#7fd05a", "rgba(0,0,0,0.5)", "rgba(0,0,0,0.6)");
+      bar(ctx, bx + 5, ty + 12, pw - 10, 3, frac, "#7fd05a", "rgba(0,0,0,0.5)", "rgba(0,0,0,0.6)");
+      this._panelBottom = ty + (compact ? 18 : 20);
     }
     // -- abilities ------------------------------------------------------------
     _drawAbilities(ctx, game2, vw, vh) {
@@ -8268,36 +8491,42 @@ body {
     _drawObjective(ctx, game2, vw, vh) {
       const t = game2.tutorial;
       const step = t.step;
-      if (!step || t.pendingStart) return;
-      const maxW = Math.max(90, vw - 232);
-      const hintLines = wrapText(step.hint, maxW - 12, 1);
+      if (!step || t.pendingStart) return 0;
+      const hintText = this.touch && step.touchHint ? step.touchHint : step.hint;
+      const band = this.compact ? { x0: 4, x1: vw - 4, y: (this._panelBottom || 62) + 4 } : { x0: 106, x1: vw - 112, y: 6 };
+      const maxW = Math.max(90, band.x1 - band.x0);
+      const hintLines = wrapText(hintText, maxW - 12, 1);
       const w = Math.min(maxW, Math.max(
         textWidth(step.title, 1),
         ...hintLines.map((l) => textWidth(l, 1))
       ) + 14);
-      const x = Math.round(vw / 2 - w / 2);
-      const y = 6;
+      const cx = (band.x0 + band.x1) / 2;
+      const x = Math.round(cx - w / 2);
+      const y = band.y;
       const h = 14 + hintLines.length * 9;
       const pulse = t.goalFlash > 0 ? 0.5 + Math.sin(game2.time * 22) * 0.5 : 0;
       panel(ctx, x, y, w, h, "rgba(22,16,12,0.82)", pulse > 0.5 ? "#ffe9a0" : "rgba(201,160,106,0.55)");
-      drawText(ctx, step.title, vw / 2, y + 3, { color: "#ffe9a0", align: "center", scale: 1 });
+      drawText(ctx, step.title, cx, y + 3, { color: "#ffe9a0", align: "center", scale: 1 });
       hintLines.forEach((line, i) => {
-        drawText(ctx, line, vw / 2, y + 12 + i * 9, { color: "rgba(220,206,180,0.8)", align: "center", scale: 1 });
+        drawText(ctx, line, cx, y + 12 + i * 9, { color: "rgba(220,206,180,0.8)", align: "center", scale: 1 });
       });
+      return y + h;
     }
     // -- context prompt -------------------------------------------------------
-    _drawContext(ctx, game2, vw, vh) {
+    _drawContext(ctx, game2, vw, vh, objBottom) {
       const h = game2.uiHover;
       if (!h || !h.prompt) return;
-      const w = textWidth(h.prompt, 1) + 12;
-      const x = vw / 2 - w / 2;
-      const y = vh - 32;
-      panel(ctx, x, y, w, 13, "rgba(22,16,12,0.85)", "rgba(201,160,106,0.6)");
-      drawText(ctx, h.prompt, vw / 2, y + 3, { color: "#f0e2c0", align: "center", scale: 1 });
+      const band = this.touch ? this.compact ? { x0: 4, x1: vw - 4, y: (objBottom || (this._panelBottom || 62) + 4) + 3 } : { x0: 106, x1: vw - 112, y: (objBottom || 4) + 3 } : { x0: 8, x1: vw - 8, y: vh - 32 };
+      const maxW = Math.max(80, band.x1 - band.x0);
+      const text = ellipsize(h.prompt, maxW - 12, 1);
+      const w = Math.min(maxW, textWidth(text, 1) + 12);
+      const cx = (band.x0 + band.x1) / 2;
+      panel(ctx, Math.round(cx - w / 2), band.y, w, 13, "rgba(22,16,12,0.85)", "rgba(201,160,106,0.6)");
+      drawText(ctx, text, cx, band.y + 3, { color: "#f0e2c0", align: "center", scale: 1 });
     }
     // -- notifications --------------------------------------------------------
     _drawNotes(ctx, game2, vw, vh) {
-      let y = 62;
+      let y = (this._panelBottom || 62) + 4;
       const colors = { info: "#e0d4b8", good: "#a8e090", bad: "#ff9a8a", rare: "#e2c0ff" };
       for (const n of this.notes) {
         const a = clamp01(n.life / 0.6) * clamp01((n.max - n.life) / 0.2 + 0.2);
@@ -8371,6 +8600,9 @@ body {
       this.treeY = 0;
       this.hoverNode = null;
       this.codexIndex = 0;
+      this.codexOpen = false;
+      this.pickedNode = null;
+      this.evoTab = "tree";
       this.codexScroll = 0;
       this.palScroll = 0;
       this.mapCache = null;
@@ -8422,7 +8654,19 @@ body {
       const i = this.game.input;
       if (!this.open) return;
       if (i.justPressed("Escape")) {
+        i.consumeKey("Escape");
         this.close();
+        return;
+      }
+      for (const [key, id] of [["e", "evo"], ["c", "pals"], ["b", "codex"], ["m", "map"]]) {
+        if (!i.justPressed(key)) continue;
+        i.consumeKey(key);
+        if (this.open === id) {
+          this.close();
+          return;
+        }
+        this.open = id;
+        this.game.audio.play("ui");
         return;
       }
       if (this.open === "evo") {
@@ -8437,12 +8681,37 @@ body {
         if (i.key("w") || i.key("ArrowUp")) this.treeY += spd;
         if (i.key("s") || i.key("ArrowDown")) this.treeY -= spd;
       }
-      if (this.open === "codex") this.codexScroll -= i.wheel * 12;
-      if (this.open === "pals") this.palScroll = clamp(this.palScroll + i.wheel * 12, 0, 400);
+      const dragging = (i.dragging || i.down) && i.moved;
+      if (this.open === "codex") {
+        this.codexScroll -= i.wheel * 12;
+        if (dragging) this.codexScroll -= i.dragDY;
+      }
+      if (this.open === "pals") {
+        this.palScroll = clamp(this.palScroll + i.wheel * 12 - (dragging ? i.dragDY : 0), 0, 600);
+      }
+    }
+    /** Sizes that change between a mouse pointer and a thumb. */
+    _metrics(game2, vw, vh) {
+      const touch = game2.touch.active;
+      const narrow = vw < 330;
+      const tabH = touch ? 18 : 12;
+      this.m = {
+        touch,
+        narrow,
+        tabH,
+        tabY: vh - tabH - 2,
+        rowH: touch ? 15 : 11,
+        btnH: touch ? 17 : 12,
+        nodeR: touch ? 13 : 8,
+        bottom: vh - tabH - 6
+        // usable area above the tab strip
+      };
+      return this.m;
     }
     draw(ctx, game2) {
       if (!this.open) return;
       const vw = game2.renderer.vw, vh = game2.renderer.vh;
+      const m = this._metrics(game2, vw, vh);
       ctx.fillStyle = "rgba(10,7,5,0.93)";
       ctx.fillRect(0, 0, vw, vh);
       switch (this.open) {
@@ -8464,23 +8733,59 @@ body {
         default:
           break;
       }
-      const tabs = [["evo", "EVOLUTION  E"], ["pals", "COMPANIONS  C"], ["codex", "CODEX  B"], ["map", "MAP  M"], ["menu", "MENU  esc"]];
-      let tx = 6;
-      for (const [id, label] of tabs) {
-        const w = textWidth(label, 1) + 10;
-        if (this.btn(ctx, tx, vh - 14, w, 12, label, { active: this.open === id })) {
-          this.open = id;
-        }
-        tx += w + 3;
-      }
+      const tabs = m.touch || m.narrow ? [["evo", "EVO"], ["pals", "PALS"], ["codex", "CODEX"], ["map", "MAP"], ["menu", "MENU"]] : [["evo", "EVOLUTION  E"], ["pals", "COMPANIONS  C"], ["codex", "CODEX  B"], ["map", "MAP  M"], ["menu", "MENU  esc"]];
+      const widths = tabs.map(([, l]) => textWidth(l, 1) + 10);
+      const total = widths.reduce((a, b) => a + b, 0) + (tabs.length - 1) * 3;
+      let tx = Math.max(4, Math.round((vw - total) / 2));
+      tabs.forEach(([id, label], k) => {
+        if (this.btn(ctx, tx, m.tabY, widths[k], m.tabH, label, { active: this.open === id })) this.open = id;
+        tx += widths[k] + 3;
+      });
     }
     // -- evolution ------------------------------------------------------------
     _drawEvo(ctx, game2, vw, vh) {
       const evo = game2.evo;
-      drawText(ctx, "EVOLUTION", 8, 5, { color: "#ffe9a0", scale: 2 });
-      drawText(ctx, `${Math.floor(game2.res.nutrients)} nutrients`, vw - 126, 5, { color: "#e0c890", align: "right", scale: 1 });
-      drawText(ctx, `stage ${evo.stage}  -  ${evo.unlocked.size}/${NODES.length} traits`, vw - 126, 14, { color: "rgba(200,186,160,0.7)", align: "right", scale: 1 });
-      const viewX = 4, viewY = 26, viewW = vw - 128, viewH = vh - 42;
+      const m = this.m;
+      if (m.narrow) {
+        drawText(ctx, "EVOLUTION", 8, 5, { color: "#ffe9a0", scale: 1 });
+        drawText(
+          ctx,
+          `${Math.floor(game2.res.nutrients)}n`,
+          m.touch ? vw - 30 : vw - 6,
+          5,
+          { color: "#e0c890", align: "right", scale: 1 }
+        );
+        const w = 44;
+        if (this.btn(ctx, 8, 15, w, m.btnH, "TREE", { active: this.evoTab !== "slots" })) this.evoTab = "tree";
+        if (this.btn(ctx, 8 + w + 4, 15, w, m.btnH, "SLOTS", { active: this.evoTab === "slots" })) this.evoTab = "slots";
+      } else {
+        drawText(ctx, "EVOLUTION", 8, 5, { color: "#ffe9a0", scale: 2 });
+        drawText(ctx, `${Math.floor(game2.res.nutrients)} nutrients`, vw - 126, 5, { color: "#e0c890", align: "right", scale: 1 });
+        drawText(
+          ctx,
+          `stage ${evo.stage}  -  ${evo.unlocked.size}/${NODES.length} traits`,
+          vw - 126,
+          14,
+          { color: "rgba(200,186,160,0.7)", align: "right", scale: 1 }
+        );
+      }
+      const showSlots = m.narrow ? this.evoTab === "slots" : true;
+      const showTree = m.narrow ? this.evoTab !== "slots" : true;
+      if (showTree) this._drawEvoTree(ctx, game2, vw, vh);
+      if (showSlots) {
+        const sx = m.narrow ? 4 : vw - 120;
+        const sw = m.narrow ? vw - 8 : 116;
+        const sy = m.narrow ? 15 + m.btnH + 4 : 26;
+        this._drawEvoSlots(ctx, game2, sx, sy, sw, m.bottom - sy);
+      }
+    }
+    _drawEvoTree(ctx, game2, vw, vh) {
+      const evo = game2.evo;
+      const m = this.m;
+      const viewX = 4;
+      const viewY = m.narrow ? 15 + m.btnH + 4 : 26;
+      const viewW = m.narrow ? vw - 8 : vw - 128;
+      const viewH = m.bottom - viewY;
       this.treeX = clamp(this.treeX, Math.min(0, viewW - TREE_W - 10), 10);
       this.treeY = clamp(this.treeY, Math.min(0, viewH - TREE_H - 6), 6);
       ctx.save();
@@ -8497,27 +8802,35 @@ body {
         for (const r of n.req) {
           const p = NODE_BY_ID[r];
           if (!p) continue;
-          const ok = evo.has(r);
           pxLine(
             ctx,
             ox + p.x,
             oy + p.y,
             ox + n.x,
             oy + n.y,
-            ok ? rgba(n.color, 0.75) : "rgba(90,78,64,0.45)",
+            evo.has(r) ? rgba(n.color, 0.75) : "rgba(90,78,64,0.45)",
             1
           );
         }
       }
       this.hoverNode = null;
+      const inView = game2.input.sx > viewX && game2.input.sx < viewX + viewW && game2.input.sy > viewY && game2.input.sy < viewY + viewH;
       for (const n of NODES) {
         const x = ox + n.x, y = oy + n.y;
         if (y < viewY - 12 || y > viewY + viewH + 12) continue;
         const unlocked = evo.has(n.id);
         const avail = evo.available(n);
         const afford = avail && evo.canAfford(n);
-        const hov = Math.hypot(game2.input.sx - x, game2.input.sy - y) < 8;
-        if (hov) this.hoverNode = n;
+        const near = inView && Math.hypot(game2.input.sx - x, game2.input.sy - y) < m.nodeR;
+        const picked = this.pickedNode === n.id;
+        if (near && !m.touch) this.hoverNode = n;
+        if (near && game2.input.clicked) {
+          this.pickedNode = n.id;
+          if (m.touch) {
+            game2.input.clicked = false;
+            game2.audio.play("ui");
+          }
+        }
         const rr = unlocked ? 6 : 5;
         const ring = unlocked ? shadeHex(n.color, 0.4) : afford ? n.color : avail ? shadeHex(n.color, -0.35) : "rgba(84,74,62,0.9)";
         const fill = unlocked ? n.color : afford ? shadeHex(n.color, -0.55) : "rgba(26,21,17,0.95)";
@@ -8539,8 +8852,8 @@ body {
             scale: 1
           });
         }
-        if (hov) {
-          ctx.strokeStyle = "#ffe9a0";
+        if (near || picked) {
+          ctx.strokeStyle = picked ? "#ffffff" : "#ffe9a0";
           ctx.lineWidth = 1;
           ctx.beginPath();
           ctx.arc(x + 0.5, y + 0.5, rr + 2.5, 0, TAU);
@@ -8560,60 +8873,106 @@ body {
       if (this.treeY < 5) {
         drawText(ctx, "\u25BC", viewX + viewW / 2, viewY + viewH - 8, { color: "rgba(255,233,160,0.6)", align: "center", scale: 1 });
       }
-      if (this.hoverNode) {
-        const n = this.hoverNode;
-        const unlocked = evo.has(n.id);
-        const avail = evo.available(n);
-        const afford = evo.canAfford(n);
-        const lines = wrapText(n.desc, 150, 1);
-        const h = 30 + lines.length * 9;
-        const tx = clamp(game2.input.sx + 8, 4, vw - 164);
-        const ty = clamp(game2.input.sy + 8, 4, vh - h - 18);
-        panel(ctx, tx, ty, 160, h, "rgba(20,15,11,0.96)", n.color);
-        drawText(ctx, n.name, tx + 5, ty + 4, { color: n.color, scale: 1 });
-        drawTextBlock(ctx, lines, tx + 5, ty + 14, 150, { color: "#e8dcc4", scale: 1, lineHeight: 9 });
-        const cost = evo.costText(n);
-        drawText(ctx, unlocked ? "OWNED" : cost, tx + 5, ty + h - 10, {
-          color: unlocked ? "#a8e090" : afford ? "#e0c890" : "#ff9a8a",
+      const info = m.touch ? NODE_BY_ID[this.pickedNode] : this.hoverNode || NODE_BY_ID[this.pickedNode];
+      if (info) this._drawNodeDetail(ctx, game2, info, viewX, viewY, viewW, viewH, vw, vh);
+      else if (m.touch) {
+        drawText(
+          ctx,
+          m.narrow ? "tap a trait  -  drag to pan" : "tap a trait to read it  -  drag to pan",
+          viewX + viewW / 2,
+          viewY + viewH - 8,
+          {
+            color: "rgba(180,166,140,0.55)",
+            align: "center",
+            scale: 1
+          }
+        );
+      }
+    }
+    _drawNodeDetail(ctx, game2, n, viewX, viewY, viewW, viewH, vw, vh) {
+      const evo = game2.evo;
+      const m = this.m;
+      const unlocked = evo.has(n.id);
+      const avail = evo.available(n);
+      const afford = evo.canAfford(n);
+      const pinned = m.touch;
+      const boxW = pinned ? viewW : 160;
+      const lines = wrapText(n.desc, boxW - 10, 1);
+      const h = (pinned ? 34 : 30) + lines.length * 9;
+      const tx = pinned ? viewX : clamp(game2.input.sx + 8, 4, vw - boxW - 4);
+      const ty = pinned ? viewY + viewH - h : clamp(game2.input.sy + 8, 4, m.bottom - h);
+      panel(ctx, tx, ty, boxW, h, "rgba(20,15,11,0.97)", n.color);
+      drawText(ctx, n.name, tx + 5, ty + 4, { color: n.color, scale: 1 });
+      if (pinned) {
+        if (this.btn(ctx, tx + boxW - 16, ty + 2, 14, 11, "x")) this.pickedNode = null;
+      }
+      drawTextBlock(ctx, lines, tx + 5, ty + 14, boxW - 10, { color: "#e8dcc4", scale: 1, lineHeight: 9 });
+      const cost = evo.costText(n);
+      const footY = ty + h - (pinned ? 14 : 10);
+      drawText(ctx, unlocked ? "OWNED" : cost, tx + 5, pinned ? footY + 2 : footY, {
+        color: unlocked ? "#a8e090" : afford ? "#e0c890" : "#ff9a8a",
+        scale: 1
+      });
+      if (unlocked) return;
+      if (!avail) {
+        drawText(ctx, "locked", tx + boxW - 5, pinned ? footY + 2 : footY, {
+          color: "rgba(160,146,124,0.7)",
+          align: "right",
           scale: 1
         });
-        if (!unlocked && avail) {
-          drawText(ctx, afford ? "click to evolve" : "not enough", tx + 155, ty + h - 10, {
-            color: afford ? "#ffe9a0" : "rgba(200,150,140,0.8)",
-            align: "right",
-            scale: 1
-          });
-        } else if (!unlocked && !avail) {
-          drawText(ctx, "locked", tx + 155, ty + h - 10, { color: "rgba(160,146,124,0.7)", align: "right", scale: 1 });
+        return;
+      }
+      if (pinned) {
+        const bw = 54;
+        if (this.btn(ctx, tx + boxW - bw - 4, footY - 1, bw, m.btnH, "EVOLVE", { disabled: !afford })) {
+          if (evo.unlock(n.id)) this.pickedNode = null;
         }
-        if (!unlocked && avail && afford && game2.input.clicked) {
+      } else {
+        drawText(ctx, afford ? "click to evolve" : "not enough", tx + boxW - 5, footY, {
+          color: afford ? "#ffe9a0" : "rgba(200,150,140,0.8)",
+          align: "right",
+          scale: 1
+        });
+        if (afford && game2.input.clicked) {
           game2.input.clicked = false;
           evo.unlock(n.id);
         }
       }
-      const sx = vw - 120, sy = 26;
-      panel(ctx, sx, sy, 116, vh - 42, "rgba(20,15,11,0.9)", "rgba(201,160,106,0.5)");
+    }
+    _drawEvoSlots(ctx, game2, sx, sy, sw, sh) {
+      const evo = game2.evo;
+      const m = this.m;
+      panel(ctx, sx, sy, sw, sh, "rgba(20,15,11,0.9)", "rgba(201,160,106,0.5)");
       drawText(ctx, "ABILITIES", sx + 5, sy + 4, { color: "#ffe9a0", scale: 1 });
-      drawText(ctx, `${evo.equipped.length}/${evo.slotCount} slots used`, sx + 5, sy + 13, { color: "rgba(200,186,160,0.7)", scale: 1 });
+      drawText(
+        ctx,
+        `${evo.equipped.length}/${evo.slotCount} slots used`,
+        sx + 5,
+        sy + 13,
+        { color: "rgba(200,186,160,0.7)", scale: 1 }
+      );
+      const rowH = m.touch ? 24 : 20;
       let ay = sy + 24;
       for (const id of evo.ownedAbilities) {
+        if (ay + rowH > sy + sh - 2) break;
         const ab = ABILITIES[id];
         const eq = evo.isEquipped(id);
         const innate = ab.innate;
-        const hov = this._hit(sx + 4, ay, 108, 20);
+        const hov = this._hit(sx + 4, ay, sw - 8, rowH);
         panel(
           ctx,
           sx + 4,
           ay,
-          108,
-          20,
+          sw - 8,
+          rowH,
           eq ? "rgba(70,58,40,0.95)" : hov ? "rgba(48,40,32,0.95)" : "rgba(30,24,20,0.9)",
           eq ? "#ffe0a8" : "rgba(150,124,88,0.6)"
         );
         drawText(ctx, ab.icon + "  " + ab.name, sx + 8, ay + 3, { color: eq ? "#ffe9a0" : "#e0d4b8", scale: 1 });
+        const verb = m.touch ? eq ? "tap to unequip" : "tap to equip" : eq ? "equipped - click to remove" : "click to equip";
         drawText(
           ctx,
-          innate ? "always equipped" : eq ? "equipped - click to remove" : "click to equip",
+          innate ? "always equipped" : verb,
           sx + 8,
           ay + 12,
           { color: "rgba(190,176,150,0.65)", scale: 1 }
@@ -8625,111 +8984,166 @@ body {
             game2.notify("No free ability slots.", "bad");
           } else game2.audio.play("ui");
         }
-        ay += 22;
-        if (ay > vh - 40) break;
+        ay += rowH + 2;
       }
-      drawText(ctx, "drag or wasd to pan", sx + 5, vh - 34, { color: "rgba(180,166,140,0.55)", scale: 1 });
-      drawText(ctx, "hover a node for details", sx + 5, vh - 26, { color: "rgba(180,166,140,0.55)", scale: 1 });
     }
     // -- companions -----------------------------------------------------------
     _drawPals(ctx, game2, vw, vh) {
-      drawText(ctx, "COMPANIONS", 8, 6, { color: "#ffe9a0", scale: 2 });
+      const m = this.m;
+      drawText(
+        ctx,
+        m.narrow ? "COMPANIONS" : "COMPANIONS",
+        8,
+        m.narrow ? 5 : 6,
+        { color: "#ffe9a0", scale: m.narrow ? 1 : 2 }
+      );
       const pals = game2.creatures.filter((c) => c.tamed && !c.dead);
       const cap = game2.evo.stats.companionSlots;
-      drawText(ctx, `${pals.length}/${cap} bonded`, 8, 22, { color: "rgba(200,186,160,0.8)", scale: 1 });
+      drawText(ctx, `${pals.length}/${cap} bonded`, 8, m.narrow ? 16 : 22, { color: "rgba(200,186,160,0.8)", scale: 1 });
       if (!pals.length) {
-        drawText(ctx, "Nobody yet. Feed a wild animal (walk close, press T) and it will stay.", 8, 40, { color: "#cbb896", scale: 1 });
+        const how = m.touch ? "walk up to it and use the round action button" : "walk close and press T";
+        drawTextBlock(
+          ctx,
+          `Nobody yet. Feed a wild animal (${how}) and it will stay.`,
+          8,
+          40,
+          vw - 16,
+          { color: "#cbb896", scale: 1, lineHeight: 9 }
+        );
         return;
       }
+      const stack = m.narrow;
+      const rowH = stack ? 46 : m.touch ? 40 : 34;
       let y = 34 - this.palScroll;
       for (const c of pals) {
-        if (y > vh - 20) break;
+        if (y > m.bottom) break;
         if (y > 20) {
-          const h = 34;
-          panel(ctx, 6, y, vw - 12, h, "rgba(24,18,14,0.9)", "rgba(201,160,106,0.45)");
+          panel(ctx, 6, y, vw - 12, rowH, "rgba(24,18,14,0.9)", "rgba(201,160,106,0.45)");
           drawText(ctx, c.name || c.sp.name, 12, y + 4, { color: "#f0e2c0", scale: 1 });
-          drawText(ctx, ellipsize(c.sp.latin, 78, 1), 12, y + 13, { color: "rgba(180,166,140,0.6)", scale: 1 });
+          drawText(
+            ctx,
+            ellipsize(c.sp.latin, stack ? vw - 70 : 78, 1),
+            12,
+            y + 13,
+            { color: "rgba(180,166,140,0.6)", scale: 1 }
+          );
           bar(ctx, 12, y + 23, 52, 3, c.hp / c.hpMax, "#7fd05a", "rgba(0,0,0,0.5)", "rgba(0,0,0,0.6)");
           const jobs = [null, c.sp.work].filter((v, i2, a) => a.indexOf(v) === i2);
-          let bx = 96;
+          let bx = stack ? 12 : 96;
+          const byy = stack ? y + 30 : y + 6;
           for (const j of jobs) {
             const label = j ? WORKS[j].name : "Follow";
-            const w = textWidth(label, 1) + 10;
-            if (this.btn(ctx, bx, y + 6, w, 12, label, { active: c.work === j })) {
+            const w = textWidth(label, 1) + 12;
+            if (this.btn(ctx, bx, byy, w, m.btnH, label, { active: c.work === j })) {
               c.assignWork(j);
               game2.notify(`${c.sp.name}: ${label}`, "good");
             }
             bx += w + 4;
           }
-          if (c.sp.work) {
-            drawText(ctx, WORKS[c.sp.work].desc, 96, y + 22, { color: "rgba(190,176,150,0.7)", scale: 1 });
+          if (c.sp.work && !stack) {
+            drawText(
+              ctx,
+              ellipsize(WORKS[c.sp.work].desc, vw - 160, 1),
+              96,
+              y + 24,
+              { color: "rgba(190,176,150,0.7)", scale: 1 }
+            );
           }
-          if (this.btn(ctx, vw - 52, y + 6, 42, 12, "Release")) {
+          const rw = 46;
+          if (this.btn(ctx, vw - rw - 10, stack ? byy : y + 6, rw, m.btnH, "Release")) {
             c.tamed = false;
             c.work = null;
             c.state = "wander";
             game2.notify(`${c.sp.name} wandered off.`, "info");
           }
         }
-        y += 36;
+        y += rowH + 2;
       }
     }
     // -- codex ----------------------------------------------------------------
     _drawCodex(ctx, game2, vw, vh) {
-      drawText(ctx, "CODEX", 8, 6, { color: "#ffe9a0", scale: 2 });
-      const known = SPECIES_LIST.filter((s2) => game2.discovered.has(s2.id));
-      drawText(ctx, `${known.length}/${SPECIES_LIST.length} species recorded`, 8, 22, { color: "rgba(200,186,160,0.8)", scale: 1 });
-      const listW = 108;
-      const listX = 6, listY = 32;
-      panel(ctx, listX, listY, listW, vh - 50, "rgba(20,15,11,0.9)", "rgba(201,160,106,0.45)");
-      let y = listY + 4 - this.codexScroll;
-      this.codexScroll = clamp(this.codexScroll, 0, Math.max(0, SPECIES_LIST.length * 11 - (vh - 60)));
-      SPECIES_LIST.forEach((s2, idx) => {
-        if (y > listY + vh - 60 || y < listY - 10) {
-          y += 11;
+      const m = this.m;
+      drawText(ctx, "CODEX", 8, m.narrow ? 5 : 6, { color: "#ffe9a0", scale: m.narrow ? 1 : 2 });
+      const known = SPECIES_LIST.filter((s) => game2.discovered.has(s.id));
+      drawText(
+        ctx,
+        `${known.length}/${SPECIES_LIST.length} recorded`,
+        8,
+        m.narrow ? 16 : 22,
+        { color: "rgba(200,186,160,0.8)", scale: 1 }
+      );
+      const split = !m.narrow;
+      const listY = 32;
+      const listH = m.bottom - listY;
+      if (split || !this.codexOpen) {
+        const listW = split ? 108 : vw - 12;
+        this._drawCodexList(ctx, game2, 6, listY, listW, listH);
+        if (!split) return;
+        this._drawCodexEntry(ctx, game2, 6 + listW + 6, listY, vw - listW - 18, listH);
+      } else {
+        if (this.btn(ctx, vw - 56, 4, 50, m.btnH, "< LIST")) this.codexOpen = false;
+        this._drawCodexEntry(ctx, game2, 6, listY, vw - 12, listH);
+      }
+    }
+    _drawCodexList(ctx, game2, x, y, w, h) {
+      const m = this.m;
+      panel(ctx, x, y, w, h, "rgba(20,15,11,0.9)", "rgba(201,160,106,0.45)");
+      const rowH = m.rowH;
+      this.codexScroll = clamp(this.codexScroll, 0, Math.max(0, SPECIES_LIST.length * rowH - (h - 8)));
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(x + 1, y + 1, w - 2, h - 2);
+      ctx.clip();
+      let ry = y + 4 - this.codexScroll;
+      SPECIES_LIST.forEach((sp, idx) => {
+        if (ry > y + h || ry < y - rowH) {
+          ry += rowH;
           return;
         }
-        const seen = game2.discovered.has(s2.id);
-        const hov = this._hit(listX + 2, y, listW - 4, 10);
+        const seen = game2.discovered.has(sp.id);
+        const hov = this._hit(x + 2, ry - 1, w - 4, rowH);
         if (hov && game2.input.clicked) {
           game2.input.clicked = false;
           this.codexIndex = idx;
+          this.codexOpen = true;
           game2.audio.play("ui");
         }
         if (this.codexIndex === idx) {
           ctx.fillStyle = "rgba(201,160,106,0.22)";
-          ctx.fillRect(listX + 2, R6(y) - 1, listW - 4, 10);
+          ctx.fillRect(x + 2, R6(ry) - 1, w - 4, rowH - 1);
         }
-        drawText(ctx, seen ? s2.name : "???????", listX + 5, y, {
-          color: seen ? s2.role === "hostile" || s2.role === "boss" ? "#ff9a8a" : s2.role === "rare" ? "#e2c0ff" : "#e8dcc4" : "rgba(120,108,92,0.7)",
+        drawText(ctx, seen ? ellipsize(sp.name, w - 12, 1) : "???????", x + 5, ry + (rowH - 7) / 2 - 1, {
+          color: seen ? sp.role === "hostile" || sp.role === "boss" ? "#ff9a8a" : sp.role === "rare" ? "#e2c0ff" : "#e8dcc4" : "rgba(120,108,92,0.7)",
           scale: 1
         });
-        y += 11;
+        ry += rowH;
       });
+      ctx.restore();
+    }
+    _drawCodexEntry(ctx, game2, dx, dy, dw, dh) {
       const s = SPECIES_LIST[this.codexIndex];
-      const dx = listX + listW + 6;
-      const dw = vw - dx - 6;
-      panel(ctx, dx, listY, dw, vh - 50, "rgba(20,15,11,0.9)", "rgba(201,160,106,0.45)");
+      panel(ctx, dx, dy, dw, dh, "rgba(20,15,11,0.9)", "rgba(201,160,106,0.45)");
       if (!game2.discovered.has(s.id)) {
-        drawText(ctx, "Not yet observed.", dx + 6, listY + 8, { color: "rgba(160,146,124,0.8)", scale: 1 });
-        drawText(
+        drawText(ctx, "Not yet observed.", dx + 6, dy + 8, { color: "rgba(160,146,124,0.8)", scale: 1 });
+        drawTextBlock(
           ctx,
           `Rumoured in: ${s.regions.map((r) => REGIONS.find((x) => x.id === r)?.name || r).join(", ")}`,
           dx + 6,
-          listY + 20,
-          { color: "rgba(140,128,110,0.7)", scale: 1 }
+          dy + 20,
+          dw - 12,
+          { color: "rgba(140,128,110,0.7)", scale: 1, lineHeight: 9 }
         );
         return;
       }
-      const artW = 68;
+      const artW = Math.min(68, Math.round(dw * 0.32));
       const textX = dx + 6;
       const textW = dw - 12 - artW;
-      drawText(ctx, s.name, textX, listY + 5, { color: "#ffe9a0", scale: 2 });
-      drawText(ctx, s.latin, textX, listY + 21, { color: "rgba(180,166,140,0.7)", scale: 1 });
-      drawText(ctx, `descended from: ${s.ancestor}`, textX, listY + 31, { color: "#cbb896", scale: 1 });
-      this._drawSpeciesArt(ctx, game2, s, dx + dw - artW / 2 - 6, listY + 44, artW);
-      drawTextBlock(ctx, s.desc, textX, listY + 44, textW, { color: "#e8dcc4", scale: 1, lineHeight: 9 });
-      let iy = listY + 44 + wrapText(s.desc, textW, 1).length * 9 + 8;
+      drawText(ctx, ellipsize(s.name, textW, 2), textX, dy + 5, { color: "#ffe9a0", scale: 2 });
+      drawText(ctx, s.latin, textX, dy + 21, { color: "rgba(180,166,140,0.7)", scale: 1 });
+      drawText(ctx, `descended from: ${s.ancestor}`, textX, dy + 31, { color: "#cbb896", scale: 1 });
+      this._drawSpeciesArt(ctx, game2, s, dx + dw - artW / 2 - 6, dy + 44, artW);
+      drawTextBlock(ctx, s.desc, textX, dy + 44, textW, { color: "#e8dcc4", scale: 1, lineHeight: 9 });
+      let iy = dy + 44 + wrapText(s.desc, textW, 1).length * 9 + 8;
       const roleLabel = {
         companion: "can be befriended",
         hostile: "hostile",
@@ -8863,9 +9277,13 @@ body {
     }
     _drawMap(ctx, game2, vw, vh) {
       if (!this.mapCache) this._buildMap(game2);
-      drawText(ctx, "THE WORLD", 8, 6, { color: "#ffe9a0", scale: 2 });
-      const size = Math.min(vw - 120, vh - 44);
-      const mx = 8, my = 26;
+      const m = this.m;
+      drawText(ctx, "THE WORLD", 8, m.narrow ? 5 : 6, { color: "#ffe9a0", scale: m.narrow ? 1 : 2 });
+      const stack = m.narrow;
+      const my = 26;
+      const avail = m.bottom - my;
+      const size = stack ? Math.min(vw - 16, Math.round(avail * 0.62)) : Math.min(vw - 120, avail);
+      const mx = stack ? Math.round((vw - size) / 2) : 8;
       ctx.drawImage(this.mapCache, 0, 0, 128, 128, mx, my, size, size);
       ctx.strokeStyle = "rgba(201,160,106,0.7)";
       ctx.lineWidth = 1;
@@ -8875,7 +9293,7 @@ body {
       for (const r2 of REGIONS) {
         const p = toMap(r2.cx, r2.cy);
         const seen = game2.visitedRegions.has(r2.id);
-        drawText(ctx, seen ? r2.name : "?", p.x, p.y - 4, {
+        drawText(ctx, seen ? stack ? r2.name.replace(/^The /, "") : r2.name : "?", p.x, p.y - 4, {
           color: seen ? "rgba(255,240,210,0.85)" : "rgba(120,108,92,0.8)",
           align: "center",
           scale: 1,
@@ -8886,8 +9304,7 @@ body {
       for (const p of game2.world.pois) {
         if (!p.discovered) continue;
         const q = toMap(p.x, p.y);
-        const col = p.kind === "oasis" ? "#6fd8ee" : p.kind === "well" ? "#7fe0d0" : p.kind === "seep" ? "#4a9fb0" : "#e0c890";
-        ctx.fillStyle = col;
+        ctx.fillStyle = p.kind === "oasis" ? "#6fd8ee" : p.kind === "well" ? "#7fe0d0" : p.kind === "seep" ? "#4a9fb0" : "#e0c890";
         ctx.fillRect(R6(q.x) - 1, R6(q.y) - 1, 3, 3);
       }
       const gp = toMap(game2.groveCenter.x, game2.groveCenter.y);
@@ -8902,68 +9319,92 @@ body {
         ctx.arc(cp.x + 0.5, cp.y + 0.5, 5, 0, TAU);
         ctx.stroke();
       }
-      const sx = mx + size + 8;
-      const sw = vw - sx - 6;
-      panel(ctx, sx, my, sw, size, "rgba(20,15,11,0.9)", "rgba(201,160,106,0.45)");
+      const sx = stack ? 6 : mx + size + 8;
+      const sy = stack ? my + size + 4 : my;
+      const sw = stack ? vw - 12 : vw - sx - 6;
+      const sh = stack ? m.bottom - sy : size;
+      panel(ctx, sx, sy, sw, sh, "rgba(20,15,11,0.9)", "rgba(201,160,106,0.45)");
       const r = game2.currentRegion;
-      drawText(ctx, r.name, sx + 5, my + 5, { color: "#ffe9a0", scale: 1 });
-      drawTextBlock(ctx, r.blurb, sx + 5, my + 16, sw - 10, { color: "#cbb896", scale: 1, lineHeight: 9 });
-      let iy = my + 16 + wrapText(r.blurb, sw - 10, 1).length * 9 + 6;
+      drawText(ctx, r.name, sx + 5, sy + 5, { color: "#ffe9a0", scale: 1 });
+      drawTextBlock(ctx, r.blurb, sx + 5, sy + 16, sw - 10, { color: "#cbb896", scale: 1, lineHeight: 9 });
+      let iy = sy + 16 + wrapText(r.blurb, sw - 10, 1).length * 9 + 6;
       if (r.hazard) {
         drawText(ctx, "HAZARD: " + r.hazard.name, sx + 5, iy, { color: "#ff9a8a", scale: 1 });
         iy += 10;
         drawTextBlock(ctx, r.hazard.desc, sx + 5, iy, sw - 10, { color: "rgba(220,170,160,0.8)", scale: 1, lineHeight: 9 });
         iy += wrapText(r.hazard.desc, sw - 10, 1).length * 9 + 4;
       }
-      drawText(ctx, `regions visited: ${game2.visitedRegions.size}/${REGIONS.length}`, sx + 5, iy, { color: "#a8c4d0", scale: 1 });
-      iy += 10;
-      drawText(ctx, `landmarks found: ${game2.world.pois.filter((p) => p.discovered).length}`, sx + 5, iy, { color: "#a8c4d0", scale: 1 });
+      if (iy < sy + sh - 20) {
+        drawText(ctx, `regions visited: ${game2.visitedRegions.size}/${REGIONS.length}`, sx + 5, iy, { color: "#a8c4d0", scale: 1 });
+        iy += 10;
+        drawText(ctx, `landmarks found: ${game2.world.pois.filter((p) => p.discovered).length}`, sx + 5, iy, { color: "#a8c4d0", scale: 1 });
+      }
     }
     // -- menu -----------------------------------------------------------------
     _drawMenu(ctx, game2, vw, vh) {
-      drawText(ctx, "CRABDEN", vw / 2, 18, { color: "#6fd8ee", scale: 3, align: "center" });
-      const bw = 110, bx = vw / 2 - bw / 2;
-      let by = 54;
-      if (this.btn(ctx, bx, by, bw, 14, "Resume")) this.close();
-      by += 18;
-      if (this.btn(ctx, bx, by, bw, 14, "Save game")) {
-        game2.save();
-      }
-      by += 18;
-      if (this.btn(ctx, bx, by, bw, 14, "Load last save", { disabled: !game2.hasSave() })) {
+      const m = this.m;
+      const touch = m.touch;
+      drawText(ctx, "CRABDEN", vw / 2, 12, { color: "#6fd8ee", scale: m.narrow ? 2 : 3, align: "center" });
+      const bh = touch ? 18 : 14;
+      const step = bh + 4;
+      const bw = Math.min(140, vw - 24);
+      const bx = Math.round(vw / 2 - bw / 2);
+      let by = 40;
+      if (this.btn(ctx, bx, by, bw, bh, "Resume")) this.close();
+      by += step;
+      if (this.btn(ctx, bx, by, bw, bh, "Save game")) game2.save();
+      by += step;
+      if (this.btn(ctx, bx, by, bw, bh, "Load last save", { disabled: !game2.hasSave() })) {
         game2.load();
         this.close();
       }
-      by += 18;
-      if (this.btn(ctx, bx, by, bw, 14, game2.audio.enabled ? "Sound: on" : "Sound: off")) {
+      by += step;
+      if (this.btn(ctx, bx, by, bw, bh, game2.audio.enabled ? "Sound: on" : "Sound: off")) {
         game2.audio.setMuted(game2.audio.enabled);
         game2.settings.muted = !game2.audio.enabled;
       }
-      by += 18;
-      if (this.btn(ctx, bx, by, bw, 14, "Abandon and restart")) {
+      by += step;
+      if (this.btn(ctx, bx, by, bw, bh, `On-screen controls: ${touch ? "on" : "off"}`)) {
+        game2.touch.toggle();
+        game2.settings.touchControls = game2.touch.forced;
+      }
+      by += step;
+      if (this.btn(ctx, bx, by, bw, bh, "Abandon and restart")) {
         if (this._confirm) {
           game2.restart();
           this.close();
           this._confirm = false;
         } else {
           this._confirm = true;
-          game2.notify("Click again to confirm a full restart.", "bad");
+          game2.notify("Tap again to confirm a full restart.", "bad");
         }
       }
-      by += 22;
-      const controls = [
+      by += step + 4;
+      const controls = touch ? [
+        "stick (bottom left) ... walk",
+        "PUMP ......... hold to make water",
+        "POUR ......... hold to water the ground",
+        "round button .. tame / pick / drink",
+        "small squares . equipped abilities",
+        "tap an animal . select a companion",
+        "tap the ground  send the crab there",
+        "drag ......... pan   pinch: zoom",
+        "crosshair .... recentre on the crab"
+      ] : [
         "left click ....... select / move / attack",
         "click the crab ... take direct control (wasd)",
         "click the organ .. pump water  (or hold F)",
         "right click / Q .. pour water on the ground",
         "T ................ offer food to a nearby animal",
         "H ................ harvest berries nearby",
+        "R ................ drink from an oasis",
         "space / 1-4 ...... use equipped abilities",
-        "middle drag ...... pan camera   wheel: zoom   arrows: pan",
+        "middle drag ...... pan camera   wheel: zoom",
         "Z ................ snap the camera back to the crab",
         "E C B M .......... evolution, pals, codex, map"
       ];
       for (const line of controls) {
+        if (by > m.bottom - 8) break;
         drawText(ctx, line, vw / 2, by, { color: "rgba(200,186,160,0.8)", align: "center", scale: 1 });
         by += 9;
       }
@@ -9233,6 +9674,7 @@ body {
       this.onDone = onDone || null;
       this.game.state = "cutscene";
       this.game.input.consumeClick();
+      this._enterZoom = this.game.cam.targetZoom;
       this.next();
     }
     finish() {
@@ -9254,6 +9696,10 @@ body {
         if (b && b.do) b.do(this.game);
       }
       this.game.renderer.fade = 0;
+      const cam = this.game.cam;
+      cam.cineCancel();
+      cam.targetZoom = this._enterZoom || 2;
+      cam.followEntity(this.game.crab, false);
       this.finish();
     }
     next() {
@@ -9420,7 +9866,7 @@ body {
       if (this.beat && this.beat.say !== void 0) {
         this._drawDialogue(ctx, game2, vw, vh, lb);
       }
-      if (this.active && this.skippable) {
+      if (this.active && this.skippable && !game2.touch.active) {
         drawText(ctx, "esc  skip", vw - 6, vh - lb - 10, {
           color: "rgba(240,226,192,0.5)",
           align: "right",
@@ -9468,6 +9914,311 @@ body {
     }
   };
 
+  // js/ui/touch.js
+  var R8 = Math.round;
+  var TouchControls = class {
+    constructor(game2) {
+      this.game = game2;
+      this.autoDetected = typeof window !== "undefined" && (window.matchMedia?.("(pointer: coarse)")?.matches || (navigator.maxTouchPoints || 0) > 0);
+      this.forced = null;
+      this.controls = [];
+      this.stick = { active: false, id: null, cx: 0, cy: 0, r: 30, kx: 0, ky: 0 };
+      this.held = /* @__PURE__ */ new Map();
+      this.fade = 0;
+      this._vw = 0;
+      this._vh = 0;
+      game2.input.claimHandler = (p) => this.claim(p);
+      game2.input.moveHandler = (p) => this.move(p);
+      game2.input.releaseHandler = (p, cancelled) => this.release(p, cancelled);
+    }
+    /** Are the on-screen controls live right now? */
+    get active() {
+      if (this.forced !== null) return this.forced;
+      return this.game.input.lastPointerType === "touch" || this.autoDetected;
+    }
+    get compact() {
+      return this._vw > 0 && this._vw < 300;
+    }
+    toggle() {
+      this.forced = this.active ? false : true;
+      if (!this.forced) this._releaseAll();
+    }
+    _releaseAll() {
+      for (const c of this.held.values()) if (c.key) this.game.input.setVirtual(c.key, false);
+      this.held.clear();
+      this.stick.active = false;
+      this.stick.id = null;
+      this.game.input.virtualAxis = { x: 0, y: 0, len: 0 };
+    }
+    // -- layout ---------------------------------------------------------------
+    layout() {
+      const g = this.game;
+      const vw = g.renderer.vw, vh = g.renderer.vh;
+      const slots = g.evo ? g.evo.slotCount : 2;
+      if (vw === this._vw && vh === this._vh && slots === this._slots) return;
+      this._vw = vw;
+      this._vh = vh;
+      this._slots = slots;
+      const narrow = vw < 300;
+      const c = [];
+      const add = (o) => {
+        c.push(o);
+        return o;
+      };
+      this.stick.r = narrow ? 26 : 30;
+      this.stick.cx = this.stick.r + 10;
+      this.stick.cy = vh - this.stick.r - 12;
+      add({ id: "pump", kind: "hold", key: "f", label: "PUMP", cx: vw - 38, cy: vh - 64, r: 21, when: "play" });
+      add({ id: "pour", kind: "hold", key: "q", label: "POUR", cx: vw - 92, cy: vh - 52, r: 17, when: "play" });
+      add({ id: "act", kind: "context", cx: vw - 30, cy: vh - 23, r: 17, when: "play" });
+      const size = 18, gap = 3;
+      const n = clamp(slots, 1, 5);
+      const rowW = n * size + (n - 1) * gap;
+      let ax, ay;
+      if (narrow) {
+        ax = Math.round(vw / 2 - rowW / 2);
+        ay = vh - 104;
+      } else {
+        ax = Math.round(vw - 62 - rowW);
+        ay = vh - 32;
+      }
+      for (let i = 0; i < n; i++) {
+        add({
+          id: "ability" + i,
+          kind: "tap",
+          key: String(i + 1),
+          slot: i,
+          square: true,
+          cx: ax + i * (size + gap) + size / 2,
+          cy: ay + size / 2,
+          r: size / 2,
+          when: "play"
+        });
+      }
+      const sy = this.stick.cy - this.stick.r - 24;
+      add({ id: "menu", kind: "tap", key: "Escape", icon: "menu", cx: 16, cy: sy, r: 11, when: "play" });
+      add({ id: "recenter", kind: "tap", key: "z", icon: "target", cx: 42, cy: sy, r: 11, when: "play" });
+      add({ id: "skip", kind: "tap", key: "Escape", label: "SKIP", cx: vw - 30, cy: vh - 23, r: 17, when: "cutscene" });
+      add({ id: "close", kind: "tap", key: "Escape", icon: "close", cx: vw - 14, cy: 14, r: 11, when: "panel" });
+      this.controls = c;
+    }
+    _visible(ctrl) {
+      const s = this.game.state;
+      if (ctrl.when === "play") return s === "play" || s === "dead";
+      if (ctrl.when === "cutscene") return s === "cutscene";
+      if (ctrl.when === "panel") return s === "panel";
+      return true;
+    }
+    _stickVisible() {
+      return this.game.state === "play" || this.game.state === "dead";
+    }
+    // -- pointer routing ------------------------------------------------------
+    claim(p) {
+      if (!this.active) return null;
+      this.layout();
+      for (const ctrl of this.controls) {
+        if (!this._visible(ctrl)) continue;
+        const hitR = ctrl.r + 8;
+        if (Math.hypot(p.x - ctrl.cx, p.y - ctrl.cy) > hitR) continue;
+        this.held.set(p.id, ctrl);
+        ctrl.pressT = 1;
+        if (ctrl.kind === "hold") {
+          this.game.input.setVirtual(ctrl.key, true);
+        } else if (ctrl.kind === "tap") {
+          this.game.input.pulseVirtual(ctrl.key);
+          this.game.audio.play("ui");
+        } else if (ctrl.kind === "context") {
+          const act = this.game.touchContext();
+          if (act) {
+            this.game.input.pulseVirtual(act.key);
+            this.game.audio.play("ui");
+          } else this.game.audio.play("deny");
+        }
+        return ctrl;
+      }
+      if (this._stickVisible() && !this.stick.active) {
+        const grabR = this.stick.r + 16;
+        if (Math.hypot(p.x - this.stick.cx, p.y - this.stick.cy) < grabR) {
+          this.stick.active = true;
+          this.stickUsed = true;
+          this.stick.id = p.id;
+          this._stickTo(p.x, p.y);
+          return { id: "stick" };
+        }
+      }
+      return null;
+    }
+    move(p) {
+      if (this.stick.active && this.stick.id === p.id) {
+        this._stickTo(p.x, p.y);
+        return;
+      }
+      const ctrl = this.held.get(p.id);
+      if (!ctrl) return;
+      if (ctrl.kind === "hold" && Math.hypot(p.x - ctrl.cx, p.y - ctrl.cy) > ctrl.r + 26) {
+        this.game.input.setVirtual(ctrl.key, false);
+        this.held.delete(p.id);
+      }
+    }
+    release(p) {
+      if (this.stick.active && this.stick.id === p.id) {
+        this.stick.active = false;
+        this.stick.id = null;
+        this.stick.kx = 0;
+        this.stick.ky = 0;
+        this.game.input.virtualAxis = { x: 0, y: 0, len: 0 };
+        return;
+      }
+      const ctrl = this.held.get(p.id);
+      if (!ctrl) return;
+      if (ctrl.kind === "hold") this.game.input.setVirtual(ctrl.key, false);
+      this.held.delete(p.id);
+    }
+    _stickTo(x, y) {
+      const s = this.stick;
+      let dx = x - s.cx, dy = y - s.cy;
+      const d = Math.hypot(dx, dy);
+      const max = s.r;
+      if (d > max) {
+        dx = dx / d * max;
+        dy = dy / d * max;
+      }
+      s.kx = dx;
+      s.ky = dy;
+      const len = clamp01(Math.hypot(dx, dy) / (max * 0.82));
+      if (len > 0.12) {
+        const m = Math.hypot(dx, dy) || 1;
+        this.game.input.virtualAxis = { x: dx / m, y: dy / m, len };
+        const crab = this.game.crab;
+        if (!crab.controlled) {
+          crab.controlled = true;
+          crab.moveTarget = null;
+          this.game.cam.followEntity(crab);
+        }
+      } else {
+        this.game.input.virtualAxis = { x: 0, y: 0, len: 0 };
+      }
+    }
+    // -- frame ----------------------------------------------------------------
+    update(dt) {
+      this.layout();
+      this.fade = lerp(this.fade, this.active ? 1 : 0, 1 - Math.pow(2e-3, dt));
+      for (const c of this.controls) if (c.pressT) c.pressT = Math.max(0, c.pressT - dt * 4);
+      if (!this.active && this.held.size) this._releaseAll();
+    }
+    // -- drawing --------------------------------------------------------------
+    draw(ctx, game2) {
+      if (this.fade < 0.02) return;
+      const a = this.fade;
+      if (this._stickVisible()) this._drawStick(ctx, a);
+      for (const ctrl of this.controls) {
+        if (!this._visible(ctrl)) continue;
+        const pressed = [...this.held.values()].includes(ctrl) || (ctrl.pressT || 0) > 0;
+        if (ctrl.kind === "context") this._drawContext(ctx, game2, ctrl, a, pressed);
+        else if (ctrl.slot !== void 0) this._drawAbility(ctx, game2, ctrl, a, pressed);
+        else this._drawButton(ctx, ctrl, a, pressed);
+      }
+    }
+    _face(ctx, cx, cy, r, alpha, pressed, tint) {
+      const fill = pressed ? rgba(tint || "#c9a06a", 0.85) : `rgba(22,16,12,${0.6 * alpha})`;
+      const edge = pressed ? "#fff0d0" : rgba(tint || "#c9a06a", 0.8 * alpha);
+      pxEllipse(ctx, cx, cy, r + 1, r + 1, edge);
+      pxEllipse(ctx, cx, cy, r, r, fill);
+      if (!pressed) {
+        pxEllipse(ctx, cx, cy, r - 1, r - 1, `rgba(22,16,12,${0.45 * alpha})`);
+      }
+    }
+    _drawButton(ctx, ctrl, alpha, pressed) {
+      this._face(ctx, ctrl.cx, ctrl.cy, ctrl.r, alpha, pressed, ctrl.tint);
+      const fg = pressed ? "#241810" : rgba("#ffe9c0", 0.95 * alpha);
+      if (ctrl.label) {
+        drawText(ctx, ctrl.label, ctrl.cx, ctrl.cy - 3, { color: fg, align: "center", scale: 1 });
+      } else if (ctrl.icon === "menu") {
+        ctx.fillStyle = fg;
+        for (let i = -1; i <= 1; i++) ctx.fillRect(R8(ctrl.cx - 5), R8(ctrl.cy + i * 3 - 0.5), 10, 1);
+      } else if (ctrl.icon === "target") {
+        ctx.fillStyle = fg;
+        ctx.fillRect(R8(ctrl.cx - 5), R8(ctrl.cy), 4, 1);
+        ctx.fillRect(R8(ctrl.cx + 2), R8(ctrl.cy), 4, 1);
+        ctx.fillRect(R8(ctrl.cx), R8(ctrl.cy - 5), 1, 4);
+        ctx.fillRect(R8(ctrl.cx), R8(ctrl.cy + 2), 1, 4);
+        ctx.fillRect(R8(ctrl.cx) - 1, R8(ctrl.cy) - 1, 3, 3);
+      } else if (ctrl.icon === "close") {
+        ctx.fillStyle = fg;
+        for (let i = -3; i <= 3; i++) {
+          ctx.fillRect(R8(ctrl.cx + i), R8(ctrl.cy + i), 1, 1);
+          ctx.fillRect(R8(ctrl.cx + i), R8(ctrl.cy - i), 1, 1);
+        }
+      }
+    }
+    _drawContext(ctx, game2, ctrl, alpha, pressed) {
+      const act = game2.touchContext();
+      const tint = act ? act.tint : "#7a6a58";
+      this._face(ctx, ctrl.cx, ctrl.cy, ctrl.r, alpha, pressed, tint);
+      const fg = pressed ? "#241810" : act ? rgba("#ffe9c0", 0.95 * alpha) : rgba("#c8bca8", 0.5 * alpha);
+      drawText(ctx, act ? act.label : "--", ctrl.cx, ctrl.cy - 3, { color: fg, align: "center", scale: 1 });
+    }
+    _drawAbility(ctx, game2, ctrl, alpha, pressed) {
+      const evo = game2.evo;
+      const id = evo.equipped[ctrl.slot];
+      const ab = id ? game2.abilityById(id) : null;
+      const cd = ab ? evo.cooldownFor(id) : 0;
+      const ready = ab && cd <= 0;
+      const x = ctrl.cx - ctrl.r, y = ctrl.cy - ctrl.r, s = ctrl.r * 2;
+      ctx.fillStyle = ready ? rgba("#c9a06a", 0.8 * alpha) : `rgba(120,100,80,${0.55 * alpha})`;
+      ctx.fillRect(R8(x) - 1, R8(y) - 1, R8(s) + 2, R8(s) + 2);
+      ctx.fillStyle = pressed && ready ? rgba("#c9a06a", 0.9) : `rgba(22,16,12,${0.72 * alpha})`;
+      ctx.fillRect(R8(x), R8(y), R8(s), R8(s));
+      if (ab) {
+        drawText(ctx, ab.icon, ctrl.cx, ctrl.cy - 5, {
+          color: pressed && ready ? "#241810" : ready ? rgba("#ffe0a8", alpha) : rgba("#8a7a66", alpha),
+          align: "center",
+          scale: 1
+        });
+        if (cd > 0) {
+          ctx.fillStyle = `rgba(10,8,6,${0.62 * alpha})`;
+          ctx.fillRect(R8(x) + 1, R8(y) + 1, R8(s) - 2, R8((s - 2) * clamp01(cd / (ab.cd || 1))));
+        }
+        if (ab.cost) {
+          drawText(ctx, String(ab.cost), ctrl.cx + ctrl.r - 2, ctrl.cy + ctrl.r - 8, {
+            color: rgba("#9fe4f4", alpha),
+            align: "right",
+            scale: 1
+          });
+        }
+      } else {
+        drawText(ctx, "-", ctrl.cx, ctrl.cy - 4, { color: rgba("#7a6a58", alpha), align: "center", scale: 1 });
+      }
+    }
+    _drawStick(ctx, alpha) {
+      const s = this.stick;
+      const live = s.active;
+      const a = live ? 1 : alpha;
+      pxEllipse(ctx, s.cx, s.cy, s.r, s.r, `rgba(18,13,9,${0.34 * a})`);
+      ctx.fillStyle = live ? rgba("#ffe9c0", 0.9) : rgba("#c9a06a", 0.6 * a);
+      for (let i = 0; i < 32; i++) {
+        if (i % 2) continue;
+        const ang = i / 32 * TAU;
+        ctx.fillRect(R8(s.cx + Math.cos(ang) * s.r), R8(s.cy + Math.sin(ang) * s.r), 1, 1);
+      }
+      ctx.fillStyle = live ? rgba("#ffe9c0", 0.7) : rgba("#c9a06a", 0.4 * a);
+      for (const [dx, dy] of [[0, -1], [0, 1], [-1, 0], [1, 0]]) {
+        ctx.fillRect(R8(s.cx + dx * (s.r - 4)), R8(s.cy + dy * (s.r - 4)), 1, 1);
+      }
+      const kx = s.cx + s.kx, ky = s.cy + s.ky;
+      pxEllipse(ctx, kx, ky, 12, 12, live ? rgba("#ffe9c0", 0.95) : rgba("#c9a06a", 0.72 * a));
+      pxEllipse(ctx, kx, ky, 10, 10, `rgba(26,19,13,${(live ? 0.92 : 0.8) * a})`);
+      pxEllipse(ctx, kx, ky, 5, 5, live ? rgba("#ffe9c0", 0.9) : rgba("#e0c890", 0.6 * a));
+      if (!this.stickUsed) {
+        drawText(ctx, "MOVE", s.cx, s.cy - s.r - 9, {
+          color: rgba("#ffe9c0", 0.6 * a),
+          align: "center",
+          scale: 1
+        });
+      }
+    }
+  };
+
   // js/game.js
   var Game = class {
     constructor(canvas2) {
@@ -9489,6 +10240,8 @@ body {
       this.hud = new Hud(this);
       this.panels = new Panels(this);
       this.cutscene = new Cutscene(this);
+      this.touch = new TouchControls(this);
+      if (this.settings.touchControls !== void 0) this.touch.forced = this.settings.touchControls;
       this.newRun();
       window.addEventListener("resize", () => {
         this.renderer.resize();
@@ -9648,38 +10401,98 @@ body {
       const next = ECO_TIERS.find((t) => t.t === cur + 1);
       return next ? next.at : null;
     }
+    /**
+     * Where an attack or a blast is pointed. With a mouse that is the cursor;
+     * on touch there is no cursor, so aim at the nearest thing worth hitting and
+     * fall back to straight ahead.
+     */
     aimPoint() {
-      const w = this.cam.screenToWorld(this.input.sx, this.input.sy);
-      return w;
+      if (!this.touch.active) return this.cam.screenToWorld(this.input.sx, this.input.sy);
+      const crab = this.crab;
+      let best = null, bd = 120;
+      for (const c of this.creatures) {
+        if (c.dead || !c.hostile) continue;
+        const d = dist(crab.x, crab.y, c.x, c.y);
+        if (d < bd) {
+          bd = d;
+          best = c;
+        }
+      }
+      if (best) return { x: best.x, y: best.y };
+      return { x: crab.x + Math.cos(crab.facing) * 34, y: crab.y + Math.sin(crab.facing) * 34 };
+    }
+    /** Where poured water lands. On touch you aim by walking. */
+    pourPoint() {
+      if (!this.touch.active) return this.cam.screenToWorld(this.input.sx, this.input.sy);
+      const crab = this.crab;
+      const reach = this.evo.stats.pourReach * 0.45;
+      return { x: crab.x + Math.cos(crab.facing) * reach, y: crab.y + Math.sin(crab.facing) * reach };
+    }
+    abilityById(id) {
+      return ABILITIES[id];
+    }
+    /**
+     * What the single context button on the touch pad should do right now.
+     * Mirrors the T / R / H keys, chosen by what is actually in reach.
+     */
+    touchContext() {
+      const crab = this.crab;
+      const range = this.evo.stats.tameRange + 14;
+      let best = null, bd = range;
+      for (const c of this.creatures) {
+        if (c.dead || c.tamed || !c.canTame()) continue;
+        const d = dist(crab.x, crab.y, c.x, c.y);
+        if (d < bd) {
+          bd = d;
+          best = c;
+        }
+      }
+      if (best) return { key: "t", label: "TAME", tint: "#c58fd8", target: best };
+      if (crab.water < crab.waterMax - 0.5) {
+        const poi = this.world.nearestPoi(crab.x, crab.y, 140, (p) => p.waterLeft > 0);
+        if (poi && dist(crab.x, crab.y, poi.x, poi.y) <= poi.radius + 24) {
+          return { key: "r", label: "DRINK", tint: "#5fc8dc", target: poi };
+        }
+      }
+      const ripe = this.eco.plantsNear(crab.x, crab.y, 34).some((p) => !p.dead && p.type === "berry" && (p.berries || 0) >= 1);
+      if (ripe) return { key: "h", label: "PICK", tint: "#e2685c" };
+      return null;
     }
     // -- update ---------------------------------------------------------------
     update(dt) {
       this.time += dt;
       const input = this.input;
       if (this.state === "title") {
+        this.touch.update(dt);
         this.weather.update(dt * 0.4, null);
         this.particles.update(dt, this.weather);
         this.renderer.update(dt, this.weather);
-        if (input.consumeClick() || input.justPressed(" ") || input.justPressed("Enter")) {
+        const cb = this._titleContinue;
+        if (cb && input.clicked && input.sx >= cb.x && input.sx <= cb.x + cb.w && input.sy >= cb.y && input.sy <= cb.y + cb.h) {
+          input.clicked = false;
+          this.audio.resume();
+          this.load();
+        } else if (input.consumeClick() || input.justPressed(" ") || input.justPressed("Enter")) {
           this.start();
         }
         if (input.justPressed("l") && hasSave()) {
           this.audio.resume();
           this.load();
         }
-        input.endFrame();
         return;
       }
-      if (this.state !== "cutscene") {
-        if (input.justPressed("e")) this.panels.toggle("evo");
-        else if (input.justPressed("c")) this.panels.toggle("pals");
-        else if (input.justPressed("b")) this.panels.toggle("codex");
-        else if (input.justPressed("m")) this.panels.toggle("map");
-        else if (input.justPressed("Escape")) this.panels.toggle("menu");
-        else if (input.justPressed("p")) this.paused = !this.paused;
+      if (this.state !== "cutscene" && !this.panels.open) {
+        const PANEL_KEYS = { e: "evo", c: "pals", b: "codex", m: "map", Escape: "menu" };
+        const hot = ["e", "c", "b", "m", "Escape", "p"].find((k) => input.justPressed(k));
+        if (hot) {
+          input.consumeKey(hot);
+          if (hot === "p") this.paused = !this.paused;
+          else this.panels.toggle(PANEL_KEYS[hot]);
+        }
       }
       this.panels.update(dt);
       this.hud.update(dt);
+      this.touch.update(dt);
       this.cutscene.update(dt, this);
       this.evo.update(dt);
       this.combat.update(dt);
@@ -9718,7 +10531,6 @@ body {
         this.deathT += dt;
         if (this.deathT > 3 && (input.consumeClick() || input.justPressed(" "))) this._revive();
       }
-      input.endFrame();
     }
     _updateRegion() {
       const r = this.world.regionAt(this.crab.x, this.crab.y).region;
@@ -9744,6 +10556,7 @@ body {
       }
       if (this.state !== "cutscene") {
         if (i.midDown && i.moved) this.cam.pan(i.dragDX, i.dragDY);
+        if (i.touchPan && !this.touch.stick.active) this.cam.pan(i.dragDX, i.dragDY);
         if (i.wheel) this.cam.zoomBy(i.wheel, i.sx, i.sy);
         if (i.key("z") || i.justPressed("z")) this.cam.followEntity(this.crab);
         const spd = 220 * dt / this.cam.zoom;
@@ -9764,13 +10577,23 @@ body {
     _handleInput(dt) {
       const i = this.input;
       const crab = this.crab;
-      const world = this.aimPoint();
-      this.uiHover = this._pick(world.x, world.y);
-      this.hoverTarget = this.uiHover && this.uiHover.type === "creature" ? this.uiHover.ref : null;
+      const pointer = this.cam.screenToWorld(i.sx, i.sy);
+      if (this.touch.active) {
+        const act = this.touchContext();
+        this.uiHover = act ? { type: "context", ref: act.target || null, prompt: `${act.label}: ${this._contextName(act)}` } : null;
+        this.hoverTarget = act && act.target && act.target.sp ? act.target : this._nearestHostile();
+      } else {
+        this.uiHover = this._pick(pointer.x, pointer.y);
+        this.hoverTarget = this.uiHover && this.uiHover.type === "creature" ? this.uiHover.ref : null;
+      }
       const organ = this.organScreenPos();
-      const overOrgan = Math.hypot(i.sx - organ.x, i.sy - organ.y) < Math.max(5, crab.size * this.cam.zoom * 0.9);
-      if (overOrgan && !this.uiHover) this.uiHover = { type: "organ", prompt: "hold to pump water" };
-      const pumping = i.down && (overOrgan || this._pumpLatch) || i.key("f");
+      const touchR = this.touch.active ? 10 : 0;
+      const overOrgan = Math.hypot(i.sx - organ.x, i.sy - organ.y) < Math.max(5, crab.size * this.cam.zoom * 0.9) + touchR;
+      if (overOrgan && !this.uiHover && !this.touch.active) {
+        this.uiHover = { type: "organ", prompt: "hold to pump water" };
+      }
+      const organHeld = i.down && !i.touchPan && (overOrgan || this._pumpLatch);
+      const pumping = organHeld || i.key("f");
       if (pumping) {
         if (i.down) this._pumpLatch = true;
         const made = crab.pump(dt);
@@ -9783,7 +10606,8 @@ body {
       const pourHeld = i.rightDown && !this.selected || i.key("q");
       if (pourHeld && !pumping) {
         crab.markPouring();
-        const got = crab.pour(dt, world.x, world.y);
+        const aim = this.pourPoint();
+        const got = crab.pour(dt, aim.x, aim.y);
         if (got > 0 && Math.random() < 0.12) this.audio.play("water");
       }
       for (let k = 0; k < 4; k++) {
@@ -9796,21 +10620,21 @@ body {
       if (i.justPressed("r")) this._tryAbsorb();
       if (i.clicked) {
         i.clicked = false;
-        this._onClick(world);
+        this._onClick(pointer);
       }
       if (i.rightClicked) {
         i.rightClicked = false;
         if (this.selected && !this.selected.dead) {
-          const h = this._pick(world.x, world.y);
+          const h = this._pick(pointer.x, pointer.y);
           if (h && h.type === "creature" && h.ref.hostile) {
             this.selected.orderTarget = h.ref;
             this.selected.orderPoint = null;
             this.notify(`${this.selected.sp.name} attacks!`, "info");
           } else {
-            this.selected.orderPoint = { x: world.x, y: world.y };
+            this.selected.orderPoint = { x: pointer.x, y: pointer.y };
             this.selected.orderTarget = null;
           }
-          this.particles.ring(world.x, world.y, { r0: 2, r1: 12, life: 0.35, color: "#ffb45a" });
+          this.particles.ring(pointer.x, pointer.y, { r0: 2, r1: 12, life: 0.35, color: "#ffb45a" });
           this.audio.play("ui");
         }
       }
@@ -9862,6 +10686,26 @@ body {
         this.selected = null;
         this.particles.ring(world.x, world.y, { r0: 2, r1: 10, life: 0.3, color: "#9fe4f4" });
       }
+    }
+    _contextName(act) {
+      if (!act.target) return "berries";
+      if (act.target.sp) {
+        const cost = Math.ceil(act.target.sp.tame.cost * this.evo.stats.tameCost);
+        return `${act.target.sp.name} (${cost} ${act.target.sp.tame.item})`;
+      }
+      return act.target.name || "water";
+    }
+    _nearestHostile() {
+      let best = null, bd = 140;
+      for (const c of this.creatures) {
+        if (c.dead || !c.hostile) continue;
+        const d = dist(this.crab.x, this.crab.y, c.x, c.y);
+        if (d < bd) {
+          bd = d;
+          best = c;
+        }
+      }
+      return best;
     }
     _pick(x, y) {
       let best = null, bd = Infinity;
@@ -10273,11 +11117,11 @@ body {
       const crab = this.crab;
       const z = this.cam.zoom;
       const s = this.cam.worldToScreen(crab.x, crab.y);
-      const R8 = crab.size * z;
+      const R9 = crab.size * z;
       const rot = crab.bodyAngle + crab.tiltX;
       return {
-        x: s.x - Math.cos(rot) * R8 * 0.42,
-        y: s.y - crab.bodyZ * 0.55 * z - Math.sin(rot) * R8 * 0.42 - R8 * 0.28
+        x: s.x - Math.cos(rot) * R9 * 0.42,
+        y: s.y - crab.bodyZ * 0.55 * z - Math.sin(rot) * R9 * 0.42 - R9 * 0.28
       };
     }
     // -- events ---------------------------------------------------------------
@@ -10540,6 +11384,7 @@ body {
       this.hud.draw(ui, this);
       this.panels.draw(ui, this);
       this.cutscene.draw(ui, this);
+      this.touch.draw(ui, this);
       if (this.state === "dead") this._drawDeath(ui, r);
       r.composite(this.weather, this);
     }
@@ -10623,8 +11468,9 @@ body {
         outline: true,
         outlineColor: "#3a1a10"
       });
+      const touch = this.touch.active;
       if (Math.floor(t * 1.6) % 2 === 0) {
-        drawText(ui, "click to begin", vw / 2, vh * 0.78, {
+        drawText(ui, touch ? "tap to begin" : "click to begin", vw / 2, vh * 0.78, {
           color: "#fff4dc",
           align: "center",
           scale: 2,
@@ -10632,10 +11478,30 @@ body {
           outlineColor: "#3a1a10"
         });
       }
+      this._titleContinue = null;
       if (hasSave()) {
         const info = saveInfo();
-        drawText(ui, `press L to continue  (day ${info?.day ?? 1})`, vw / 2, vh * 0.88, {
-          color: "rgba(255,244,220,0.75)",
+        const label = `continue - day ${info?.day ?? 1}`;
+        if (touch) {
+          const bw = textWidth(label, 1) + 20;
+          const bh = 18;
+          const bx = Math.round(vw / 2 - bw / 2), by = Math.round(vh * 0.87);
+          this._titleContinue = { x: bx, y: by, w: bw, h: bh };
+          panel(ui, bx, by, bw, bh, "rgba(28,18,12,0.85)", "#e0c088");
+          drawText(ui, label, vw / 2, by + (bh - 7) / 2, { color: "#ffe9c0", align: "center", scale: 1 });
+        } else {
+          drawText(ui, `press L to continue  (day ${info?.day ?? 1})`, vw / 2, vh * 0.88, {
+            color: "rgba(255,244,220,0.75)",
+            align: "center",
+            scale: 1,
+            outline: true,
+            outlineColor: "#3a1a10"
+          });
+        }
+      }
+      if (touch && vw < vh) {
+        drawText(ui, "turn your phone sideways for more room", vw / 2, vh * 0.94, {
+          color: "rgba(255,240,214,0.6)",
           align: "center",
           scale: 1,
           outline: true,
@@ -10681,6 +11547,7 @@ body {
     try {
       game.update(dt);
       game.draw();
+      game.input.endFrame();
     } catch (err) {
       showError(err);
       throw err;
@@ -10689,6 +11556,12 @@ body {
   requestAnimationFrame(frame);
   document.addEventListener("visibilitychange", () => {
     last = performance.now();
+  });
+  window.addEventListener("orientationchange", () => {
+    setTimeout(() => {
+      game.renderer.resize();
+      game.input.scale = game.renderer.scale;
+    }, 120);
   });
   function showError(err) {
     const box = document.createElement("div");

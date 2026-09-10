@@ -3,7 +3,7 @@
 
 import { TAU, clamp01, lerp, damp, dist } from './lib/math.js';
 import { Audio } from './lib/audio.js';
-import { drawText } from './lib/font.js';
+import { drawText, textWidth } from './lib/font.js';
 import { Input } from './core/input.js';
 import { Camera } from './core/camera.js';
 import * as Save from './core/save.js';
@@ -17,19 +17,20 @@ import {
   drawWetGround, drawPlant, drawPlantShadow, drawDecor, drawDecorShadow, drawPoi, drawPoiLabel,
 } from './render/worldart.js';
 import { drawCreatureShadow } from './render/creatureart.js';
-import { pxEllipse, pxLine, selectionRing } from './render/sprites.js';
+import { panel, pxEllipse, pxLine, selectionRing } from './render/sprites.js';
 import { Crab } from './entities/crab.js';
 import { creatureFromSave } from './entities/creature.js';
 import { Particles } from './entities/particles.js';
 import { Pell } from './entities/npc.js';
 import { SPECIES } from './entities/species.js';
-import { Evolution } from './systems/evolution.js';
+import { Evolution, ABILITIES } from './systems/evolution.js';
 import { Combat } from './systems/combat.js';
 import { Spawner } from './systems/spawner.js';
 import { Tutorial } from './systems/tutorial.js';
 import { Hud } from './ui/hud.js';
 import { Panels } from './ui/panels.js';
 import { Cutscene } from './ui/cutscene.js';
+import { TouchControls } from './ui/touch.js';
 
 import { getScene } from './cutscenes/script.js';
 export class Game {
@@ -54,6 +55,8 @@ export class Game {
     this.hud = new Hud(this);
     this.panels = new Panels(this);
     this.cutscene = new Cutscene(this);
+    this.touch = new TouchControls(this);
+    if (this.settings.touchControls !== undefined) this.touch.forced = this.settings.touchControls;
 
     this.newRun();
 
@@ -214,9 +217,61 @@ export class Game {
     return next ? next.at : null;
   }
 
+  /**
+   * Where an attack or a blast is pointed. With a mouse that is the cursor;
+   * on touch there is no cursor, so aim at the nearest thing worth hitting and
+   * fall back to straight ahead.
+   */
   aimPoint() {
-    const w = this.cam.screenToWorld(this.input.sx, this.input.sy);
-    return w;
+    if (!this.touch.active) return this.cam.screenToWorld(this.input.sx, this.input.sy);
+    const crab = this.crab;
+    let best = null, bd = 120;
+    for (const c of this.creatures) {
+      if (c.dead || !c.hostile) continue;
+      const d = dist(crab.x, crab.y, c.x, c.y);
+      if (d < bd) { bd = d; best = c; }
+    }
+    if (best) return { x: best.x, y: best.y };
+    return { x: crab.x + Math.cos(crab.facing) * 34, y: crab.y + Math.sin(crab.facing) * 34 };
+  }
+
+  /** Where poured water lands. On touch you aim by walking. */
+  pourPoint() {
+    if (!this.touch.active) return this.cam.screenToWorld(this.input.sx, this.input.sy);
+    const crab = this.crab;
+    const reach = this.evo.stats.pourReach * 0.45;
+    return { x: crab.x + Math.cos(crab.facing) * reach, y: crab.y + Math.sin(crab.facing) * reach };
+  }
+
+  abilityById(id) { return ABILITIES[id]; }
+
+  /**
+   * What the single context button on the touch pad should do right now.
+   * Mirrors the T / R / H keys, chosen by what is actually in reach.
+   */
+  touchContext() {
+    const crab = this.crab;
+    const range = this.evo.stats.tameRange + 14;
+    let best = null, bd = range;
+    for (const c of this.creatures) {
+      if (c.dead || c.tamed || !c.canTame()) continue;
+      const d = dist(crab.x, crab.y, c.x, c.y);
+      if (d < bd) { bd = d; best = c; }
+    }
+    if (best) return { key: 't', label: 'TAME', tint: '#c58fd8', target: best };
+
+    if (crab.water < crab.waterMax - 0.5) {
+      const poi = this.world.nearestPoi(crab.x, crab.y, 140, (p) => p.waterLeft > 0);
+      if (poi && dist(crab.x, crab.y, poi.x, poi.y) <= poi.radius + 24) {
+        return { key: 'r', label: 'DRINK', tint: '#5fc8dc', target: poi };
+      }
+    }
+
+    const ripe = this.eco.plantsNear(crab.x, crab.y, 34)
+      .some((p) => !p.dead && p.type === 'berry' && (p.berries || 0) >= 1);
+    if (ripe) return { key: 'h', label: 'PICK', tint: '#e2685c' };
+
+    return null;
   }
 
   // -- update ---------------------------------------------------------------
@@ -226,29 +281,41 @@ export class Game {
     const input = this.input;
 
     if (this.state === 'title') {
+      this.touch.update(dt);
       this.weather.update(dt * 0.4, null);
       this.particles.update(dt, this.weather);
       this.renderer.update(dt, this.weather);
-      if (input.consumeClick() || input.justPressed(' ') || input.justPressed('Enter')) {
+      // a tappable Continue, since a phone has no L key
+      const cb = this._titleContinue;
+      if (cb && input.clicked
+        && input.sx >= cb.x && input.sx <= cb.x + cb.w
+        && input.sy >= cb.y && input.sy <= cb.y + cb.h) {
+        input.clicked = false;
+        this.audio.resume();
+        this.load();
+      } else if (input.consumeClick() || input.justPressed(' ') || input.justPressed('Enter')) {
         this.start();
       }
       if (input.justPressed('l') && Save.hasSave()) { this.audio.resume(); this.load(); }
-      input.endFrame();
       return;
     }
 
-    // global hotkeys
-    if (this.state !== 'cutscene') {
-      if (input.justPressed('e')) this.panels.toggle('evo');
-      else if (input.justPressed('c')) this.panels.toggle('pals');
-      else if (input.justPressed('b')) this.panels.toggle('codex');
-      else if (input.justPressed('m')) this.panels.toggle('map');
-      else if (input.justPressed('Escape')) this.panels.toggle('menu');
-      else if (input.justPressed('p')) this.paused = !this.paused;
+    // Global hotkeys, only while no panel is open - an open panel owns these
+    // keys itself. Whichever key wins is consumed, or the same press would be
+    // read again further down the frame and undo itself.
+    if (this.state !== 'cutscene' && !this.panels.open) {
+      const PANEL_KEYS = { e: 'evo', c: 'pals', b: 'codex', m: 'map', Escape: 'menu' };
+      const hot = ['e', 'c', 'b', 'm', 'Escape', 'p'].find((k) => input.justPressed(k));
+      if (hot) {
+        input.consumeKey(hot);
+        if (hot === 'p') this.paused = !this.paused;
+        else this.panels.toggle(PANEL_KEYS[hot]);
+      }
     }
 
     this.panels.update(dt);
     this.hud.update(dt);
+    this.touch.update(dt);
     this.cutscene.update(dt, this);
     this.evo.update(dt);
     this.combat.update(dt);
@@ -294,8 +361,9 @@ export class Game {
       this.deathT += dt;
       if (this.deathT > 3 && (input.consumeClick() || input.justPressed(' '))) this._revive();
     }
-
-    input.endFrame();
+    // NB: input.endFrame() is deliberately NOT called here. The panels do
+    // their hit-testing while drawing, so a click has to survive the whole
+    // frame - update and draw. main.js clears it once both are done.
   }
 
   _updateRegion() {
@@ -320,6 +388,7 @@ export class Game {
     if (this.state === 'panel') { this.cam.update(dt, this.world); return; }
     if (this.state !== 'cutscene') {
       if (i.midDown && i.moved) this.cam.pan(i.dragDX, i.dragDY);
+      if (i.touchPan && !this.touch.stick.active) this.cam.pan(i.dragDX, i.dragDY);
       if (i.wheel) this.cam.zoomBy(i.wheel, i.sx, i.sy);
       if (i.key('z') || i.justPressed('z')) this.cam.followEntity(this.crab);
       // edge-key panning
@@ -342,18 +411,31 @@ export class Game {
   _handleInput(dt) {
     const i = this.input;
     const crab = this.crab;
-    const world = this.aimPoint();
+    const pointer = this.cam.screenToWorld(i.sx, i.sy);
 
-    // hover resolution
-    this.uiHover = this._pick(world.x, world.y);
-    this.hoverTarget = this.uiHover && (this.uiHover.type === 'creature') ? this.uiHover.ref : null;
+    if (this.touch.active) {
+      // no cursor to hover with: describe what the context button would do
+      const act = this.touchContext();
+      this.uiHover = act
+        ? { type: 'context', ref: act.target || null, prompt: `${act.label}: ${this._contextName(act)}` }
+        : null;
+      this.hoverTarget = act && act.target && act.target.sp ? act.target : this._nearestHostile();
+    } else {
+      this.uiHover = this._pick(pointer.x, pointer.y);
+      this.hoverTarget = this.uiHover && (this.uiHover.type === 'creature') ? this.uiHover.ref : null;
+    }
 
     // pumping the organ
     const organ = this.organScreenPos();
-    const overOrgan = Math.hypot(i.sx - organ.x, i.sy - organ.y) < Math.max(5, crab.size * this.cam.zoom * 0.9);
-    if (overOrgan && !this.uiHover) this.uiHover = { type: 'organ', prompt: 'hold to pump water' };
+    const touchR = this.touch.active ? 10 : 0;
+    const overOrgan = Math.hypot(i.sx - organ.x, i.sy - organ.y)
+      < Math.max(5, crab.size * this.cam.zoom * 0.9) + touchR;
+    if (overOrgan && !this.uiHover && !this.touch.active) {
+      this.uiHover = { type: 'organ', prompt: 'hold to pump water' };
+    }
 
-    const pumping = (i.down && (overOrgan || this._pumpLatch)) || i.key('f');
+    const organHeld = i.down && !i.touchPan && (overOrgan || this._pumpLatch);
+    const pumping = organHeld || i.key('f');
     if (pumping) {
       if (i.down) this._pumpLatch = true;
       const made = crab.pump(dt);
@@ -368,7 +450,8 @@ export class Game {
     const pourHeld = (i.rightDown && !this.selected) || i.key('q');
     if (pourHeld && !pumping) {
       crab.markPouring();
-      const got = crab.pour(dt, world.x, world.y);
+      const aim = this.pourPoint();
+      const got = crab.pour(dt, aim.x, aim.y);
       if (got > 0 && Math.random() < 0.12) this.audio.play('water');
     }
 
@@ -387,21 +470,21 @@ export class Game {
     // clicks
     if (i.clicked) {
       i.clicked = false;
-      this._onClick(world);
+      this._onClick(pointer);
     }
     if (i.rightClicked) {
       i.rightClicked = false;
       if (this.selected && !this.selected.dead) {
-        const h = this._pick(world.x, world.y);
+        const h = this._pick(pointer.x, pointer.y);
         if (h && h.type === 'creature' && h.ref.hostile) {
           this.selected.orderTarget = h.ref;
           this.selected.orderPoint = null;
           this.notify(`${this.selected.sp.name} attacks!`, 'info');
         } else {
-          this.selected.orderPoint = { x: world.x, y: world.y };
+          this.selected.orderPoint = { x: pointer.x, y: pointer.y };
           this.selected.orderTarget = null;
         }
-        this.particles.ring(world.x, world.y, { r0: 2, r1: 12, life: 0.35, color: '#ffb45a' });
+        this.particles.ring(pointer.x, pointer.y, { r0: 2, r1: 12, life: 0.35, color: '#ffb45a' });
         this.audio.play('ui');
       }
     }
@@ -445,6 +528,25 @@ export class Game {
       this.selected = null;
       this.particles.ring(world.x, world.y, { r0: 2, r1: 10, life: 0.3, color: '#9fe4f4' });
     }
+  }
+
+  _contextName(act) {
+    if (!act.target) return 'berries';
+    if (act.target.sp) {
+      const cost = Math.ceil(act.target.sp.tame.cost * this.evo.stats.tameCost);
+      return `${act.target.sp.name} (${cost} ${act.target.sp.tame.item})`;
+    }
+    return act.target.name || 'water';
+  }
+
+  _nearestHostile() {
+    let best = null, bd = 140;
+    for (const c of this.creatures) {
+      if (c.dead || !c.hostile) continue;
+      const d = dist(this.crab.x, this.crab.y, c.x, c.y);
+      if (d < bd) { bd = d; best = c; }
+    }
+    return best;
   }
 
   _pick(x, y) {
@@ -1081,6 +1183,7 @@ export class Game {
     this.hud.draw(ui, this);
     this.panels.draw(ui, this);
     this.cutscene.draw(ui, this);
+    this.touch.draw(ui, this);
     if (this.state === 'dead') this._drawDeath(ui, r);
     r.composite(this.weather, this);
   }
@@ -1154,15 +1257,32 @@ export class Game {
     drawText(ui, 'wake up. make water. fix everything.', vw / 2, vh * 0.2 + 42 + bob, {
       color: '#ffd9a0', align: 'center', scale: 1, outline: true, outlineColor: '#3a1a10',
     });
+    const touch = this.touch.active;
     if (Math.floor(t * 1.6) % 2 === 0) {
-      drawText(ui, 'click to begin', vw / 2, vh * 0.78, {
+      drawText(ui, touch ? 'tap to begin' : 'click to begin', vw / 2, vh * 0.78, {
         color: '#fff4dc', align: 'center', scale: 2, outline: true, outlineColor: '#3a1a10',
       });
     }
+    this._titleContinue = null;
     if (Save.hasSave()) {
       const info = Save.saveInfo();
-      drawText(ui, `press L to continue  (day ${info?.day ?? 1})`, vw / 2, vh * 0.88, {
-        color: 'rgba(255,244,220,0.75)', align: 'center', scale: 1, outline: true, outlineColor: '#3a1a10',
+      const label = `continue - day ${info?.day ?? 1}`;
+      if (touch) {
+        const bw = textWidth(label, 1) + 20;
+        const bh = 18;
+        const bx = Math.round(vw / 2 - bw / 2), by = Math.round(vh * 0.87);
+        this._titleContinue = { x: bx, y: by, w: bw, h: bh };
+        panel(ui, bx, by, bw, bh, 'rgba(28,18,12,0.85)', '#e0c088');
+        drawText(ui, label, vw / 2, by + (bh - 7) / 2, { color: '#ffe9c0', align: 'center', scale: 1 });
+      } else {
+        drawText(ui, `press L to continue  (day ${info?.day ?? 1})`, vw / 2, vh * 0.88, {
+          color: 'rgba(255,244,220,0.75)', align: 'center', scale: 1, outline: true, outlineColor: '#3a1a10',
+        });
+      }
+    }
+    if (touch && vw < vh) {
+      drawText(ui, 'turn your phone sideways for more room', vw / 2, vh * 0.94, {
+        color: 'rgba(255,240,214,0.6)', align: 'center', scale: 1, outline: true, outlineColor: '#3a1a10',
       });
     }
     drawText(ui, 'a game about a very old crab and a very dry planet', vw / 2, vh - 12, {

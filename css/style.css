@@ -14,18 +14,27 @@ html, body {
   height: 100%;
   background: #0a0705;
   overflow: hidden;
+  overscroll-behavior: none;
   font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
   color: var(--sand);
   -webkit-font-smoothing: none;
 }
 
 body {
+  /* fixed rather than merely full-height: stops mobile browsers scrolling
+     the page as their chrome slides in and out */
+  position: fixed;
+  inset: 0;
   display: flex;
   align-items: center;
   justify-content: center;
   /* a faint warm glow behind the letterboxing */
   background:
     radial-gradient(ellipse at 50% 45%, #241812 0%, #0a0705 70%);
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
 }
 
 #game {
@@ -74,7 +83,9 @@ body {
 .crash pre { white-space: pre-wrap; color: #d8b0a8; background: #0d0705; padding: 0.8rem; border-radius: 2px; }
 .crash code { color: #6fd8ee; }
 
-/* Small screens: let the canvas fill what it can. */
-@media (max-width: 640px) {
-  #game { box-shadow: none; }
+/* Small screens: let the canvas fill what it can, and drop the cursor
+   affordance that a finger cannot use. */
+@media (max-width: 700px), (pointer: coarse) {
+  #game { box-shadow: none; cursor: default; }
+  #boot h1 { font-size: 1.5rem; }
 }

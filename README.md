@@ -41,6 +41,8 @@ font and the sound are all generated at runtime, so the source is text.
 
 ## Controls
 
+### Mouse and keyboard
+
 | Input | Does |
 | --- | --- |
 | **click the crab** | take direct control (WASD to move, left click to strike) |
@@ -55,6 +57,29 @@ font and the sound are all generated at runtime, so the source is text.
 | **middle-drag / arrow keys** | pan the camera &nbsp;·&nbsp; **wheel** zoom &nbsp;·&nbsp; **Z** snap back to the crab |
 | **E / C / B / M** | evolution tree, companions, codex, map |
 | **Esc** | menu (also skips a cutscene) |
+
+### Touch
+
+On-screen controls appear by themselves on a touch device, and get out of the
+way again the moment a mouse is used. There is a manual switch in the menu.
+
+| Control | Does |
+| --- | --- |
+| **stick**, bottom left | walk (grabbing it takes direct control) |
+| **PUMP** | hold to make water |
+| **POUR** | hold to water the ground just ahead of you |
+| **round button**, bottom right | the one thing in reach: **TAME**, **PICK** or **DRINK** |
+| **square buttons** | equipped abilities, with their cooldowns |
+| **≡** and **✛** | menu, and snap the camera back to the crab |
+| **tap** | the crab to take control, an animal to select it, the ground to send the crab |
+| **drag** | pan the camera &nbsp;·&nbsp; **pinch** to zoom |
+| **SKIP** | during a cutscene |
+
+Attacks and blasts aim themselves at the nearest hostile, so combat needs one
+thumb rather than two. Panels get bigger hit targets, drag-to-scroll lists, and
+a close button; on a phone held upright the evolution tree and the codex split
+into two tappable halves rather than cramming side by side. It plays in
+portrait, but landscape gives the camera a lot more to work with.
 
 ## The loop
 
@@ -185,6 +210,7 @@ js/render/
   worldart.js          plants, scenery, landmarks, water
 js/ui/
   hud.js  panels.js  cutscene.js  portraits.js
+  touch.js             on-screen controls; presses the same virtual keys
 js/cutscenes/script.js the story
 build.mjs              inlines everything into dist/crabden.html
 ```
@@ -197,7 +223,8 @@ console, or *Abandon and restart* in the menu.
 
 ## Notes
 
-- Tested in Chromium at 60fps from 800×480 up to 1920×1080.
+- Tested in Chromium at 60fps from 800×480 up to 1920×1080, and with real
+  touch input on phone-sized viewports in both orientations.
 - The camera is free; the crab is a character you command, not a cursor.
 - Damage is disabled during cutscenes, on purpose.
 - If the crab goes down, something drags it home and the desert takes a cut of

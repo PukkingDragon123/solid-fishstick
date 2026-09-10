@@ -2,7 +2,7 @@
 // touches it.
 
 import { TAU, clamp01, rgba, formatTime } from '../lib/math.js';
-import { drawText, textWidth, wrapText } from '../lib/font.js';
+import { drawText, textWidth, wrapText, ellipsize } from '../lib/font.js';
 import { panel, bar } from '../render/sprites.js';
 import { ABILITIES } from '../systems/evolution.js';
 import { WORKS } from '../entities/species.js';
@@ -42,11 +42,15 @@ export class Hud {
     if (game.state === 'title' || game.state === 'cutscene') return;
     if (game.panels.open) return;
 
+    // narrow viewports (a phone held upright) get a slimmer set of panels
+    this.compact = vw < 300;
+    this.touch = game.touch.active;
+
     this._drawVitals(ctx, game, vw, vh);
     this._drawWorldInfo(ctx, game, vw, vh);
-    this._drawAbilities(ctx, game, vw, vh);
-    this._drawObjective(ctx, game, vw, vh);
-    this._drawContext(ctx, game, vw, vh);
+    if (!this.touch) this._drawAbilities(ctx, game, vw, vh);
+    const objBottom = this._drawObjective(ctx, game, vw, vh);
+    this._drawContext(ctx, game, vw, vh, objBottom);
     this._drawNotes(ctx, game, vw, vh);
     this._drawCompass(ctx, game, vw, vh);
     if (game.spawner.raid) this._drawRaid(ctx, game, vw, vh);
@@ -57,25 +61,37 @@ export class Hud {
 
   _drawVitals(ctx, game, vw, vh) {
     const c = game.crab;
-    const x = 6, y = 6, w = 96;
-    panel(ctx, x, y, w, 50, 'rgba(22,16,12,0.78)', 'rgba(201,160,106,0.6)');
+    const compact = this.compact;
+    const x = 6, y = 6;
+    const w = compact ? 80 : 96;
+    const h = compact ? 42 : 50;
+    panel(ctx, x, y, w, h, 'rgba(22,16,12,0.78)', 'rgba(201,160,106,0.6)');
     const inner = w - 12;
 
     drawText(ctx, 'WATER', x + 6, y + 3, { color: '#9fe4f4', scale: 1 });
     drawText(ctx, `${fmt(c.water)}/${fmt(c.waterMax)}`, x + w - 6, y + 3, { color: '#cfeff8', align: 'right', scale: 1 });
     bar(ctx, x + 6, y + 11, inner, 4, c.water / Math.max(1, c.waterMax), '#57c8d8', 'rgba(0,0,0,0.5)', 'rgba(0,0,0,0.6)', { gloss: true });
 
-    bar(ctx, x + 6, y + 18, 40, 3, c.vigor, c.vigor > 0.25 ? '#9fd45c' : '#e2683c', 'rgba(0,0,0,0.5)', 'rgba(0,0,0,0.6)');
-    drawText(ctx, c.pumping ? 'pumping' : 'vigor', x + 50, y + 17, { color: 'rgba(214,226,190,0.75)', scale: 1 });
+    const vigorW = compact ? inner : 40;
+    bar(ctx, x + 6, y + 18, vigorW, 3, c.vigor, c.vigor > 0.25 ? '#9fd45c' : '#e2683c', 'rgba(0,0,0,0.5)', 'rgba(0,0,0,0.6)');
+    if (!compact) {
+      drawText(ctx, c.pumping ? 'pumping' : 'vigor', x + 50, y + 17, { color: 'rgba(214,226,190,0.75)', scale: 1 });
+    }
 
-    drawText(ctx, 'SHELL', x + 6, y + 25, { color: '#f0b8ac', scale: 1 });
-    drawText(ctx, `${fmt(Math.ceil(c.hp))}/${fmt(c.hpMax)}`, x + w - 6, y + 25, { color: '#f0b8ac', align: 'right', scale: 1 });
-    bar(ctx, x + 6, y + 33, inner, 4, c.hp / Math.max(1, c.hpMax), '#d8543c', 'rgba(0,0,0,0.5)', 'rgba(0,0,0,0.6)', { gloss: true });
+    const shellY = compact ? y + 24 : y + 25;
+    if (!compact) {
+      drawText(ctx, 'SHELL', x + 6, shellY, { color: '#f0b8ac', scale: 1 });
+      drawText(ctx, `${fmt(Math.ceil(c.hp))}/${fmt(c.hpMax)}`, x + w - 6, shellY, { color: '#f0b8ac', align: 'right', scale: 1 });
+    }
+    bar(ctx, x + 6, compact ? y + 24 : y + 33, inner, 4, c.hp / Math.max(1, c.hpMax),
+      '#d8543c', 'rgba(0,0,0,0.5)', 'rgba(0,0,0,0.6)', { gloss: true });
 
-    drawText(ctx, 'nutrients', x + 6, y + 40, { color: 'rgba(224,200,144,0.7)', scale: 1 });
-    drawText(ctx, fmt(game.res.nutrients), x + w - 6, y + 40, { color: '#e0c890', align: 'right', scale: 1 });
+    const nutY = compact ? y + 32 : y + 40;
+    if (!compact) drawText(ctx, 'nutrients', x + 6, nutY, { color: 'rgba(224,200,144,0.7)', scale: 1 });
+    else drawText(ctx, 'nut', x + 6, nutY, { color: 'rgba(224,200,144,0.7)', scale: 1 });
+    drawText(ctx, fmt(game.res.nutrients), x + w - 6, nutY, { color: '#e0c890', align: 'right', scale: 1 });
     if (game.res.food >= 1) {
-      drawText(ctx, `berries ${fmt(game.res.food)}`, x + 6, y + 54, { color: '#e2707a', scale: 1 });
+      drawText(ctx, `berries ${fmt(game.res.food)}`, x + 6, y + h + 4, { color: '#e2707a', scale: 1 });
     }
   }
 
@@ -83,35 +99,45 @@ export class Hud {
 
   _drawWorldInfo(ctx, game, vw, vh) {
     const w = game.weather;
-    const pw = 104;
+    const compact = this.compact;
+    const pw = compact ? 80 : 104;
     const bx = vw - pw - 6, by = 6;
-    panel(ctx, bx, by, pw, 34, 'rgba(22,16,12,0.78)', 'rgba(201,160,106,0.6)');
+    const ph = compact ? 28 : 34;
+    panel(ctx, bx, by, pw, ph, 'rgba(22,16,12,0.78)', 'rgba(201,160,106,0.6)');
 
     const name = game.currentRegion.name.replace(/^The /, '');
-    drawText(ctx, name, bx + 5, by + 4, { color: '#f0e2c0', scale: 1 });
-    drawText(ctx, `Day ${w.day}`, bx + 5, by + 13, { color: '#cbb896', scale: 1 });
-    drawText(ctx, formatTime(w.hour), bx + 5 + 30, by + 13, { color: '#cbb896', scale: 1 });
-    drawText(ctx, w.label(), bx + 5, by + 22, { color: w.dangerous ? '#ff9a7a' : '#a8c4d0', scale: 1 });
+    drawText(ctx, ellipsize(name, pw - 10, 1), bx + 5, by + 4, { color: '#f0e2c0', scale: 1 });
+    if (compact) {
+      drawText(ctx, `D${w.day}`, bx + 5, by + 13, { color: '#cbb896', scale: 1 });
+      drawText(ctx, formatTime(w.hour), bx + pw - 5, by + 13, { color: '#cbb896', align: 'right', scale: 1 });
+      drawText(ctx, ellipsize(w.label(), pw - 10, 1), bx + 5, by + 21, {
+        color: w.dangerous ? '#ff9a7a' : '#a8c4d0', scale: 1,
+      });
+    } else {
+      drawText(ctx, `Day ${w.day}`, bx + 5, by + 13, { color: '#cbb896', scale: 1 });
+      drawText(ctx, formatTime(w.hour), bx + 35, by + 13, { color: '#cbb896', scale: 1 });
+      drawText(ctx, w.label(), bx + 5, by + 22, { color: w.dangerous ? '#ff9a7a' : '#a8c4d0', scale: 1 });
 
-    // sun / moon dial
-    const dx = bx + pw - 12, dy = by + 19;
-    const ang = (w.hour / 24) * TAU - Math.PI / 2;
-    ctx.fillStyle = 'rgba(0,0,0,0.45)';
-    ctx.beginPath(); ctx.arc(dx + 0.5, dy + 0.5, 7, 0, TAU); ctx.fill();
-    ctx.fillStyle = 'rgba(255,255,255,0.16)';
-    ctx.fillRect(R(dx) - 7, R(dy), 15, 1);
-    ctx.fillStyle = w.isNight ? '#cfd8e8' : '#ffd06a';
-    const px2 = dx + Math.cos(ang) * 5, py2 = dy + Math.sin(ang) * 5;
-    ctx.fillRect(R(px2) - 1, R(py2) - 1, 3, 3);
+      // sun / moon dial
+      const dx = bx + pw - 12, dy = by + 19;
+      const ang = (w.hour / 24) * TAU - Math.PI / 2;
+      ctx.fillStyle = 'rgba(0,0,0,0.45)';
+      ctx.beginPath(); ctx.arc(dx + 0.5, dy + 0.5, 7, 0, TAU); ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,0.16)';
+      ctx.fillRect(R(dx) - 7, R(dy), 15, 1);
+      ctx.fillStyle = w.isNight ? '#cfd8e8' : '#ffd06a';
+      ctx.fillRect(R(dx + Math.cos(ang) * 5) - 1, R(dy + Math.sin(ang) * 5) - 1, 3, 3);
+    }
 
     // ecosystem tier
     const t = game.eco.tier;
-    const ty = by + 36;
-    panel(ctx, bx, ty, pw, 20, 'rgba(22,16,12,0.7)', 'rgba(122,190,120,0.5)');
-    drawText(ctx, t.name, bx + 5, ty + 3, { color: '#a8e090', scale: 1 });
+    const ty = by + ph + 2;
+    panel(ctx, bx, ty, pw, compact ? 18 : 20, 'rgba(22,16,12,0.7)', 'rgba(122,190,120,0.5)');
+    drawText(ctx, ellipsize(t.name, pw - 10, 1), bx + 5, ty + 3, { color: '#a8e090', scale: 1 });
     const nextTier = game.nextTierAt();
     const frac = nextTier ? clamp01((game.eco.biomass - t.at) / (nextTier - t.at)) : 1;
-    bar(ctx, bx + 5, ty + 13, pw - 10, 3, frac, '#7fd05a', 'rgba(0,0,0,0.5)', 'rgba(0,0,0,0.6)');
+    bar(ctx, bx + 5, ty + 12, pw - 10, 3, frac, '#7fd05a', 'rgba(0,0,0,0.5)', 'rgba(0,0,0,0.6)');
+    this._panelBottom = ty + (compact ? 18 : 20);
   }
 
   // -- abilities ------------------------------------------------------------
@@ -161,42 +187,58 @@ export class Hud {
   _drawObjective(ctx, game, vw, vh) {
     const t = game.tutorial;
     const step = t.step;
-    if (!step || t.pendingStart) return;
+    if (!step || t.pendingStart) return 0;
 
-    // the corners belong to the vitals and world panels; live between them
-    const maxW = Math.max(90, vw - 232);
-    const hintLines = wrapText(step.hint, maxW - 12, 1);
+    const hintText = (this.touch && step.touchHint) ? step.touchHint : step.hint;
+    // the corners belong to the vitals and world panels; live between them,
+    // or below them when the screen is too narrow for a middle column
+    const band = this.compact
+      ? { x0: 4, x1: vw - 4, y: (this._panelBottom || 62) + 4 }
+      : { x0: 106, x1: vw - 112, y: 6 };
+    const maxW = Math.max(90, band.x1 - band.x0);
+    const hintLines = wrapText(hintText, maxW - 12, 1);
     const w = Math.min(maxW, Math.max(
       textWidth(step.title, 1),
       ...hintLines.map((l) => textWidth(l, 1))
     ) + 14);
-    const x = Math.round(vw / 2 - w / 2);
-    const y = 6;
+    const cx = (band.x0 + band.x1) / 2;
+    const x = Math.round(cx - w / 2);
+    const y = band.y;
     const h = 14 + hintLines.length * 9;
     const pulse = t.goalFlash > 0 ? 0.5 + Math.sin(game.time * 22) * 0.5 : 0;
     panel(ctx, x, y, w, h, 'rgba(22,16,12,0.82)', pulse > 0.5 ? '#ffe9a0' : 'rgba(201,160,106,0.55)');
-    drawText(ctx, step.title, vw / 2, y + 3, { color: '#ffe9a0', align: 'center', scale: 1 });
+    drawText(ctx, step.title, cx, y + 3, { color: '#ffe9a0', align: 'center', scale: 1 });
     hintLines.forEach((line, i) => {
-      drawText(ctx, line, vw / 2, y + 12 + i * 9, { color: 'rgba(220,206,180,0.8)', align: 'center', scale: 1 });
+      drawText(ctx, line, cx, y + 12 + i * 9, { color: 'rgba(220,206,180,0.8)', align: 'center', scale: 1 });
     });
+    return y + h;
   }
 
   // -- context prompt -------------------------------------------------------
 
-  _drawContext(ctx, game, vw, vh) {
+  _drawContext(ctx, game, vw, vh, objBottom) {
     const h = game.uiHover;
     if (!h || !h.prompt) return;
-    const w = textWidth(h.prompt, 1) + 12;
-    const x = vw / 2 - w / 2;
-    const y = vh - 32;
-    panel(ctx, x, y, w, 13, 'rgba(22,16,12,0.85)', 'rgba(201,160,106,0.6)');
-    drawText(ctx, h.prompt, vw / 2, y + 3, { color: '#f0e2c0', align: 'center', scale: 1 });
+
+    // With a mouse the prompt belongs under the cursor's half of the screen.
+    // With thumbs on the bottom corners it has to live up top instead.
+    const band = this.touch
+      ? (this.compact
+        ? { x0: 4, x1: vw - 4, y: (objBottom || (this._panelBottom || 62) + 4) + 3 }
+        : { x0: 106, x1: vw - 112, y: (objBottom || 4) + 3 })
+      : { x0: 8, x1: vw - 8, y: vh - 32 };
+    const maxW = Math.max(80, band.x1 - band.x0);
+    const text = ellipsize(h.prompt, maxW - 12, 1);
+    const w = Math.min(maxW, textWidth(text, 1) + 12);
+    const cx = (band.x0 + band.x1) / 2;
+    panel(ctx, Math.round(cx - w / 2), band.y, w, 13, 'rgba(22,16,12,0.85)', 'rgba(201,160,106,0.6)');
+    drawText(ctx, text, cx, band.y + 3, { color: '#f0e2c0', align: 'center', scale: 1 });
   }
 
   // -- notifications --------------------------------------------------------
 
   _drawNotes(ctx, game, vw, vh) {
-    let y = 62;
+    let y = (this._panelBottom || 62) + 4;
     const colors = { info: '#e0d4b8', good: '#a8e090', bad: '#ff9a8a', rare: '#e2c0ff' };
     for (const n of this.notes) {
       const a = clamp01(n.life / 0.6) * clamp01((n.max - n.life) / 0.2 + 0.2);

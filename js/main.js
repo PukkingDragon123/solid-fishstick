@@ -38,6 +38,8 @@ function frame(now) {
   try {
     game.update(dt);
     game.draw();
+    // one input frame spans update and draw: the UI hit-tests while drawing
+    game.input.endFrame();
   } catch (err) {
     showError(err);
     throw err;
@@ -47,6 +49,14 @@ requestAnimationFrame(frame);
 
 document.addEventListener('visibilitychange', () => {
   last = performance.now();
+});
+
+// phones fire this separately from resize, and often a beat later
+window.addEventListener('orientationchange', () => {
+  setTimeout(() => {
+    game.renderer.resize();
+    game.input.scale = game.renderer.scale;
+  }, 120);
 });
 
 function showError(err) {
