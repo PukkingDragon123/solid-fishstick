@@ -6,16 +6,17 @@
 // into. Everything else lives in a drawer that slides out of the right edge
 // when you want it and is not there when you do not.
 
-import { clamp, clamp01, lerp, damp, TAU } from '../lib/math.js';
+import { clamp, clamp01, lerp, damp, TAU, easeOutCubic } from '../lib/math.js';
 import { drawText, textWidth, wrapText, ellipsize, LINE_H } from '../lib/font.js';
-import { FLORA, FLORA_BY_ID } from '../data/flora.js';
+import { FLORA, FLORA_BY_ID, NEEDS_TEXT } from '../data/flora.js';
 import { FAUNA, FAUNA_BY_ID, CLADES, OBSERVE_STEPS } from '../data/fauna.js';
 import { BUILDINGS, BUILD_BY_ID, GENES, GENE_BY_ID, SKILL_BY_ID } from '../data/progress.js';
 import { buildPlant } from '../art/floraart.js';
 import { buildStructure } from '../art/buildart.js';
-import { drawShell, drawBloom, drawSprig, drawOrb, drawTab } from './icons.js';
+import { drawShell, drawBloom, drawSprig, drawOrb, drawTab, drawPanel, drawGlyph, drawValve, drawGauge } from './icons.js';
 import { TreeScreen } from './tree.js';
 import { WORLD_NOTES, ERAS } from '../data/lore.js';
+import { biomeAt } from '../world/biomes.js';
 
 const INK = '#f2e4c2';
 const DIM = 'rgba(240,226,192,0.66)';
@@ -23,10 +24,11 @@ const FAINT = 'rgba(240,226,192,0.36)';
 const OUT = 'rgba(12,8,5,0.72)';
 
 const TABS = [
-  { id: 'flora', icon: 'flora', name: 'SEED' },
-  { id: 'fauna', icon: 'fauna', name: 'LIFE' },
-  { id: 'build', icon: 'build', name: 'BUILD' },
-  { id: 'codex', icon: 'codex', name: 'FIELD' },
+  { id: 'flora', icon: 'flora', name: 'SEED', sub: 'what will grow on your back' },
+  { id: 'fauna', icon: 'fauna', name: 'LIFE', sub: 'you cannot buy an animal, only be worth the walk' },
+  { id: 'build', icon: 'build', name: 'BUILD', sub: 'permanent, and visible from a dune away' },
+  { id: 'map', icon: 'map', name: 'MAP', sub: 'the basin, and what is left standing in it' },
+  { id: 'codex', icon: 'codex', name: 'FIELD', sub: "what Vess has managed to write down" },
 ];
 
 export const MODES = [
@@ -39,10 +41,12 @@ export class UI {
   constructor(game) {
     this.game = game;
     this.tree = new TreeScreen(game);
-    this.drawer = 0;             // 0 closed, 1 open
+    this.drawer = 0;             // 0 closed, 1 fully open
     this.drawerOpen = false;
     this.tab = 'flora';
     this.scroll = 0;
+    this.pick = null;            // the item shown in the detail pane
+    this.mapX = null;            // where the map is looking, world x
     this.placing = null;         // { kind, id }
     this.ghostPlot = null;
     this.toast = null;
@@ -52,6 +56,7 @@ export class UI {
     this.stick = null;
     this.stickZone = null;
     this.mode = 'direct';
+    this.valveHeld = false;
     this.selected = null;        // a commanded creature
     this.t = 0;
     this.bloomShown = 0;
@@ -65,6 +70,7 @@ export class UI {
 
   _installTouch() {
     const i = this.game.input;
+    this.holdKeys = new Set();
     i.claimHandler = (p) => {
       if (!this.touchEnabled) return null;
       for (const b of this.buttons) {
@@ -145,12 +151,13 @@ export class UI {
     }
     if (i.justPressed('g')) { i.consumeKey('g'); this._openTree(); }
     if (i.justPressed('m')) { i.consumeKey('m'); this.cycleMode(); }
-    const keys = ['1', '2', '3', '4'];
+    const keys = ['1', '2', '3', '4', '5'];
     keys.forEach((k, n) => {
       if (i.justPressed(k)) {
         i.consumeKey(k);
+        if (!TABS[n]) return;
         if (this.drawerOpen && this.tab === TABS[n].id) this.drawerOpen = false;
-        else { this.drawerOpen = true; this.tab = TABS[n].id; this.scroll = 0; }
+        else { this.drawerOpen = true; this.tab = TABS[n].id; this.scroll = 0; this.pick = null; }
       }
     });
     if (this.drawerOpen && i.wheel) this.scroll = Math.max(0, this.scroll + i.wheel * 22);
@@ -238,7 +245,7 @@ export class UI {
 
     this._hud(ctx, W, H);
     if (this.placing) this._placingHud(ctx, W, H);
-    if (this.drawer > 0.005) this._drawer(ctx, W, H);
+    if (this.drawer > 0.005) this._panel(ctx, W, H);
     else if (this.touchEnabled) this._touchControls(ctx, W, H);
 
     if (this.toast) {
@@ -313,6 +320,53 @@ export class UI {
       }
     }
 
+    // the shell's balance: what you are carrying and how evenly
+    const gd = g.garden;
+    const load = gd.load, cap = gd.capacity, trim = gd.trim;
+    const bx0 = 6, by0 = 50;
+    drawGlyph(ctx, 'scale', bx0, by0 - 1, {
+      color: gd.overload > 0 ? '#e08c9c' : gd.listed ? '#e2b74a' : '#d6ba8a',
+    });
+    drawGauge(ctx, bx0 + 15, by0 + 1, 42, 4, load / Math.max(1, cap),
+      gd.overload > 0 ? '#c8425c' : load > cap * 0.8 ? '#e2b74a' : '#8cc468');
+    // trim: a needle that swings off centre as the load goes to one side
+    const tw = 42, tx = bx0 + 15;
+    ctx.fillStyle = 'rgba(12,8,5,0.7)';
+    ctx.fillRect(tx - 1, by0 + 6, tw + 2, 4);
+    ctx.fillStyle = 'rgba(90,72,48,0.9)';
+    ctx.fillRect(tx, by0 + 7, tw, 2);
+    ctx.fillStyle = gd.listed ? '#e2b74a' : '#d6ba8a';
+    ctx.fillRect(Math.round(tx + tw / 2 + trim * tw * 0.5) - 1, by0 + 5, 2, 6);
+    ctx.fillStyle = 'rgba(242,228,194,0.4)';
+    ctx.fillRect(Math.round(tx + tw / 2), by0 + 6, 1, 4);
+    if (this._hit(bx0, by0 - 2, 60, 14)) {
+      this.hover = {
+        title: 'Balance',
+        body: `Carrying ${load.toFixed(1)} of ${cap.toFixed(1)}.\n`
+          + (gd.overload > 0 ? 'Overloaded: everything grows slower and you walk slower.\n' : '')
+          + (gd.listed ? `Listing ${trim > 0 ? 'right' : 'left'}. Whatever is stacked on the heavy side is suffering.` : 'Evenly loaded.'),
+      };
+    }
+
+    // how many are ready to pick
+    const ripe = gd.ripeCount;
+    if (ripe) {
+      const rx0 = bx0, ry0 = by0 + 14;
+      const pulse = 0.6 + Math.sin(this.t * 3.2) * 0.4;
+      ctx.globalAlpha = 0.7 + pulse * 0.3;
+      drawGlyph(ctx, 'hand', rx0, ry0, { color: '#cfe89a' });
+      ctx.globalAlpha = 1;
+      drawText(ctx, `${ripe} ready   R`, rx0 + 15, ry0 + 3,
+        { color: '#cfe89a', outline: true, outlineColor: OUT });
+      if (this._hit(rx0, ry0, 70, 12)) {
+        this.hover = { title: 'Ready to pick', body: 'Nothing pays out on its own. Press R, or tap the bead over a plant.' };
+        if (g.input.clicked) { g.input.clicked = false; g.harvestAll(); }
+      }
+    }
+
+    // the spring: a valve you hold open, not a button you tap
+    this._pumpButton(ctx, W, H);
+
     // health, only when it is not full
     const crab = g.crab;
     if (crab.hp < crab.hpMax) {
@@ -336,12 +390,44 @@ export class UI {
       drawText(ctx, hint, W / 2, H - 30, { color: INK, align: 'center', outline: true, outlineColor: OUT });
     }
     if (!this.touchEnabled) {
-      drawText(ctx, 'A/D scuttle   SPACE spring   E act   TAB drawer   G genome   M mode',
+      drawText(ctx, 'A/D scuttle  SPACE spring  R pick  T tap  E act  F Vess  TAB shop  G inside',
         W / 2, H - 10, { color: FAINT, align: 'center', outline: true, outlineColor: OUT });
     }
     if (this.selected) {
       drawText(ctx, `${this.selected.name} - click where to send it`, W / 2, H - 42,
         { color: '#ffe9a8', align: 'center', outline: true, outlineColor: OUT });
+    }
+  }
+
+  /**
+   * The pump. It is a valve in your own shell, so it is drawn as one, and it
+   * behaves like one: hold it and it runs, let go and it shuts.
+   */
+  _pumpButton(ctx, W, H) {
+    const g = this.game;
+    const size = 34;
+    const x = W - size - 8, y = H - size - (this.touchEnabled ? 70 : 26);
+    const hold = g.pumpHold || 0;
+    const hot = this._hit(x, y, size, size);
+    const i = g.input;
+
+    // held with a finger or the mouse as well as with the key; the game loop
+    // does the actual pumping so both routes ramp and decay the same way
+    if (hot && i.down && !this.drawerOpen && g.state === 'play') this._valveDown = true;
+    if (!i.down) this._valveDown = false;
+    this.valveHeld = this._valveDown;
+
+    ctx.globalAlpha = hot || hold > 0 ? 1 : 0.72;
+    drawValve(ctx, x, y, hold, this.t);
+    ctx.globalAlpha = 1;
+    const e = g.economy;
+    const full = e.water >= e.stat('waterMax') - 0.5;
+    drawText(ctx, full ? 'SPILLING' : 'HOLD', x + size / 2, y + size + 1, {
+      color: full ? '#9de3ee' : hold > 0 ? '#9de3ee' : FAINT,
+      align: 'center', outline: true, outlineColor: OUT,
+    });
+    if (hot) {
+      this.hover = { title: 'The spring', body: 'Hold to run it. It fills the tank, then the basin, then it goes over the side.' };
     }
   }
 
@@ -384,6 +470,61 @@ export class UI {
   }
 
   // -- placement ------------------------------------------------------------
+
+  /**
+   * Drawn over the shell in world space: how close each plant is to being
+   * worth picking. A full ring with a bead on it means take it.
+   */
+  drawCrop(ctx, cam) {
+    if (this.placing || this.drawerOpen) return;
+    const g = this.game;
+    const i = g.input;
+    let pickHit = null;
+    for (const plot of g.garden.plots) {
+      const pl = plot.plant;
+      if (!pl || pl.stage < 3) continue;
+      const w = g.garden.plotWorld(plot);
+      const s = cam.worldToScreen(w.x, w.y - 9);
+      if (s.x < -20 || s.x > g.renderer.vw + 20) continue;
+      const ripe = pl.ripe;
+      const met = g.garden.needMet(pl.def);
+      const hot = Math.hypot(i.sx - s.x, i.sy - s.y) < 12;
+      if (hot && ripe >= 1) pickHit = plot;
+
+      if (ripe >= 1) {
+        // ready: a bead that bobs, so it reads from across the screen
+        const bob = Math.sin(this.t * 3.4 + plot.i) * 1.6;
+        const r = 4.0 + Math.sin(this.t * 5 + plot.i) * 0.6;
+        ctx.globalAlpha = 0.9;
+        const gr = ctx.createRadialGradient(s.x, s.y + bob, 0, s.x, s.y + bob, r * 3);
+        gr.addColorStop(0, 'rgba(226,240,168,0.85)');
+        gr.addColorStop(1, 'rgba(140,196,104,0)');
+        ctx.fillStyle = gr;
+        ctx.beginPath(); ctx.arc(s.x, s.y + bob, r * 3, 0, TAU); ctx.fill();
+        ctx.fillStyle = hot ? '#f6ffd8' : '#cfe89a';
+        ctx.beginPath(); ctx.arc(s.x, s.y + bob, r, 0, TAU); ctx.fill();
+        ctx.strokeStyle = 'rgba(20,30,10,0.8)';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+      } else if (cam.zoom > 1.4) {
+        // still filling: a short bar, and a mark if its condition is not met
+        ctx.globalAlpha = met ? 0.75 : 0.5;
+        drawGauge(ctx, s.x - 6, s.y, 12, 2, ripe, met ? '#8cc468' : '#7a6a52');
+        if (!met) {
+          ctx.fillStyle = '#e2b74a';
+          ctx.fillRect(Math.round(s.x - 1), Math.round(s.y - 5), 2, 3);
+          ctx.fillRect(Math.round(s.x - 1), Math.round(s.y - 1), 2, 1);
+        }
+        ctx.globalAlpha = 1;
+      }
+    }
+    if (pickHit && i.clicked) {
+      i.clicked = false;
+      g.harvestPlot(pickHit);
+    }
+    this.cropHot = !!pickHit;
+  }
 
   /** Called from the game draw so the ghost sits in the world, not on the HUD. */
   drawGhost(ctx, cam) {
@@ -469,182 +610,407 @@ export class UI {
 
   // -- the drawer -----------------------------------------------------------
 
-  _drawer(ctx, W, H) {
-    const dw = Math.min(196, Math.round(W * 0.46));
-    const x = W - dw * this.drawer;
-    const railW = 26;
+  /**
+   * The shop is a popup, not a drawer: a framed panel that lands in the middle
+   * of the screen with a rail of tabs across the top, a grid of what you can
+   * put on your back down the left, and everything worth knowing about the one
+   * you are looking at down the right.
+   */
+  _panel(ctx, W, H) {
+    const k = easeOutCubic(this.drawer);
+    const pw = Math.min(420, W - 20);
+    const ph = Math.min(232, H - 20);
+    const px = Math.round((W - pw) / 2);
+    const py = Math.round((H - ph) / 2 + (1 - k) * 26);
 
-    // the drawer itself: a hide stretched on a frame, not a dialog box
-    ctx.fillStyle = 'rgba(28,20,13,0.96)';
-    ctx.fillRect(x, 0, dw, H);
-    ctx.fillStyle = 'rgba(58,42,26,0.9)';
-    ctx.fillRect(x, 0, railW, H);
-    ctx.strokeStyle = 'rgba(214,186,138,0.35)';
-    ctx.beginPath(); ctx.moveTo(x + 0.5, 0); ctx.lineTo(x + 0.5, H); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(x + railW + 0.5, 0); ctx.lineTo(x + railW + 0.5, H); ctx.stroke();
-    // stitching down the seam
-    ctx.fillStyle = 'rgba(214,186,138,0.30)';
-    for (let y = 4; y < H; y += 7) ctx.fillRect(x + railW - 1, y, 2, 3);
+    ctx.globalAlpha = k * 0.62;
+    ctx.fillStyle = '#0a0705';
+    ctx.fillRect(0, 0, W, H);
+    ctx.globalAlpha = k;
 
+    drawPanel(ctx, px, py, pw, ph);
+
+    const inX = px + 12, inY = py + 12, inW = pw - 24, inH = ph - 24;
+
+    // -- the tab rail -------------------------------------------------------
+    const tabW = Math.floor(inW / TABS.length);
     TABS.forEach((t, i) => {
-      const ty = 6 + i * 30;
+      const tx = inX + i * tabW;
       const on = this.tab === t.id;
+      const hot = this._hit(tx, inY, tabW, 20);
       if (on) {
-        ctx.fillStyle = 'rgba(96,74,44,0.95)';
-        ctx.fillRect(x + 1, ty - 2, railW - 2, 26);
+        ctx.fillStyle = 'rgba(104,80,48,0.95)';
+        ctx.fillRect(tx, inY, tabW - 1, 20);
+        ctx.fillStyle = '#d6ba8a';
+        ctx.fillRect(tx, inY + 19, tabW - 1, 1);
+      } else if (hot) {
+        ctx.fillStyle = 'rgba(70,54,34,0.9)';
+        ctx.fillRect(tx, inY, tabW - 1, 20);
       }
-      ctx.globalAlpha = on ? 1 : 0.55;
-      drawTab(ctx, t.icon, x + 2, ty);
-      ctx.globalAlpha = 1;
-      if (this._hit(x + 1, ty - 2, railW - 2, 26)) {
-        this.hover = { title: t.name, body: null };
-        if (this.game.input.clicked) { this.game.input.clicked = false; this.tab = t.id; this.scroll = 0; }
+      ctx.globalAlpha = k * (on ? 1 : 0.62);
+      // narrow screens get the pictogram alone; there is no room for both
+      const lw = tabW >= 58 ? textWidth(t.name) : 0;
+      const gx = tx + Math.round((tabW - 1 - (18 + (lw ? 2 + lw : 0))) / 2);
+      drawTab(ctx, t.icon, gx, inY + 3);
+      if (lw) drawText(ctx, t.name, gx + 20, inY + 7, { color: on ? INK : DIM });
+      ctx.globalAlpha = k;
+      if (hot && this.game.input.clicked) {
+        this.game.input.clicked = false;
+        this.tab = t.id; this.scroll = 0; this.pick = null;
+        this.game.audio?.play('ui');
       }
     });
-    if (this._hit(x + 1, H - 26, railW - 2, 22)) {
-      if (this.game.input.clicked) { this.game.input.clicked = false; this.drawerOpen = false; }
-      this.hover = { title: 'Close', body: null };
-    }
-    drawText(ctx, 'X', x + railW / 2, H - 20, { color: DIM, align: 'center' });
 
-    const cx = x + railW + 6, cw = dw - railW - 12;
-    ctx.save();
-    ctx.beginPath(); ctx.rect(cx - 2, 0, cw + 4, H); ctx.clip();
-    switch (this.tab) {
-      case 'flora': this._floraTab(ctx, cx, 6, cw, H - 12); break;
-      case 'fauna': this._faunaTab(ctx, cx, 6, cw, H - 12); break;
-      case 'build': this._buildTab(ctx, cx, 6, cw, H - 12); break;
-      case 'codex': this._codexTab(ctx, cx, 6, cw, H - 12); break;
-      default: break;
+    // -- close --------------------------------------------------------------
+    const cx0 = px + pw - 20, cy0 = py + 4;
+    const closeHot = this._hit(cx0, cy0, 14, 14);
+    drawGlyph(ctx, 'close', cx0 + 1, cy0 + 1, { color: closeHot ? '#f5e7c6' : '#a08a64' });
+    if (closeHot) {
+      this.hover = { title: 'Close', body: 'esc' };
+      if (this.game.input.clicked) { this.game.input.clicked = false; this.drawerOpen = false; }
     }
+
+    const bodyY = inY + 26, bodyH = inH - 26;
+    const tab = TABS.find((t) => t.id === this.tab);
+    if (this.tab === 'codex' || this.tab === 'map') {
+      drawText(ctx, tab.sub, inX, bodyY - 4, { color: FAINT });
+      ctx.save();
+      ctx.beginPath(); ctx.rect(inX, bodyY + 6, inW, bodyH - 6); ctx.clip();
+      if (this.tab === 'map') this._mapTab(ctx, inX, bodyY + 6, inW, bodyH - 6);
+      else this._codexTab(ctx, inX, bodyY + 6, inW, bodyH - 6);
+      ctx.restore();
+      ctx.globalAlpha = 1;
+      return;
+    }
+
+    // -- grid on the left, detail on the right ------------------------------
+    const gw = Math.round(inW * 0.52);
+    const dx = inX + gw + 8, dw = inW - gw - 8;
+    ctx.save();
+    ctx.beginPath(); ctx.rect(inX - 2, bodyY - 2, gw + 4, bodyH + 4); ctx.clip();
+    if (this.tab === 'flora') this._floraGrid(ctx, inX, bodyY, gw, bodyH);
+    if (this.tab === 'fauna') this._faunaTab(ctx, inX, bodyY, gw, bodyH);
+    if (this.tab === 'build') this._buildGrid(ctx, inX, bodyY, gw, bodyH);
     ctx.restore();
+
+    ctx.fillStyle = 'rgba(214,186,138,0.18)';
+    ctx.fillRect(dx - 5, bodyY, 1, bodyH);
+    ctx.save();
+    ctx.beginPath(); ctx.rect(dx - 2, bodyY - 2, dw + 4, bodyH + 4); ctx.clip();
+    this._detail(ctx, dx, bodyY, dw, bodyH);
+    ctx.restore();
+    ctx.globalAlpha = 1;
   }
 
-  _card(ctx, x, y, w, h, opts) {
+  /** One slot in the grid: a framed tile with the thing itself sitting in it. */
+  _slot(ctx, x, y, w, h, opts) {
     const hot = this._hit(x, y, w, h);
-    ctx.fillStyle = opts.locked ? 'rgba(40,31,21,0.85)' : hot ? 'rgba(88,68,40,0.95)' : 'rgba(48,37,24,0.92)';
+    const sel = opts.selected;
+    ctx.fillStyle = opts.locked ? 'rgba(30,23,15,0.9)'
+      : sel ? 'rgba(104,80,48,0.95)' : hot ? 'rgba(80,62,38,0.95)' : 'rgba(44,34,22,0.92)';
     ctx.fillRect(x, y, w, h);
-    ctx.fillStyle = opts.accent || 'rgba(214,186,138,0.28)';
-    ctx.fillRect(x, y, 2, h);
-    if (hot && !opts.locked) {
-      ctx.strokeStyle = 'rgba(242,228,194,0.55)';
+    // a bevel, so a slot reads as a recess in the hide
+    ctx.fillStyle = 'rgba(0,0,0,0.35)';
+    ctx.fillRect(x, y, w, 1); ctx.fillRect(x, y, 1, h);
+    ctx.fillStyle = 'rgba(226,204,160,0.14)';
+    ctx.fillRect(x, y + h - 1, w, 1); ctx.fillRect(x + w - 1, y, 1, h);
+    if (opts.accent) { ctx.fillStyle = opts.accent; ctx.fillRect(x + 1, y + h - 3, w - 2, 2); }
+    if (sel) {
+      ctx.strokeStyle = '#f2e4c2';
       ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
     }
     return hot;
   }
 
-  _floraTab(ctx, x, y, w, h) {
+  _floraGrid(ctx, x, y, w, h) {
     const g = this.game;
-    drawText(ctx, 'SEED STOCK', x, y, { color: DIM });
-    drawText(ctx, 'what will grow on your back', x, y + 9, { color: FAINT });
-    const ch = 40, gap = 3;
-    let row = 0;
-    for (const f of FLORA) {
-      const by = y + 22 + row * (ch + gap) - this.scroll;
-      row++;
-      if (by > y + h || by + ch < y) continue;
+    const cols = 4, cell = Math.floor((w - 3) / cols), gap = 3;
+    const rows = Math.ceil(FLORA.length / cols);
+    FLORA.forEach((f, i) => {
+      const cxi = x + (i % cols) * (cell + gap * 0);
+      const cy = y + Math.floor(i / cols) * (cell + gap) - this.scroll;
+      if (cy > y + h || cy + cell < y) return;
       const unlock = g.unlockOf(f);
       const locked = !unlock.ok;
       const afford = g.economy.water >= f.cost;
-      const hot = this._card(ctx, x, by, w, ch, { locked, accent: locked ? 'rgba(140,120,90,0.2)' : '#8cc468' });
-      const art = buildPlant(f, locked ? 1 : 3, 0, 0.36);
-      ctx.save();
-      if (locked) ctx.globalAlpha = 0.30;
-      ctx.drawImage(art.cv, x + 16 - art.ox, by + ch - 4 - art.oy);
-      ctx.restore();
-      const tx = x + 30;
-      drawText(ctx, ellipsize(locked ? '???' : f.name, w - 34), tx, by + 4, { color: locked ? FAINT : INK });
-      if (locked) {
-        wrapText(unlock.why, w - 34).slice(0, 2).forEach((l, i) =>
-          drawText(ctx, l, tx, by + 15 + i * LINE_H, { color: FAINT }));
-      } else {
-        drawText(ctx, `${f.cost}w`, tx, by + 14, { color: afford ? '#5fc6d8' : '#c8425c' });
-        drawText(ctx, `+${f.yield.toFixed(2)}/s`, tx + 28, by + 14, { color: '#8cc468' });
-        drawText(ctx, ellipsize(g.floraEffect(f), w - 34), tx, by + 24, { color: FAINT });
-        drawText(ctx, `have ${g.garden.countOf(f.id)}`, tx, by + 32, { color: FAINT });
-        if (f.needsPond) drawText(ctx, 'POOL', x + w - 4, by + 32, { color: '#5fc6d8', align: 'right' });
-      }
-      if (hot) {
-        this.hover = locked
-          ? { title: 'Locked', body: unlock.why }
-          : { title: f.name, body: `${f.desc}\nBrings: ${(f.attracts || []).map((a) => FAUNA_BY_ID[a]?.name || a).join(', ')}` };
-        if (!locked && g.input.clicked) {
-          g.input.clicked = false;
-          this.placing = { kind: 'flora', id: f.id };
-          this.drawerOpen = false;
-          this.say(`Choose a bed for the ${f.name.toLowerCase()}.`);
-        }
-      }
-    }
-    this.scroll = clamp(this.scroll, 0, Math.max(0, row * (ch + gap) - h + 30));
-  }
-
-  _faunaTab(ctx, x, y, w, h) {
-    const g = this.game;
-    drawText(ctx, 'WHAT MIGHT COME', x, y, { color: DIM });
-    drawText(ctx, 'you cannot buy an animal. you can be worth the walk.', x, y + 9, { color: FAINT });
-    const ch = 40, gap = 3;
-    let row = 0;
-    const list = FAUNA.filter((f) => !f.hostile);
-    for (const f of list) {
-      const by = y + 22 + row * (ch + gap) - this.scroll;
-      row++;
-      if (by > y + h || by + ch < y) continue;
-      const seen = g.wildlife.seen.has(f.id);
-      const pull = g.attraction(f);
-      const here = g.wildlife.list.some((c) => c.def.id === f.id);
-      const mine = g.wildlife.fleet.some((c) => c.def.id === f.id);
-      const hot = this._card(ctx, x, by, w, ch, {
-        accent: mine ? '#8cc468' : pull > 0.2 ? '#e2b74a' : 'rgba(140,120,90,0.25)',
+      const hot = this._slot(ctx, cxi, cy, cell - 1, cell, {
+        locked, selected: this.pick === f.id,
+        accent: locked ? null : afford ? '#8cc468' : '#8a4a44',
       });
-      drawText(ctx, ellipsize(seen ? f.name : '???', w - 8), x + 6, by + 4,
-        { color: seen ? INK : FAINT });
-      drawText(ctx, mine ? 'WITH YOU' : here ? 'NEARBY' : '', x + w - 4, by + 4,
-        { color: mine ? '#b6de8f' : '#e2b74a', align: 'right' });
-      const need = g.attractNeeds(f);
-      wrapText(need, w - 10).slice(0, 2).forEach((l, i) =>
-        drawText(ctx, l, x + 6, by + 14 + i * LINE_H, { color: FAINT }));
-      // how close you are to being interesting to it
-      const bw = w - 12;
-      ctx.fillStyle = 'rgba(16,12,8,0.7)';
-      ctx.fillRect(x + 6, by + ch - 8, bw, 4);
-      ctx.fillStyle = pull > 0.6 ? '#8cc468' : pull > 0.2 ? '#e2b74a' : '#7a6a52';
-      ctx.fillRect(x + 6, by + ch - 8, Math.round(bw * clamp01(pull)), 4);
-      if (hot) this.hover = { title: seen ? f.name : 'Unrecorded', body: seen ? f.desc : 'You have not seen one of these yet.' };
-    }
-    this.scroll = clamp(this.scroll, 0, Math.max(0, row * (ch + gap) - h + 30));
-  }
-
-  _buildTab(ctx, x, y, w, h) {
-    const g = this.game;
-    drawText(ctx, 'BUILD ON YOURSELF', x, y, { color: DIM });
-    drawText(ctx, 'permanent, and visible from a dune away', x, y + 9, { color: FAINT });
-    const ch = 36, gap = 3;
-    let row = 0;
-    for (const b of BUILDINGS) {
-      const by = y + 22 + row * (ch + gap) - this.scroll;
-      row++;
-      if (by > y + h || by + ch < y) continue;
-      const built = g.garden.plots.some((p) => p.build && p.build.id === b.id);
-      const ok = g.economy.canBuild(b.id);
-      const hot = this._card(ctx, x, by, w, ch, { accent: built ? '#8cc468' : ok ? '#e2b74a' : 'rgba(140,120,90,0.25)' });
-      const art = buildStructure(b, 0.38);
-      ctx.drawImage(art.cv, x + 15 - art.ox, by + ch - 3 - art.oy);
-      drawText(ctx, ellipsize(b.name, w - 34), x + 28, by + 4, { color: INK });
-      drawText(ctx, `${b.cost}w ${b.nut}n`, x + 28, by + 14, { color: ok ? '#5fc6d8' : '#c8425c' });
-      drawText(ctx, built ? 'STANDING' : 'tap to place', x + 28, by + 24,
-        { color: built ? '#b6de8f' : FAINT });
+      const art = buildPlant(f, locked ? 1 : 3, 0, Math.min(1.15, (cell - 12) / Math.max(10, f.h)));
+      ctx.save();
+      ctx.beginPath(); ctx.rect(cxi + 1, cy + 1, cell - 3, cell - 4); ctx.clip();
+      if (locked) ctx.globalAlpha = 0.22;
+      ctx.drawImage(art.cv, Math.round(cxi + cell / 2 - art.ox), Math.round(cy + cell - 5 - art.oy));
+      ctx.restore();
+      // how many you already carry, in the corner
+      const have = g.garden.countOf(f.id);
+      if (have) drawText(ctx, `${have}`, cxi + cell - 4, cy + 2, { color: '#b6de8f', align: 'right' });
+      if (locked) {
+        // a shut seed case rather than a cross: you have not opened it yet
+        ctx.fillStyle = 'rgba(18,13,8,0.55)';
+        ctx.fillRect(cxi, cy, cell - 1, cell);
+        drawGlyph(ctx, 'seed', cxi + cell / 2 - 6, cy + cell / 2 - 6, { color: '#6a5844', alpha: 0.9 });
+      }
       if (hot) {
-        this.hover = { title: b.name, body: b.desc };
+        this.pickHover = f.id;
         if (g.input.clicked) {
           g.input.clicked = false;
-          this.placing = { kind: 'build', id: b.id };
-          this.drawerOpen = false;
-          this.say(`Choose a spot for the ${b.name.toLowerCase()}.`);
+          this.pick = f.id;
+          g.audio?.play('ui');
         }
       }
+    });
+    this.scroll = clamp(this.scroll, 0, Math.max(0, rows * (cell + gap) - h));
+  }
+
+  _buildGrid(ctx, x, y, w, h) {
+    const g = this.game;
+    const cols = 4, cell = Math.floor((w - 3) / cols), gap = 3;
+    const rows = Math.ceil(BUILDINGS.length / cols);
+    BUILDINGS.forEach((b, i) => {
+      const cxi = x + (i % cols) * cell;
+      const cy = y + Math.floor(i / cols) * (cell + gap) - this.scroll;
+      if (cy > y + h || cy + cell < y) return;
+      const built = g.garden.plots.some((p) => p.build && p.build.id === b.id);
+      const ok = g.economy.canBuild(b.id);
+      const hot = this._slot(ctx, cxi, cy, cell - 1, cell, {
+        selected: this.pick === b.id,
+        accent: built ? '#8cc468' : ok ? '#e2b74a' : '#8a4a44',
+      });
+      const art = buildStructure(b, Math.min(1.05, (cell - 12) / Math.max(10, b.h)));
+      ctx.save();
+      ctx.beginPath(); ctx.rect(cxi + 1, cy + 1, cell - 3, cell - 4); ctx.clip();
+      ctx.drawImage(art.cv, Math.round(cxi + cell / 2 - art.ox), Math.round(cy + cell - 4 - art.oy));
+      ctx.restore();
+      if (built) drawText(ctx, '*', cxi + cell - 5, cy + 2, { color: '#b6de8f', align: 'right' });
+      if (hot && g.input.clicked) {
+        g.input.clicked = false;
+        this.pick = b.id;
+        g.audio?.play('ui');
+      }
+    });
+    this.scroll = clamp(this.scroll, 0, Math.max(0, rows * (cell + gap) - h));
+  }
+
+  /**
+   * The detail pane. This is where a plant stops being an icon: what it is,
+   * what it does to you, how often you can pick it and what it wants first.
+   */
+  _detail(ctx, x, y, w, h) {
+    const g = this.game;
+    const id = this.pick;
+    const isBuild = this.tab === 'build';
+    const def = isBuild ? BUILD_BY_ID[id] : FLORA_BY_ID[id];
+    if (!def) {
+      drawText(ctx, this.tab === 'fauna' ? 'WHAT MIGHT COME' : 'PICK ONE', x, y, { color: DIM });
+      wrapText(TABS.find((t) => t.id === this.tab).sub, w).forEach((l, i) =>
+        drawText(ctx, l, x, y + 12 + i * LINE_H, { color: FAINT }));
+      return;
     }
-    this.scroll = clamp(this.scroll, 0, Math.max(0, row * (ch + gap) - h + 30));
+    const unlock = isBuild ? { ok: true, why: '' } : g.unlockOf(def);
+    let ry = y;
+
+    // a big portrait of the thing, grown, at the top of the pane
+    const art = isBuild ? buildStructure(def, 0.62) : buildPlant(def, 3, 0, 0.62);
+    ctx.save();
+    ctx.globalAlpha = unlock.ok ? 1 : 0.28;
+    ctx.drawImage(art.cv, Math.round(x + w - art.cv.width - 2), Math.round(ry));
+    ctx.restore();
+
+    drawText(ctx, unlock.ok ? def.name : 'Not yet', x, ry, { color: INK });
+    ry += 11;
+    if (!unlock.ok) {
+      wrapText(unlock.why, w - 4).forEach((l) => { drawText(ctx, l, x, ry, { color: '#e2b74a' }); ry += LINE_H; });
+      return;
+    }
+
+    const cost = isBuild ? `${def.cost} water + ${def.nut} nutrients` : `${def.cost} water`;
+    const afford = isBuild ? g.economy.canBuild(def.id) : g.economy.water >= def.cost;
+    drawText(ctx, cost, x, ry, { color: afford ? '#5fc6d8' : '#e08c9c' }); ry += 11;
+
+    wrapText(def.desc, w - 4).forEach((l) => { drawText(ctx, l, x, ry, { color: DIM }); ry += LINE_H; });
+    ry += 4;
+
+    if (!isBuild) {
+      // the harvest line, which is the thing you actually came to read
+      drawText(ctx, 'PICKS', x, ry, { color: '#8cc468' }); ry += 10;
+      drawText(ctx, `+${def.pay} nutrients every ${Math.round(def.ripen)}s`, x, ry, { color: INK }); ry += LINE_H;
+      const need = def.needs ? (NEEDS_TEXT[def.needs] || '') : '';
+      if (need) { drawText(ctx, need, x, ry, { color: '#e2b74a' }); ry += LINE_H; }
+      drawText(ctx, `weighs ${def.mass.toFixed(1)} on your shell`, x, ry, { color: FAINT }); ry += LINE_H;
+      if (def.needsPond) { drawText(ctx, 'needs a pool bed', x, ry, { color: '#5fc6d8' }); ry += LINE_H; }
+      ry += 3;
+      drawText(ctx, 'DOES', x, ry, { color: '#8cc468' }); ry += 10;
+      wrapText(def.boonText || g.floraEffect(def), w - 4).forEach((l) => {
+        drawText(ctx, l, x, ry, { color: DIM }); ry += LINE_H;
+      });
+      const brings = (def.attracts || []).map((a) => FAUNA_BY_ID[a]?.name || a).join(', ');
+      if (brings) {
+        ry += 3;
+        drawText(ctx, 'BRINGS', x, ry, { color: '#e2b74a' }); ry += 10;
+        wrapText(brings, w - 4).forEach((l) => { drawText(ctx, l, x, ry, { color: DIM }); ry += LINE_H; });
+      }
+    } else {
+      wrapText(def.desc2 || '', w - 4).forEach((l) => { drawText(ctx, l, x, ry, { color: DIM }); ry += LINE_H; });
+    }
+
+    // the button
+    const bw = w - 4, bh = 16, by = y + h - bh;
+    const hot = this._hit(x, by, bw, bh);
+    ctx.fillStyle = !afford ? 'rgba(60,38,34,0.9)' : hot ? '#8cc468' : 'rgba(74,110,52,0.95)';
+    ctx.fillRect(x, by, bw, bh);
+    ctx.strokeStyle = afford ? 'rgba(242,228,194,0.6)' : 'rgba(200,66,92,0.5)';
+    ctx.strokeRect(x + 0.5, by + 0.5, bw - 1, bh - 1);
+    drawText(ctx, afford ? 'PLACE ON YOUR BACK' : 'NOT ENOUGH', x + bw / 2, by + 5,
+      { color: afford ? '#12200c' : '#e08c9c', align: 'center' });
+    if (hot && afford && g.input.clicked) {
+      g.input.clicked = false;
+      this.placing = { kind: isBuild ? 'build' : 'flora', id: def.id };
+      this.drawerOpen = false;
+      this.say(`Choose a bed for the ${def.name.toLowerCase()}.`);
+      g.audio?.play('uiBig');
+    }
+  }
+
+  /**
+   * The map. One long strip of the basin with everything you have found on it,
+   * because the world is one long strip of the basin.
+   */
+  _mapTab(ctx, x, y, w, h) {
+    const g = this.game;
+    const span = 16000;                       // world units shown across
+    if (this.mapX === null) this.mapX = g.crab.x;
+    this.mapX = damp(this.mapX, g.crab.x, 0.02, 1 / 60);
+    const cx = x + w / 2;
+    const toX = (wx) => cx + (wx - this.mapX) * (w / span);
+
+    ctx.fillStyle = 'rgba(14,10,7,0.9)';
+    ctx.fillRect(x, y, w, h);
+    // survey ruling, so the empty air over the basin still reads as a chart
+    ctx.fillStyle = 'rgba(214,186,138,0.055)';
+    for (let ry2 = y + 12; ry2 < y + h; ry2 += 9) ctx.fillRect(x, ry2, w, 1);
+
+    // the band of country you are crossing, coloured by biome
+    const bandH = 7;
+    for (let i = 0; i < w; i += 4) {
+      const wx = this.mapX + (i - w / 2) * (span / w);
+      const b = biomeAt(wx);
+      ctx.fillStyle = (b.sky && b.sky[2]) || '#8a5f38';
+      ctx.globalAlpha = 0.55;
+      ctx.fillRect(x + i, y, 4, bandH);
+      ctx.globalAlpha = 1;
+    }
+    ctx.fillStyle = 'rgba(214,186,138,0.25)';
+    ctx.fillRect(x, y + bandH, w, 1);
+    drawText(ctx, biomeAt(this.mapX).name.toUpperCase(), cx, y + 1,
+      { color: '#f2e4c2', align: 'center' });
+
+    // the ground itself, sampled from the real terrain
+    const gy = y + Math.round(h * 0.74);
+    const here = g.terrain.surfaceY(this.mapX);
+    ctx.beginPath();
+    ctx.moveTo(x, y + h);
+    for (let i = 0; i <= w; i += 2) {
+      const wx = this.mapX + (i - w / 2) * (span / w);
+      const sy = gy + (g.terrain.surfaceY(wx) - here) * 0.13;
+      ctx.lineTo(x + i, clamp(sy, y + bandH + 10, y + h - 2));
+    }
+    ctx.lineTo(x + w, y + h);
+    ctx.closePath();
+    ctx.fillStyle = 'rgba(112,84,50,0.62)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(214,175,112,0.85)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // distance ticks, every hundred metres
+    for (let m = Math.floor((this.mapX - span / 2) / 2000) * 2000; m < this.mapX + span / 2; m += 2000) {
+      const tx = toX(m);
+      if (tx < x + 14 || tx > x + w - 14) continue;
+      ctx.fillStyle = 'rgba(214,186,138,0.16)';
+      ctx.fillRect(Math.round(tx), y + bandH + 2, 1, gy - y - bandH - 2);
+      drawText(ctx, `${Math.round(m / 10)}m`, tx, gy + 3, { color: FAINT, align: 'center' });
+    }
+
+    // everything worth walking to
+    const marks = g.world.marksNear(this.mapX, span);
+    const labelled = [];
+    for (const m of marks) {
+      const mx = toX(m.x);
+      if (mx < x - 6 || mx > x + w + 6) continue;
+      const found = g.world.found.has(m.key);
+      const col = m.kind === 'oasis' ? '#5fc6d8'
+        : m.kind === 'ruin' ? '#d6ba8a'
+          : m.kind === 'wreck' ? '#c39163'
+            : m.kind === 'bonefield' ? '#c8c0ae' : '#e2b74a';
+      const mxr = Math.round(mx);
+      ctx.globalAlpha = found ? 1 : 0.40;
+      ctx.fillStyle = 'rgba(20,14,9,0.85)';
+      ctx.fillRect(mxr, gy - 15, 1, 15);
+      ctx.fillStyle = col;
+      switch (m.kind) {
+        case 'oasis':
+          ctx.beginPath(); ctx.arc(mxr, gy - 18, 3.2, 0, TAU); ctx.fill();
+          ctx.fillStyle = 'rgba(255,255,255,0.5)';
+          ctx.fillRect(mxr - 1, gy - 19, 1, 1);
+          break;
+        case 'ruin':
+          ctx.fillRect(mxr - 4, gy - 20, 2, 6);
+          ctx.fillRect(mxr - 1, gy - 23, 2, 9);
+          ctx.fillRect(mxr + 2, gy - 19, 2, 5);
+          ctx.fillRect(mxr - 5, gy - 14, 10, 1);
+          break;
+        case 'wreck':
+          ctx.fillRect(mxr - 5, gy - 17, 10, 2);
+          ctx.fillRect(mxr - 3, gy - 19, 7, 2);
+          ctx.fillRect(mxr, gy - 26, 1, 7);
+          ctx.fillRect(mxr + 1, gy - 25, 3, 3);
+          break;
+        case 'bonefield':
+          ctx.fillRect(mxr - 4, gy - 17, 9, 1);
+          ctx.fillRect(mxr - 3, gy - 20, 1, 3);
+          ctx.fillRect(mxr, gy - 21, 1, 4);
+          ctx.fillRect(mxr + 3, gy - 19, 1, 2);
+          break;
+        default:
+          ctx.fillRect(mxr - 1, gy - 26, 3, 12);
+          ctx.fillRect(mxr - 2, gy - 16, 5, 2);
+      }
+      ctx.globalAlpha = 1;
+      const hot = Math.abs(this.game.input.sx - mx) < 8
+        && this.game.input.sy > gy - 30 && this.game.input.sy < gy + 6;
+      if (hot) {
+        const d = Math.round(Math.abs(m.x - g.crab.x) / 10);
+        this.hover = {
+          title: found ? m.name : 'Something out there',
+          body: found
+            ? `${m.note}\n${d}m ${m.x > g.crab.x ? 'east' : 'west'}`
+            : `${d}m ${m.x > g.crab.x ? 'east' : 'west'}. You have not stood in it.`,
+        };
+      }
+      labelled.push({ mx, col, found, name: m.name, hot });
+    }
+    // labels last, thinned out so they never stack
+    let lastX = -1e9;
+    for (const L of labelled.sort((p, q) => p.mx - q.mx)) {
+      if (!L.hot && L.mx - lastX < 52) continue;
+      lastX = L.mx;
+      drawText(ctx, L.found ? L.name : '?', L.mx, gy - 34,
+        { color: L.found ? L.col : 'rgba(226,183,74,0.55)', align: 'center' });
+    }
+
+    // you
+    const you = toX(g.crab.x);
+    ctx.fillStyle = '#f2e4c2';
+    ctx.fillRect(Math.round(you) - 2, gy - 9, 5, 2);
+    ctx.fillRect(Math.round(you), gy - 7, 1, 7);
+    ctx.fillRect(Math.round(you) - 3, gy - 11, 2, 2);
+    ctx.fillRect(Math.round(you) + 2, gy - 11, 2, 2);
+
+    drawText(ctx, `${g.world.found.size} places found`, x, y + h - 9, { color: FAINT });
+    drawText(ctx, `${Math.round(g.crab.x / 10)}m from where you woke`, x + w, y + h - 9,
+      { color: FAINT, align: 'right' });
   }
 
   // -- field notes ----------------------------------------------------------
@@ -787,10 +1153,10 @@ export class UI {
       }
     };
     const bw = 44, bh = 19;
-    add(W - bw - 6, H - bh - 6, bw, bh, 'SPRING', ' ');
-    add(W - bw * 2 - 10, H - bh - 6, bw, bh, this.game.actionHint() ? 'ACT' : '-', 'e');
-    add(W - bw - 6, H - bh * 2 - 11, bw, bh, 'DRAWER', 'Tab');
+    add(W - bw * 2 - 10, H - bh - 6, bw, bh, this.game.garden.ripeCount ? 'PICK' : '-', 'r');
+    add(W - bw - 6, H - bh * 2 - 11, bw, bh, 'SHOP', 'Tab');
     add(W - bw * 2 - 10, H - bh * 2 - 11, bw, bh, 'MODE', 'm');
+    add(W - bw - 6, H - bh * 3 - 16, bw, bh, this.game.actionHint() ? 'ACT' : '-', 'e');
     const hint = this.game.actionHint();
     if (hint) {
       drawText(ctx, hint, W - bw - 12 - 30, H - bh * 2 - 22,

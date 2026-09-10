@@ -139,6 +139,45 @@ export const FLORA = [
   },
 ];
 
+/**
+ * How each plant actually pays you.
+ *
+ * Nothing on your back trickles nutrients into a counter while you are not
+ * looking. A plant ripens, you notice, and you pick it - so every plant needs
+ * a cadence of its own, and the interesting ones need a condition instead of a
+ * clock. `ripen` is seconds to ready, `pay` is nutrients per pick, `mass` is
+ * what it weighs on the shell, and `needs` is a condition that has to hold
+ * before it will ripen at all.
+ */
+const HARVEST = {
+  dustmoss:   { ripen: 14, pay: 3, mass: 0.6 },
+  saltgrass:  { ripen: 18, pay: 5, mass: 0.7 },
+  emberberry: { ripen: 26, pay: 14, mass: 1.5, needs: 'dusk' },
+  bluefern:   { ripen: 30, pay: 13, mass: 1.6, needs: 'shade' },
+  sunspindle: { ripen: 22, pay: 12, mass: 1.2, needs: 'sun' },
+  thornmelon: { ripen: 46, pay: 26, mass: 2.2 },
+  cloudcap:   { ripen: 24, pay: 18, mass: 1.3, needs: 'night' },
+  glasslily:  { ripen: 34, pay: 24, mass: 1.4, needs: 'pond' },
+  ribbonkelp: { ripen: 28, pay: 20, mass: 1.8, needs: 'pond' },
+  pipereed:   { ripen: 32, pay: 22, mass: 1.7, needs: 'pond' },
+  ironwood:   { ripen: 68, pay: 58, mass: 4.2 },
+  ghostpalm:  { ripen: 60, pay: 52, mass: 3.8, needs: 'night' },
+  heartbloom: { ripen: 78, pay: 96, mass: 3.0, needs: 'fleet' },
+  worldvine:  { ripen: 92, pay: 130, mass: 5.0 },
+};
+
+/** What a condition wants, in words, for the tooltip and the ripeness pip. */
+export const NEEDS_TEXT = {
+  sun: 'ripens in daylight',
+  dusk: 'ripens at dusk and dawn',
+  night: 'ripens after dark',
+  shade: 'ripens under something taller',
+  pond: 'ripens with water in the basin',
+  fleet: 'ripens while something lives on you',
+};
+
+for (const f of FLORA) Object.assign(f, HARVEST[f.id] || { ripen: 30, pay: 10, mass: 1.4 });
+
 export const FLORA_BY_ID = Object.fromEntries(FLORA.map((f) => [f.id, f]));
 
 /** Growth stage names, used by the codex and the tooltips. */

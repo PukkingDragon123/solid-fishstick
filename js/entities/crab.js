@@ -32,8 +32,11 @@ export class Crab {
     this.x = 0;
     this.y = 0;
     this.vx = 0;
-    this.facing = 1;
-    this.faceT = 1;             // kept at 1: the art never flips
+    this.facing = 1;            // which way it is travelling
+    this.faceT = 1;             // kept for callers; the body turns instead
+    this.turnDir = 1;           // which shoulder is leading
+    this.turnFrom = 1;
+    this.turnP = 1;             // 0..1 through the pivot; 1 is settled
     this.lean = 0;
     this.roll = 0;
     this.lurch = 0;
@@ -47,6 +50,8 @@ export class Crab {
     this.pumpT = 0;
     this.clawT = 0;
     this.clawOpen = 0;
+    this.tapT = 0;
+    this.tapLong = false;
     this.look = { x: 0, y: -0.2 };
     this.lookT = 0;
     this.idleLook = null;
@@ -108,6 +113,37 @@ export class Crab {
     }
   }
 
+  /** Start a pivot onto the other shoulder. Ignored if one is already running. */
+  _startTurn(dir) {
+    if (dir === this.turnDir || this.turnP < 0.8) return;
+    this.turnFrom = this.turnDir;
+    this.turnDir = dir;
+    this.turnP = 0;
+    this.game.audio?.play('step', { vol: 0.5 });
+    if (this.game.fx && this.game.terrain) {
+      const gy = this.game.terrain.surfaceY(this.x);
+      this.game.fx.dust(this.x, gy - 2, 1.4 + this.m.t * 1.6);
+      this.game.terrain.deform(this.x, 1.6, 6 + this.m.rx * 0.16);
+    }
+  }
+
+  /**
+   * How wide the animal reads while it turns. It goes edge-on halfway through
+   * and comes back out the other way, which is a pivot rather than a mirror.
+   */
+  get turnScaleX() {
+    if (this.turnP >= 1) return this.turnDir;
+    const k = this.turnP;
+    const sign = k < 0.5 ? this.turnFrom : this.turnDir;
+    return sign * Math.max(0.15, Math.abs(Math.cos(k * Math.PI)));
+  }
+
+  /** A little lift out of the sand as it comes round. */
+  get turnLift() {
+    if (this.turnP >= 1) return 0;
+    return -Math.sin(this.turnP * Math.PI) * this.m.rx * 0.10;
+  }
+
   get worldY() { return this.y; }
 
   /** Where a point on the shell's top surface lands in world space. */
@@ -139,11 +175,17 @@ export class Crab {
     const move = clamp(ctrl.move || 0, -1, 1);
     const speed = this.speed * (ctrl.speedMul || 1) * (ctrl.sprint ? 1.5 : 1) * (1 - this.crouch * 0.6);
 
-    this.vx = damp(this.vx, move * speed, 0.0002, dt);
+    // A crab still goes sideways, but it does not reverse like a lift: to lead
+    // with the other shoulder it has to pivot, and while it is pivoting it is
+    // not going anywhere much.
+    if (move > 0.1) { this.facing = 1; this._startTurn(1); }
+    else if (move < -0.1) { this.facing = -1; this._startTurn(-1); }
+    if (this.turnP < 1) this.turnP = Math.min(1, this.turnP + dt / 0.42);
+
+    const pivot = this.turnP < 1 ? 0.16 : 1;
+    this.vx = damp(this.vx, move * speed * pivot, 0.0002, dt);
     if (Math.abs(this.vx) < 0.6) this.vx = 0;
     this.x += this.vx * dt;
-    if (move > 0.1) this.facing = 1;
-    else if (move < -0.1) this.facing = -1;
     this.lean = damp(this.lean, clamp(this.vx / this.speed, -1, 1) * 0.7, 0.0009, dt);
 
     this._stepLegs(dt, t);
@@ -157,7 +199,9 @@ export class Crab {
     const idleBob = Math.sin(this.breathe) * this.S * 0.5;
     this.bob = damp(this.bob, walkBob + idleBob, 0.001, dt);
     this.lurch = damp(this.lurch, Math.sin(this.bobT * 2 + 0.9) * run * this.S * 1.6 * this.facing, 0.001, dt);
-    this.roll = damp(this.roll, Math.sin(this.bobT) * run * 0.05 * this.facing, 0.0012, dt);
+    // a shell loaded heavier on one side makes the animal walk with a list
+    const list = ctrl.list || 0;
+    this.roll = damp(this.roll, Math.sin(this.bobT) * run * 0.05 * this.facing + list, 0.0012, dt);
 
     // the eyes go where the attention is, which is usually the way it is going
     this.lookT -= dt;
@@ -186,8 +230,8 @@ export class Crab {
         : this.pumping > 0 ? 0.7 : 0.34 + Math.sin(this.clawT * 1.3) * 0.10;
     this.clawOpen = damp(this.clawOpen, wantOpen, 0.001, dt);
 
-    this.pumpT += dt;
     this.pumping = Math.max(0, this.pumping - dt);
+    this.tapT = Math.max(0, this.tapT - dt * 3.2);
     this.crouch = damp(this.crouch, this.pumping > 0 ? 1 : 0, 0.0009, dt);
   }
 
@@ -266,6 +310,14 @@ export class Crab {
 
   pump() { this.pumping = 0.55; this.pumpT = 0; }
 
+  /** One tap of a claw against your own shell. Long taps swing further. */
+  tap(long) {
+    this.clawT = 0;
+    this.tapT = 1;
+    this.tapLong = !!long;
+    this.game.audio?.play('claw', { pitch: long ? 0.8 : 1.3 });
+  }
+
   // -------------------------------------------------------------------------
 
   draw(ctx, cam, garden) {
@@ -276,9 +328,13 @@ export class Crab {
     this._drawShadow(ctx, cam);
 
     ctx.save();
-    ctx.translate(Math.round(p.x * 2) / 2, Math.round(p.y * 2) / 2);
+    ctx.translate(Math.round(p.x * 2) / 2, Math.round(p.y * 2) / 2 + this.turnLift * sc);
     ctx.scale(sc, sc);
-    const rot = this.bodyAngle + this.roll;
+    // the pivot: everything hanging off the body squashes and comes back out
+    // the other way together, so the garden turns with the animal carrying it
+    const tsx = this.turnScaleX;
+    if (tsx !== 1) ctx.scale(tsx, 1 + (1 - Math.abs(tsx)) * 0.06);
+    const rot = (this.bodyAngle + this.roll) * (tsx < 0 ? -1 : 1);
 
     // ---- the two rear legs on each side, and anything on the far shell ----
     ctx.save();
@@ -348,13 +404,14 @@ export class Crab {
   _drawClaws(ctx) {
     const rig = this.rig;
     // the trailing claw is the one further from the direction of travel
-    const order = this.facing >= 0 ? [-1, 1] : [1, -1];
+    const order = this.turnDir >= 0 ? [-1, 1] : [1, -1];
     for (const side of order) {
-      const near = side === (this.facing >= 0 ? 1 : -1);
+      const near = side === (this.turnDir >= 0 ? 1 : -1);
       const art = near ? rig.claw.near : rig.claw.far;
       const so = rig.sockets.claws.find((q) => q.side === side);
       const sw = Math.sin(this.clawT * (near ? 1.07 : 0.83)) * 0.07;
-      const raise = this.clawOpen * 0.5 + this.pumping * 0.6 + this.alarm * 0.5;
+      const raise = this.clawOpen * 0.5 + this.pumping * 0.6 + this.alarm * 0.5
+        + (side > 0 ? Math.sin(this.tapT * Math.PI) * (this.tapLong ? 0.85 : 0.5) : 0);
       // mirrored: the left claw is the right claw drawn backwards
       ctx.save();
       ctx.translate(so.x, so.y);

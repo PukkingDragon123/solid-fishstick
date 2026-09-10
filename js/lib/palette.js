@@ -102,6 +102,24 @@ def('membrane', ['#3a1e22', '#552b31', '#733c43', '#8e4e57', '#a5646d', '#ba7d85
 def('horn', ['#2a2318', '#413827', '#5b5038', '#766a4b', '#8f8460', '#a99e78', '#c2b795', '#dad2b7'],
   { rim: 0.38, spec: 0.3, normalScale: 0.8 });
 
+// -- the inside of you ------------------------------------------------------
+// Seen only on the anatomy screen, lit by your own bioluminescence rather than
+// by the sun, so these ramps run cooler and carry more rim than flesh does.
+def('organ', ['#2a0d14', '#451420', '#631e2d', '#80293c', '#9c3a4e', '#b55164', '#cb6e7e', '#dd9099'],
+  { rim: 0.46, spec: 0.3, translucent: 0.34, ao: 0.13 });
+def('organPale', ['#3a2028', '#553039', '#72434d', '#8d5862', '#a67079', '#bd8b92', '#d1a8ad', '#e4c6c9'],
+  { rim: 0.44, spec: 0.24, translucent: 0.4 });
+def('gill', ['#0f2430', '#163544', '#1f4a5c', '#2b6375', '#397e8f', '#4c9aa9', '#69b7c3', '#94d6de'],
+  { rim: 0.56, spec: 0.4, translucent: 0.5, normalScale: 0.5 });
+def('nerve', ['#12301f', '#1a4a2c', '#22683a', '#2c8a48', '#3aac57', '#55c96f', '#82e295', '#bdf5c8'],
+  { rim: 0.6, spec: 0.4, diffuse: 0.5, translucent: 0.45 });
+def('nacre', ['#2c2b33', '#414353', '#585d72', '#727890', '#8d94ab', '#a9b0c4', '#c6ccda', '#e6eaf1'],
+  { rim: 0.7, spec: 0.85, translucent: 0.3, normalScale: 0.6 });
+def('sap', ['#123122', '#1a4c31', '#246b41', '#308d52', '#3fae64', '#5bcb7e', '#86e3a2', '#c3f7d3'],
+  { rim: 0.62, spec: 0.5, diffuse: 0.42 });
+def('seedcoat', ['#2b2313', '#43371c', '#5e4d27', '#7a6533', '#957e42', '#b09955', '#c8b473', '#dfd09b'],
+  { rim: 0.4, spec: 0.3, normalScale: 0.8 });
+
 // -- structures -------------------------------------------------------------
 def('rope', ['#33270f', '#4c3a19', '#675024', '#816632', '#9a7d43', '#b09458', '#c5ac72', '#d8c495'],
   { rim: 0.24, normalScale: 0.9 });

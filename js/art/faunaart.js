@@ -12,7 +12,7 @@
 //
 // Everything is painted facing RIGHT.
 
-import { Painter, makeCanvas, bezier } from '../render/pixel.js';
+import { Painter, makeCanvas, bezier, fbmTex } from '../render/pixel.js';
 import { MATERIALS } from '../lib/palette.js';
 import { clamp, clamp01, lerp, TAU } from '../lib/math.js';
 
@@ -79,53 +79,173 @@ function tube(p, sp, o = {}) {
 // ---------------------------------------------------------------------------
 // skin
 
+/**
+ * Body coordinates for a pixel: `u` runs along the animal from nose to tail,
+ * `v` across it. Every texture that has to follow the body rather than the
+ * screen goes through this, which is why the scales on a serpent curve with it
+ * instead of sitting on it like wallpaper.
+ */
+function bodyUV(sp, x, y) {
+  let best = null, bd = Infinity;
+  for (const s of sp) { const d = (s.x - x) ** 2 + (s.y - y) ** 2; if (d < bd) { bd = d; best = s; } }
+  if (!best) return { u: x, v: y };
+  return {
+    u: (x - best.x) * best.tx + (y - best.y) * best.ty + best.t * 90,
+    v: (x - best.x) * best.nx + (y - best.y) * best.ny,
+  };
+}
+
+/** Run a function over every pixel of one material. */
+function overMat(p, mat, fn) {
+  const m = p._matIndex.get(mat);
+  if (!m) return false;
+  for (let y = 0; y < p.h; y++) {
+    for (let x = 0; x < p.w; x++) {
+      const i = y * p.w + x;
+      if (p.mat[i] === m) fn(i, x, y);
+    }
+  }
+  return true;
+}
+
+/**
+ * Irregular patches of light and dark. Nothing alive is one colour: a lizard
+ * has blotches, a mammal has a dark saddle and a pale belly, and it is this,
+ * more than any amount of scale detail, that stops an animal reading as a
+ * plastic toy.
+ */
+function mottle(p, mat, S, seed, amp = 0.20, scale = 1) {
+  overMat(p, mat, (i, x, y) => {
+    const f = 0.055 / (S * scale);
+    const n = fbmTex(x * f, y * f, seed, 3) - 0.5;
+    const n2 = fbmTex(x * f * 3.1, y * f * 3.1, seed + 71, 2) - 0.5;
+    p.tint[i] += n * amp * 2 + n2 * amp * 0.7;
+  });
+}
+
+/** Bands running across the animal, the way a snake or a skink is marked. */
+function banding(p, mat, S, seed, sp, n = 9, amp = 0.24) {
+  const R = rng(seed * 13 + 5);
+  // not every animal is banded; the ones that are should stand out for it
+  if (R() < 0.45) return;
+  const phase = R() * 10, warp = 0.5 + R();
+  overMat(p, mat, (i, x, y) => {
+    const { u, v } = bodyUV(sp, x, y);
+    const w = Math.sin(u * 0.09 * n / 6 + phase + Math.sin(v * 0.11) * warp);
+    const k = Math.pow(Math.max(0, w), 2.2);
+    p.tint[i] -= k * amp;
+    p.hgt[i] += k * 0.20 * S;
+  });
+}
+
+/** A pale underside: sunlight comes from above, so life counter-shades. */
+function counterShade(p, mat, S, sp, amp = 0.22) {
+  overMat(p, mat, (i, x, y) => {
+    p.tint[i] += clamp(bodyUV(sp, x, y).v * 0.05, -1, 1) * amp;
+  });
+}
+
 function skinPass(p, mat, kind, S, seed, sp) {
   switch (kind) {
     case 'scale': {
-      // rows that follow the body, not the screen
-      const m = p._matIndex.get(mat);
-      if (!m) break;
-      const sx = Math.max(2, 2.6 * S), sy = Math.max(2, 2.0 * S);
-      for (let y = 0; y < p.h; y++) {
-        for (let x = 0; x < p.w; x++) {
-          const i = y * p.w + x;
-          if (p.mat[i] !== m) continue;
-          let best = null, bd = Infinity;
-          for (const s of sp) { const d = (s.x - x) ** 2 + (s.y - y) ** 2; if (d < bd) { bd = d; best = s; } }
-          const u = best ? (x - best.x) * best.tx + (y - best.y) * best.ty + best.t * 90 : x;
-          const v = best ? (x - best.x) * best.nx + (y - best.y) * best.ny : y;
-          const row = Math.floor(v / sy);
-          const off = (row & 1) ? sx / 2 : 0;
-          const fx = ((u + off) % sx + sx) % sx / sx - 0.5;
-          const fy = ((v % sy) + sy) % sy / sy - 0.5;
-          const d = Math.sqrt(fx * fx + fy * fy * 1.7);
-          const k = clamp01(1 - d * 2.1);
-          p.tint[i] += (k - 0.42) * 0.30;
-          p.hgt[i] += k * 0.9 * S;
-        }
-      }
-      p.grain(mat, { freq: 0.22 / S, amp: 0.16, seed: seed + 3, oct: 2 });
+      // rows that follow the body, not the screen, each scale keeled down the
+      // middle and shadowed where it overlaps the one behind it
+      const sx = Math.max(2, 2.8 * S), sy = Math.max(2, 2.2 * S);
+      const ok = overMat(p, mat, (i, x, y) => {
+        const { u, v } = bodyUV(sp, x, y);
+        const row = Math.floor(v / sy);
+        const off = (row & 1) ? sx / 2 : 0;
+        const fx = ((u + off) % sx + sx) % sx / sx - 0.5;
+        const fy = ((v % sy) + sy) % sy / sy - 0.5;
+        const d = Math.sqrt(fx * fx + fy * fy * 1.7);
+        const k = clamp01(1 - d * 2.0);
+        // the keel: a raised line down the centre of each scale
+        const keel = clamp01(1 - Math.abs(fx) * 6) * clamp01(1 - Math.abs(fy) * 2.2);
+        // and the seam where the next row laps over this one
+        const seam = clamp01(1 - Math.abs(fy + 0.5) * 5.5);
+        p.tint[i] += (k - 0.44) * 0.30 + keel * 0.13 - seam * 0.22;
+        p.hgt[i] += k * 0.9 * S + keel * 0.4 * S - seam * 0.6 * S;
+      });
+      if (!ok) break;
+      mottle(p, mat, S, seed + 17, 0.16);
+      banding(p, mat, S, seed, sp, 5, 0.13);
+      p.grain(mat, { freq: 0.55 / S, amp: 0.12, seed: seed + 3, oct: 2 });
+      counterShade(p, mat, S, sp, 0.16);
+      p.speckle(mat, { density: 0.02, amp: 0.30, seed: seed + 41 });
       break;
     }
-    case 'fur':
-      p.grain(mat, { freq: 0.7 / S, amp: 0.20, seed, oct: 2, height: 0.45 * S });
-      p.ridges(mat, { angle: 0.38, freq: 1.9 / S, amp: 0.13, height: 0.55 * S, seed: seed + 3, warp: 1.8 });
-      p.grain(mat, { freq: 0.13 / S, amp: 0.20, seed: seed + 21, oct: 2 });
+    case 'fur': {
+      // three layers: a soft undercoat, clumped guard hairs that lie along the
+      // body, and blotchy colour over the top of both
+      p.grain(mat, { freq: 0.8 / S, amp: 0.18, seed, oct: 2, height: 0.4 * S });
+      const R = rng(seed * 7 + 3);
+      const clumps = [];
+      for (let i = 0; i < 90; i++) clumps.push({ a: R() * TAU, l: 0.5 + R() });
+      overMat(p, mat, (i, x, y) => {
+        const { u, v } = bodyUV(sp, x, y);
+        // hairs lie backwards along the body and fan away from the spine
+        const lie = u * 0.75 + v * 0.42 + Math.sin(v * 0.18 + u * 0.05) * 3.4;
+        const strand = Math.sin(lie / Math.max(0.9, 1.15 * S));
+        const clump = fbmTex(x * 0.09 / S, y * 0.09 / S, seed + 9, 2) - 0.5;
+        p.tint[i] += strand * 0.13 + clump * 0.26;
+        p.hgt[i] += strand * 0.45 * S + clump * 0.7 * S;
+      });
+      mottle(p, mat, S, seed + 31, 0.22, 1.6);
+      counterShade(p, mat, S, sp, 0.20);
+      p.grain(mat, { freq: 0.16 / S, amp: 0.16, seed: seed + 21, oct: 2 });
       break;
+    }
     case 'chitin':
+      // segment seams across the body, pitting over the plates, and a waxy
+      // sheen where the light catches the top of each segment
       p.ridges(mat, { angle: 1.42, freq: 0.44 / S, amp: 0.24, height: 1.5 * S, seed, warp: 0.35 });
+      overMat(p, mat, (i, x, y) => {
+        const { u, v } = bodyUV(sp, x, y);
+        const seg = Math.sin(u / Math.max(1.4, 3.4 * S));
+        const k = Math.pow(clamp01(seg), 2);
+        p.tint[i] += k * 0.16 - clamp01(-seg) * 0.22;
+        p.hgt[i] += k * 1.1 * S;
+        // punctures, the little pits that cover an insect's cuticle
+        const pit = fbmTex(x * 0.9 / S, y * 0.9 / S, seed + 55, 1);
+        if (pit > 0.72) { p.tint[i] -= 0.22; p.hgt[i] -= 0.7 * S; }
+      });
+      mottle(p, mat, S, seed + 13, 0.16, 1.3);
       p.grain(mat, { freq: 0.9 / S, amp: 0.09, seed: seed + 5 });
       p.speckle(mat, { density: 0.03, amp: 0.3, seed: seed + 11 });
       break;
     case 'shell':
-      p.grain(mat, { freq: 0.17 / S, amp: 0.26, seed, oct: 3, height: 0.8 * S });
-      p.speckle(mat, { density: 0.05, amp: 0.34, seed: seed + 11 });
+      // growth rings, laid down from a centre, plus the pitting of a thing
+      // that has been dragged through sand for years
+      overMat(p, mat, (i, x, y) => {
+        const { u, v } = bodyUV(sp, x, y);
+        const r = Math.hypot(u * 0.7, v);
+        const ring = Math.sin(r / Math.max(1.2, 2.6 * S));
+        p.tint[i] += ring * 0.13;
+        p.hgt[i] += ring * 0.8 * S;
+      });
+      mottle(p, mat, S, seed + 5, 0.24, 0.8);
+      p.grain(mat, { freq: 0.17 / S, amp: 0.24, seed, oct: 3, height: 0.8 * S });
+      p.speckle(mat, { density: 0.06, amp: 0.34, seed: seed + 11 });
       break;
     case 'plate':
-      p.ridges(mat, { angle: 1.5, freq: 0.30 / S, amp: 0.20, height: 1.9 * S, seed, warp: 0.2 });
+      // overlapping osteoderms rather than a corrugated sheet
+      p.ridges(mat, { angle: 1.5, freq: 0.30 / S, amp: 0.16, height: 1.5 * S, seed, warp: 0.2 });
+      overMat(p, mat, (i, x, y) => {
+        const { u, v } = bodyUV(sp, x, y);
+        const cx2 = Math.round(u / Math.max(3, 5.2 * S));
+        const cy2 = Math.round(v / Math.max(3, 4.4 * S));
+        const du = u - cx2 * Math.max(3, 5.2 * S);
+        const dv = v - cy2 * Math.max(3, 4.4 * S);
+        const d = Math.hypot(du / Math.max(3, 5.2 * S), dv / Math.max(3, 4.4 * S)) * 2;
+        const k = clamp01(1 - d);
+        p.tint[i] += (k - 0.35) * 0.26;
+        p.hgt[i] += k * k * 1.6 * S;
+      });
+      mottle(p, mat, S, seed + 23, 0.18);
       p.grain(mat, { freq: 0.5 / S, amp: 0.12, seed: seed + 7 });
       break;
     default:
+      mottle(p, mat, S, seed + 3, 0.18);
       p.grain(mat, { freq: 0.42 / S, amp: 0.15, seed });
   }
 }
@@ -149,10 +269,10 @@ function furFringe(p, mat, S, seed, density = 0.55) {
   }
   for (const e of edges) {
     if (R() > density) continue;
-    const l = (1.1 + R() * 2.4) * S;
+    const l = (1.2 + R() * 3.0) * S;
     const a = Math.atan2(-e.ey, -e.ex) + (R() - 0.5) * 0.9;
     p.capsule(e.x, e.y, e.x + Math.cos(a) * l, e.y + Math.sin(a) * l,
-      0.62 * S, 0.3 * S, { mat, dome: 0.5 * S, tint: 0.04 + (R() - 0.5) * 0.3 });
+      0.62 * S, 0.28 * S, { mat, dome: 0.5 * S, tint: 0.04 + (R() - 0.5) * 0.36 });
   }
 }
 

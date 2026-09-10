@@ -50,7 +50,11 @@ export class Person {
     this.speed = opts.speed ?? 44;
     this.name = opts.name || 'Someone';
     this.keepAway = opts.keepAway !== false;
-    this.scale = opts.scale ?? 1;
+    // The atlas is drawn at twice the world size the character occupies, so
+    // she is the same height in the basin as before but made of twice as many
+    // pixels - which is the difference between reading as a person and reading
+    // as a smear.
+    this.scale = opts.scale ?? 0.5;
   }
 
   say(text, secs = 4.5) { this.speech = text; this.speechT = secs; }
@@ -124,15 +128,92 @@ export class Person {
   }
 }
 
-/** Dr. Vess: the reason you are awake, and the reason there are field notes. */
+/**
+ * Dr. Vess: the reason you are awake, and the reason there are field notes.
+ *
+ * She has three states. On the ground she works - wanders, crouches, digs,
+ * writes. Following, she keeps you in sight and complains about the pace.
+ * Riding, she is sitting on your shell with her notebook out, which is the
+ * only way she gets to write while you are moving.
+ */
 export class Archaeologist extends Person {
   constructor(game, x) {
     super(game, 'vess', x, { name: 'Dr. Vess', speed: 46 });
     this.idleT = 0;
+    this.mode = 'work';           // work | follow | ride
+    this.rideT = 0;
+    this.climb = 0;               // 0 on the ground, 1 fully aboard
+    this.chatT = 6;
+  }
+
+  /** Riding means she is on the shell, so she has to be put somewhere on it. */
+  get riding() { return this.mode === 'ride'; }
+
+  board() {
+    if (this.mode === 'ride') return false;
+    // she is a whole adult human; there has to be a shell worth sitting on
+    const crab = this.game.crab;
+    if (!crab || crab.m.t < 0.55) {
+      this.say('You are the size of my hand. I would break you.', 4);
+      return false;
+    }
+    this.mode = 'ride';
+    this.keepAway = false;
+    this.setPose(POSE.SIT);
+    this.say('Right. Up I go. Do not throw me off.', 4);
+    return true;
+  }
+
+  alight() {
+    if (this.mode !== 'ride') return false;
+    this.mode = 'follow';
+    this.keepAway = true;
+    this.climb = 0;
+    this.setPose(POSE.IDLE);
+    this.say('Solid ground. I had forgotten what it was for.', 4);
+    return true;
+  }
+
+  follow() {
+    this.mode = this.mode === 'follow' ? 'work' : 'follow';
+    this.keepAway = true;
+    this.say(this.mode === 'follow'
+      ? 'Lead on. I have eleven years of nothing to make up for.'
+      : "I'll work this patch. Shout if you find water.", 4);
+    return this.mode === 'follow';
   }
 
   update(dt) {
+    const crab = this.game.crab;
+    if (this.mode === 'ride' && crab) {
+      // sat on the near rim of the shell, riding whatever the animal does
+      this.climb = damp(this.climb, 1, 0.001, dt);
+      const seat = crab.shellWorldAB(0.34, 0.66);
+      this.x = seat.x;
+      this.y = seat.y + 1;
+      this.vx = crab.vx;
+      this.facing = -1;
+      this.faceT = damp(this.faceT, -1, 0.0008, dt);
+      this.t += dt; this.poseT += dt; this.animT += dt;
+      if (this.speechT > 0) { this.speechT -= dt; if (this.speechT <= 0) this.speech = null; }
+      if (this.pose !== POSE.SIT && this.pose !== POSE.WRITE && this.pose !== POSE.TALK) {
+        this.setPose(POSE.SIT);
+      }
+      if (this.poseT > 6 && this.pose === POSE.SIT) this.setPose(POSE.WRITE);
+      else if (this.poseT > 8 && this.pose === POSE.WRITE) this.setPose(POSE.SIT);
+      this._chatter(dt);
+      return;
+    }
+
+    if (this.mode === 'follow' && crab) {
+      const want = crab.x - Math.sign(crab.vx || 1) * (30 + crab.m.shellW * 0.5);
+      if (Math.abs(want - this.x) > 12) this.moveTo = want;
+    }
+
     super.update(dt);
+    this._chatter(dt);
+
+    if (this.mode === 'follow') return;
     // she does not stand still: she wanders, crouches at things, writes
     if (this.pose === POSE.IDLE || this.pose === POSE.WANDER) {
       this.idleT -= dt;
@@ -150,11 +231,38 @@ export class Archaeologist extends Person {
       this.idleT = 2 + Math.random() * 4;
     }
   }
+
+  /** She talks. Constantly. That is most of what she is for. */
+  _chatter(dt) {
+    if (this.speech) { this.chatT = 9 + Math.random() * 12; return; }
+    this.chatT -= dt;
+    if (this.chatT > 0) return;
+    this.chatT = 12 + Math.random() * 16;
+    const g = this.game;
+    const lines = [];
+    if (this.riding) {
+      lines.push('You walk like something that has done this for a thousand years.',
+        'I can write while you walk. Do you know how rare that is out here?',
+        'Left, right, left. Sideways. Always sideways.',
+        'From up here I can see three of my old survey pegs. All wrong.');
+    }
+    if (g.garden.ripeCount) lines.push('Something on your back is ready. I can smell it from here.');
+    if (g.garden.overload > 0) lines.push('You are carrying too much. I say that as a person you are also carrying.');
+    if (g.garden.listed) lines.push('You are leaning. Move something.');
+    if (g.economy.water < 20) lines.push('Your spring is nearly dry. Pump.');
+    if (!lines.length) return;
+    this.say(lines[Math.floor(Math.random() * lines.length)], 4.5);
+  }
+
+  draw(ctx, cam) {
+    // riding: drawn on top of the shell, so the crab's own draw has finished
+    super.draw(ctx, cam);
+  }
 }
 
 /** The Elder: he has been walking this basin far longer than Vess has. */
 export class Elder extends Person {
   constructor(game, x) {
-    super(game, 'elder', x, { name: 'The Walker', speed: 30, scale: 1 });
+    super(game, 'elder', x, { name: 'The Walker', speed: 30, scale: 0.52 });
   }
 }

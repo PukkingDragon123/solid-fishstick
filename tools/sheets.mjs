@@ -19,7 +19,7 @@ const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 
 const SHEETS = [
   {
-    id: 'vess', file: 'assets/sheet-vess.png', bodyH: 34, colors: 40,
+    id: 'vess', file: 'assets/sheet-vess.png', bodyH: 68, colors: 76,
     // band -> the animations packed into it, in order, with frame counts
     bands: [
       [['idleFront', 5], ['idleSide', 5], ['idleBack', 4]],
@@ -31,7 +31,7 @@ const SHEETS = [
     faceBands: [4],
   },
   {
-    id: 'elder', file: 'assets/sheet-elder.png', bodyH: 38, colors: 34,
+    id: 'elder', file: 'assets/sheet-elder.png', bodyH: 74, colors: 64,
     bands: [
       [['idleFront', 3], ['idleSide', 3], ['idleBack', 3]],
       [['walkRight', 7], ['walkLeft', 7]],

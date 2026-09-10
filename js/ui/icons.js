@@ -306,4 +306,203 @@ export function drawTab(ctx, kind, x, y) {
   return { w: 22, h: 22 };
 }
 
+// ---------------------------------------------------------------------------
+// the popup frame
+//
+// A panel in this game is a thing Vess would have made: driftwood battens
+// lashed at the corners with a stretched hide behind them. It is baked once as
+// four edges and four corners and then tiled, so it fits any size without ever
+// being stretched.
+
+function buildFrame() {
+  const T = 10;               // batten thickness
+  const L = 16;               // tile length
+
+  const edge = (horizontal) => {
+    const w = horizontal ? L : T, h = horizontal ? T : L;
+    const p = new Painter(w, h);
+    p.field(0, 0, w, h, (x, y) => {
+      const across = horizontal ? y / T : x / T;
+      const along = horizontal ? x / L : y / L;
+      const d = Math.min(across, 1 - across);
+      // a rounded batten with the grain running along it
+      const dz = Math.sqrt(Math.max(0, 1 - Math.pow(1 - d * 2, 2)));
+      const grain = Math.sin(along * 22 + across * 3) * 0.5 + Math.sin(along * 61) * 0.2;
+      return { h: 1.4 + dz * 3.4 + grain * 0.4, tint: -0.10 + dz * 0.22 + grain * 0.07 };
+    }, { mat: 'wood' });
+    p.grain('wood', { freq: 0.6, amp: 0.16, seed: horizontal ? 3 : 9 });
+    return p.resolve(MATERIALS, { ...LIGHT, outline: 1, outlineColor: '#1a1109' });
+  };
+
+  const corner = () => {
+    const p = new Painter(T + 4, T + 4);
+    p.field(0, 0, T + 4, T + 4, (x, y) => {
+      const a = Math.min(x, T + 3 - x) / T, b = Math.min(y, T + 3 - y) / T;
+      const d = Math.min(a, b);
+      if (d < -0.1) return null;
+      const dz = Math.sqrt(Math.max(0, 1 - Math.pow(1 - clamp01(d * 2), 2)));
+      return { h: 1.6 + dz * 3.6, tint: -0.06 + dz * 0.20 };
+    }, { mat: 'wood' });
+    // the lashing that holds the corner together
+    for (let i = -1; i < 4; i++) {
+      p.capsule(1 + i * 2.6, T + 2 - i * 1.2, T + 2 - i * 1.2, 1 + i * 2.6, 1.0, 1.0,
+        { mat: 'rope', dome: 1.1, tint: i % 2 ? 0.10 : -0.06 });
+    }
+    p.grain('wood', { freq: 0.5, amp: 0.18, seed: 21 });
+    return p.resolve(MATERIALS, { ...LIGHT, outline: 1, outlineColor: '#1a1109' });
+  };
+
+  return { top: edge(true), side: edge(false), corner: corner(), T, L };
+}
+
+/**
+ * Draw a framed panel. The hide behind it is painted flat because it is meant
+ * to sit back; every bit of relief in a panel is in the frame.
+ */
+export function drawPanel(ctx, x, y, w, h, opts = {}) {
+  const F = once('frame', buildFrame);
+  const T = F.T;
+  x = Math.round(x); y = Math.round(y); w = Math.round(w); h = Math.round(h);
+
+  // the hide
+  const g = ctx.createLinearGradient(0, y, 0, y + h);
+  g.addColorStop(0, opts.top || 'rgba(38,28,18,0.975)');
+  g.addColorStop(1, opts.bottom || 'rgba(24,17,11,0.985)');
+  ctx.fillStyle = g;
+  ctx.fillRect(x, y, w, h);
+  // a stitched inner line, so the hide reads as stretched onto the frame
+  ctx.strokeStyle = 'rgba(214,186,138,0.16)';
+  ctx.strokeRect(x + T - 1.5, y + T - 1.5, w - (T - 1.5) * 2, h - (T - 1.5) * 2);
+
+  ctx.save();
+  ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
+  for (let i = 0; i < Math.ceil(w / F.L); i++) {
+    ctx.drawImage(F.top, x + i * F.L, y);
+    ctx.drawImage(F.top, x + i * F.L, y + h - T);
+  }
+  for (let i = 0; i < Math.ceil(h / F.L); i++) {
+    ctx.drawImage(F.side, x, y + i * F.L);
+    ctx.drawImage(F.side, x + w - T, y + i * F.L);
+  }
+  ctx.restore();
+  const c = F.corner;
+  ctx.drawImage(c, x - 2, y - 2);
+  ctx.drawImage(c, x + w - T - 2, y - 2);
+  ctx.drawImage(c, x - 2, y + h - T - 2);
+  ctx.drawImage(c, x + w - T - 2, y + h - T - 2);
+}
+
+// ---------------------------------------------------------------------------
+// pictograms
+//
+// One 12x12 stamp per idea, drawn as pixels rather than as glyphs so the
+// interface never has to fall back on a letter standing for a thing.
+
+const GLYPHS = {
+  // . transparent, 1 dark, 2 mid, 3 light, 4 accent
+  drop: '....11....../...1221...../..122211..../.12222211.../.12222211.../1222222221../1222222331./1222222331./1222222221./.12222221.../..122221..../....1111....',
+  hand: '..1..1..1.../.121.121.12./.122.122.122/.1222222222./.1222222222./112222222221/122222222221/.12222222221/.1222222222./..122222221./...12222221./....111111..',
+  scale:'.....11...../.....11...../..111111111./.1.1.....1.1/1..1.....1..1/1..1.....1..1/.11.......11./.....11...../.....11...../....1111..../...111111.../..11111111..',
+  map:  '111111111111/1..........1/1.11....11..1/1.1.1..1..1.1/1.1..11...1.1/1..1....1.1.1/1...1..1..1.1/1....11...1.1/1.........1.1/1..........1/1..........1/111111111111',
+  seed: '.....11...../....1221..../...122221.../..12222221../.1222222221./.1222222221./.1222222221./.1222222221./..12222221../...122221..../....1221..../.....11.....',
+  paw:  '.11...11..../1221.1221.../1221.1221.../.11...11..../......11..11/.....1221122/.....12211221/......11..11/..1111111...:/.122222211../.12222222 1./..11111111..',
+  close:'1..........1/11........11/121......121/.121....121./..121..121../...121121.../....12121..../....12121.../...121121.../..121..121../.121....121./1..........1',
+  pump: '....1111..../...122221.../..12222221../.1222222221./1222222222 1/1224444422 1/1224444422 1/1222222222 1/.1222222221./..12222221../...122221.../....1111....',
+};
+
+const GLYPH_COLS = {
+  1: '#1c130b', 2: '#d6ba8a', 3: '#f5e7c6', 4: '#5fc6d8',
+};
+
+/** Stamp a 12x12 pictogram. `tint` recolours the mid tone. */
+export function drawGlyph(ctx, name, x, y, opts = {}) {
+  const rows = GLYPHS[name];
+  if (!rows) return 12;
+  const s = opts.scale || 1;
+  const cols = { ...GLYPH_COLS, ...(opts.colors || {}) };
+  if (opts.color) cols[2] = opts.color;
+  if (opts.accent) cols[4] = opts.accent;
+  if (opts.alpha !== undefined) { ctx.save(); ctx.globalAlpha = opts.alpha; }
+  const lines = rows.split('/');
+  for (let ry = 0; ry < lines.length; ry++) {
+    const line = lines[ry];
+    for (let rx = 0; rx < line.length; rx++) {
+      const c = cols[line[rx]];
+      if (!c) continue;
+      ctx.fillStyle = c;
+      ctx.fillRect(Math.round(x + rx * s), Math.round(y + ry * s), s, s);
+    }
+  }
+  if (opts.alpha !== undefined) ctx.restore();
+  return 12 * s;
+}
+
+// ---------------------------------------------------------------------------
+// the pump: a valve in your own shell that you hold open
+
+function buildValve() {
+  const w = 34, h = 34;
+  const p = new Painter(w, h);
+  const cx = w / 2, cy = h / 2;
+  // the collar, a ring of chitin set into rock
+  p.ellipse(cx, cy, 15, 15, { mat: 'shellRock', dome: 6, tint: -0.06 });
+  p.ellipse(cx, cy, 12.5, 12.5, { mat: 'chitin', dome: 5, tint: 0.06 });
+  p.ellipse(cx, cy, 9, 9, { mat: 'chitinDark', dome: -6, tint: -0.34 });
+  // the four leaves of the valve itself
+  for (let i = 0; i < 4; i++) {
+    const th = (i / 4) * TAU + 0.4;
+    p.poly([
+      { x: cx + Math.cos(th) * 8.6, y: cy + Math.sin(th) * 8.6 },
+      { x: cx + Math.cos(th + 1.2) * 8.6, y: cy + Math.sin(th + 1.2) * 8.6 },
+      { x: cx + Math.cos(th + 0.6) * 2.2, y: cy + Math.sin(th + 0.6) * 2.2 },
+    ], { mat: 'chitinPale', dome: 2.6, feather: 2, tint: 0.06 - i * 0.03 });
+  }
+  p.ellipse(cx, cy, 2.4, 2.4, { mat: 'flesh', dome: -1.6, tint: -0.30 });
+  p.grain('shellRock', { freq: 0.34, amp: 0.2, seed: 31 });
+  p.grain('chitin', { freq: 0.5, amp: 0.14, seed: 13 });
+  return { cv: p.resolve(MATERIALS, { ...LIGHT, outline: 1, outlineColor: '#191108' }), w, h };
+}
+
+/**
+ * The pump valve. `open` 0..1 spreads the leaves and lights the throat, so
+ * holding the button visibly holds the valve open.
+ */
+export function drawValve(ctx, x, y, open, t) {
+  const V = once('valve', buildValve);
+  ctx.save();
+  ctx.translate(x + V.w / 2, y + V.h / 2);
+  const k = 1 + open * 0.06 + Math.sin(t * 22) * open * 0.02;
+  ctx.scale(k, k);
+  if (open > 0.01) {
+    const g = ctx.createRadialGradient(0, 0, 0, 0, 0, 16);
+    g.addColorStop(0, `rgba(159,232,238,${0.55 * open})`);
+    g.addColorStop(1, 'rgba(95,198,216,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(0, 0, 16, 0, TAU); ctx.fill();
+  }
+  ctx.drawImage(V.cv, -V.w / 2, -V.h / 2);
+  ctx.restore();
+  return { w: V.w, h: V.h };
+}
+
+/** A small horizontal gauge, used for ripeness and for load. */
+export function drawGauge(ctx, x, y, w, h, f, col, opts = {}) {
+  x = Math.round(x); y = Math.round(y);
+  ctx.fillStyle = opts.back || 'rgba(12,8,5,0.78)';
+  ctx.fillRect(x - 1, y - 1, w + 2, h + 2);
+  ctx.fillStyle = 'rgba(60,46,30,0.9)';
+  ctx.fillRect(x, y, w, h);
+  const fw = Math.round(w * clamp01(f));
+  if (fw > 0) {
+    ctx.fillStyle = col;
+    ctx.fillRect(x, y, fw, h);
+    ctx.fillStyle = 'rgba(255,255,255,0.35)';
+    ctx.fillRect(x, y, fw, 1);
+  }
+  if (opts.mark !== undefined) {
+    ctx.fillStyle = 'rgba(242,228,194,0.8)';
+    ctx.fillRect(x + Math.round(w * clamp01(opts.mark)), y - 1, 1, h + 2);
+  }
+}
+
 export function clearIconCache() { cache.clear(); }

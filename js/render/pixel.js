@@ -84,6 +84,9 @@ export class Painter {
     if (o.under && this.mat[i]) return;
     if (o.onlyOver && !this.mat[i]) return;
     if (o.mask && !this.mat[i]) return;
+    // `onlyMat` is the strict form of `mask`: touch this material and nothing
+    // else, so a texture pass over one layer of a laminate cannot eat the rest
+    if (o._only !== undefined && this.mat[i] !== o._only) return;
     const hh = h + (o.lift || 0);
     if (o.keepHigher && this.mat[i] && this.hgt[i] > hh) return;
     this.mat[i] = o._m;
@@ -95,6 +98,7 @@ export class Painter {
 
   _prep(o) {
     o._m = this._mid(o.mat || 'default');
+    o._only = o.onlyMat ? this._mid(o.onlyMat) : undefined;
     return o;
   }
 
@@ -197,16 +201,23 @@ export class Painter {
     return this;
   }
 
-  /** Arbitrary field: fn(x, y) returns null or {h, tint}. */
+  /**
+   * Arbitrary field: fn(x, y) returns null or {h, tint}. A returned `mat`
+   * overrides the material for that pixel, which is how a laminate - rock over
+   * chitin over pearl - gets painted in a single pass.
+   */
   field(x0, y0, x1, y1, fn, o = {}) {
     this._prep(o);
+    const base = o._m;
     for (let y = Math.floor(y0); y <= Math.ceil(y1); y++) {
       for (let x = Math.floor(x0); x <= Math.ceil(x1); x++) {
         const r = fn(x + 0.5, y + 0.5);
         if (!r) continue;
+        o._m = r.mat ? this._mid(r.mat) : base;
         this._put(x, y, o, r.h || 0, r.tint || 0);
       }
     }
+    o._m = base;
     return this;
   }
 

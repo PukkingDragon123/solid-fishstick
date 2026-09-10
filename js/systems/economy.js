@@ -12,7 +12,7 @@ import { FLORA_BY_ID } from '../data/flora.js';
 
 const BASE = {
   pumpGain: 6, waterMax: 200, pondGain: 0, nightWater: 0,
-  plots: 0, upkeep: 0, grow: 1, yield: 1, berryRate: 1,
+  plots: 0, upkeep: 0, grow: 1, yield: 1, berryRate: 1,   // `plots` is carrying capacity now
   attract: 1, trust: 1, fleetSlots: 3, orders: false,
   speed: 1, armour: 0, hp: 0, dmg: 18, dig: false, light: 0, warn: 0,
 };
@@ -112,7 +112,6 @@ export class Economy {
     this.nutrients -= s.cost;
     this.skills.add(id);
     this.markDirty();
-    if (s.effect.plots) for (let i = 0; i < s.effect.plots; i++) this.game.garden.unlockPlot();
     this.game.onSkill?.(s);
     return true;
   }
@@ -138,7 +137,6 @@ export class Economy {
     this.nutrients -= e.nutrients;
     this.evolutions.add(id);
     this.markDirty();
-    if (e.effect?.plots) for (let i = 0; i < e.effect.plots; i++) this.game.garden.unlockPlot();
     if (e.stage) this.game.growCrab(e.stage);
     this.game.onEvolve?.(e);
     return true;

@@ -41,17 +41,21 @@ npm run build     # -> dist/crabden.html + dist/crabden.body.html
 |  | keyboard | touch |
 | --- | --- | --- |
 | scuttle | `A` / `D` or arrows | left thumbstick (drag anywhere in the lower-left) |
-| the spring | `Space` | **SPRING** |
-| act — dig, harvest, win over, strike | `E` | **ACT** |
-| the drawer | `Tab`, or `1`–`4` for a tab | **DRAWER** |
-| the genome | `G` | tap the orb |
+| the spring | hold `Space` | hold the valve |
+| pick what is ripe | `R` | **PICK**, or tap the bead over a plant |
+| tap out a word | hold/release `T` | — |
+| Vess: follow, get on, get off | `F` | — |
+| act — dig, win over, strike | `E` | **ACT** |
+| the shop | `Tab`, or `1`–`5` for a tab | **SHOP** |
+| inside you | `G` | tap the orb |
 | control mode | `M` | **MODE** |
 | zoom / pan | wheel, drag | pinch, drag |
-| back out | `Esc` | the drawer's X |
+| back out | `Esc` | the panel's X |
 
-A crab does not turn round to walk. It stays side-on and scuttles, leaning into
-the direction of travel, and its eyes follow whatever it thinks is worth
-watching.
+A crab does not turn round to walk — but it does turn round. Reverse direction
+and the animal **pivots**: it goes edge-on, comes back out the other way, and
+carries on sideways with the other shoulder leading. Everything on its back
+turns with it.
 
 The game autosaves every twenty seconds and reloads where you left off.
 
@@ -62,15 +66,22 @@ The game autosaves every twenty seconds and reloads where you left off.
 **Water → plants → genes → evolution → more water — and the whole time, keep
 walking, because the only thing out here worth having is over the next dune.**
 
-1. **Pump.** The organ on your back brings up water, and overflow fills the
-   stone basin behind your crest. When the basin is full it runs off the back
-   of your shell as a waterfall and wets the sand you are standing on.
-2. **Plant.** Water buys seeds. Seeds go into plots along your shell — ten dry
-   beds on the rock and two wet beds in the basin, which only take plants that
-   want their feet wet. Everything grows in place as you walk.
-3. **Mature.** A mature plant fixes nutrients every second and expresses a
-   **gene**. Genes are not purchasable. The only way to hold a gene is to be
-   carrying something alive that expresses it.
+1. **Pump.** The spring is a valve you **hold open**, not a button you tap.
+   Water goes into the tank, then into the stone basin behind your crest, and
+   when neither can take any more it comes over the lip and down your shell as
+   a waterfall onto the sand you are standing on.
+2. **Plant.** Water buys seeds, and seeds go anywhere on your shell — there is
+   no slot count. What limits you is **balance**: everything you carry has a
+   weight, you can only carry so much, and it matters which side you put it on.
+   Overloaded, everything grows slower and you walk slower. Badly trimmed, you
+   walk with a list and whatever is stacked on the heavy side starts to suffer.
+3. **Pick.** Nothing on your back pays out on its own. A mature plant **ripens**
+   on its own clock — and several of them will not ripen at all unless a
+   condition holds: at dusk, after dark, in daylight, in the shade of something
+   taller, with water in the basin, with something living on you. When it is
+   ready a bead appears over it. Take it and it pays. A mature plant also
+   expresses a **gene**, and genes are not purchasable: the only way to hold one
+   is to be carrying something alive that expresses it.
 4. **Attract.** Every species scores your shell — which genes it expresses,
    how lush it is, whether there is standing water — and only makes the walk
    when the score is worth it. Get close, offer fruit and water, and it joins
@@ -84,25 +95,29 @@ walking, because the only thing out here worth having is over the next dune.**
 There is no skill menu. There is an orb on your own back, and you can look into
 it — the screen is swallowed by the orb and you wake up inside your own genome.
 
-Everything you can become is one tree, and at the start it is not a tree at
-all. It is a seed sitting on the ground with four closed buds around it and a
-double helix rising out of it where the trunk will be. Nothing is laid out in
-advance and greyed out: a branch only exists once it has somewhere to go, and
-the camera frames whatever currently exists — so the screen starts full of one
-sprout and pulls back on its own as you grow.
+The gene orb on your back is not a menu button. Looking into it takes you down
+through your own shell — rock, then chitin, then pearl, each layer rushing past
+and named as you pass it — and into the body cavity underneath. That is where
+the tree actually lives.
 
-The genes you express are the **roots**, dormant ones sitting as dim nodules
-under the seed and lighting up as a plant or an animal on your back expresses
-them. Your physical form is the **trunk**: hatchling, juvenile, adult, ancient,
-with the helix of your genome winding up inside it, its rungs lit as far as
-your genome is filled in. Four **boughs** carry what you have learned — Spring,
-Garden, Fleet, Body.
+It is a seed sitting in the middle of you, roots spread under it, branches
+running out to the four organs that do the work: **the Spring** (the bladder
+that holds your water), **the Gut**, **the Knot** (the ganglion that hears the
+desert and answers it), and **the Heart**. Book gills hang either side, still
+moving water that has not been there for a thousand years.
 
-Buying a node does not tick a checkbox. The bud opens, the wood actually pushes
-out and thickens and leafs, and a bright bead of sap runs all the way up from
-the roots into the new growth.
+So an upgrade is not a checkbox. Buying into a bough grows the organ that bough
+reaches: the heart gets bigger and beats harder, the bladder fills, the
+ganglion thickens and fires brighter. The organ on screen **is** the upgrade,
+and the tree is your nervous system reaching it. Evolutions run up the trunk
+toward the underside of your own shell, and the genes you express are the roots
+— dim nodules until something alive on your back expresses them, then lit.
 
-![The Tree of Life](docs/shot-04-tree.png)
+Nothing is laid out in advance and greyed out: a branch only exists once it has
+somewhere to go, and the camera frames whatever currently exists. Buy a node and
+a bright bead of sap runs all the way up from the roots into the new growth.
+
+![Inside you](docs/shot-04-tree.png)
 
 ### Three ways to move
 
@@ -110,15 +125,28 @@ the roots into the new growth.
 the next dune, and you watch. **FLEET** — click one of your own and click where
 to send it. The last two unlock in the tree.
 
-### Building on yourself
+### The shop
 
-Cisterns, windcatchers, compost frames, roosts, trellises, a watchpost and a
-salvaged shrine are built into free shell plots and stay there. Placing
-anything — a plant or a structure — puts you in a placement mode: every legal
-bed on the shell pulses, a ghost of the thing follows the nearest one, and a
-bracket marks where it will land.
+Everything you can put on your back lives in one framed popup — battens lashed
+at the corners with a hide stretched behind them, the way Vess would have made
+it. Seeds and structures are a grid of slots you can see at a glance; picking
+one fills the pane beside it with what it is, what it costs, **what it pays and
+how often**, what condition it needs before it will ripen at all, what it weighs
+on your shell, what it does to you, and what it will bring out of the desert.
 
-![The drawer](docs/shot-05-drawer.png)
+Placing anything puts you in a placement mode: every legal bed on the shell
+pulses, a ghost of the thing follows the nearest one, and a bracket marks where
+it will land.
+
+![The shop](docs/shot-05-drawer.png)
+
+### The map
+
+One long strip of the basin, because the world is one long strip of the basin:
+the real terrain profile under a band of the country you are crossing, distance
+ticks in metres from where you woke, and every landmark within reach — oases,
+human ruins, bonefields, wind-cut spires, and the occasional hull sitting
+kilometres from any sea. Somewhere you have not stood is a `?`.
 
 ---
 
@@ -257,10 +285,30 @@ the spine, insects walk an alternating tripod, reptiles bask.
 
 She is the one hand-drawn thing here. `tools/sheets.mjs` takes the sheets in
 `assets/`, keys out the background, slices every animation row into frames,
-downsamples them hard and snaps the result to one median-cut palette — which is
-what lets a drawn character stand next to procedural art without either looking
-out of place, and buries the artefacts of how the sheet was made. Idle, walk,
-sit, talk, command, wander, dig, and eight facial expressions, at 34 pixels.
+downsamples them and snaps the result to one median-cut palette — which is what
+lets a drawn character stand next to procedural art without either looking out
+of place, and buries the artefacts of how the sheet was made. The atlas is
+rendered at **twice** the height she actually occupies in the basin and drawn at
+half scale, so she is the same size as before but made of twice as many pixels.
+Idle, walk, sit, talk, command, wander, dig, and eight facial expressions.
+
+She does three things now. On the ground she works — wanders, crouches, digs,
+writes. **Follow** and she keeps pace behind you. **Get on** (once you are big
+enough to take her weight) and she rides the near rim of your shell with her
+notebook out, which is the only way she gets to write while you are moving. She
+talks the whole time, in a bubble with a tail, about what she can see from up
+there and about what you are carrying.
+
+And she listens. You have no voice and no hands you can write with, so you
+**tap** — hold `T` for a long tap, release for a short one, pause to end a
+letter. Six taps in and she stops hearing noise and starts hearing language:
+
+> Wait. Wait. That is not random. Long, short, long — that is code. You are
+> TAPPING AT ME. You are a person. Oh, you are a person.
+
+From then on you have a language. It is a terrible language. `WATER`, `HELP`,
+`SEA`, `YES`, `NO`, `NAME`, `UP`, `DIG` — she answers every one of them, and
+reads back anything else you spell letter by letter.
 
 ### The rest
 
@@ -307,7 +355,7 @@ js/
 | --- | --- |
 | ![Waking up](docs/shot-01-waking.png) | ![The first garden](docs/shot-02-first-garden.png) |
 | ![The drawer](docs/shot-05-drawer.png) | ![Field notes](docs/shot-06-notes.png) |
-| ![The Tree of Life](docs/shot-04-tree.png) | ![Night](docs/shot-08-night.png) |
+| ![Inside you](docs/shot-04-tree.png) | ![Night](docs/shot-08-night.png) |
 
 ---
 

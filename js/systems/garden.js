@@ -9,7 +9,7 @@
 import { clamp, clamp01, lerp, damp, TAU } from '../lib/math.js';
 import { buildPlant } from '../art/floraart.js';
 import { buildStructure } from '../art/buildart.js';
-import { FLORA_BY_ID, STAGE_NAME } from '../data/flora.js';
+import { FLORA_BY_ID, STAGE_NAME, NEEDS_TEXT } from '../data/flora.js';
 import { MATERIALS } from '../lib/palette.js';
 
 const GROW_STAGES = 4;
@@ -24,11 +24,16 @@ export class Garden {
     this.t = 0;
     this.falls = [];          // active waterfall strands
     this.lushness = 0;        // 0..1 smoothed cover, drives creature spawns
-    this.buildPlots(6);
+    this.list = 0;            // smoothed lean from an unevenly loaded shell
+    this.buildPlots();
   }
 
-  /** Plots run along the shell; growing the crab unlocks more of them. */
-  buildPlots(n) {
+  /**
+   * Beds are laid across the whole shell and none of them are locked. What
+   * stops you filling every one is not a slot count, it is what the animal can
+   * carry and how evenly you have loaded it.
+   */
+  buildPlots() {
     // dry plots run along the crest and the front slope; two wet plots sit
     // in the basin itself and only take plants that want their feet wet
     // beds are laid across the top of the shell: `a` runs left to right,
@@ -39,10 +44,14 @@ export class Garden {
       { a: -0.66, b: 0.02 }, { a: 0.66, b: 0.02 }, { a: -0.26, b: 0.76 },
       { a: 0.26, b: 0.76 }, { a: -0.74, b: -0.34 }, { a: 0.74, b: -0.34 },
       { a: 0.00, b: 0.18 },
+      { a: -0.52, b: 0.64 }, { a: 0.52, b: 0.64 },
+      { a: -0.86, b: 0.22 }, { a: 0.86, b: 0.22 },
+      { a: -0.40, b: -0.62 }, { a: 0.40, b: -0.62 },
       { a: -0.19, b: -0.30, wet: true }, { a: 0.19, b: -0.30, wet: true },
+      { a: 0.00, b: -0.58, wet: true },
     ];
     this.plots = spots.map((s, i) => ({
-      ...s, i, unlocked: i < n, plant: null,
+      ...s, i, unlocked: true, plant: null,
       u: (s.b + 1) / 2,
       sway: Math.random() * TAU, variant: i % 3,
     }));
@@ -50,6 +59,43 @@ export class Garden {
 
   /** Plants are grown to fit the shell they live on. */
   plantScale(crab) { return clamp(crab.m.rx / 78, 0.16, 0.95); }
+
+  // -- what the animal is carrying -----------------------------------------
+
+  /** What one thing on the shell weighs. */
+  massOf(plot) {
+    if (plot.plant) return (plot.plant.def.mass || 1.4) * (0.45 + plot.plant.stage * 0.185);
+    if (plot.build) return 2.6;
+    return 0;
+  }
+
+  /** Everything on your back, added up. */
+  get load() {
+    let m = 0;
+    for (const p of this.plots) m += this.massOf(p);
+    return m;
+  }
+
+  /** What you can carry: mostly how big you are, plus what you have grown. */
+  get capacity() {
+    const t = this.game.crab ? this.game.crab.m.t : 0;
+    return 5.5 + t * 26 + (this.game.economy ? this.game.economy.stat('plots') * 2.4 : 0);
+  }
+
+  /** 0 while you are within it, rising as you go over. */
+  get overload() { return clamp01((this.load - this.capacity) / Math.max(4, this.capacity * 0.6)); }
+
+  /**
+   * Trim: -1 all the weight on the left, +1 all on the right. A crab walks
+   * sideways on eight legs and does not care much, but it cares a little.
+   */
+  get trim() {
+    let m = 0, sum = 0;
+    for (const p of this.plots) { const w = this.massOf(p); m += w; sum += w * p.a; }
+    return m > 0.5 ? clamp(sum / m, -1, 1) : 0;
+  }
+
+  get listed() { return Math.abs(this.trim) > 0.42; }
 
   get unlockedCount() { return this.plots.filter((p) => p.unlocked).length; }
   freeFor(def) {
@@ -73,14 +119,61 @@ export class Garden {
   plant(plotIndex, floraId) {
     const plot = this.plots[plotIndex];
     const def = FLORA_BY_ID[floraId];
-    if (!plot || !plot.unlocked || plot.plant || !def) return null;
+    if (!plot || plot.plant || plot.build || !def) return null;
     if (def.needsPond && !(plot.wet && this.pond > 0.35)) return null;
     if (plot.wet && !def.needsPond) return null;
     plot.plant = {
       id: floraId, def, stage: 0, growth: 0, health: 1, thirst: 0,
-      age: 0, born: this.t, variant: (plot.i * 7 + plotIndex) % 3,
+      age: 0, born: this.t, ripe: 0, variant: (plot.i * 7 + plotIndex) % 3,
     };
     return plot.plant;
+  }
+
+  // -- harvesting -----------------------------------------------------------
+
+  /** Whether a plant's condition is being met right now. */
+  needMet(def) {
+    if (!def.needs) return true;
+    const w = this.game.weather;
+    const hour = w ? w.hour : 12;
+    switch (def.needs) {
+      case 'sun': return hour > 7 && hour < 17 && (w ? w.haze < 0.7 : true);
+      case 'dusk': return (hour >= 17 && hour < 20) || (hour >= 5 && hour < 8);
+      case 'night': return hour >= 20 || hour < 5;
+      case 'pond': return this.pond > 0.30;
+      case 'fleet': return (this.game.wildlife?.fleet.length || 0) > 0;
+      case 'shade': return this.plots.some((p) => p.plant && p.plant.stage >= 3
+        && (p.plant.def.arch === 'tree' || p.plant.def.h >= 40));
+      default: return true;
+    }
+  }
+
+  /** Why a plant is not ripening, in words. */
+  blockedText(def) {
+    return this.needMet(def) ? '' : (NEEDS_TEXT[def.needs] || '');
+  }
+
+  /** Everything ready to pick right now. */
+  get ripeCount() {
+    return this.plots.reduce((n, p) => n + (p.plant && p.plant.ripe >= 1 ? 1 : 0), 0);
+  }
+
+  /**
+   * Pick one plant. Nothing on your back pays out on its own - you have to
+   * notice it and take it, which is the whole loop.
+   */
+  harvest(plot) {
+    const pl = plot && plot.plant;
+    if (!pl || pl.stage < GROW_STAGES - 1) return { ok: false, msg: 'Not grown yet.' };
+    if (pl.ripe < 1) {
+      const why = this.blockedText(pl.def);
+      return { ok: false, msg: why || 'Not ripe yet.' };
+    }
+    const mul = this.game.economy ? this.game.economy.stat('yield') : 1;
+    const amount = Math.round(pl.def.pay * mul * (0.55 + pl.health * 0.45));
+    pl.ripe = 0;
+    pl.picked = (pl.picked || 0) + 1;
+    return { ok: true, amount, msg: `+${amount} nutrients` };
   }
 
   uproot(plotIndex) {
@@ -106,6 +199,12 @@ export class Garden {
     this.pond = clamp01(this.pond - evap * dt);
     this.spring = Math.max(0, this.spring - dt * 1.6);
 
+    // an overloaded shell grows everything slower, and a badly trimmed one
+    // wears down whatever is stacked on the heavy side
+    const over = this.overload;
+    const trim = this.trim;
+    this.list = damp(this.list, trim * 0.10 * (0.4 + Math.abs(trim)), 0.02, dt);
+
     let drank = 0, fixed = 0, cover = 0;
     for (const plot of this.plots) {
       const pl = plot.plant;
@@ -118,18 +217,28 @@ export class Garden {
       pl.thirst = clamp01(pl.thirst + (short - 0.5) * dt * 0.22);
       // standing water keeps everything on the shell alive for free
       if (this.pond > 0.35) pl.thirst = Math.max(0, pl.thirst - dt * 0.28);
-      pl.health = clamp01(pl.health + (pl.thirst > 0.7 ? -dt * 0.09 : dt * 0.06));
+      const heavySide = Math.abs(trim) > 0.42 && Math.sign(plot.a) === Math.sign(trim);
+      pl.health = clamp01(pl.health + (pl.thirst > 0.7 ? -dt * 0.09 : dt * 0.06)
+        - (heavySide ? dt * 0.05 * (Math.abs(trim) - 0.42) * 3 : 0));
 
       if (pl.stage < GROW_STAGES - 1) {
-        const rate = (1 - pl.thirst * 0.8) * (0.6 + this.pond * 0.7) * (pl.def.growBoost || 1);
+        const rate = (1 - pl.thirst * 0.8) * (0.6 + this.pond * 0.7) * (pl.def.growBoost || 1)
+          * (1 - over * 0.55);
         pl.growth += (dt / pl.def.grow) * Math.max(0.06, rate);
         if (pl.growth >= 1) {
           pl.growth = 0; pl.stage++;
           this.game.onPlantGrew?.(plot, pl);
         }
       } else {
-        fixed += pl.def.yield * dt * pl.health * (0.65 + this.pond * 0.5);
+        // A mature plant ripens rather than trickling: the nutrients only
+        // arrive when you pick it, and only once its condition is met.
         cover += 1;
+        if (pl.ripe < 1 && this.needMet(pl.def)) {
+          const rate = (0.55 + pl.health * 0.45) * (0.8 + this.pond * 0.35) * (1 - over * 0.5);
+          pl.ripe = clamp01(pl.ripe + (dt / pl.def.ripen) * rate);
+          if (pl.ripe >= 1 && !pl.rang) { pl.rang = true; this.game.onRipe?.(plot, pl); }
+        }
+        if (pl.ripe < 1) pl.rang = false;
         if (Math.random() < dt * 0.10 && this.game.fx) {
           const w = this.plotWorld(plot);
           const col = MATERIALS[pl.def.mat]?.ramp[6] || '#b6de8f';
@@ -141,17 +250,17 @@ export class Garden {
     this.lushness = damp(this.lushness, clamp01(cover / Math.max(3, this.plots.length * 0.6)), 0.05, dt);
 
     // waterfall strands live while the basin is over the rim
-    const over = this.pond > 0.88;
+    const spill = this.pond > 0.88;
     const crabRef = crab;
-    if (over && this.falls.length < 3 && Math.random() < dt * 6) {
+    if (spill && this.falls.length < 3 && Math.random() < dt * 6) {
       this.falls.push({ a: (Math.random() - 0.5) * 0.5, t: 0, life: 1.6 + Math.random() * 2.6, w: 1 + Math.random() * 1.4 });
     }
     for (let i = this.falls.length - 1; i >= 0; i--) {
       const f = this.falls[i];
       f.t += dt;
-      if (f.t > f.life || (!over && f.t > 0.6)) this.falls.splice(i, 1);
+      if (f.t > f.life || (!spill && f.t > 0.6)) this.falls.splice(i, 1);
     }
-    if (over && crab && this.game.fx && Math.random() < dt * 22) {
+    if (spill && crab && this.game.fx && Math.random() < dt * 22) {
       const lip = crab.shellWorldAB(0, crab.m.basin.b + crab.m.basin.r);
       const gy = this.game.terrain.surfaceY(lip.x);
       this.game.fx.splash(lip.x, gy, 1, 16);

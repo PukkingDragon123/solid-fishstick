@@ -15,6 +15,7 @@ import { biomeAt } from './world/biomes.js';
 import { World } from './world/landmarks.js';
 import { Crab } from './entities/crab.js';
 import { Archaeologist, Elder, POSE } from './entities/npc.js';
+import { Morse } from './systems/talk.js';
 import { Fx } from './systems/fx.js';
 import { Garden } from './systems/garden.js';
 import { Economy } from './systems/economy.js';
@@ -71,6 +72,7 @@ export class Game {
     this.encounters = new Encounters(this, this.seed);
     this.world = new World(this, this.seed);
     this.npc = new Archaeologist(this, 62);
+    this.morse = new Morse(this);
     this.ui = new UI(this);
 
     this.seeds = { dustmoss: 3, saltgrass: 2 };
@@ -146,7 +148,7 @@ export class Game {
     this.cam.followEntity(this.crab, false);
     this.cam.targetZoom = this.autoZoom();
     this.tutorial = 1;
-    this.ui.say('SPACE to pump water from your back.', 6);
+    this.ui.say('Hold SPACE, or hold the valve, to run the spring in your back.', 6);
   }
 
   say(who, text) { this.dialog = { who, text, t: 0 }; }
@@ -182,13 +184,25 @@ export class Game {
       const ax = i.axis();
       move = ax.x;
       if (this.ui.mode === 'auto' && Math.abs(move) < 0.05) move = this._autoWalk(sdt);
-      if (i.justPressed(' ')) this.pump();
+      // the spring is held open, not tapped: the longer you hold it the harder
+      // it runs, and it spills over the lip when the basin cannot take any more
+      const wantPump = i.key(' ') || i.key('Space') || this.ui.valveHeld;
+      this.pumpHold = wantPump ? Math.min(1, (this.pumpHold || 0) + dt * 2.6)
+        : Math.max(0, (this.pumpHold || 0) - dt * 4);
+      if (this.pumpHold > 0) this.pumpTick(sdt);
       if (i.justPressed('e')) this.act();
+      if (i.justPressed('r')) this.harvestAll();
+      if (i.justPressed('f')) this.callVess();
+      // T is the tap key: hold for a long tap, release for a short one
+      this.morse.update(sdt, i.key('t'));
       if (i.justPressed('q')) this.attack();
     }
     this.crab.update(sdt, {
       move, sprint: i.key('Shift'), grab: i.key('e'),
-      speedMul: this.economy ? this.economy.stat('speed') : 1,
+      // an overloaded animal is a slower animal
+      speedMul: (this.economy ? this.economy.stat('speed') : 1)
+        * (1 - (this.garden ? this.garden.overload : 0) * 0.45),
+      list: this.garden ? this.garden.list : 0,
     });
 
     if (i.wheel && !this.ui.busy) this.cam.zoomBy(i.wheel, i.sx, i.sy);
@@ -203,7 +217,6 @@ export class Game {
     const up = 1 + eco.stat('upkeep');
     const g = this.garden.update(sdt, eco.water / Math.max(0.001, up), this.weather);
     eco.water = clamp(eco.water - g.drank * up, 0, eco.stat('waterMax'));
-    eco.nutrients += g.fixed * eco.stat('yield');
     this._berryT = (this._berryT || 0) + sdt * eco.stat('berryRate');
     if (this._berryT > 9) {
       this._berryT = 0;
@@ -296,18 +309,50 @@ export class Game {
     return clamp((this._autoTarget - cx) / 40, -1, 1);
   }
 
-  pump() {
-    if (this.crab.pumping > 0.25) return;
-    this.crab.pump();
-    const gain = this.economy.stat('pumpGain');
-    this.economy.water = clamp(this.economy.water + gain, 0, this.economy.stat('waterMax'));
-    this.garden.pumpInto(0.055);
+  /**
+   * One frame of the spring running. Water goes into the tank and into the
+   * basin; what neither can take goes over the side, which is the whole reason
+   * the plants on the far rim get anything at all.
+   */
+  pumpTick(dt) {
+    const e = this.economy;
+    const push = this.pumpHold;
+    this.crab.pumping = Math.max(this.crab.pumping, push * 0.9);
+    this.crab.pumpT += dt * 9;
+
+    const maxW = e.stat('waterMax');
+    const rate = e.stat('pumpGain') * 2.4 * push;
+    const before = e.water;
+    e.water = clamp(e.water + rate * dt, 0, maxW);
+    const took = e.water - before;
+    this.garden.pumpInto(0.10 * push * dt);
+
     const o = this.crab.shellWorldAB(this.crab.m.organ.a, this.crab.m.organ.b);
-    this.fx.spring(o.x, o.y, o.nx, o.ny, 1);
-    this.fx.popup(o.x, o.y - 8, `+${gain}`, '#9de3ee');
-    this.audio.play('water');
-    if (this.tutorial === 1) { this.tutorial = 2; this.ui.say('Open PLANT (1) and put something on your back.', 6); }
+    this.fx.spring(o.x, o.y, o.nx, o.ny, 0.35 + push * 0.9);
+    this._pumpAcc = (this._pumpAcc || 0) + took;
+    if (this._pumpAcc >= 5) {
+      const n = Math.floor(this._pumpAcc);
+      this._pumpAcc -= n;
+      this.fx.popup(o.x, o.y - 8, `+${n}`, '#9de3ee');
+    }
+    // the overflow: the tank is full, so it goes over the rim and down the shell
+    if (e.water >= maxW - 0.01 && push > 0.4) {
+      this.garden.pond = clamp(this.garden.pond + 0.22 * dt, 0, 1);
+      if (Math.random() < dt * 26) {
+        const lip = this.crab.shellWorldAB((Math.random() - 0.5) * 1.1, 0.85);
+        this.fx.splash(lip.x, lip.y, 2, 20);
+        this.fx.mist(lip.x, lip.y - 3, 1, 7);
+      }
+    }
+    this._pumpSfx = (this._pumpSfx || 0) - dt;
+    if (this._pumpSfx <= 0) { this._pumpSfx = 0.42; this.audio.play('water'); }
+    if (this.tutorial === 1 && e.water > 70) {
+      this.tutorial = 2; this.ui.say('Open the shop (TAB) and put something on your back.', 6);
+    }
   }
+
+  /** Kept for the tutorial and for anything that wants a single tap. */
+  pump() { this.pumpHold = 1; this.pumpTick(0.2); }
 
   /** What E does right now, and what the prompt says. */
   actionHint() {
@@ -325,8 +370,68 @@ export class Game {
     return null;
   }
 
+  /** Pick the ripest thing on your back, if anything is ready. */
+  harvestAll() {
+    const ready = this.garden.plots.filter((p) => p.plant && p.plant.ripe >= 1);
+    if (!ready.length) {
+      const soon = this.garden.plots
+        .filter((p) => p.plant && p.plant.stage >= 3)
+        .sort((a, b) => b.plant.ripe - a.plant.ripe)[0];
+      if (!soon) this.ui.say('Nothing on your back is grown yet.');
+      else {
+        const why = this.garden.blockedText(soon.plant.def);
+        this.ui.say(why ? `${soon.plant.def.name} ${why}.` : 'Nothing is ripe yet.');
+      }
+      return 0;
+    }
+    let total = 0;
+    for (const plot of ready) total += this.harvestPlot(plot, true);
+    this.ui.say(ready.length > 1
+      ? `Picked ${ready.length}. +${total} nutrients.`
+      : `+${total} nutrients.`, 3);
+    return total;
+  }
+
+  /** Pick one bed. Returns what it paid. */
+  harvestPlot(plot, quiet = false) {
+    const res = this.garden.harvest(plot);
+    if (!res.ok) { if (!quiet) this.ui.say(res.msg); return 0; }
+    this.economy.nutrients += res.amount;
+    const w = this.garden.plotWorld(plot);
+    this.fx.popup(w.x, w.y - 8, `+${res.amount}`, '#cfe89a');
+    this.fx.spark(w.x, w.y - 3, '#e2f0a8', 14, 44);
+    this.audio.play('pickup', { pitch: 0.9 + Math.random() * 0.3 });
+    this.cam.shake(1.2);
+    if (!quiet) this.ui.say(res.msg, 2.4);
+    return res.amount;
+  }
+
+  /** A plant coming ready is worth noticing without being nagged about. */
+  onRipe(plot, pl) {
+    const w = this.garden.plotWorld(plot);
+    this.fx.spark(w.x, w.y - 4, '#ffe9a8', 8, 26);
+    this.audio.play('chirp', { pitch: 1.25 });
+  }
+
+  /** Ask her to come along, get on, or get off. */
+  callVess() {
+    const npc = this.npc;
+    const near = Math.abs(npc.x - this.crab.x) < 90;
+    if (npc.riding) { npc.alight(); return; }
+    if (!near) {
+      npc.moveTo = this.crab.x + 34;
+      npc.mode = 'follow';
+      npc.keepAway = true;
+      npc.say('Coming. Coming.', 3);
+      return;
+    }
+    if (npc.mode === 'follow') { npc.board(); return; }
+    npc.follow();
+  }
+
   act() {
     const c = this.crab;
+    if (this.garden.ripeCount) { this.harvestAll(); return; }
     const foe = this.wildlife.nearest(c.x, c.y, 44, (q) => q.hostile);
     if (foe) { this.attack(); return; }
     const wildOne = this.wildlife.nearest(c.x, c.y, 40, (q) => !q.hostile && !q.tamed && q.trust > 0.45);
@@ -388,12 +493,16 @@ export class Game {
     const def = FLORA_BY_ID[id];
     if (!def) return { ok: false, msg: 'No such seed.' };
     const plot = plotIndex !== undefined ? this.garden.plots[plotIndex] : this.garden.freeFor(def);
-    if (!plot) return { ok: false, msg: def.needsPond ? 'No free pool bed.' : 'No free bed. Terrace for more.' };
+    if (!plot) return { ok: false, msg: def.needsPond ? 'No free pool bed.' : 'Nowhere left to put it.' };
     if (def.needsPond && this.garden.pond < 0.35) return { ok: false, msg: 'That one needs standing water.' };
     if (this.economy.water < def.cost) return { ok: false, msg: `Needs ${def.cost} water.` };
     if (!this.garden.plant(plot.i, id)) return { ok: false, msg: 'It will not take there.' };
     this.economy.water -= def.cost;
     this.economy.markDirty();
+    // nothing forbids overloading yourself; you are just told what you did
+    const g = this.garden;
+    if (g.load > g.capacity) this.ui.say('You are carrying more than you can carry.', 4);
+    else if (g.listed) this.ui.say(`Your shell is listing ${g.trim > 0 ? 'right' : 'left'}.`, 4);
     if (this.tutorial === 2) { this.tutorial = 3; this.ui.say('It grows while you walk. Keep the water up.', 5); }
     return { ok: true, msg: `${def.name} planted.` };
   }
@@ -402,7 +511,7 @@ export class Game {
     const b = BUILD_BY_ID[id];
     if (!b) return { ok: false, msg: 'No such structure.' };
     const plot = plotIndex !== undefined ? this.garden.plots[plotIndex]
-      : this.garden.plots.find((p) => p.unlocked && !p.plant && !p.build && !p.wet);
+      : this.garden.plots.find((p) => !p.plant && !p.build && !p.wet);
     if (!plot) return { ok: false, msg: 'No free spot to build on.' };
     if (!this.economy.canBuild(id)) return { ok: false, msg: `Needs ${b.cost} water and ${b.nut} nutrients.` };
     if (!this.economy.build(plot.i, id)) return { ok: false, msg: 'It will not sit there.' };
@@ -535,6 +644,7 @@ export class Game {
       ruin: 'Somebody built this, facing the water that used to be here.',
       bonefield: 'A herd died here on the way to somewhere better.',
       spire: 'The wind has been working on this for a very long time.',
+      wreck: 'A hull. Kilometres from any sea, and the sea was yours.',
     }[lm.kind] || '';
     this.ui.say(`${lm.name} - ${kindLine}`, 6);
     this.npc.say(lm.kind === 'oasis'
@@ -573,6 +683,7 @@ export class Game {
       taken: [...this.encounters.taken], tutorial: this.tutorial,
       world: this.world.toJSON(),
       research: this.research, mode: this.ui.mode, insc: this.readInscriptions,
+      morse: this.morse.toJSON(),
     });
   }
 
@@ -593,6 +704,7 @@ export class Game {
       this.tutorial = d.tutorial || 3;
       this.research = d.research || {};
       this.readInscriptions = d.insc || 0;
+      this.morse.fromJSON(d.morse);
       if (d.mode) this.ui.mode = d.mode;
       this.economy.recomputeGenes();
       this.economy.markDirty();
@@ -627,10 +739,12 @@ export class Game {
 
     // creatures behind the crab, then the crab, then whatever rides on it
     this.wildlife.draw(ctx, cam, 'ground');
-    this.npc.draw(ctx, cam);
+    if (!this.npc.riding) this.npc.draw(ctx, cam);
     this.crab.draw(ctx, cam, this.garden);
+    if (this.npc.riding) this.npc.draw(ctx, cam);
     this.ui.drawGhost(ctx, cam);
     this.wildlife.draw(ctx, cam, 'shell');
+    if (this.state === 'play') this.ui.drawCrop(ctx, cam);
     this.fx.draw(ctx, cam, 'near');
     this.world.drawScatter(ctx, cam, 'near');
     this.backdrop.drawForeground(ctx, cam, this.weather, this.terrain);
@@ -662,22 +776,53 @@ export class Game {
     else this.ui.draw(ui, r);
     this.fx.drawText(ui, cam, (c, t, x, y, o) => drawText(c, t, x, y, o));
     if (this.state === 'dead') this._drawDead(ui, r);
-    if (this.npc.speech && this.state === 'play') this._drawSpeech(ui, cam, this.npc);
+    const inside = this.ui.tree.dive > 0.4;
+    if (this.npc.speech && this.state === 'play' && !inside) this._drawSpeech(ui, cam, this.npc);
+    if (this.state === 'play' && !inside) {
+      const m = this.morse.render();
+      if (m) {
+        this._drawSpeech(ui, cam,
+          { x: this.crab.x, y: this.crab.y - this.crab.m.rx * 0.9, speech: m }, true);
+      }
+    }
     r.dctx.drawImage(r.uiC, 0, 0, r.vw, r.vh, 0, 0, r.vw * r.scale, r.vh * r.scale);
   }
 
-  _drawSpeech(ctx, cam, who) {
+  /**
+   * A speech bubble with a tail, so it belongs to whoever is talking. `code`
+   * draws it as the taps you are making rather than as words.
+   */
+  _drawSpeech(ctx, cam, who, code = false) {
     const s = cam.worldToScreen(who.x, who.y - 40);
-    const lines = wrapText(who.speech, 130);
-    const w = Math.max(...lines.map((l) => textWidth(l))) + 10;
-    const h = lines.length * LINE_H + 6;
-    const x = clamp(Math.round(s.x - w / 2), 2, this.renderer.vw - w - 2);
-    const y = clamp(Math.round(s.y - h), 2, this.renderer.vh - h - 2);
-    ctx.fillStyle = 'rgba(18,13,9,0.9)';
+    const lines = wrapText(who.speech, 132);
+    const w = Math.max(...lines.map((l) => textWidth(l))) + 12;
+    const h = lines.length * LINE_H + 8;
+    const x = clamp(Math.round(s.x - w / 2), 3, this.renderer.vw - w - 3);
+    const y = clamp(Math.round(s.y - h), 3, this.renderer.vh - h - 12);
+    const tailX = clamp(Math.round(s.x), x + 6, x + w - 6);
+
+    // the tail first, so the body's edge draws over where it joins
+    ctx.fillStyle = code ? 'rgba(10,22,24,0.94)' : 'rgba(18,13,9,0.94)';
+    ctx.beginPath();
+    ctx.moveTo(tailX - 4, y + h - 1);
+    ctx.lineTo(tailX + 4, y + h - 1);
+    ctx.lineTo(tailX + (code ? 0 : 2), y + h + 6);
+    ctx.closePath();
+    ctx.fill();
+
     ctx.fillRect(x, y, w, h);
-    ctx.strokeStyle = 'rgba(226,200,150,0.4)';
+    ctx.strokeStyle = code ? 'rgba(159,232,212,0.55)' : 'rgba(226,200,150,0.45)';
     ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
-    lines.forEach((l, i) => drawText(ctx, l, x + 5, y + 4 + i * LINE_H, { color: '#f2e4c2' }));
+    // a lighter inner line: a bubble with an edge reads as drawn, not as a box
+    ctx.strokeStyle = code ? 'rgba(159,232,212,0.16)' : 'rgba(226,200,150,0.14)';
+    ctx.strokeRect(x + 2.5, y + 2.5, w - 5, h - 5);
+
+    lines.forEach((l, i) => drawText(ctx, l, x + 6, y + 5 + i * LINE_H,
+      { color: code ? '#9fe8d4' : '#f2e4c2' }));
+    if (code) {
+      drawText(ctx, this.morse.learned ? 'she is listening' : 'tapping',
+        x + w / 2, y - 9, { color: 'rgba(159,232,212,0.5)', align: 'center' });
+    }
   }
 
   _drawCutscene(ctx, r) {

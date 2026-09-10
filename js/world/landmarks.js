@@ -16,7 +16,16 @@ import { biomeAt } from './biomes.js';
 
 const CELL = 2400;               // one landmark per stretch of desert
 
-const KINDS = ['oasis', 'oasis', 'ruin', 'bonefield', 'oasis', 'spire'];
+const KINDS = ['oasis', 'ruin', 'ruin', 'bonefield', 'oasis', 'spire', 'ruin', 'wreck', 'oasis'];
+
+/** What each kind is, in one line, for the map. */
+export const KIND_NOTE = {
+  oasis: 'standing water',
+  ruin: 'human, and old',
+  bonefield: 'a herd that did not make it',
+  spire: 'wind-cut rock',
+  wreck: 'a hull, kilometres from any sea',
+};
 
 const NAME_A = ['Bitter', 'Long', 'Low', 'Quiet', 'Salt', 'Broken', 'Green', 'Last',
   'Cold', 'Hollow', 'White', 'Old', 'Wind', 'Deep', 'Red'];
@@ -216,13 +225,80 @@ function paintSpire(lm) {
   return { cv: p.resolve(MATERIALS, { ambient: 0.42, outline: 1, outlineColor: '#1d1009' }), w: W, h: H };
 }
 
+/**
+ * A wreck. Somebody sailed here, on the water you made, and then the water
+ * went and the boat stayed exactly where it was.
+ */
+function paintWreck(lm) {
+  const r = mulberry32(lm.seed);
+  const W = Math.round(lm.size * 1.5), H = Math.round(56 + r() * 34);
+  const p = new Painter(W, H);
+  const base = H - 3;
+  const bow = 8 + r() * 8;
+  const heel = (r() - 0.5) * 0.34;          // it did not settle level
+
+  // the hull, half buried and leaning
+  p.field(2, 0, W - 2, base + 2, (x, y) => {
+    const u = (x - 4) / (W - 8);
+    if (u < 0 || u > 1) return null;
+    const sheer = Math.sin(u * Math.PI) ;
+    const deck = base - 22 - sheer * bow + (u - 0.5) * heel * 40;
+    const keel = base + 2 - sheer * 5;
+    if (y < deck || y > keel) return null;
+    const t = (y - deck) / Math.max(1, keel - deck);
+    const dz = Math.sqrt(clamp01(1 - Math.pow(1 - t, 2)));
+    // planking, which is what makes a hull read as built rather than carved
+    const plank = Math.sin((y - deck) * 1.05);
+    return { h: 3 + dz * 7 + plank * 0.9, tint: -0.06 + dz * 0.16 + plank * 0.10 };
+  }, { mat: 'wood' });
+
+  // the ribs standing out of the open deck, where the planking has gone
+  const ribs = 5 + Math.floor(r() * 5);
+  for (let i = 0; i < ribs; i++) {
+    const u = 0.12 + (i / ribs) * 0.78;
+    const x = 4 + u * (W - 8);
+    const sheer = Math.sin(u * Math.PI);
+    const deck = base - 22 - sheer * bow + (u - 0.5) * heel * 40;
+    const hgt = 6 + r() * 13;
+    p.curve([
+      { x, y: deck + 3 },
+      { x: x + (r() - 0.5) * 4, y: deck - hgt * 0.6 },
+      { x: x + (r() - 0.5) * 7, y: deck - hgt },
+    ], 1.9, 0.9, { mat: 'wood', dome: 1.6, steps: 8, tint: 0.06 });
+  }
+  // a stub of mast, and the rope still on it
+  const mx = 4 + (0.34 + r() * 0.2) * (W - 8);
+  const mh = 16 + r() * 22;
+  p.capsule(mx, base - 24, mx + heel * 12, base - 24 - mh, 2.4, 1.4,
+    { mat: 'wood', dome: 2.2, tint: 0.08 });
+  for (let i = 0; i < 3; i++) {
+    p.curve([
+      { x: mx + heel * 10, y: base - 26 - mh * (0.5 + i * 0.2) },
+      { x: mx + 10 + i * 9, y: base - 18 + i * 3 },
+      { x: mx + 16 + i * 14, y: base - 2 },
+    ], 0.8, 0.5, { mat: 'rope', dome: 0.8, steps: 10, tint: -0.05 });
+  }
+  p.grain('wood', { freq: 0.20, amp: 0.28, seed: 13, height: 0.8 });
+  p.speckle('wood', { density: 0.035, amp: 0.30, seed: 21 });
+  // sand banked up against the windward side
+  p.field(2, base - 12, W - 2, base + 3, (x, y) => {
+    const u = (x - 2) / (W - 4);
+    const top = base - 11 * Math.pow(Math.max(0, 1 - Math.abs(u - 0.22) * 2.4), 1.6);
+    if (y < top) return null;
+    return { h: 2, tint: 0.04 };
+  }, { mat: 'sand' });
+  p.grain('sand', { freq: 0.3, amp: 0.14, seed: 31 });
+  return { cv: p.resolve(MATERIALS, { ambient: 0.44, outline: 1, outlineColor: '#1b1209' }), w: W, h: H };
+}
+
 const artCache = new Map();
 function landmarkArt(lm) {
   let a = artCache.get(lm.id);
   if (a) return a;
   a = lm.kind === 'ruin' ? paintRuin(lm)
     : lm.kind === 'bonefield' ? paintBones(lm)
-      : lm.kind === 'spire' ? paintSpire(lm) : null;
+      : lm.kind === 'spire' ? paintSpire(lm)
+        : lm.kind === 'wreck' ? paintWreck(lm) : null;
   artCache.set(lm.id, a);
   return a;
 }
@@ -256,6 +332,22 @@ export class World {
       this.found.add(lm.id);
       this.game.onLandmark?.(lm);
     }
+  }
+
+  /**
+   * Everything within reach for the map, found or not. An unfound mark is
+   * still drawn - you can see there is something out there, you just do not
+   * know what until you have stood in it.
+   */
+  marksNear(x, radius = CELL * 3) {
+    const out = [];
+    const c0 = Math.floor((x - radius) / CELL), c1 = Math.floor((x + radius) / CELL);
+    for (let ci = c0; ci <= c1; ci++) {
+      const lm = landmarkAt(this.seed, ci);
+      if (!lm) continue;
+      out.push({ ...lm, key: lm.id, note: KIND_NOTE[lm.kind] || lm.kind });
+    }
+    return out;
   }
 
   /** The nearest landmark you have not stood in yet, for the compass. */
