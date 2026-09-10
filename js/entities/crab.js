@@ -33,8 +33,19 @@ export class Crab {
     this.x = 0;
     this.y = 0;
     this.vx = 0;
+    // a crab does not turn to walk. It is always side-on; `facing` is only
+    // which way it is currently scuttling, and the body never flips.
     this.facing = 1;
     this.faceT = 1;
+    this.lean = 0;
+    this.roll = 0;
+    this.lurch = 0;
+    this.breathe = Math.random() * TAU;
+    this.look = { x: 0.4, y: -0.2 };
+    this.lookT = 0;
+    this.blinkPhase = 0;
+    this.mouthT = Math.random() * TAU;
+    this.alarm = 0;
 
     this.bodyAngle = 0;
     this.bob = 0;
@@ -52,6 +63,8 @@ export class Crab {
     this.hp = 120;
     this.hpMax = 120;
     this.iframe = 0;
+    this.threat = null;
+    this.idleLook = null;
   }
 
   setStage(stage, snap = false) {
@@ -126,27 +139,51 @@ export class Crab {
 
     if (move > 0.1) this.facing = 1;
     else if (move < -0.1) this.facing = -1;
-    this.faceT = damp(this.faceT, this.facing, 0.0006, dt);
+    // the body leans into the direction of travel instead of turning to face it
+    this.lean = damp(this.lean, clamp(this.vx / this.speed, -1, 1) * 0.13, 0.0009, dt);
 
     this._stepLegs(dt, t);
     this._rideFeet(dt, t);
 
-    // idle sway and walk bob
+    // a scuttle is a lurch, not a bob: the shell rocks across the gait and the
+    // whole animal breathes between steps
     const spd = Math.abs(this.vx);
+    const run = clamp01(spd / (this.speed * 0.85));
     this.bobT += dt * (2.4 + spd * 0.085);
-    const walkBob = Math.sin(this.bobT * 2) * clamp01(spd / 40) * this.S * 1.5;
-    const idleBob = Math.sin(this.bobT * 0.7) * this.S * 0.55;
+    this.breathe += dt * (1.1 + run * 1.4);
+    const walkBob = Math.sin(this.bobT * 2) * run * this.S * 1.6;
+    const idleBob = Math.sin(this.breathe) * this.S * 0.5;
     this.bob = damp(this.bob, walkBob + idleBob, 0.001, dt);
+    this.lurch = damp(this.lurch, Math.sin(this.bobT * 2 + 0.9) * run * this.S * 1.9 * this.facing, 0.001, dt);
+    this.roll = damp(this.roll, Math.sin(this.bobT) * run * 0.045, 0.0012, dt);
 
-    // eyes track motion, and blink
-    this.eyeLook = damp(this.eyeLook, clamp(this.vx / this.speed, -1, 1), 0.002, dt);
+    // eyes: the stalks swivel toward whatever matters, which is usually
+    // wherever the crab is about to walk
+    this.lookT -= dt;
+    let tx = clamp(this.vx / this.speed, -1, 1) * 0.9, ty = -0.35;
+    if (this.alarm > 0.1 && this.threat) {
+      tx = clamp((this.threat.x - this.x) / 70, -1.2, 1.2);
+      ty = clamp((this.threat.y - this.y) / 70, -1, 0.6);
+    } else if (this.lookT <= 0) {
+      this.lookT = 1.2 + Math.random() * 2.6;
+      this.idleLook = { x: (Math.random() - 0.5) * 1.4, y: -0.2 - Math.random() * 0.5 };
+    }
+    if (spd < 6 && this.alarm < 0.1 && this.idleLook) { tx = this.idleLook.x; ty = this.idleLook.y; }
+    this.look.x = damp(this.look.x, tx, 0.002, dt);
+    this.look.y = damp(this.look.y, ty, 0.002, dt);
+    this.eyeLook = this.look.x;
+    this.alarm = Math.max(0, this.alarm - dt * 0.7);
+
     this.blinkT -= dt;
-    if (this.blinkT <= 0) { this.blinkT = 2.4 + Math.random() * 4.5; this.blink = 0.16; }
+    if (this.blinkT <= 0) { this.blinkT = 2.2 + Math.random() * 4.5; this.blink = 0.18; }
     this.blink = Math.max(0, this.blink - dt);
+    this.mouthT += dt * (5.5 + (this.pumping > 0 ? 9 : 0));
 
     // claw idle / gesture
     this.clawT += dt;
-    const wantOpen = ctrl.grab ? 1 : (this.pumping > 0 ? 0.7 : 0.40 + Math.sin(this.clawT * 1.3) * 0.10);
+    const wantOpen = ctrl.grab ? 1
+      : this.alarm > 0.2 ? 0.85 + Math.sin(this.clawT * 9) * 0.15
+        : this.pumping > 0 ? 0.7 : 0.40 + Math.sin(this.clawT * 1.3) * 0.10;
     this.clawOpen = damp(this.clawOpen, wantOpen, 0.001, dt);
 
     this.pumpT += dt;
@@ -197,7 +234,10 @@ export class Crab {
   _land(l, t) {
     const w = Math.abs(this.vx);
     t.deform(l.foot.x, 1.5 + w * 0.012, 5 + this.m.bodyW * 0.05);
-    if (this.game.fx) this.game.fx.footPuff(l.foot.x, l.foot.y, w, l.def.far);
+    // eight legs landing would be a permanent dust storm; only some throw sand
+    if (this.game.fx && (l.def.far || Math.random() < 0.45)) {
+      this.game.fx.footPuff(l.foot.x, l.foot.y, w * 0.55, l.def.far);
+    }
     if (this.game.audio && w > 12 && !l.def.far) this.game.audio.play('step', { vol: 0.3 });
   }
 
@@ -218,8 +258,14 @@ export class Crab {
     }
     const targetY = groundY - this.standH * (1 - this.crouch * 0.28);
     this.y = damp(this.y, targetY, 0.0008, dt);
-    const targetA = clamp(Math.atan(slope), -0.55, 0.55) * this.faceT * this.faceT;
+    const targetA = clamp(Math.atan(slope), -0.55, 0.55);
     this.bodyAngle = damp(this.bodyAngle, targetA, 0.0009, dt);
+  }
+
+  /** Something worth watching: sets the gaze and lifts the claw. */
+  alertTo(ent, amount = 1) {
+    this.threat = ent;
+    this.alarm = Math.min(1.4, this.alarm + amount);
   }
 
   pump() {
@@ -231,9 +277,9 @@ export class Crab {
 
   draw(ctx, cam, garden) {
     const rig = this.rig;
-    const f = this.faceT;
+    const f = 1;                       // the crab never turns around
     const sc = cam.zoom;
-    const p = cam.worldToScreen(this.x, this.y + this.bob);
+    const p = cam.worldToScreen(this.x + this.lurch * 0.35, this.y + this.bob);
 
     // contact shadow first, in screen space, so it hugs the sand
     this._drawShadow(ctx, cam);
@@ -244,10 +290,7 @@ export class Crab {
 
     // ---- far side ----------------------------------------------------------
     ctx.save();
-    ctx.rotate(this.bodyAngle);
-    ctx.scale(f < 0 ? -1 : 1, 1);
-    const fa = Math.abs(f) < 0.02 ? 0.02 : Math.abs(f);
-    ctx.scale(fa, 1);
+    ctx.rotate(this.bodyAngle + this.roll);
     this._drawLegs(ctx, true);
     this._drawClaw(ctx, true);
     ctx.restore();
@@ -256,9 +299,10 @@ export class Crab {
 
     // ---- body --------------------------------------------------------------
     ctx.save();
-    ctx.rotate(this.bodyAngle);
-    ctx.scale(f < 0 ? -1 : 1, 1);
-    ctx.scale(Math.abs(f) < 0.02 ? 0.02 : Math.abs(f), 1);
+    ctx.rotate(this.bodyAngle + this.roll);
+    ctx.translate(this.lean * 3, 0);
+    const br = 1 + Math.sin(this.breathe) * 0.012;
+    ctx.scale(1, br);
     ctx.drawImage(rig.body.cv, -rig.body.ox, -rig.body.oy);
     ctx.restore();
 
@@ -267,12 +311,10 @@ export class Crab {
 
     // ---- near side ---------------------------------------------------------
     ctx.save();
-    ctx.rotate(this.bodyAngle);
-    ctx.scale(f < 0 ? -1 : 1, 1);
-    ctx.scale(Math.abs(f) < 0.02 ? 0.02 : Math.abs(f), 1);
+    ctx.rotate(this.bodyAngle + this.roll);
     this._drawLegs(ctx, false);
     this._drawClaw(ctx, false);
-    this._drawEyes(ctx);
+    this._drawFace(ctx);
     ctx.restore();
 
     ctx.restore();
@@ -305,15 +347,15 @@ export class Crab {
     const rig = this.rig;
     const art = far ? rig.legArt.far : rig.legArt.near;
     const l1 = art.coxa.len, l2 = art.femur.len, l3 = art.tibia.len;
-    const c = Math.cos(-this.bodyAngle), s = Math.sin(-this.bodyAngle);
-    const f = this.faceT < 0 ? -1 : 1;
+    const a = -(this.bodyAngle + this.roll);
+    const c = Math.cos(a), s = Math.sin(a);
 
     for (const leg of this.legs) {
       if (!!leg.def.far !== far) continue;
-      // foot in body-local space (undo translate, rotation and flip)
-      const wx = leg.foot.x - this.x, wy = leg.foot.y - (this.y + this.bob);
-      let lx = wx * c - wy * s, ly = wx * s + wy * c;
-      lx *= f;
+      // foot in body-local space (undo the translate and the body rotation)
+      const wx = leg.foot.x - (this.x + this.lurch * 0.35);
+      const wy = leg.foot.y - (this.y + this.bob);
+      const lx = wx * c - wy * s, ly = wx * s + wy * c;
       const hx = leg.def.x, hy = leg.def.y;
 
       // the ankle sits above the contact point, and outer legs splay wider so
@@ -345,7 +387,7 @@ export class Crab {
     const sx = so.x + (far ? -3 * this.S : 1.5 * this.S);
     const sy = so.y + (far ? -2 * this.S : 1.5 * this.S);
     const sw = Math.sin(this.clawT * (far ? 0.83 : 1.07)) * 0.07;
-    const raise = this.clawOpen * 0.55 + this.pumping * 0.6;
+    const raise = this.clawOpen * 0.55 + this.pumping * 0.6 + this.alarm * 0.5;
     const a1 = 1.24 + sw - raise * 0.7 + this.crouch * 0.2;
     const armEnd = { x: sx + Math.cos(a1) * art.arm.len, y: sy + Math.sin(a1) * art.arm.len };
     const a2 = a1 - 1.42 - raise * 0.34 + (far ? 0.10 : 0);
@@ -367,17 +409,43 @@ export class Crab {
     ctx.restore();
   }
 
-  _drawEyes(ctx) {
+  /** Eyes on stalks, plus the mouthparts, which never stop moving. */
+  _drawFace(ctx) {
     const rig = this.rig;
+    const S = this.S;
+
+    const mo = rig.sockets.mouth;
+    if (rig.mouth) {
+      ctx.save();
+      ctx.translate(mo.x, mo.y + Math.sin(this.mouthT) * 0.4 * S);
+      ctx.rotate(Math.sin(this.mouthT * 1.3) * 0.14);
+      ctx.drawImage(rig.mouth.cv, -rig.mouth.ox, -rig.mouth.oy);
+      ctx.restore();
+    }
+
     for (const e of rig.sockets.eyes) {
       const art = e.far ? rig.eye.far : rig.eye.near;
-      const a = -1.05 + this.eyeLook * 0.26 + (e.far ? -0.20 : 0.14)
-        + Math.sin(this.clawT * 0.9 + (e.far ? 2 : 0)) * 0.05;
+      // the stalk itself leans; the eye on the end does the looking
+      const a = -1.02 + this.look.x * 0.22 + this.look.y * 0.30
+        + (e.far ? -0.20 : 0.14) + Math.sin(this.clawT * 0.9 + (e.far ? 2 : 0)) * 0.04;
+      const shrink = this.blink > 0 ? 1 - Math.sin(clamp01(this.blink / 0.18) * Math.PI) * 0.55 : 1;
       ctx.save();
       ctx.translate(e.x, e.y);
       ctx.rotate(a);
-      if (this.blink > 0) ctx.scale(1, 0.35);
+      ctx.scale(1, shrink);
       ctx.drawImage(art.cv, -art.ox, -art.oy);
+      // pupil, drawn live so it can actually track something
+      if (shrink > 0.6) {
+        const r = art.r || 4 * S;
+        const px = art.globe + this.look.x * r * 0.34;
+        const py = this.look.y * r * 0.34;
+        ctx.fillStyle = '#120d14';
+        ctx.beginPath();
+        ctx.ellipse(px, py, r * 0.42, r * 0.46, 0, 0, TAU);
+        ctx.fill();
+        ctx.fillStyle = 'rgba(244,240,246,0.85)';
+        ctx.fillRect(Math.round(px - r * 0.30), Math.round(py - r * 0.34), Math.max(1, r * 0.22), Math.max(1, r * 0.22));
+      }
       ctx.restore();
     }
   }

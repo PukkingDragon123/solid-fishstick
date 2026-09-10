@@ -13,7 +13,7 @@ import { Terrain } from './world/terrain.js';
 import { Weather } from './world/weather.js';
 import { biomeAt } from './world/biomes.js';
 import { Crab } from './entities/crab.js';
-import { Archaeologist, POSE } from './entities/npc.js';
+import { Archaeologist, Elder, POSE } from './entities/npc.js';
 import { Fx } from './systems/fx.js';
 import { Garden } from './systems/garden.js';
 import { Economy } from './systems/economy.js';
@@ -21,7 +21,8 @@ import { Wildlife } from './systems/wildlife.js';
 import { Encounters } from './systems/encounters.js';
 import { UI } from './ui/ui.js';
 import { FLORA_BY_ID } from './data/flora.js';
-import { BUILD_BY_ID } from './data/progress.js';
+import { OBSERVE_STEPS } from './data/fauna.js';
+import { BUILD_BY_ID, GENE_BY_ID } from './data/progress.js';
 import { buildStructure } from './art/buildart.js';
 
 export class Game {
@@ -71,6 +72,7 @@ export class Game {
     this.ui = new UI(this);
 
     this.seeds = { dustmoss: 3, saltgrass: 2 };
+    this.research = {};
     this.biome = biomeAt(0);
     this.cam.followEntity(this.crab, true);
     this.cam.minZoom = 0.85;
@@ -115,16 +117,16 @@ export class Game {
         { at: 4.2, run: () => { this.cam.cineTo(c.x + 90, c.y - 16, 2.0, 2.0); npc.moveTo = c.x + 30; } },
         { at: 4.6, run: () => this.say('narrator', 'Nothing has moved here since. Nothing at all.') },
         { at: 8.0, run: () => { npc.setPose(POSE.WALK); this.say('Dr. Vess', 'Survey day four thousand and six. Basin nineteen. Still nothing.') } },
-        { at: 12.0, run: () => { npc.moveTo = c.x + 24; npc.setPose(POSE.WRITE, 'notebook'); this.say('Dr. Vess', 'Correction. One large rock. Sedimentary. Roughly hill-shaped.') } },
+        { at: 12.0, run: () => { npc.moveTo = c.x + 24; npc.setPose(POSE.WRITE); this.say('Dr. Vess', 'Correction. One large rock. Sedimentary. Roughly hill-shaped.') } },
         { at: 16.0, run: () => { npc.setPose(POSE.IDLE); this.say('Dr. Vess', "Eleven years. Eleven. And the department wants 'findings'.") } },
-        { at: 20.0, run: () => { npc.facing = 1; npc.setPose(POSE.CROUCH); this.say('Dr. Vess', 'Right. Nobody is watching. Nobody has been watching for a thousand years.') } },
+        { at: 20.0, run: () => { npc.facing = 1; npc.setPose(POSE.SIT); this.say('Dr. Vess', 'Right. Nobody is watching. Nobody has been watching for a thousand years.') } },
         { at: 24.0, run: () => { this.cam.cineTo(c.x + 6, c.y - 22, 3.2, 1.4); this.say('narrator', '...') } },
         { at: 26.5, run: () => { this._pee = 1; this.say('narrator', 'A single drop of water lands on the rock.') } },
         { at: 29.5, run: () => { this._pee = 0; this.crab.blink = 0.4; this.cam.shake(3); this.say('narrator', 'The rock has been waiting a very long time for that.') } },
         { at: 32.0, run: () => { this.cam.shake(8); this.terrain.deform(c.x, 6, 40); this.fx.dust(c.x, c.y + 20, 6); this.audio.play('thunder'); } },
         { at: 33.4, run: () => { npc.facing = -1; npc.setPose(POSE.IDLE); this.say('Dr. Vess', 'That is not a rock.') } },
         { at: 36.0, run: () => { npc.moveTo = c.x + 74; this.say('Dr. Vess', 'That is not a rock, that is not a rock, that is NOT A ROCK -') } },
-        { at: 39.5, run: () => { npc.setPose(POSE.IDLE); npc.facing = -1; this.say('Dr. Vess', "...you're awake. Oh. Oh, that's what the water table was for.") } },
+        { at: 39.5, run: () => { npc.setPose(POSE.TALK); npc.facing = -1; this.say('Dr. Vess', "...you're awake. Oh. Oh, that's what the water table was for.") } },
         { at: 43.0, run: () => { this.say('Dr. Vess', "There's a spring in your back. You made this whole basin, didn't you.") } },
         { at: 46.5, run: () => { this.say('Dr. Vess', "Then make it again. I'll help. I have eleven years of notes and nothing else.") } },
         { at: 50.0, run: () => this.endIntro() },
@@ -171,12 +173,12 @@ export class Game {
     }
 
     const play = this.state === 'play';
-    const locked = !play || this.ui.open;
 
     let move = 0;
-    if (play && !this.ui.open) {
+    if (play && !this.ui.busy) {
       const ax = i.axis();
       move = ax.x;
+      if (this.ui.mode === 'auto' && Math.abs(move) < 0.05) move = this._autoWalk(sdt);
       if (i.justPressed(' ')) this.pump();
       if (i.justPressed('e')) this.act();
       if (i.justPressed('q')) this.attack();
@@ -186,8 +188,8 @@ export class Game {
       speedMul: this.economy ? this.economy.stat('speed') : 1,
     });
 
-    if (i.wheel && !this.ui.open) this.cam.zoomBy(i.wheel, i.sx, i.sy);
-    if (i.dragging && !this.ui.open && i.touchPan) this.cam.pan(i.dragDX, i.dragDY);
+    if (i.wheel && !this.ui.busy) this.cam.zoomBy(i.wheel, i.sx, i.sy);
+    if (i.dragging && !this.ui.busy && i.touchPan) this.cam.pan(i.dragDX, i.dragDY);
 
     this.biome = biomeAt(this.crab.x);
     this.weather.update(sdt, this);
@@ -220,6 +222,11 @@ export class Game {
     if (this._geneT > 1.2) { this._geneT = 0; eco.recomputeGenes(); eco.markDirty(); }
 
     this.wildlife.update(sdt);
+    // the crab watches whatever is closest and most interesting
+    const watcher = this.wildlife.nearest(this.crab.x, this.crab.y, 150,
+      (q) => q.alive && (q.hostile || !q.tamed));
+    if (watcher) this.crab.alertTo(watcher, (watcher.hostile ? 2.2 : 0.35) * sdt);
+    else if (Math.abs(this.npc.x - this.crab.x) < 90) this.crab.alertTo(this.npc, 0.3 * sdt);
     this.encounters.update(sdt);
     this.npc.update(sdt);
     this.fx.update(sdt, this.weather);
@@ -260,8 +267,8 @@ export class Game {
       const p = this.npc;
       if (Math.random() < 0.6) {
         this.fx._add({
-          k: 'water', x: p.x - 6 * p.faceT, y: p.y + 2,
-          vx: -18 * p.faceT + (Math.random() - 0.5) * 6, vy: 26 + Math.random() * 20,
+          k: 'water', x: p.x - 6 * (p.facing || -1), y: p.y - 14,
+          vx: -18 * (p.facing || -1) + (Math.random() - 0.5) * 6, vy: 26 + Math.random() * 20,
           life: 0.9, t: 0, r: 1, grav: 210, splash: true,
         });
       }
@@ -270,6 +277,20 @@ export class Game {
   }
 
   // -- actions --------------------------------------------------------------
+
+  /** ROAM mode: the crab walks itself toward the next unvisited thing. */
+  _autoWalk(dt) {
+    const cx = this.crab.x;
+    if (!this._autoTarget || Math.abs(this._autoTarget - cx) < 26) {
+      const dir = this._autoDir || 1;
+      const ahead = this.encounters.near(cx + dir * 300, 320)
+        .filter((p) => !this.encounters.isTaken(p) && Math.sign(p.x - cx) === dir);
+      this._autoTarget = ahead.length ? ahead[0].x : cx + dir * 420;
+      if (Math.random() < 0.06) this._autoDir = -dir;
+      else this._autoDir = dir;
+    }
+    return clamp((this._autoTarget - cx) / 40, -1, 1);
+  }
 
   pump() {
     if (this.crab.pumping > 0.25) return;
@@ -359,32 +380,68 @@ export class Game {
     this.fx.dust(fx, c.y + c.standH * 0.6, 1);
   }
 
-  tryPlant(id) {
+  tryPlant(id, plotIndex) {
     const def = FLORA_BY_ID[id];
-    if (!def) return 'No such seed.';
-    const plot = this.garden.freeFor(def);
-    if (!plot) return def.needsPond ? 'No free pool bed - both are taken.' : 'No free plot. Terrace for more.';
-    if (def.needsPond && this.garden.pond < 0.35) return 'That one needs standing water. Pump first.';
-    if (this.economy.water < def.cost) return `Needs ${def.cost} water.`;
-    if (!this.garden.plant(plot.i, id)) return 'It will not take there.';
+    if (!def) return { ok: false, msg: 'No such seed.' };
+    const plot = plotIndex !== undefined ? this.garden.plots[plotIndex] : this.garden.freeFor(def);
+    if (!plot) return { ok: false, msg: def.needsPond ? 'No free pool bed.' : 'No free bed. Terrace for more.' };
+    if (def.needsPond && this.garden.pond < 0.35) return { ok: false, msg: 'That one needs standing water.' };
+    if (this.economy.water < def.cost) return { ok: false, msg: `Needs ${def.cost} water.` };
+    if (!this.garden.plant(plot.i, id)) return { ok: false, msg: 'It will not take there.' };
     this.economy.water -= def.cost;
-    const w = this.garden.plotWorld(plot);
-    this.fx.spark(w.x, w.y, '#8cc468', 8, 26);
     this.economy.markDirty();
     if (this.tutorial === 2) { this.tutorial = 3; this.ui.say('It grows while you walk. Keep the water up.', 5); }
-    return `${def.name} planted.`;
+    return { ok: true, msg: `${def.name} planted.` };
   }
 
-  tryBuild(id) {
+  tryBuild(id, plotIndex) {
     const b = BUILD_BY_ID[id];
-    if (!b) return 'No such structure.';
-    const plot = this.garden.plots.find((p) => p.unlocked && !p.plant && !p.build && !p.wet);
-    if (!plot) return 'No free plot to build on.';
-    if (!this.economy.canBuild(id)) return `Needs ${b.cost} water and ${b.nut} nutrients.`;
-    if (!this.economy.build(plot.i, id)) return 'It will not sit there.';
-    const w = this.garden.plotWorld(plot);
-    this.fx.dust(w.x, w.y, 2);
-    return `${b.name} built into the shell.`;
+    if (!b) return { ok: false, msg: 'No such structure.' };
+    const plot = plotIndex !== undefined ? this.garden.plots[plotIndex]
+      : this.garden.plots.find((p) => p.unlocked && !p.plant && !p.build && !p.wet);
+    if (!plot) return { ok: false, msg: 'No free spot to build on.' };
+    if (!this.economy.canBuild(id)) return { ok: false, msg: `Needs ${b.cost} water and ${b.nut} nutrients.` };
+    if (!this.economy.build(plot.i, id)) return { ok: false, msg: 'It will not sit there.' };
+    return { ok: true, msg: `${b.name} built into the shell.` };
+  }
+
+  /** Is this seed available yet, and if not, what would open it? */
+  unlockOf(def) {
+    const u = def.unlock;
+    if (!u) return { ok: true, why: '' };
+    const e = this.economy;
+    const missing = [];
+    if (u.genes) {
+      const need = u.genes.filter((k) => !e.genes.has(k));
+      if (need.length) missing.push('express ' + need.map((k) => GENE_BY_ID[k]?.name || k).join(' and '));
+    }
+    if (u.pond !== undefined && this.garden.pond < u.pond) missing.push('fill the shell pool');
+    if (u.nutrients !== undefined && e.nutrients < u.nutrients) missing.push(`bank ${u.nutrients} nutrients`);
+    if (u.seen !== undefined && this.wildlife.seen.size < u.seen) missing.push(`record ${u.seen} creatures`);
+    return missing.length ? { ok: false, why: 'Unlocks when you ' + missing.join(', ') + '.' } : { ok: true, why: '' };
+  }
+
+  floraEffect(def) { return def.boonText || 'Fixes nutrients.'; }
+
+  /** In plain words, what a creature is waiting for before it walks over. */
+  attractNeeds(def) {
+    if (!def.attract) return 'Comes on its own terms.';
+    const e = this.economy;
+    const parts = [];
+    if (def.attract.genes) {
+      const have = def.attract.genes.filter((k) => e.genes.has(k));
+      parts.push(have.length
+        ? `drawn by ${have.map((k) => GENE_BY_ID[k]?.name || k).join(', ')}`
+        : `needs ${def.attract.genes.map((k) => GENE_BY_ID[k]?.name || k).join(' or ')}`);
+    }
+    if (def.attract.lush) {
+      parts.push(this.garden.lushness >= def.attract.lush ? 'shell is lush enough'
+        : `wants a greener shell`);
+    }
+    if (def.attract.pond) {
+      parts.push(this.garden.pond >= def.attract.pond ? 'has its water' : 'wants standing water');
+    }
+    return parts.join(' - ');
   }
 
   growCrab(stage) {
@@ -431,6 +488,21 @@ export class Game {
     this.fx.popup(c.x, c.y - 8, '+4n', '#8cc468');
   }
 
+  /** Watching something is how the field notes get written. */
+  onObserved(c, dt) {
+    const before = this.research[c.def.id] || 0;
+    const after = before + dt;
+    this.research[c.def.id] = after;
+    for (const step of OBSERVE_STEPS) {
+      if (before < step && after >= step) {
+        const n = OBSERVE_STEPS.indexOf(step);
+        this.ui.say(`Vess writes down a note on the ${c.def.name.toLowerCase()}.`, 3.2);
+        this.npc.say(c.def.notes[n] || '...', 6);
+        this.audio.play('discover');
+      }
+    }
+  }
+
   onGene(g) { this.ui.say(`New gene expressed: ${g.name}.`, 5); this.economy.markDirty(); }
   onTamed(c) { this.economy.markDirty(); }
   onBoard() {}
@@ -466,6 +538,7 @@ export class Game {
       economy: this.economy.toJSON(), garden: this.garden.toJSON(),
       wildlife: this.wildlife.toJSON(), seeds: this.seeds,
       taken: [...this.encounters.taken], tutorial: this.tutorial,
+      research: this.research, mode: this.ui.mode,
     });
   }
 
@@ -483,6 +556,8 @@ export class Game {
       this.seeds = d.seeds || this.seeds;
       this.encounters.taken = new Set(d.taken || []);
       this.tutorial = d.tutorial || 3;
+      this.research = d.research || {};
+      if (d.mode) this.ui.mode = d.mode;
       this.economy.recomputeGenes();
       this.economy.markDirty();
       this.cam.followEntity(this.crab, true);
@@ -515,6 +590,7 @@ export class Game {
     this.wildlife.draw(ctx, cam, 'ground');
     this.npc.draw(ctx, cam);
     this.crab.draw(ctx, cam, this.garden);
+    this.ui.drawGhost(ctx, cam);
     this._drawStructures(ctx, cam);
     this.wildlife.draw(ctx, cam, 'shell');
     this.fx.draw(ctx, cam, 'near');
@@ -575,7 +651,7 @@ export class Game {
   }
 
   _drawSpeech(ctx, cam, who) {
-    const s = cam.worldToScreen(who.x, who.y - 26);
+    const s = cam.worldToScreen(who.x, who.y - 40);
     const lines = wrapText(who.speech, 130);
     const w = Math.max(...lines.map((l) => textWidth(l))) + 10;
     const h = lines.length * LINE_H + 6;

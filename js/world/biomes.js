@@ -12,7 +12,7 @@ export const BIOMES = [
     sky: ['#2c3f56', '#7f93a4', '#cbb7ac', '#efd9c4'],
     fog: '#e6dcd0', heat: 1.2,
     plants: ['saltgrass', 'dustmoss', 'pipereed'],
-    fauna: ['tidewader', 'sandhopper', 'sandwraith'],
+    fauna: ['boneheron', 'duneskink', 'sandserpent'],
     props: ['saltcrust', 'driftwood', 'bonerib'],
   },
   {
@@ -24,7 +24,7 @@ export const BIOMES = [
     sky: ['#2a3a52', '#6f86a0', '#c3b49c', '#e9dcc0'],
     fog: '#ded3b8', heat: 0.9,
     plants: ['ribbonkelp', 'dustmoss', 'emberberry'],
-    fauna: ['boneheron', 'mistsnail', 'scarab'],
+    fauna: ['boneheron', 'glasstail', 'copperscarab'],
     props: ['coral', 'bonerib', 'skull', 'rock'],
   },
   {
@@ -36,7 +36,7 @@ export const BIOMES = [
     sky: ['#2b3f66', '#7c93b4', '#d9b58a', '#f2d9a8'],
     fog: '#e6bc84', heat: 1.0,
     plants: ['dustmoss', 'saltgrass', 'emberberry', 'sunspindle', 'thornmelon'],
-    fauna: ['dunefowl', 'sandhopper', 'quillhare', 'scarab', 'huskhound'],
+    fauna: ['saltlark', 'duneskink', 'quilljerboa', 'copperscarab', 'huskhound'],
     props: ['rock', 'boulder', 'cactus', 'deadtree', 'bonerib'],
   },
   {
@@ -48,7 +48,7 @@ export const BIOMES = [
     sky: ['#22344f', '#6c8bab', '#bfd2dc', '#e6f1f5'],
     fog: '#d3e6ef', heat: 1.4,
     plants: ['glasslily', 'dustmoss', 'bluefern'],
-    fauna: ['glasswing', 'sunmoth', 'thornstalker'],
+    fauna: ['glasswing', 'sunmoth', 'agama'],
     props: ['shard', 'rock', 'crater'],
   },
   {
@@ -60,7 +60,7 @@ export const BIOMES = [
     sky: ['#33263a', '#8a6a72', '#c98a5e', '#e8b276'],
     fog: '#c08a58', heat: 1.05,
     plants: ['worldvine', 'dustmoss', 'emberberry'],
-    fauna: ['skylark', 'quillhare', 'huskhound', 'raidercrab'],
+    fauna: ['saltlark', 'ironback', 'huskhound', 'carrionkite'],
     props: ['ruinwall', 'pillar', 'car', 'rock'],
   },
   {
@@ -72,7 +72,7 @@ export const BIOMES = [
     sky: ['#231b2c', '#5a4a63', '#94748a', '#c9a4ac'],
     fog: '#8e7d92', heat: 0.7,
     plants: ['bluefern', 'cloudcap', 'ironwood'],
-    fauna: ['sunmoth', 'mistsnail', 'ridgeback', 'thornstalker'],
+    fauna: ['sunmoth', 'ashchameleon', 'ridgeback', 'thorniguana'],
     props: ['deadtree', 'boulder', 'rock'],
   },
   {
@@ -84,7 +84,7 @@ export const BIOMES = [
     sky: ['#101c26', '#294453', '#3f6b7c', '#5e97a6'],
     fog: '#3f6d80', heat: 0.5,
     plants: ['dustmoss', 'heartbloom', 'ghostpalm'],
-    fauna: ['lanternbug', 'boneheron', 'sandwraith'],
+    fauna: ['lanternbeetle', 'boneheron', 'stonebasilisk'],
     props: ['pillar', 'coral', 'boulder'],
   },
 ];

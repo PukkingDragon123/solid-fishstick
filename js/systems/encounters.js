@@ -146,7 +146,7 @@ export class Encounters {
         return `Picked over, but the seed cache in its crop is intact. +${b} berries.`;
       }
       case 'nest': {
-        const pool = g.wildlife ? ['sandhopper', 'dunefowl', 'quillhare', 'glasswing', 'mistsnail'] : [];
+        const pool = g.wildlife ? ['duneskink', 'saltlark', 'quilljerboa', 'glasswing', 'glasstail', 'copperscarab', 'pebbler'] : [];
         const id = pool[Math.floor(r() * pool.length)];
         const c = g.wildlife.spawn(id, p.x + 20);
         if (c) c.trust = 0.55;

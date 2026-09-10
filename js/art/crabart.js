@@ -449,19 +449,34 @@ function paintClaw(m, far = false) {
 
 function paintEye(m, far = false) {
   const S = m.S;
-  const len = 13 * S, r = 4.8 * S;
+  const len = 13 * S, r = 5.0 * S;
   const pad = Math.ceil(r + 5);
   const p = new Painter(Math.ceil(len + r) + pad * 2, pad * 2 + 2);
   const cy = p.h / 2, x0 = pad;
   const ft = far ? -0.18 : 0;
-  p.capsule(x0, cy, x0 + len - r * 0.3, cy, 2.1 * S, 2.7 * S,
-    { mat: far ? 'chitinDark' : 'chitin', dome: 2.1 * S, tint: ft });
-  p.ellipse(x0 + len, cy, r, r * 1.06, { mat: 'eye', dome: r * 1.15, tint: ft });
-  p.ellipse(x0 + len - r * 0.36, cy - r * 0.40, r * 0.30, r * 0.26, { mat: 'eye', mask: true, dome: r, tint: 0.6 });
+  p.capsule(x0, cy, x0 + len - r * 0.3, cy, 2.2 * S, 2.9 * S,
+    { mat: far ? 'chitinDark' : 'chitin', dome: 2.2 * S, tint: ft });
+  // a pale globe; the dark pupil is painted live so the crab can look at things
+  p.ellipse(x0 + len, cy, r, r * 1.05, { mat: 'eyeball', dome: r * 1.2, tint: ft + 0.05 });
+  p.ellipse(x0 + len - r * 0.34, cy - r * 0.42, r * 0.30, r * 0.26,
+    { mat: 'eyeball', mask: true, dome: r, tint: 0.55 });
   const cv = p.resolve(MATERIALS, {
     ...LIGHT, ambient: far ? 0.27 : LIGHT.ambient, outline: 1, outlineColor: far ? '#100a06' : '#171009',
   });
-  return { cv, ox: pad, oy: cy, len };
+  return { cv, ox: pad, oy: cy, len, r, globe: len };
+}
+
+/** The maxillipeds: the plates over the mouth that flutter constantly. */
+function paintMouth(m) {
+  const S = m.S;
+  const w = Math.ceil(9 * S) + 8, h = Math.ceil(7 * S) + 8;
+  const p = new Painter(w, h);
+  const cx = w * 0.35, cy = h / 2;
+  p.ellipse(cx, cy, 3.4 * S, 2.4 * S, { mat: 'chitinDark', dome: 2.0 * S, tint: -0.02 });
+  p.capsule(cx - 1.6 * S, cy - 0.6 * S, cx + 3.4 * S, cy - 0.2 * S, 1.2 * S, 0.8 * S,
+    { mat: 'chitinPale', dome: 1.1 * S, tint: 0.08 });
+  const cv = p.resolve(MATERIALS, { ...LIGHT, outline: 1, outlineColor: '#171009' });
+  return { cv, ox: cx, oy: cy };
 }
 
 /** Feathery antenna, drawn as a separate wisp so it can trail in the wind. */
@@ -528,6 +543,7 @@ export function buildCrab(stage = 'adult') {
         ...paintClaw(m, true) },
     },
     eye: { near: paintEye(m, false), far: paintEye(m, true) },
+    mouth: paintMouth(m),
     antenna: paintAntenna(m),
     sockets: {
       legs,

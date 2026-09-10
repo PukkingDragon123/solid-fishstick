@@ -66,7 +66,11 @@ export class Economy {
     };
     for (const id of this.skills) apply(SKILL_BY_ID[id]?.effect);
     for (const id of this.evolutions) apply(EVO_BY_ID[id]?.effect);
-    for (const plot of this.game.garden.plots) if (plot.build) apply(BUILD_BY_ID[plot.build.id]?.effect);
+    for (const plot of this.game.garden.plots) {
+      if (plot.build) apply(BUILD_BY_ID[plot.build.id]?.effect);
+      // a mature plant is not just a yield number; it changes what you are
+      if (plot.plant && plot.plant.stage >= 3) apply(plot.plant.def.boon);
+    }
     // companions contribute their working abilities
     for (const c of this.game.wildlife.fleet) {
       switch (c.def.role) {
