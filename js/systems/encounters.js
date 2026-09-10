@@ -11,6 +11,7 @@ import { MATERIALS } from '../lib/palette.js';
 import { buildPlant } from '../art/floraart.js';
 import { FLORA, FLORA_BY_ID } from '../data/flora.js';
 import { biomeAt } from '../world/biomes.js';
+import { INSCRIPTIONS } from '../data/lore.js';
 
 const CELL = 340;          // one point of interest per stretch of desert
 
@@ -137,7 +138,13 @@ export class Encounters {
         g.economy.nutrients += n;
         g.economy.water = Math.min(g.economy.stat('waterMax'), g.economy.water + w);
         g.fx.dust(p.x, g.terrain.surfaceY(p.x), 3);
-        return `Salvage: +${n} nutrients, +${w} water. Somebody lived here once.`;
+        // every ruin gives up one more line of what happened here
+        const idx = g.readInscriptions;
+        if (idx < INSCRIPTIONS.length) {
+          g.readInscriptions++;
+          g.npc.say(INSCRIPTIONS[idx], 8);
+        }
+        return `Salvage: +${n} nutrients, +${w} water.`;
       }
       case 'carcass': {
         const b = 2 + Math.floor(r() * 4);

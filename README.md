@@ -40,12 +40,18 @@ npm run build     # -> dist/crabden.html + dist/crabden.body.html
 
 |  | keyboard | touch |
 | --- | --- | --- |
-| walk | `A` / `D` or arrows | left thumbstick (drag anywhere in the lower-left) |
-| pump water | `Space` | **PUMP** |
-| act — dig, harvest, tame, strike | `E` | **ACT** |
-| panels | `1`–`6`, `Tab` | **MENU**, then the tab rail |
+| scuttle | `A` / `D` or arrows | left thumbstick (drag anywhere in the lower-left) |
+| the spring | `Space` | **SPRING** |
+| act — dig, harvest, win over, strike | `E` | **ACT** |
+| the drawer | `Tab`, or `1`–`4` for a tab | **DRAWER** |
+| the genome | `G` | tap the orb |
+| control mode | `M` | **MODE** |
 | zoom / pan | wheel, drag | pinch, drag |
-| close | `Esc` | **CLOSE** |
+| back out | `Esc` | the drawer's X |
+
+A crab does not turn round to walk. It stays side-on and scuttles, leaning into
+the direction of travel, and its eyes follow whatever it thinks is worth
+watching.
 
 The game autosaves every twenty seconds and reloads where you left off.
 
@@ -53,7 +59,8 @@ The game autosaves every twenty seconds and reloads where you left off.
 
 ## The loop
 
-**Water → plants → genes → evolution → more water.**
+**Water → plants → genes → evolution → more water — and the whole time, keep
+walking, because the only thing out here worth having is over the next dune.**
 
 1. **Pump.** The organ on your back brings up water, and overflow fills the
    stone basin behind your crest. When the basin is full it runs off the back
@@ -72,41 +79,88 @@ The game autosaves every twenty seconds and reloads where you left off.
    from juvenile to adult to ancient makes the shell bigger, the basin deeper,
    and the garden on your back larger in every sense.
 
-### The four skill branches
+### The Tree of Life
 
-**Spring** (deeper wells, bigger tanks, night condensers) · **Garden**
-(terracing for more plots, mulching, grafting, orchards) · **Fleet** (calling,
-patience, standing orders, roosting) · **Body** (stride, carapace, pincer,
-burrowing). Skills are cheap and broad and cost nutrients. Evolutions are rare
-and structural and cost genes.
+There is no skill menu. There is an orb on your own back, and you can look into
+it — the screen is swallowed by the orb and you wake up inside your own genome.
+
+Everything you can become is one tree. The genes you express are its **roots**,
+glowing where a plant or an animal on your back is currently expressing them.
+Your physical form is the **trunk**: hatchling, juvenile, adult, ancient, with
+the structural evolutions stacked up it. Four **boughs** carry what you have
+learned — Spring, Garden, Fleet, Body. Buying a node does not tick a checkbox:
+the branch grows out to it, puts on bark, and leafs.
+
+![The Tree of Life](docs/shot-04-tree.png)
+
+### Three ways to move
+
+**WALK** — you steer. **ROAM** — the crab walks itself toward whatever is over
+the next dune, and you watch. **FLEET** — click one of your own and click where
+to send it. The last two unlock in the tree.
 
 ### Building on yourself
 
 Cisterns, windcatchers, compost frames, roosts, trellises, a watchpost and a
-salvaged shrine are built into free shell plots and stay there. They are
-permanent stat changes you can see from across a dune.
+salvaged shrine are built into free shell plots and stay there. Placing
+anything — a plant or a structure — puts you in a placement mode: every legal
+bed on the shell pulses, a ghost of the thing follows the nearest one, and a
+bracket marks where it will land.
+
+![The drawer](docs/shot-05-drawer.png)
 
 ---
 
 ## What is out there
 
-Seven biomes run for forty thousand pixels: the Weeping Salt Pan, the Bone
+Seven biomes run for forty thousand strides: the Weeping Salt Pan, the Bone
 Reef, the Sleeping Dunes, the Glass Flats, the Rustlands, the Ashwood and the
 Deep Well. Each has its own sky, ground, rock and residents.
 
-Points of interest are generated deterministically from the world seed, so the
-ruin you walked past is still there tomorrow: buried relics, wild seed patches,
-water seeps, ruins to salvage, old kills, nests — and disturbed sand, which is
-not a point of interest so much as a warning you probably will not read in
-time.
+**Landmarks** are the point of walking. They are generated from the world seed
+and sunk into the terrain itself, so an oasis is a real bowl you walk down into
+with water standing in it, not a decal — and it is exactly where you left it
+tomorrow. Oases, ruined shore towns, bone fields where a herd died on the way
+somewhere better, and wind-cut spires. Each one has a name, and a chevron at
+the edge of the screen points at the nearest one you have not stood in.
+
+![Water](docs/shot-07-water.png)
+
+Smaller finds sit between them: buried relics, wild seed patches, water seeps,
+old kills, nests — and disturbed sand, which is not a find so much as a warning
+you probably will not read in time.
+
+### The bestiary
+
+Nearly everything alive here is a reptile or an arthropod, because those are
+what a drying world leaves: a waterproof skin and a way of excreting waste
+without spending water on it. Nine reptiles, nine bugs and arachnids, four
+furred survivors that never drink, three birds.
+
+You do not read their entries. You **watch** them, and Dr. Vess writes them
+down — five field notes per species, unlocked by observation, spoken aloud as
+she works them out. Real behaviour: the skink dives into a dune rather than
+running across it, the pebbler's spines comb dew into its own mouth, the digger
+wasp restarts its entire sequence if you move the prey a few centimetres.
+
+![Field notes](docs/shot-06-notes.png)
 
 Hostiles do not bother a bare rock. Once you are carrying something worth
-taking they start arriving, faster at night: rust scarabs in threes, husk
-hounds in pairs, a thornstalker that buries itself along the path you are about
-to take, a raider crab that wants your garden rather than you, and, in a
-sandstorm, whatever a sandstorm makes.
+taking they start arriving, faster at night: dune scorpions in pairs, a bone
+centipede with twenty-two pairs of legs all going the same way, a pale serpent
+that is already where you are going, and a stone basilisk that is not hunting
+you — it is checking whether you are new.
 
-![Night](docs/shot-07-night.png)
+![Night](docs/shot-08-night.png)
+
+### What actually happened here
+
+This was a shallow shelf sea. It did not dry up because of a catastrophe. It
+dried up because the artesian system that filled it ran through the body of one
+very large animal, and that animal went to sleep. Eleven shore towns cut their
+cisterns facing the water, moved twice, and stopped. The lore is found rather
+than given: fragments come off ruins one at a time, and Vess assembles the rest
+as you find places.
 
 ---
 
@@ -146,7 +200,8 @@ planted foot in world space, takes a step when the body has carried it too far,
 and every joint is solved with two-bone IK — so a leg on a dune slope and a leg
 in a hollow bend differently on the same frame. The body then rides on a line
 fitted through whichever feet are currently on the ground, which is what makes
-it tilt going uphill.
+it tilt going uphill, and rocks across its own gait as it scuttles. The eyes
+are pale globes with the pupils drawn live, so the stalks actually track.
 
 ### Plants and animals
 
@@ -154,12 +209,27 @@ Plants are grown, not drawn (`js/art/floraart.js`): a stem is traced, branches
 split off it with a seeded angle, and leaves, petals and fruit hang on the
 tips. The same generator runs at every growth stage and at any size, so a bush
 you planted as a seed really is the same bush when it fruits, and a plant on an
-ancient crab's shell is a bigger version of the same individual.
+ancient crab's shell is a bigger version of the same individual. The same
+generator scatters the ground vegetation, thickening as you approach water.
 
-Animals share one generator (`js/art/faunaart.js`) driven by proportions — how
-deep the chest is, how long the neck runs, fur or feather or carapace — and
-bake body, head, neck, limbs, wings and tail separately so they can be posed at
-runtime. Every one of them walks on solved legs and keeps its feet on the sand.
+Animals (`js/art/faunaart.js`) are a **body plan and a spine**, not a stack of
+ellipses. The spine is a curve with a radius profile and the painter solves it
+as a real tube, so a monitor lizard is long and low with a heavy tail root, a
+beetle is three hard tagmata, a serpent is one smooth tube laid in an S, and a
+jerboa is a deep chest on thin legs — all from twenty lines of description.
+Skin is grown rather than noised: scales lie in rows that follow the spine, fur
+is strands that break the silhouette, chitin gets plate seams and a tight
+specular. Gaits follow the plan too — sprawlers throw their knees out and swing
+the spine, insects walk an alternating tripod, reptiles bask.
+
+### Dr. Vess
+
+She is the one hand-drawn thing here. `tools/sheets.mjs` takes the sheets in
+`assets/`, keys out the background, slices every animation row into frames,
+downsamples them hard and snaps the result to one median-cut palette — which is
+what lets a drawn character stand next to procedural art without either looking
+out of place, and buries the artefacts of how the sheet was made. Idle, walk,
+sit, talk, command, wander, dig, and eight facial expressions, at 34 pixels.
 
 ### The rest
 
@@ -175,20 +245,27 @@ runtime. Every one of them walks on solved legs and keeps its feet on the sand.
   lightning, each with its own light colour, shadow length and haze.
 - **Input** routes mouse, keyboard, multi-touch and the on-screen controls into
   the same virtual keys, so no gameplay code knows which one you used.
+- **The HUD is not a HUD.** Water is a moulted shell with the water visibly in
+  it; nutrients are a flower that opens as you bank them and drops a leaf when
+  you spend; fruit is a sprig of fruit; your genome is an orb. All four are
+  painted by the same height-field painter as the world, so the readouts are
+  lit by the same sun as the desert behind them.
 
 ### Layout
 
 ```
+assets/      the two character sheets, as uploaded
+tools/       sheets.mjs - slices and downsamples them into js/art/people.js
 js/
-  art/       crabart floraart faunaart humanart buildart
+  art/       crabart floraart faunaart buildart people (generated)
   core/      camera input save
-  data/      flora fauna progress
+  data/      flora fauna progress lore
   entities/  crab creature npc
   lib/       math font audio palette
   render/    pixel renderer backdrop
   systems/   garden economy wildlife encounters fx
-  ui/        ui
-  world/     terrain biomes weather
+  ui/        ui icons tree
+  world/     terrain biomes weather landmarks
 ```
 
 ---
@@ -198,8 +275,8 @@ js/
 | | |
 | --- | --- |
 | ![Waking up](docs/shot-01-waking.png) | ![The first garden](docs/shot-02-first-garden.png) |
-| ![Skills](docs/shot-04-skills.png) | ![Evolution](docs/shot-05-evolution.png) |
-| ![Seed stock](docs/shot-06-seeds.png) | ![Night](docs/shot-07-night.png) |
+| ![The drawer](docs/shot-05-drawer.png) | ![Field notes](docs/shot-06-notes.png) |
+| ![The Tree of Life](docs/shot-04-tree.png) | ![Night](docs/shot-08-night.png) |
 
 ---
 
@@ -209,3 +286,7 @@ Runs at 60fps from 320×200 up to 4K, on desktop and on a phone. Tested against
 landscape phone, portrait phone and tablet profiles with real touch events.
 Save data lives in `localStorage` under `crabden.save.v1`; clearing it starts a
 new run.
+
+The two character sheets in `assets/` were supplied for this project; everything
+else in the game — every plant, every animal, the crab, the terrain, the sky,
+the font and the sound — is generated at runtime from code.

@@ -9,6 +9,7 @@ import { clamp, clamp01, lerp, fbm2, valueNoise2, hashStr } from '../lib/math.js
 import { Painter, makeCanvas, fbmTex, hash2i } from '../render/pixel.js';
 import { MATERIALS } from '../lib/palette.js';
 import { BIOMES, biomeAt, biomeBlend } from './biomes.js';
+import { groundOffset } from './landmarks.js';
 
 export const CHUNK_W = 256;
 const CHUNK_H = 224;
@@ -17,6 +18,7 @@ const SAND_CELL = 4;          // world px per deformation sample
 
 export class Terrain {
   constructor(seed = 'crabden-side') {
+    this.seedKey = String(seed);
     this.seed = hashStr(String(seed));
     this.chunks = new Map();
     this.order = [];
@@ -38,6 +40,8 @@ export class Terrain {
       y = lerp(y, y * (1 - b.flatten) + b.baseY * b.flatten, biomeBlend(x));
     }
     y += b.baseY * 0.35;
+    // oases are real bowls sunk into the ground, baked in with everything else
+    y += groundOffset(this.seedKey, x);
     return y;
   }
 

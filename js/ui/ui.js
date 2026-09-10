@@ -15,6 +15,7 @@ import { buildPlant } from '../art/floraart.js';
 import { buildStructure } from '../art/buildart.js';
 import { drawShell, drawBloom, drawSprig, drawOrb, drawTab } from './icons.js';
 import { TreeScreen } from './tree.js';
+import { WORLD_NOTES, ERAS } from '../data/lore.js';
 
 const INK = '#f2e4c2';
 const DIM = 'rgba(240,226,192,0.66)';
@@ -281,9 +282,10 @@ export class UI {
       { color: INK, align: 'center', outline: true, outlineColor: OUT });
     if (this._hit(fx, 16, 26, 22)) this.hover = { title: 'Fruit', body: 'What your mature plants set. Animals will come a long way for it.' };
 
-    // place, time, weather
+    // place, time, weather, and how much of the basin you have actually stood in
     const label = `${g.biome.name}   ${g.weather.label()}   ${String(Math.floor(g.weather.hour)).padStart(2, '0')}:00`;
     drawText(ctx, label, W - 6, 5, { color: DIM, align: 'right', outline: true, outlineColor: OUT });
+    this._compass(ctx, W, H);
 
     // the gene orb: the way into the tree
     const ox = W - 32, oy = 16;
@@ -340,6 +342,36 @@ export class UI {
     if (this.selected) {
       drawText(ctx, `${this.selected.name} - click where to send it`, W / 2, H - 42,
         { color: '#ffe9a8', align: 'center', outline: true, outlineColor: OUT });
+    }
+  }
+
+  /** A mark at the edge of the screen for the next place you have not been. */
+  _compass(ctx, W, H) {
+    const g = this.game;
+    const lm = g.world.nextUnfound(g.crab.x);
+    drawText(ctx, `${g.world.found.size} places found`, W - 6, 14,
+      { color: FAINT, align: 'right', outline: true, outlineColor: OUT });
+    if (!lm) return;
+    const d = lm.x - g.crab.x;
+    const dir = Math.sign(d) || 1;
+    const s = g.cam.worldToScreen(lm.x, g.terrain.surfaceY(lm.x));
+    const onScreen = s.x > 8 && s.x < W - 8;
+    const y = clamp(onScreen ? s.y - 26 : H * 0.42, 30, H - 60);
+    const x = onScreen ? s.x : (dir > 0 ? W - 10 : 10);
+    const pulse = 0.6 + Math.sin(this.t * 2.4) * 0.4;
+    ctx.globalAlpha = 0.35 + pulse * 0.4;
+    ctx.fillStyle = lm.kind === 'oasis' ? '#7fd0dd' : '#e2b74a';
+    // a small chevron, pointing the way
+    for (let i = 0; i < 4; i++) {
+      ctx.fillRect(Math.round(x - dir * i), Math.round(y - 3 + i), 1, Math.max(1, 7 - i * 2));
+    }
+    ctx.globalAlpha = 1;
+    if (!onScreen) {
+      drawText(ctx, `${Math.round(Math.abs(d) / 10)}`, x - dir * 6, y + 6,
+        { color: FAINT, align: dir > 0 ? 'right' : 'left', outline: true, outlineColor: OUT });
+    } else {
+      drawText(ctx, lm.name, x, y - 12,
+        { color: INK, align: 'center', outline: true, outlineColor: OUT });
     }
   }
 
@@ -624,6 +656,34 @@ export class UI {
     drawText(ctx, 'watch a thing for long enough and she writes it down', x, y + 9, { color: FAINT });
     let ry = y + 22 - this.scroll;
     let total = 0;
+
+    // what she has worked out about the basin itself
+    if (ry > y - 12 && ry < y + h) drawText(ctx, 'THE BASIN', x, ry, { color: '#7fd0dd' });
+    ry += 11; total += 11;
+    const found = g.world.found.size;
+    for (const [name, body] of WORLD_NOTES) {
+      const lines = wrapText(body, w - 6);
+      if (ry > y - 30 && ry < y + h) {
+        drawText(ctx, name, x + 2, ry, { color: INK });
+        lines.forEach((l, i) => drawText(ctx, l, x + 2, ry + 9 + i * LINE_H, { color: FAINT }));
+      }
+      const dh = 11 + lines.length * LINE_H;
+      ry += dh; total += dh;
+    }
+    ry += 4; total += 4;
+    if (ry > y - 12 && ry < y + h) drawText(ctx, 'WHAT HAPPENED', x, ry, { color: '#e2b74a' });
+    ry += 11; total += 11;
+    ERAS.forEach((e, i) => {
+      const open = found >= i * 2;
+      const lines = wrapText(open ? e.text : 'Not pieced together yet.', w - 6);
+      if (ry > y - 40 && ry < y + h) {
+        drawText(ctx, open ? e.name : '???', x + 2, ry, { color: open ? INK : FAINT });
+        lines.forEach((l, k) => drawText(ctx, l, x + 2, ry + 9 + k * LINE_H, { color: open ? DIM : FAINT }));
+      }
+      const dh = 11 + lines.length * LINE_H + 3;
+      ry += dh; total += dh;
+    });
+    ry += 6; total += 6;
     for (const cl of CLADES) {
       const list = FAUNA.filter((f) => f.clade === cl.id);
       if (!list.length) continue;

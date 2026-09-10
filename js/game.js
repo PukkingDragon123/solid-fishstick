@@ -12,6 +12,7 @@ import { Backdrop } from './render/backdrop.js';
 import { Terrain } from './world/terrain.js';
 import { Weather } from './world/weather.js';
 import { biomeAt } from './world/biomes.js';
+import { World } from './world/landmarks.js';
 import { Crab } from './entities/crab.js';
 import { Archaeologist, Elder, POSE } from './entities/npc.js';
 import { Fx } from './systems/fx.js';
@@ -22,6 +23,7 @@ import { Encounters } from './systems/encounters.js';
 import { UI } from './ui/ui.js';
 import { FLORA_BY_ID } from './data/flora.js';
 import { OBSERVE_STEPS } from './data/fauna.js';
+import { VESS_LORE } from './data/lore.js';
 import { BUILD_BY_ID, GENE_BY_ID } from './data/progress.js';
 import { buildStructure } from './art/buildart.js';
 
@@ -68,11 +70,13 @@ export class Game {
     this.economy = new Economy(this);
     this.wildlife = new Wildlife(this);
     this.encounters = new Encounters(this, this.seed);
+    this.world = new World(this, this.seed);
     this.npc = new Archaeologist(this, 62);
     this.ui = new UI(this);
 
     this.seeds = { dustmoss: 3, saltgrass: 2 };
     this.research = {};
+    this.readInscriptions = 0;
     this.biome = biomeAt(0);
     this.cam.followEntity(this.crab, true);
     this.cam.minZoom = 0.85;
@@ -228,6 +232,7 @@ export class Game {
     if (watcher) this.crab.alertTo(watcher, (watcher.hostile ? 2.2 : 0.35) * sdt);
     else if (Math.abs(this.npc.x - this.crab.x) < 90) this.crab.alertTo(this.npc, 0.3 * sdt);
     this.encounters.update(sdt);
+    this.world.update(sdt);
     this.npc.update(sdt);
     this.fx.update(sdt, this.weather);
 
@@ -353,13 +358,13 @@ export class Game {
       out.push('Your back is bare rock. Put something in it. Anything. I have seeds.');
     }
     if (this.garden.pond > 0.8) out.push("You have a pond. On your back. I've written four pages about it.");
-    if (e.genes.size >= 4) out.push(`Four genes expressed. You are rewriting yourself in real time and I am taking notes.`);
+    if (e.genes.size >= 4) out.push('Genes expressing one after another. You are rewriting yourself in real time and I am taking notes.');
     if (this.wildlife.fleet.length) out.push("They follow you now. I don't think they know why either.");
     if (this.weather.nightMix > 0.5) out.push('Things come out at night that were not here in the day. Stay lit.');
-    out.push('Eleven years I mapped this basin. You made it in an afternoon. I am fine.');
-    out.push('Every ruin out here was built by people who thought the water would come back.');
-    out.push('Keep the spring running. Everything downstream of you depends on it, including me.');
-    return out;
+    // the further you have travelled with her, the more she has worked out
+    const found = this.world.found.size;
+    for (const l of VESS_LORE) if (found >= l.need) out.push(l.line);
+    return out.slice(-6);
   }
 
   attack() {
@@ -524,6 +529,35 @@ export class Game {
     this.ui.say(n > 1 ? `${def.name}s! ${n} of them, out of the sand.` : `${def.name}! Out of the sand.`, 4);
     this.cam.shake(5);
   }
+  /** Walking into a named place is the point of walking. */
+  onLandmark(lm) {
+    const kindLine = {
+      oasis: 'Standing water. Actual, standing water.',
+      ruin: 'Somebody built this, facing the water that used to be here.',
+      bonefield: 'A herd died here on the way to somewhere better.',
+      spire: 'The wind has been working on this for a very long time.',
+    }[lm.kind] || '';
+    this.ui.say(`${lm.name} - ${kindLine}`, 6);
+    this.npc.say(lm.kind === 'oasis'
+      ? `Water. Mark it: ${lm.name}. That is eleven years of survey undone in an afternoon.`
+      : `${lm.name}. I have this on the map as a dot and nothing else.`, 6);
+    this.audio.play('discover');
+    this.cam.shake(2);
+    if (lm.kind === 'oasis') {
+      const gain = Math.round(60 + lm.size * 0.6);
+      this.economy.water = Math.min(this.economy.stat('waterMax'), this.economy.water + gain);
+      this.garden.pumpInto(0.5);
+      this.fx.popup(this.crab.x, this.crab.y - 30, `+${gain} water`, '#9de3ee');
+      for (let i = 0; i < 14; i++) {
+        this.fx.mist(lm.x + (Math.random() - 0.5) * lm.size, this.terrain.surfaceY(lm.x) - 6, 1, 20);
+      }
+    } else {
+      const n = 10 + Math.round(lm.size * 0.25);
+      this.economy.nutrients += n;
+      this.fx.popup(this.crab.x, this.crab.y - 30, `+${n} nutrients`, '#8cc468');
+    }
+  }
+
   onNewDay() {}
   onDusk() { this.ui.say('The light is going.', 3); }
   onDawn() {}
@@ -538,7 +572,8 @@ export class Game {
       economy: this.economy.toJSON(), garden: this.garden.toJSON(),
       wildlife: this.wildlife.toJSON(), seeds: this.seeds,
       taken: [...this.encounters.taken], tutorial: this.tutorial,
-      research: this.research, mode: this.ui.mode,
+      world: this.world.toJSON(),
+      research: this.research, mode: this.ui.mode, insc: this.readInscriptions,
     });
   }
 
@@ -555,8 +590,10 @@ export class Game {
       this.wildlife.fromJSON(d.wildlife);
       this.seeds = d.seeds || this.seeds;
       this.encounters.taken = new Set(d.taken || []);
+      this.world.fromJSON(d.world);
       this.tutorial = d.tutorial || 3;
       this.research = d.research || {};
+      this.readInscriptions = d.insc || 0;
       if (d.mode) this.ui.mode = d.mode;
       this.economy.recomputeGenes();
       this.economy.markDirty();
@@ -581,8 +618,11 @@ export class Game {
     this.backdrop.drawLayer(ctx, cam, this.weather, 'far', this.terrain);
     this.backdrop.drawLayer(ctx, cam, this.weather, 'mid', this.terrain);
     this.backdrop.drawLayer(ctx, cam, this.weather, 'near', this.terrain);
+    this.world.drawProps(ctx, cam);
     this.terrain.draw(ctx, cam);
+    this.world.drawWater(ctx, cam);
     this.terrain.drawSand(ctx, cam);
+    this.world.drawScatter(ctx, cam, 'far');
     this.encounters.draw(ctx, cam);
     this.fx.draw(ctx, cam, 'far');
 
@@ -594,6 +634,7 @@ export class Game {
     this._drawStructures(ctx, cam);
     this.wildlife.draw(ctx, cam, 'shell');
     this.fx.draw(ctx, cam, 'near');
+    this.world.drawScatter(ctx, cam, 'near');
     this.backdrop.drawForeground(ctx, cam, this.weather, this.terrain);
 
     // lights
