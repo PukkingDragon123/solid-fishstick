@@ -1,49 +1,37 @@
-// CRABDEN - the game object. Owns every system, the frame loop body, the
-// render order, and all the little callbacks the systems fire back into.
+// CRABDEN - side-scrolling build. Owns the frame: update every system, then a
+// strict back-to-front draw.
 
-import { TAU, clamp01, lerp, damp, dist } from './lib/math.js';
+import { clamp, clamp01, lerp, damp, TAU } from './lib/math.js';
 import { Audio } from './lib/audio.js';
-import { drawText, textWidth } from './lib/font.js';
+import { drawText, drawTextBlock, textWidth, wrapText, LINE_H } from './lib/font.js';
 import { Input } from './core/input.js';
 import { Camera } from './core/camera.js';
 import * as Save from './core/save.js';
-
-import { World } from './world/world.js';
-import { Weather } from './world/weather.js';
-import { Ecosystem } from './world/ecosystem.js';
-import { REGION_BY_ID, PLANTS, ECO_TIERS } from './world/regions.js';
 import { Renderer } from './render/renderer.js';
-import {
-  drawWetGround, drawPlant, drawPlantShadow, drawDecor, drawDecorShadow, drawPoi, drawPoiLabel,
-} from './render/worldart.js';
-import { drawCreatureShadow } from './render/creatureart.js';
-import { panel, pxEllipse, pxLine, selectionRing } from './render/sprites.js';
+import { Backdrop } from './render/backdrop.js';
+import { Terrain } from './world/terrain.js';
+import { Weather } from './world/weather.js';
+import { biomeAt } from './world/biomes.js';
 import { Crab } from './entities/crab.js';
-import { creatureFromSave } from './entities/creature.js';
-import { Particles } from './entities/particles.js';
-import { Pell } from './entities/npc.js';
-import { SPECIES } from './entities/species.js';
-import { Evolution, ABILITIES } from './systems/evolution.js';
-import { Combat } from './systems/combat.js';
-import { Spawner } from './systems/spawner.js';
-import { Tutorial } from './systems/tutorial.js';
-import { Hud } from './ui/hud.js';
-import { Panels } from './ui/panels.js';
-import { Cutscene } from './ui/cutscene.js';
-import { TouchControls } from './ui/touch.js';
+import { Archaeologist, POSE } from './entities/npc.js';
+import { Fx } from './systems/fx.js';
+import { Garden } from './systems/garden.js';
+import { Economy } from './systems/economy.js';
+import { Wildlife } from './systems/wildlife.js';
+import { Encounters } from './systems/encounters.js';
+import { UI } from './ui/ui.js';
+import { FLORA_BY_ID } from './data/flora.js';
+import { BUILD_BY_ID } from './data/progress.js';
+import { buildStructure } from './art/buildart.js';
 
-import { getScene } from './cutscenes/script.js';
 export class Game {
   constructor(canvas) {
     this.canvas = canvas;
     this.time = 0;
-    this.state = 'title';         // title | cutscene | play | panel | dead
-    this.seed = 'crabden-1000';
+    this.state = 'intro';
+    this.seed = 'crabden-oasis';
 
-    this.settings = Object.assign({
-      muted: false, showWorkIcons: true, attackNeutrals: false,
-    }, Save.readSettings() || {});
-
+    this.settings = Object.assign({ muted: false, touchControls: undefined }, Save.readSettings() || {});
     this.audio = new Audio();
     if (this.settings.muted) this.audio.enabled = false;
 
@@ -52,1030 +40,461 @@ export class Game {
     this.input.scale = this.renderer.scale;
     this.cam = new Camera();
 
-    this.hud = new Hud(this);
-    this.panels = new Panels(this);
-    this.cutscene = new Cutscene(this);
-    this.touch = new TouchControls(this);
-    if (this.settings.touchControls !== undefined) this.touch.forced = this.settings.touchControls;
-
     this.newRun();
+    const saved = Save.readSave();
+    if (saved) { this.load(saved); this.state = 'play'; }
 
     window.addEventListener('resize', () => {
       this.renderer.resize();
       this.input.scale = this.renderer.scale;
+      this.cam.targetZoom = this.autoZoom();
     });
+    this._autosave = 0;
   }
-
-  // -- lifecycle ------------------------------------------------------------
 
   newRun() {
-    this.world = new World(this.seed);
-    this.weather = new Weather(this.world, 7);
-    this.eco = new Ecosystem(this.world, this);
-    this.particles = new Particles();
-    this.crab = new Crab(this);
-    this.creatures = [];
-    this.evo = new Evolution(this);
-    this.combat = new Combat(this);
-    this.spawner = new Spawner(this);
-    this.tutorial = new Tutorial(this);
-    this.pell = new Pell(this, 40, -10);
+    this.terrain = new Terrain(this.seed);
+    this.weather = new Weather(11);
+    this.backdrop = new Backdrop(this.seed);
+    this.fx = new Fx(this);
 
-    this.res = { nutrients: 0, food: 0, silica: 0, calcium: 0, iron: 0, salt: 0, ash: 0 };
-    this.discovered = new Set();
-    this.visitedRegions = new Set(['dunes']);
-    this.groveCenter = { x: 0, y: 0 };
-    this.selected = null;
-    this.uiHover = null;
-    this.hoverTarget = null;
-    this.hazardSlow = 1;
-    this.hazardDrain = 1;
-    this.bonusWaterMax = 0;
-    this.burrowT = 0;
-    this.deathT = 0;
-    this.statsRun = { tamed: 0, killed: 0, planted: 0, waterMade: 0, oases: 0 };
-    this.seedBag = {};
+    this.crab = new Crab(this, 'juvenile');
+    this.crab.x = 0;
+    this.crab.snapToGround();
+    this.player = this.crab;
 
-    this.crab.x = 0; this.crab.y = 0;
-    this.crab._resetFeet();
+    this.garden = new Garden(this);
+    this.economy = new Economy(this);
+    this.wildlife = new Wildlife(this);
+    this.encounters = new Encounters(this, this.seed);
+    this.npc = new Archaeologist(this, 62);
+    this.ui = new UI(this);
+
+    this.seeds = { dustmoss: 3, saltgrass: 2 };
+    this.biome = biomeAt(0);
     this.cam.followEntity(this.crab, true);
-    this.cam.targetZoom = this.cam.zoom = 2;
-    this.currentRegion = REGION_BY_ID.dunes;
-    this.currentRegionId = 'dunes';
-    this._bonusT = 0;
+    this.cam.minZoom = 0.85;
+    this.cam.maxZoom = 3.4;
+    this.cam.targetZoom = this.cam.zoom = this.autoZoom();
+
+    this.cut = null;
+    this.letterbox = 0;
+    this.dialog = null;
+    this.tutorial = 0;
+    this.attackT = 0;
+    this.startIntro();
   }
 
-  start() {
-    this.audio.resume();
-    this.audio.setMood('calm');
-    this.state = 'play';
-    const scene = getScene('intro', this);
-    this.cutscene.play(scene, () => {
-      this.tutorial.begin();
-      this.pell.followCrab(true);
-    });
-  }
+  /** Frame the crab sensibly whatever shape the window is. */
+  autoZoom() { return clamp(this.renderer.vw / 300, 1.15, 2.3); }
 
-  restart() {
-    Save.clearSave();
-    this.newRun();
-    this.start();
-  }
+  get currentBiome() { return this.biome; }
+  get water() { return this.economy.water; }
+  get nutrients() { return this.economy.nutrients; }
+  get berries() { return this.economy.berries; }
+  set berries(v) { this.economy.berries = v; }
+  set water(v) { this.economy.water = v; }
+  get genes() { return this.economy.genes; }
 
-  hasSave() { return Save.hasSave(); }
+  // -- opening --------------------------------------------------------------
 
-  save() {
-    const data = {
-      seed: this.seed,
-      crab: this.crab.serialize(),
-      weather: this.weather.serialize(),
-      eco: this.eco.serialize(),
-      evo: this.evo.serialize(),
-      tutorial: this.tutorial.serialize(),
-      res: this.res,
-      discovered: [...this.discovered],
-      visited: [...this.visitedRegions],
-      grove: this.groveCenter,
-      creatures: this.creatures.filter((c) => c.tamed && !c.dead).map((c) => c.serialize()),
-      seedBag: this.seedBag,
-      pois: this.world.pois.map((p) => [p.discovered ? 1 : 0, p.waterLeft, p.looted ? 1 : 0]),
-      stats: this.statsRun,
-      pell: { x: this.pell.x, y: this.pell.y },
+  startIntro() {
+    this.state = 'intro';
+    const c = this.crab;
+    const npc = this.npc;
+    npc.x = c.x + 190;
+    npc.facing = -1;
+    npc.faceT = -1;
+    this.cam.snapTo(c.x + 30, c.y - 10);
+    this.cam.targetZoom = this.cam.zoom = this.autoZoom() * 1.25;
+    this.cut = {
+      t: 0,
+      steps: [
+        { at: 0, run: () => { this.dialog = null; this.cam.cineTo(c.x, c.y - 4, 3.0, 2.2); } },
+        { at: 0.6, run: () => this.say('narrator', 'A thousand years ago this was thirty metres under water.') },
+        { at: 4.2, run: () => { this.cam.cineTo(c.x + 90, c.y - 16, 2.0, 2.0); npc.moveTo = c.x + 30; } },
+        { at: 4.6, run: () => this.say('narrator', 'Nothing has moved here since. Nothing at all.') },
+        { at: 8.0, run: () => { npc.setPose(POSE.WALK); this.say('Dr. Vess', 'Survey day four thousand and six. Basin nineteen. Still nothing.') } },
+        { at: 12.0, run: () => { npc.moveTo = c.x + 24; npc.setPose(POSE.WRITE, 'notebook'); this.say('Dr. Vess', 'Correction. One large rock. Sedimentary. Roughly hill-shaped.') } },
+        { at: 16.0, run: () => { npc.setPose(POSE.IDLE); this.say('Dr. Vess', "Eleven years. Eleven. And the department wants 'findings'.") } },
+        { at: 20.0, run: () => { npc.facing = 1; npc.setPose(POSE.CROUCH); this.say('Dr. Vess', 'Right. Nobody is watching. Nobody has been watching for a thousand years.') } },
+        { at: 24.0, run: () => { this.cam.cineTo(c.x + 6, c.y - 22, 3.2, 1.4); this.say('narrator', '...') } },
+        { at: 26.5, run: () => { this._pee = 1; this.say('narrator', 'A single drop of water lands on the rock.') } },
+        { at: 29.5, run: () => { this._pee = 0; this.crab.blink = 0.4; this.cam.shake(3); this.say('narrator', 'The rock has been waiting a very long time for that.') } },
+        { at: 32.0, run: () => { this.cam.shake(8); this.terrain.deform(c.x, 6, 40); this.fx.dust(c.x, c.y + 20, 6); this.audio.play('thunder'); } },
+        { at: 33.4, run: () => { npc.facing = -1; npc.setPose(POSE.IDLE); this.say('Dr. Vess', 'That is not a rock.') } },
+        { at: 36.0, run: () => { npc.moveTo = c.x + 74; this.say('Dr. Vess', 'That is not a rock, that is not a rock, that is NOT A ROCK -') } },
+        { at: 39.5, run: () => { npc.setPose(POSE.IDLE); npc.facing = -1; this.say('Dr. Vess', "...you're awake. Oh. Oh, that's what the water table was for.") } },
+        { at: 43.0, run: () => { this.say('Dr. Vess', "There's a spring in your back. You made this whole basin, didn't you.") } },
+        { at: 46.5, run: () => { this.say('Dr. Vess', "Then make it again. I'll help. I have eleven years of notes and nothing else.") } },
+        { at: 50.0, run: () => this.endIntro() },
+      ],
+      i: 0,
     };
-    if (Save.writeSave(data)) this.notify('Game saved.', 'good');
-    else this.notify('Could not save (storage blocked).', 'bad');
-    Save.writeSettings(this.settings);
   }
 
-  load() {
-    const d = Save.readSave();
-    if (!d) { this.notify('No save found.', 'bad'); return false; }
-    this.newRun();
-    this.crab.deserialize(d.crab);
-    this.weather.deserialize(d.weather);
-    this.eco.deserialize(d.eco);
-    this.evo.deserialize(d.evo);
-    this.tutorial.deserialize(d.tutorial);
-    Object.assign(this.res, d.res || {});
-    this.discovered = new Set(d.discovered || []);
-    this.visitedRegions = new Set(d.visited || ['dunes']);
-    this.groveCenter = d.grove || { x: 0, y: 0 };
-    this.statsRun = Object.assign(this.statsRun, d.stats || {});
-    this.seedBag = d.seedBag || {};
-    for (const cd of d.creatures || []) {
-      try { this.creatures.push(creatureFromSave(this, cd)); } catch { /* unknown species */ }
-    }
-    (d.pois || []).forEach((row, i) => {
-      const p = this.world.pois[i];
-      if (!p) return;
-      p.discovered = !!row[0];
-      p.waterLeft = row[1];
-      p.looted = !!row[2];
-    });
-    if (d.pell) { this.pell.x = d.pell.x; this.pell.y = d.pell.y; }
-    this.pell.hidden = false;
-    this.pell.followCrab(true);
-    this.cam.followEntity(this.crab, true);
+  endIntro() {
+    this.cut = null;
+    this.dialog = null;
     this.state = 'play';
-    this.crab.applyStats();
-    this.notify('Loaded.', 'good');
-    return true;
+    this.cam.cineCancel();
+    this.cam.followEntity(this.crab, false);
+    this.cam.targetZoom = this.autoZoom();
+    this.tutorial = 1;
+    this.ui.say('SPACE to pump water from your back.', 6);
   }
 
-  // -- helpers --------------------------------------------------------------
+  say(who, text) { this.dialog = { who, text, t: 0 }; }
 
-  notify(text, kind) { this.hud.notify(text, kind); }
-
-  gain(resource, amount, x, y) {
-    if (resource === 'water') { this.crab.addWater(amount); return; }
-    if (!(resource in this.res)) this.res[resource] = 0;
-    this.res[resource] += amount;
-    if (x !== undefined && amount >= 1) {
-      this.particles.text(`+${Math.round(amount)} ${resource}`, x, y, { color: '#e0c890' });
-    }
+  skipIntro() {
+    this.endIntro();
+    this.npc.x = this.crab.x + 130;
+    this.npc.facing = -1;
+    this.npc.faceT = -1;
   }
 
-  spend(resource, amount) {
-    if ((this.res[resource] || 0) < amount) return false;
-    this.res[resource] -= amount;
-    return true;
-  }
-
-  discoverSpecies(id) {
-    if (this.discovered.has(id)) return;
-    this.discovered.add(id);
-    const sp = SPECIES[id];
-    if (sp) {
-      this.notify(`New species: ${sp.name}`, sp.role === 'rare' ? 'rare' : 'info');
-      this.audio.play('discover');
-    }
-  }
-
-  nextTierAt() {
-    const cur = this.eco.tier.t;
-    const next = ECO_TIERS.find((t) => t.t === cur + 1);
-    return next ? next.at : null;
-  }
-
-  /**
-   * Where an attack or a blast is pointed. With a mouse that is the cursor;
-   * on touch there is no cursor, so aim at the nearest thing worth hitting and
-   * fall back to straight ahead.
-   */
-  aimPoint() {
-    if (!this.touch.active) return this.cam.screenToWorld(this.input.sx, this.input.sy);
-    const crab = this.crab;
-    let best = null, bd = 120;
-    for (const c of this.creatures) {
-      if (c.dead || !c.hostile) continue;
-      const d = dist(crab.x, crab.y, c.x, c.y);
-      if (d < bd) { bd = d; best = c; }
-    }
-    if (best) return { x: best.x, y: best.y };
-    return { x: crab.x + Math.cos(crab.facing) * 34, y: crab.y + Math.sin(crab.facing) * 34 };
-  }
-
-  /** Where poured water lands. On touch you aim by walking. */
-  pourPoint() {
-    if (!this.touch.active) return this.cam.screenToWorld(this.input.sx, this.input.sy);
-    const crab = this.crab;
-    const reach = this.evo.stats.pourReach * 0.45;
-    return { x: crab.x + Math.cos(crab.facing) * reach, y: crab.y + Math.sin(crab.facing) * reach };
-  }
-
-  abilityById(id) { return ABILITIES[id]; }
-
-  /**
-   * What the single context button on the touch pad should do right now.
-   * Mirrors the T / R / H keys, chosen by what is actually in reach.
-   */
-  touchContext() {
-    const crab = this.crab;
-    const range = this.evo.stats.tameRange + 14;
-    let best = null, bd = range;
-    for (const c of this.creatures) {
-      if (c.dead || c.tamed || !c.canTame()) continue;
-      const d = dist(crab.x, crab.y, c.x, c.y);
-      if (d < bd) { bd = d; best = c; }
-    }
-    if (best) return { key: 't', label: 'TAME', tint: '#c58fd8', target: best };
-
-    if (crab.water < crab.waterMax - 0.5) {
-      const poi = this.world.nearestPoi(crab.x, crab.y, 140, (p) => p.waterLeft > 0);
-      if (poi && dist(crab.x, crab.y, poi.x, poi.y) <= poi.radius + 24) {
-        return { key: 'r', label: 'DRINK', tint: '#5fc8dc', target: poi };
-      }
-    }
-
-    const ripe = this.eco.plantsNear(crab.x, crab.y, 34)
-      .some((p) => !p.dead && p.type === 'berry' && (p.berries || 0) >= 1);
-    if (ripe) return { key: 'h', label: 'PICK', tint: '#e2685c' };
-
-    return null;
-  }
-
-  // -- update ---------------------------------------------------------------
+  // -- loop -----------------------------------------------------------------
 
   update(dt) {
     this.time += dt;
-    const input = this.input;
-
-    if (this.state === 'title') {
-      this.touch.update(dt);
-      this.weather.update(dt * 0.4, null);
-      this.particles.update(dt, this.weather);
-      this.renderer.update(dt, this.weather);
-      // a tappable Continue, since a phone has no L key
-      const cb = this._titleContinue;
-      if (cb && input.clicked
-        && input.sx >= cb.x && input.sx <= cb.x + cb.w
-        && input.sy >= cb.y && input.sy <= cb.y + cb.h) {
-        input.clicked = false;
-        this.audio.resume();
-        this.load();
-      } else if (input.consumeClick() || input.justPressed(' ') || input.justPressed('Enter')) {
-        this.start();
-      }
-      if (input.justPressed('l') && Save.hasSave()) { this.audio.resume(); this.load(); }
-      return;
-    }
-
-    // Global hotkeys, only while no panel is open - an open panel owns these
-    // keys itself. Whichever key wins is consumed, or the same press would be
-    // read again further down the frame and undo itself.
-    if (this.state !== 'cutscene' && !this.panels.open) {
-      const PANEL_KEYS = { e: 'evo', c: 'pals', b: 'codex', m: 'map', Escape: 'menu' };
-      const hot = ['e', 'c', 'b', 'm', 'Escape', 'p'].find((k) => input.justPressed(k));
-      if (hot) {
-        input.consumeKey(hot);
-        if (hot === 'p') this.paused = !this.paused;
-        else this.panels.toggle(PANEL_KEYS[hot]);
-      }
-    }
-
-    this.panels.update(dt);
-    this.hud.update(dt);
-    this.touch.update(dt);
-    this.cutscene.update(dt, this);
-    this.evo.update(dt);
-    this.combat.update(dt);
-
-    const frozen = this.state === 'panel' || this.combat.hitStop > 0;
-    const simDt = this.state === 'cutscene' ? dt * 0.35
-      : this.state === 'dead' ? dt * 0.25
-      : frozen ? 0 : dt;
-
-    this._updateRegion();
-    this._updateCamera(dt);
-
-    if (this.state === 'play') this._handleInput(dt);
-
-    if (simDt > 0) {
-      this.weather.update(simDt, this);
-      this.eco.update(simDt, this);
-      this.crab.update(simDt, this);
-      this.pell.update(simDt, this);
-      for (const c of this.creatures) c.update(simDt, this);
-      this.spawner.update(simDt);
-      this._hazards(simDt);
-      this._passive(simDt);
-      this._discoverPois();
-    }
-    // cutscene beats still need the crab animated, just slowly
-    if (this.state === 'cutscene') {
-      this.crab.update(dt * 0.6, this);
-      this.pell.update(dt * 0.6, this);
-    }
-
-    this.particles.update(dt, this.weather);
-    this.tutorial.update(dt, this);
-    this.renderer.update(dt, this.weather);
-    this.audio.updateMusic(dt);
-    this.audio.setWind(this.weather.windSpeed, this.weather.sand);
-
-    this._bonusT -= dt;
-    if (this._bonusT <= 0) { this._bonusT = 1; this._recomputeBonuses(); }
-
-    if (this.state === 'dead') {
-      if (this.cutscene.active) this.cutscene.finish();
-      this.deathT += dt;
-      if (this.deathT > 3 && (input.consumeClick() || input.justPressed(' '))) this._revive();
-    }
-    // NB: input.endFrame() is deliberately NOT called here. The panels do
-    // their hit-testing while drawing, so a click has to survive the whole
-    // frame - update and draw. main.js clears it once both are done.
-  }
-
-  _updateRegion() {
-    const r = this.world.regionAt(this.crab.x, this.crab.y).region;
-    if (r.id !== this.currentRegionId) {
-      this.currentRegionId = r.id;
-      this.currentRegion = r;
-      if (!this.visitedRegions.has(r.id)) {
-        this.visitedRegions.add(r.id);
-        this.notify(`Entering ${r.name}`, 'rare');
-        this.audio.play('discover');
-        this.particles.text(r.name, this.crab.x, this.crab.y - 26, { color: '#ffe9a0', scale: 2, life: 2.6 });
-      } else {
-        this.notify(r.name, 'info');
-      }
-      this.audio.setMood(this.weather.isNight ? 'night' : r.ambience);
-    }
-  }
-
-  _updateCamera(dt) {
     const i = this.input;
-    if (this.state === 'panel') { this.cam.update(dt, this.world); return; }
-    if (this.state !== 'cutscene') {
-      if (i.midDown && i.moved) this.cam.pan(i.dragDX, i.dragDY);
-      if (i.touchPan && !this.touch.stick.active) this.cam.pan(i.dragDX, i.dragDY);
-      if (i.wheel) this.cam.zoomBy(i.wheel, i.sx, i.sy);
-      if (i.key('z') || i.justPressed('z')) this.cam.followEntity(this.crab);
-      // edge-key panning
-      const spd = 220 * dt / this.cam.zoom;
-      if (!this.crab.controlled) {
-        if (i.key('ArrowLeft')) this.cam.nudge(-spd, 0);
-        if (i.key('ArrowRight')) this.cam.nudge(spd, 0);
-        if (i.key('ArrowUp')) this.cam.nudge(0, -spd);
-        if (i.key('ArrowDown')) this.cam.nudge(0, spd);
+    const slow = this.state === 'dead' ? 0.3 : 1;
+    const sdt = dt * slow;
+
+    this.ui.update(dt);
+    if (this.state === 'intro') {
+      this._runCut(dt);
+      if (i.justPressed('Escape') || i.justPressed(' ') || (i.clicked && i.sy < this.renderer.vh - 40)) {
+        i.consumeKey('Escape'); i.consumeKey(' ');
+        this.skipIntro();
       }
     }
+
+    const play = this.state === 'play';
+    const locked = !play || this.ui.open;
+
+    let move = 0;
+    if (play && !this.ui.open) {
+      const ax = i.axis();
+      move = ax.x;
+      if (i.justPressed(' ')) this.pump();
+      if (i.justPressed('e')) this.act();
+      if (i.justPressed('q')) this.attack();
+    }
+    this.crab.update(sdt, {
+      move, sprint: i.key('Shift'), grab: i.key('e'),
+      speedMul: this.economy ? this.economy.stat('speed') : 1,
+    });
+
+    if (i.wheel && !this.ui.open) this.cam.zoomBy(i.wheel, i.sx, i.sy);
+    if (i.dragging && !this.ui.open && i.touchPan) this.cam.pan(i.dragDX, i.dragDY);
+
+    this.biome = biomeAt(this.crab.x);
+    this.weather.update(sdt, this);
+    this.terrain.update(sdt, this.weather.windSpeed);
+
+    // garden drinks from the tank, and pays out nutrients and fruit
+    const eco = this.economy;
+    const up = 1 + eco.stat('upkeep');
+    const g = this.garden.update(sdt, eco.water / Math.max(0.001, up), this.weather);
+    eco.water = clamp(eco.water - g.drank * up, 0, eco.stat('waterMax'));
+    eco.nutrients += g.fixed * eco.stat('yield');
+    this._berryT = (this._berryT || 0) + sdt * eco.stat('berryRate');
+    if (this._berryT > 9) {
+      this._berryT = 0;
+      const fruiting = this.garden.planted.filter((p) => p.plant.stage >= 3 && p.plant.def.fruitMat);
+      if (fruiting.length) {
+        eco.berries += fruiting.length;
+        const w = this.garden.plotWorld(fruiting[0]);
+        this.fx.popup(w.x, w.y - 6, `+${fruiting.length} berries`, '#dc6379');
+      }
+    }
+    // night air condenses on the shell
+    const nw = eco.stat('nightWater');
+    if (nw > 0 && this.weather.nightMix > 0.4) {
+      eco.water = clamp(eco.water + nw * sdt, 0, eco.stat('waterMax'));
+    }
+    if (eco.stat('pondGain') > 0) this.garden.pond = clamp01(this.garden.pond + eco.stat('pondGain') * sdt * 0.1);
+
+    this._geneT = (this._geneT || 0) + sdt;
+    if (this._geneT > 1.2) { this._geneT = 0; eco.recomputeGenes(); eco.markDirty(); }
+
+    this.wildlife.update(sdt);
+    this.encounters.update(sdt);
+    this.npc.update(sdt);
+    this.fx.update(sdt, this.weather);
+
+    this.attackT = Math.max(0, this.attackT - dt);
+    this.crab.iframe = Math.max(0, (this.crab.iframe || 0) - dt);
+    const hpMax = 120 + this.economy.stat('hp');
+    if (this.crab.hpMax !== hpMax) {
+      const frac = this.crab.hp / this.crab.hpMax;
+      this.crab.hpMax = hpMax;
+      this.crab.hp = Math.min(hpMax, frac * hpMax);
+    }
+    if (this.state === 'play' && this.crab.hp < this.crab.hpMax) {
+      this.crab.hp = Math.min(this.crab.hpMax, this.crab.hp + sdt * (0.8 + this.garden.lushness * 2.4));
+    }
+    if (this.dialog) this.dialog.t += dt;
+
     this.cam.setViewport(this.renderer.vw, this.renderer.vh);
-    this.cam.update(dt, this.world);
+    this.cam.update(dt);
     const w = this.cam.screenToWorld(i.sx, i.sy);
     i.wx = w.x; i.wy = w.y;
+    this.renderer.update(dt, this.weather);
+    this.audio.updateMusic(dt);
+
+    this._autosave += dt;
+    if (this._autosave > 20 && play) { this._autosave = 0; this.save(); }
   }
 
-  // -- gameplay input -------------------------------------------------------
-
-  _handleInput(dt) {
-    const i = this.input;
-    const crab = this.crab;
-    const pointer = this.cam.screenToWorld(i.sx, i.sy);
-
-    if (this.touch.active) {
-      // no cursor to hover with: describe what the context button would do
-      const act = this.touchContext();
-      this.uiHover = act
-        ? { type: 'context', ref: act.target || null, prompt: `${act.label}: ${this._contextName(act)}` }
-        : null;
-      this.hoverTarget = act && act.target && act.target.sp ? act.target : this._nearestHostile();
-    } else {
-      this.uiHover = this._pick(pointer.x, pointer.y);
-      this.hoverTarget = this.uiHover && (this.uiHover.type === 'creature') ? this.uiHover.ref : null;
+  _runCut(dt) {
+    const c = this.cut;
+    if (!c) return;
+    c.t += dt;
+    while (c.i < c.steps.length && c.t >= c.steps[c.i].at) {
+      c.steps[c.i].run();
+      c.i++;
     }
-
-    // pumping the organ
-    const organ = this.organScreenPos();
-    const touchR = this.touch.active ? 10 : 0;
-    const overOrgan = Math.hypot(i.sx - organ.x, i.sy - organ.y)
-      < Math.max(5, crab.size * this.cam.zoom * 0.9) + touchR;
-    if (overOrgan && !this.uiHover && !this.touch.active) {
-      this.uiHover = { type: 'organ', prompt: 'hold to pump water' };
-    }
-
-    const organHeld = i.down && !i.touchPan && (overOrgan || this._pumpLatch);
-    const pumping = organHeld || i.key('f');
-    if (pumping) {
-      if (i.down) this._pumpLatch = true;
-      const made = crab.pump(dt);
-      this.statsRun.waterMade += made;
-      if (made > 0 && Math.random() < 0.25) this.audio.play('drip', { pitch: 1 + crab.water / crab.waterMax });
-    } else {
-      crab.pumping = false;
-      this._pumpLatch = false;
-    }
-
-    // pouring
-    const pourHeld = (i.rightDown && !this.selected) || i.key('q');
-    if (pourHeld && !pumping) {
-      crab.markPouring();
-      const aim = this.pourPoint();
-      const got = crab.pour(dt, aim.x, aim.y);
-      if (got > 0 && Math.random() < 0.12) this.audio.play('water');
-    }
-
-    // abilities
-    for (let k = 0; k < 4; k++) {
-      if (i.justPressed(String(k + 1))) this.evo.useSlot(k);
-    }
-    if (i.justPressed(' ')) this.evo.useSlot(0);
-    if (i.justPressed('Shift') && this.evo.stats.canDash) crab.dash();
-
-    // taming / harvesting
-    if (i.justPressed('t')) this._tryTame();
-    if (i.justPressed('h')) this._tryHarvest();
-    if (i.justPressed('r')) this._tryAbsorb();
-
-    // clicks
-    if (i.clicked) {
-      i.clicked = false;
-      this._onClick(pointer);
-    }
-    if (i.rightClicked) {
-      i.rightClicked = false;
-      if (this.selected && !this.selected.dead) {
-        const h = this._pick(pointer.x, pointer.y);
-        if (h && h.type === 'creature' && h.ref.hostile) {
-          this.selected.orderTarget = h.ref;
-          this.selected.orderPoint = null;
-          this.notify(`${this.selected.sp.name} attacks!`, 'info');
-        } else {
-          this.selected.orderPoint = { x: pointer.x, y: pointer.y };
-          this.selected.orderTarget = null;
-        }
-        this.particles.ring(pointer.x, pointer.y, { r0: 2, r1: 12, life: 0.35, color: '#ffb45a' });
-        this.audio.play('ui');
-      }
-    }
-  }
-
-  _onClick(world) {
-    const crab = this.crab;
-    const z = this.cam.zoom;
-    const organ = this.organScreenPos();
-    const overOrgan = Math.hypot(this.input.sx - organ.x, this.input.sy - organ.y) < Math.max(5, crab.size * z * 0.9);
-    if (overOrgan) return;      // handled by the hold logic
-
-    const onCrab = dist(world.x, world.y, crab.x, crab.y) < crab.size * 2.2;
-    if (onCrab) {
-      crab.controlled = !crab.controlled;
-      crab.moveTarget = null;
-      this.cam.followEntity(crab);
-      this.notify(crab.controlled ? 'Direct control. WASD to move, click to strike.' : 'Command mode. Click the ground to send the crab.', 'info');
-      this.audio.play('uiBig');
-      return;
-    }
-
-    const hit = this._pick(world.x, world.y);
-    if (hit && hit.type === 'creature') {
-      const c = hit.ref;
-      if (c.tamed) {
-        this.selected = this.selected === c ? null : c;
-        this.audio.play('ui');
-        return;
-      }
-      if (crab.controlled && c.hostile) { crab.swingClaw(c.x, c.y); return; }
-      if (c.canTame() && dist(crab.x, crab.y, c.x, c.y) < this.evo.stats.tameRange + 12) { this._tame(c); return; }
-    }
-    if (hit && hit.type === 'plant' && hit.ref.type === 'berry') { this._tryHarvest(hit.ref); return; }
-    if (hit && hit.type === 'poi') { this._tryAbsorb(hit.ref); return; }
-
-    if (crab.controlled) {
-      crab.swingClaw(world.x, world.y);
-    } else {
-      crab.commandMoveTo(world.x, world.y);
-      this.selected = null;
-      this.particles.ring(world.x, world.y, { r0: 2, r1: 10, life: 0.3, color: '#9fe4f4' });
-    }
-  }
-
-  _contextName(act) {
-    if (!act.target) return 'berries';
-    if (act.target.sp) {
-      const cost = Math.ceil(act.target.sp.tame.cost * this.evo.stats.tameCost);
-      return `${act.target.sp.name} (${cost} ${act.target.sp.tame.item})`;
-    }
-    return act.target.name || 'water';
-  }
-
-  _nearestHostile() {
-    let best = null, bd = 140;
-    for (const c of this.creatures) {
-      if (c.dead || !c.hostile) continue;
-      const d = dist(this.crab.x, this.crab.y, c.x, c.y);
-      if (d < bd) { bd = d; best = c; }
-    }
-    return best;
-  }
-
-  _pick(x, y) {
-    let best = null, bd = Infinity;
-    for (const c of this.creatures) {
-      if (c.dead) continue;
-      const d = dist(x, y, c.x, c.y - c.z * 0.5);
-      const r = Math.max(7, c.radius + 5);
-      if (d < r && d < bd) { bd = d; best = { type: 'creature', ref: c }; }
-    }
-    if (best) {
-      const c = best.ref;
-      const near = dist(this.crab.x, this.crab.y, c.x, c.y) < this.evo.stats.tameRange + 12;
-      if (c.tamed) best.prompt = `${c.name || c.sp.name} - click to select`;
-      else if (c.hostile) best.prompt = `${c.sp.name} - hostile`;
-      else if (c.canTame()) best.prompt = near
-        ? `${c.sp.name} - T to offer ${Math.ceil(c.sp.tame.cost * this.evo.stats.tameCost)} ${c.sp.tame.item}`
-        : `${c.sp.name} - get closer to befriend`;
-      else best.prompt = c.sp.name;
-      return best;
-    }
-    for (const p of this.eco.plantsNear(x, y, 14)) {
-      const d = dist(x, y, p.x, p.y);
-      if (d < Math.max(6, p.r) && d < bd) {
-        bd = d;
-        best = { type: 'plant', ref: p };
-        const spec = PLANTS[p.type];
-        best.prompt = p.dead ? `${spec.name} (dead)`
-          : p.growth < 1 ? `${spec.name} - growing ${Math.floor(p.growth * 100)}%`
-          : p.type === 'berry' && p.berries >= 1 ? `${spec.name} - H to harvest`
-          : spec.name;
-      }
-    }
-    if (best) return best;
-    for (const poi of this.world.pois) {
-      const d = dist(x, y, poi.x, poi.y);
-      if (d < poi.radius && d < bd) {
-        bd = d;
-        best = { type: 'poi', ref: poi };
-        best.prompt = poi.waterLeft > 0
-          ? `${poi.name} - R to absorb water (${Math.round(poi.waterLeft)})`
-          : poi.name;
-      }
-    }
-    return best;
-  }
-
-  // -- verbs ----------------------------------------------------------------
-
-  _tryTame(target) {
-    const crab = this.crab;
-    let c = target;
-    if (!c) {
-      let bd = this.evo.stats.tameRange + 14;
-      for (const o of this.creatures) {
-        if (o.dead || o.tamed || !o.canTame()) continue;
-        const d = dist(crab.x, crab.y, o.x, o.y);
-        if (d < bd) { bd = d; c = o; }
-      }
-    }
-    if (!c) { this.notify('Nothing nearby to befriend.', 'bad'); this.audio.play('deny'); return; }
-    this._tame(c);
-  }
-
-  _tame(c) {
-    const pals = this.creatures.filter((x) => x.tamed && !x.dead).length;
-    if (pals >= this.evo.stats.companionSlots) {
-      this.notify('No room for another companion. (Nest Builder helps.)', 'bad');
-      this.audio.play('deny');
-      return;
-    }
-    const cost = Math.ceil(c.sp.tame.cost * this.evo.stats.tameCost);
-    const item = c.sp.tame.item;
-    const have = item === 'water' ? this.crab.water : (this.res.food || 0);
-    if (have < cost) {
-      this.notify(`Need ${cost} ${item}. You have ${Math.floor(have)}.`, 'bad');
-      this.audio.play('deny');
-      return;
-    }
-    if (item === 'water') this.crab.water -= cost; else this.res.food -= cost;
-    c.tame();
-    c.home = { x: this.groveCenter.x, y: this.groveCenter.y };
-    this.statsRun.tamed++;
-    this.audio.play('pickup');
-    this.notify(`${c.sp.name} joined you.`, 'good');
-    if (c.sp.unlock) this._unlockMechanic(c.sp.unlock, c);
-  }
-
-  _unlockMechanic(id, c) {
-    const msgs = {
-      cloudSeeding: 'The Mirage Jelly can call rain over your grove.',
-      aquiferTap: 'The Nautilus can open a permanent water line.',
-      roamingGrove: 'The Duneback will carry part of your grove with it.',
-    };
-    this.notify(msgs[id] || 'Something new is possible.', 'rare');
-    this.audio.play('evolve');
-    this.renderer.doFlash('#9fe8ff', 0.5);
-  }
-
-  _tryHarvest(target) {
-    let got = 0;
-    const list = target ? [target] : this.eco.plantsNear(this.crab.x, this.crab.y, 34);
-    for (const p of list) {
-      const r = this.eco.harvest(p);
-      if (r && r.food) {
-        got += r.food;
-        this.particles.burst('chunk', p.x, p.y - p.r, 4, { color: '#b5354b', speedMin: 8, speedMax: 24, life: 0.5, grav: 80 });
-      }
-    }
-    if (got > 0) {
-      this.gain('food', got, this.crab.x, this.crab.y - 14);
-      this.audio.play('pickup');
-    } else {
-      this.notify('No ripe berries in reach.', 'bad');
-      this.audio.play('deny');
-    }
-  }
-
-  _tryAbsorb(target) {
-    const crab = this.crab;
-    const poi = target || this.world.nearestPoi(crab.x, crab.y, 90, (p) => p.waterLeft > 0);
-    if (!poi) { this.notify('No water source in reach.', 'bad'); this.audio.play('deny'); return; }
-    if (dist(crab.x, crab.y, poi.x, poi.y) > poi.radius + 24) {
-      this.notify('Too far. Get closer to the water.', 'bad');
-      return;
-    }
-    const room = crab.waterMax - crab.water;
-    if (room <= 0.5) { this.notify('You are completely full of water.', 'bad'); return; }
-    const take = Math.min(room, poi.waterLeft, 40);
-    poi.waterLeft -= take;
-    crab.addWater(take);
-    this.particles.burst('drop', poi.x, poi.y, 16, { color: '#9fe4f4', speedMin: 10, speedMax: 30, life: 0.7, grav: 30, glow: 4 });
-    this.particles.text(`+${Math.round(take)} water`, crab.x, crab.y - 16, { color: '#9fe4f4' });
-    this.audio.play('water');
-
-    if (!poi.looted) {
-      poi.looted = true;
-      // surviving plants come home with you
-      const region = this.world.regionAt(poi.x, poi.y).region;
-      const native = region.plants.filter((p) => PLANTS[p].native);
-      if (native.length) {
-        const seed = native[Math.floor(Math.random() * native.length)];
-        this.seedBag[seed] = (this.seedBag[seed] || 0) + 4;
-        this.notify(`Collected ${PLANTS[seed].name} cuttings.`, 'good');
-      }
-      this.statsRun.oases++;
-    }
-  }
-
-  startBurrow() {
-    const crab = this.crab;
-    this.burrowT = 3.2;
-    crab.invuln = Math.max(crab.invuln, 3.2);
-    crab.buried = 1;
-    this.particles.burst('sand', crab.x, crab.y, 20, {
-      color: this.currentRegion.pal.hi, speedMin: 20, speedMax: 60, life: 0.7, grav: 80, lift: 20,
-    });
-    this.audio.play('step', { pitch: 0.5 });
-    for (const c of this.creatures) if (c.hostile) { c.target = null; c.state = 'wander'; }
-    return true;
-  }
-
-  callRain() {
-    this.weather.force('rain', 55);
-    this.notify('The sky agrees.', 'rare');
-    this.audio.play('discover');
-    this.renderer.doFlash('#9fe8ff', 0.3);
-    return true;
-  }
-
-  // -- passive ticks --------------------------------------------------------
-
-  _hazards(dt) {
-    const h = this.currentRegion.hazard;
-    this.hazardSlow = 1;
-    this.hazardDrain = 1;
-    if (!h) return;
-    if (h.id === 'glare' && this.evo.flag('glareProof')) return;
-    if (h.id === 'rustspore' && this.evo.flag('rustProof')) return;
-    // shade from your own plants protects you
-    const shaded = this.eco.plantsNear(this.crab.x, this.crab.y, 40)
-      .some((p) => !p.dead && p.growth > 0.7 && PLANTS[p.type].gives.shade);
-    const mult = shaded ? 0.25 : 1;
-    if (h.slow) this.hazardSlow = lerp(1, h.slow, mult);
-    if (h.waterDrain) this.hazardDrain = 1 + h.waterDrain * mult;
-    if (h.dps && this.state !== 'dead') {
-      this.crab.hp = Math.max(0, this.crab.hp - h.dps * dt * mult);
-      if (Math.random() < dt * 1.4 * mult) {
-        this.particles.spawn('dust', this.crab.x + (Math.random() - 0.5) * 12, this.crab.y - 6, {
-          color: h.id === 'ashfall' ? '#8e7d8f' : '#c47a44', life: 0.7, vz: 4, grav: 8, wind: 0.4,
+    if (this._pee) {
+      const p = this.npc;
+      if (Math.random() < 0.6) {
+        this.fx._add({
+          k: 'water', x: p.x - 6 * p.faceT, y: p.y + 2,
+          vx: -18 * p.faceT + (Math.random() - 0.5) * 6, vy: 26 + Math.random() * 20,
+          life: 0.9, t: 0, r: 1, grav: 210, splash: true,
         });
       }
-      if (this.crab.hp <= 0) this.onCrabDown({ hazard: h });
     }
-    if (this.burrowT > 0) {
-      this.burrowT -= dt;
-      this.crab.buried = clamp01(this.burrowT / 0.4);
-      if (this.burrowT <= 0) this.crab.buried = 0;
-    }
+    this.letterbox = damp(this.letterbox, 1, 0.002, dt);
   }
 
-  _passive(dt) {
-    const s = this.evo.stats;
-    if (s.passiveNutrients) this.gain('nutrients', s.passiveNutrients * dt);
-    if (this.evo.flag('rootFeet')) {
-      const wet = this.eco.moistureAt(this.crab.x, this.crab.y);
-      const moss = this.eco.plantsNear(this.crab.x, this.crab.y, 16).some((p) => p.type === 'moss' && !p.dead);
-      if (wet > 0.2 && moss && this.crab.hp < this.crab.hpMax) {
-        this.crab.hp = Math.min(this.crab.hpMax, this.crab.hp + dt * 2.4);
-        if (Math.random() < dt * 3) {
-          this.particles.spawn('spark', this.crab.x + (Math.random() - 0.5) * 8, this.crab.y, {
-            color: '#8fd47a', life: 0.6, vz: 10, grav: 4, glow: 3,
-          });
-        }
-      }
-    }
-    // thorns
-    if (s.thorns > 0) {
-      for (const c of this.creatures) {
-        if (!c.hostile || c.dead) continue;
-        if (dist(c.x, c.y, this.crab.x, this.crab.y) < this.crab.size * 1.6 && c.attackCd > 1.0) {
-          c.hurt(s.thorns * dt * 4, this.crab.x, this.crab.y, this.crab);
-        }
-      }
-    }
-    // grove drifts toward where you actually planted things
-    if (this.eco.plants.length > 6) {
-      let sx = 0, sy = 0, n = 0;
-      for (const p of this.eco.plants) { if (p.dead) continue; sx += p.x; sy += p.y; n++; }
-      if (n) {
-        this.groveCenter.x = damp(this.groveCenter.x, sx / n, 0.5, dt);
-        this.groveCenter.y = damp(this.groveCenter.y, sy / n, 0.5, dt);
-      }
-    }
-    if (this.weather.rain > 0.4 && Math.random() < dt * 8) {
-      const b = this.cam.bounds(40);
-      this.particles.spawn('rain', lerp(b.x0, b.x1, Math.random()), lerp(b.y0, b.y1, Math.random()), {
-        color: '#a8d8e8', life: 0.7, vz: -140, z: 60, grav: -220, layer: 'over',
-      });
-    }
-    if (this.weather.sand > 0.3 && Math.random() < dt * 22) {
-      const b = this.cam.bounds(40);
-      this.particles.spawn('sand', lerp(b.x0, b.x1, Math.random()), lerp(b.y0, b.y1, Math.random()), {
-        color: this.currentRegion.pal.crest, life: 1.2, wind: 3, size: 1, drag: 0.99,
-      });
-    }
+  // -- actions --------------------------------------------------------------
+
+  pump() {
+    if (this.crab.pumping > 0.25) return;
+    this.crab.pump();
+    const gain = this.economy.stat('pumpGain');
+    this.economy.water = clamp(this.economy.water + gain, 0, this.economy.stat('waterMax'));
+    this.garden.pumpInto(0.055);
+    const o = this.crab.shellWorld(this.crab.m.organU);
+    this.fx.spring(o.x, o.y, o.nx, o.ny, 1);
+    this.fx.popup(o.x, o.y - 8, `+${gain}`, '#9de3ee');
+    this.audio.play('water');
+    if (this.tutorial === 1) { this.tutorial = 2; this.ui.say('Open PLANT (1) and put something on your back.', 6); }
   }
 
-  _discoverPois() {
-    for (const p of this.world.pois) {
-      if (p.discovered) continue;
-      const d = dist(p.x, p.y, this.crab.x, this.crab.y);
-      const reveal = p.kind === 'seep' ? (this.evo.flag('senseWater') ? 200 : 40) : 210;
-      if (d < reveal) {
-        p.discovered = true;
-        this.tutorial.lastPoi = p;
-        this.notify(`Found: ${p.name}`, 'rare');
-        this.audio.play('discover');
-        this.particles.text(p.name, p.x, p.y - 24, { color: '#ffe9a0', scale: 1, life: 3 });
-      }
+  /** What E does right now, and what the prompt says. */
+  actionHint() {
+    if (this.state !== 'play') return null;
+    const c = this.crab;
+    const foe = this.wildlife.nearest(c.x, c.y, 44, (q) => q.hostile);
+    if (foe) return `Strike ${foe.def.name}`;
+    const wildOne = this.wildlife.nearest(c.x, c.y, 40, (q) => !q.hostile && !q.tamed && q.trust > 0.45);
+    if (wildOne) {
+      const need = wildOne.def.tame;
+      return `Offer to ${wildOne.def.name} (${need.berries} berries, ${need.water} water)`;
     }
+    if (this.encounters.hint) return this.encounters.hint;
+    if (Math.abs(this.npc.x - c.x) < 46) return 'Talk to Dr. Vess';
+    return null;
   }
 
-  _recomputeBonuses() {
-    const b = { growth: 1, spread: 1, waterUse: 1, dayGrowth: 1, compost: false };
-    this.bonusWaterMax = 0;
-    let nightLight = 0;
-    for (const c of this.creatures) {
-      if (!c.tamed || c.dead || !c.work) continue;
-      switch (c.work) {
-        case 'pollinate': b.growth += 0.35; break;
-        case 'till': b.spread += 0.5; break;
-        case 'refract': b.dayGrowth += 0.4; break;
-        case 'purify': this.bonusWaterMax += 12; b.waterUse *= 0.9; break;
-        case 'compost': b.compost = true; break;
-        case 'nightsee': nightLight += 1; break;
-        default: break;
-      }
+  act() {
+    const c = this.crab;
+    const foe = this.wildlife.nearest(c.x, c.y, 44, (q) => q.hostile);
+    if (foe) { this.attack(); return; }
+    const wildOne = this.wildlife.nearest(c.x, c.y, 40, (q) => !q.hostile && !q.tamed && q.trust > 0.45);
+    if (wildOne) {
+      const res = this.wildlife.tryTame(wildOne);
+      this.ui.say(res.ok ? `${wildOne.def.name} joins you.` : `${wildOne.def.name} ${res.why}.`);
+      return;
     }
-    this.eco.bonuses = b;
-    this.nightLight = nightLight;
+    if (this.encounters.active) {
+      const line = this.encounters.interact();
+      if (line) this.ui.say(line, 5);
+      return;
+    }
+    if (Math.abs(this.npc.x - c.x) < 46) this.talkToVess();
   }
 
-  /** One tick of a companion doing its job. Called by Creature. */
-  doCreatureWork(c) {
-    const grove = this.groveCenter;
-    const rand = (a, b) => a + Math.random() * (b - a);
-    switch (c.work) {
-      case 'forage': {
-        const pool = ['nutrients', 'food', 'nutrients', 'silica', 'iron', 'salt', 'calcium', 'ash'];
-        const kind = pool[Math.floor(Math.random() * pool.length)];
-        const amt = kind === 'nutrients' ? rand(2, 6) : 1;
-        this.gain(kind, amt, c.x, c.y - 10);
-        c.workTarget = { x: grove.x + rand(-80, 80), y: grove.y + rand(-80, 80) };
-        this.particles.spawn('spark', c.x, c.y, { color: '#ffe9a0', life: 0.8, glow: 4, vz: 10, grav: 6 });
-        break;
-      }
-      case 'seed': {
-        const parents = this.eco.plants.filter((p) => !p.dead && p.growth > 0.8);
-        if (!parents.length) break;
-        const p = parents[Math.floor(Math.random() * parents.length)];
-        const a = Math.random() * TAU, d = rand(16, 46);
-        const nx = p.x + Math.cos(a) * d, ny = p.y + Math.sin(a) * d;
-        if (this.eco.moistureAt(nx, ny) > 0.08 && this.eco.canPlant(p.type, nx, ny)) {
-          this.eco.plant(p.type, nx, ny);
-          this.particles.spawn('spark', nx, ny, { color: '#8fd47a', life: 0.8, glow: 3, vz: 8, grav: 5 });
-        }
-        c.workTarget = { x: nx, y: ny };
-        break;
-      }
-      case 'digwater': {
-        const a = Math.random() * TAU, d = rand(30, 120);
-        const x = grove.x + Math.cos(a) * d, y = grove.y + Math.sin(a) * d;
-        this.eco.addWater(x, y, 22, 26);
-        this.particles.burst('drop', x, y, 8, { color: '#9fe4f4', speedMin: 6, speedMax: 22, life: 0.6, grav: 40, glow: 3 });
-        c.workTarget = { x, y };
-        if (Math.random() < 0.12) {
-          const seep = this.world.nearestPoi(x, y, 900, (p) => p.kind === 'seep' && !p.discovered);
-          if (seep) { seep.discovered = true; this.notify(`${c.sp.name} sniffed out ${seep.name}.`, 'good'); }
-        }
-        break;
-      }
-      case 'haul': {
-        const src = this.world.nearestPoi(grove.x, grove.y, 1400, (p) => p.waterLeft > 4);
-        if (src) {
-          const take = Math.min(12, src.waterLeft);
-          src.waterLeft -= take;
-          this.eco.addWater(grove.x + rand(-40, 40), grove.y + rand(-40, 40), take * 3, 28);
-          this.particles.text('+water', c.x, c.y - 10, { color: '#9fe4f4' });
-        }
-        break;
-      }
-      case 'scout': {
-        const undisc = this.world.pois.filter((p) => !p.discovered);
-        if (undisc.length) {
-          undisc.sort((a, b2) => dist(a.x, a.y, c.x, c.y) - dist(b2.x, b2.y, c.x, c.y));
-          const p = undisc[0];
-          if (dist(p.x, p.y, grove.x, grove.y) < 1800) {
-            p.discovered = true;
-            this.notify(`${c.sp.name} spotted ${p.name}.`, 'good');
-            this.audio.play('chirp');
-          }
-        }
-        break;
-      }
-      case 'rain': {
-        if (this.weather.kind !== 'rain' && Math.random() < 0.4) {
-          this.weather.force('rain', 40);
-          this.notify(`${c.sp.name} pulled a cloud over.`, 'rare');
-        }
-        break;
-      }
-      case 'aquifer': {
-        this.crab.addWater(6);
-        this.eco.addWater(grove.x, grove.y, 30, 40);
-        this.particles.ring(grove.x, grove.y, { r0: 4, r1: 44, life: 0.6, color: '#7fe0d0' });
-        break;
-      }
-      case 'guard': case 'nightsee': case 'pollinate': case 'till': case 'refract': case 'purify': case 'compost':
-      default:
-        c.workTarget = { x: grove.x + rand(-70, 70), y: grove.y + rand(-70, 70) };
-        break;
-    }
+  talkToVess() {
+    const lines = this._vessLines();
+    const l = lines[Math.floor(Math.random() * lines.length)];
+    this.npc.say(l, 5);
+    this.npc.facing = Math.sign(this.crab.x - this.npc.x) || 1;
   }
 
-  organScreenPos() {
+  _vessLines() {
+    const e = this.economy;
+    const out = [];
+    if (this.garden.planted.length === 0) {
+      out.push('Your back is bare rock. Put something in it. Anything. I have seeds.');
+    }
+    if (this.garden.pond > 0.8) out.push("You have a pond. On your back. I've written four pages about it.");
+    if (e.genes.size >= 4) out.push(`Four genes expressed. You are rewriting yourself in real time and I am taking notes.`);
+    if (this.wildlife.fleet.length) out.push("They follow you now. I don't think they know why either.");
+    if (this.weather.nightMix > 0.5) out.push('Things come out at night that were not here in the day. Stay lit.');
+    out.push('Eleven years I mapped this basin. You made it in an afternoon. I am fine.');
+    out.push('Every ruin out here was built by people who thought the water would come back.');
+    out.push('Keep the spring running. Everything downstream of you depends on it, including me.');
+    return out;
+  }
+
+  attack() {
+    if (this.attackT > 0) return;
+    this.attackT = 0.55;
+    const c = this.crab;
+    c.clawOpen = 1;
+    const reach = c.m.shellW * 0.7;
+    const fx = c.x + (c.facing || 1) * reach * 0.6;
+    let hit = 0;
+    for (const q of this.wildlife.hostiles) {
+      if (Math.abs(q.x - fx) < reach * 0.7 && Math.abs(q.y - c.y) < 60) {
+        q.hurt(this.economy.stat('dmg'), c.x);
+        hit++;
+      }
+    }
+    if (hit) { this.cam.shake(3); this.audio.play('hit'); } else this.audio.play('claw');
+    this.fx.dust(fx, c.y + c.standH * 0.6, 1);
+  }
+
+  tryPlant(id) {
+    const def = FLORA_BY_ID[id];
+    if (!def) return 'No such seed.';
+    const plot = this.garden.freeFor(def);
+    if (!plot) return def.needsPond ? 'No free pool bed - both are taken.' : 'No free plot. Terrace for more.';
+    if (def.needsPond && this.garden.pond < 0.35) return 'That one needs standing water. Pump first.';
+    if (this.economy.water < def.cost) return `Needs ${def.cost} water.`;
+    if (!this.garden.plant(plot.i, id)) return 'It will not take there.';
+    this.economy.water -= def.cost;
+    const w = this.garden.plotWorld(plot);
+    this.fx.spark(w.x, w.y, '#8cc468', 8, 26);
+    this.economy.markDirty();
+    if (this.tutorial === 2) { this.tutorial = 3; this.ui.say('It grows while you walk. Keep the water up.', 5); }
+    return `${def.name} planted.`;
+  }
+
+  tryBuild(id) {
+    const b = BUILD_BY_ID[id];
+    if (!b) return 'No such structure.';
+    const plot = this.garden.plots.find((p) => p.unlocked && !p.plant && !p.build && !p.wet);
+    if (!plot) return 'No free plot to build on.';
+    if (!this.economy.canBuild(id)) return `Needs ${b.cost} water and ${b.nut} nutrients.`;
+    if (!this.economy.build(plot.i, id)) return 'It will not sit there.';
+    const w = this.garden.plotWorld(plot);
+    this.fx.dust(w.x, w.y, 2);
+    return `${b.name} built into the shell.`;
+  }
+
+  growCrab(stage) {
+    const keepX = this.crab.x;
+    this.crab.setStage(stage);
+    this.crab.x = keepX;
+    this.crab.snapToGround();
+    this.cam.shake(7);
+    this.fx.dust(this.crab.x, this.crab.y, 6);
+    this.fx.spark(this.crab.x, this.crab.y, '#b6de8f', 22, 70);
+  }
+
+  wetSand(x, amount) { this.terrain.deform(x, -amount * 0.04, 9); }
+
+  attraction(def) { return this.wildlife.attraction(def) * this.economy.stat('attract'); }
+  nearestHostile(x, r) { return this.wildlife.nearestHostile(x, r); }
+
+  // -- hooks ----------------------------------------------------------------
+
+  onCreatureAttack(c) {
     const crab = this.crab;
-    const z = this.cam.zoom;
-    const s = this.cam.worldToScreen(crab.x, crab.y);
-    const R = crab.size * z;
-    const rot = crab.bodyAngle + crab.tiltX;
-    return {
-      x: s.x - Math.cos(rot) * R * 0.42,
-      y: s.y - crab.bodyZ * 0.55 * z - Math.sin(rot) * R * 0.42 - R * 0.28,
-    };
+    if (this.state !== 'play') return;
+    if (Math.abs(c.x - crab.x) > 24 + crab.m.shellW * 0.34) return;
+    if ((crab.iframe || 0) > 0) return;
+    crab.iframe = 0.55;
+    const dmg = c.def.dmg * (1 - this.economy.stat('armour'));
+    crab.hp = Math.max(0, crab.hp - dmg);
+    this.cam.shake(4);
+    this.audio.play('hurt');
+    this.fx.blood(crab.x + (c.x - crab.x) * 0.4, crab.y, 5);
+    if (crab.hp <= 0) this.onDown();
   }
 
-  // -- events ---------------------------------------------------------------
-
-  onEvolve(node) {
-    this.audio.play('evolve');
-    this.renderer.doFlash('#ffe9a0', 0.45);
-    this.cam.addShake(2);
-    this.notify(`Evolved: ${node.name}`, 'rare');
-    this.particles.burst('spark', this.crab.x, this.crab.y, 20, {
-      color: node.color, speedMin: 8, speedMax: 40, life: 1.2, glow: 6, grav: -4,
-    });
-    this.crab.applyStats();
-    if (node.add && node.add.legPairs) this.crab._buildLegs();
-    // several moult nodes can be bought in one frame; only stage one scene
-    if (node.moult && !this.cutscene.active && this.state === 'play') {
-      const sc = getScene('moult', this);
-      if (sc) this.cutscene.play(sc);
-    }
-  }
-
-  onPlantMature(p) {
-    const spec = PLANTS[p.type];
-    if (this.cam.isVisible(p.x, p.y, 40)) {
-      this.audio.play('grow');
-      this.particles.burst('leaf', p.x, p.y - p.r, 6, {
-        color: spec.colors[1], speedMin: 5, speedMax: 18, life: 1.1, grav: 10, wind: 1, spin: 4,
-      });
-    }
-    this.statsRun.planted++;
-  }
-
-  onPlantDied(p) {
-    if (this.cam.isVisible(p.x, p.y, 40)) {
-      this.particles.burst('dust', p.x, p.y, 5, { color: '#9a8a5a', speedMin: 4, speedMax: 14, life: 0.9, wind: 1 });
-    }
-  }
-
-  onEcoTierUp(t) {
-    this.audio.play('discover');
-    this.renderer.doFlash('#8fd47a', 0.4);
-    this.notify(`Ecosystem: ${t.name}`, 'rare');
-    this.particles.text(t.name, this.groveCenter.x, this.groveCenter.y - 30, { color: '#a8e090', scale: 2, life: 3 });
-    this.particles.text(t.blurb, this.groveCenter.x, this.groveCenter.y - 16, { color: '#e8dcc4', scale: 1, life: 3.4 });
-  }
-
-  onCreatureDied(c, source) {
-    if (c.hostile) {
-      this.statsRun.killed++;
-      this.gain('nutrients', 2 + c.sp.size * 0.35, c.x, c.y - 10);
-    } else {
-      this.gain('nutrients', 1, c.x, c.y - 10);
-      if (c.tamed) this.notify(`${c.sp.name} died.`, 'bad');
-    }
-    if (c === this.selected) this.selected = null;
-    this.audio.play('hit');
-  }
-
-  onCrabDown(source) {
+  onDown() {
     if (this.state === 'dead') return;
-    // never leave a cutscene half-played holding onto input
-    if (this.cutscene.active) this.cutscene.finish();
-    if (this.panels.open) this.panels.close();
     this.state = 'dead';
-    this.deathT = 0;
-    this.crab.hp = 0;
-    this.crab.invuln = 9999;
-    this.crab.controlled = false;
-    this.crab.moveTarget = null;
-    this.selected = null;
-    // everything that was chewing on you loses interest
-    for (const c of this.creatures) {
-      if (!c.hostile) continue;
-      c.target = null;
-      c.orderTarget = null;
-      c.state = 'wander';
-      c.stateT = 0;
+    this.ui.say('You pull in and stop. The desert takes what it takes.', 8);
+  }
+
+  onCreatureDown(c) {
+    if (!c.hostile) return;
+    this.economy.berries += 1;
+    this.economy.nutrients += 4;
+    this.fx.popup(c.x, c.y - 8, '+4n', '#8cc468');
+  }
+
+  onGene(g) { this.ui.say(`New gene expressed: ${g.name}.`, 5); this.economy.markDirty(); }
+  onTamed(c) { this.economy.markDirty(); }
+  onBoard() {}
+  onSkill(s) { this.economy.markDirty(); }
+  onEvolve(e) { this.ui.say(`${e.name}. Something in you unfolds.`, 6); this.economy.markDirty(); }
+  onBuilt() { this.economy.markDirty(); }
+  onPlantGrew(plot, pl) {
+    if (pl.stage >= 3) {
+      this.economy.recomputeGenes();
+      const w = this.garden.plotWorld(plot);
+      this.fx.spark(w.x, w.y - 4, '#b6de8f', 10, 30);
+      this.ui.say(`${pl.def.name} is mature.`, 3.5);
     }
-    this.audio.play('growl');
-    this.renderer.doFlash('#802020', 0.7);
-    this.cam.addShake(8);
-    this.particles.burst('chunk', this.crab.x, this.crab.y, 20, {
-      color: '#b8543a', speedMin: 20, speedMax: 60, life: 1.2, grav: 120, lift: 30,
+  }
+  onFirstSighting(def) {
+    if (!def.hostile) this.ui.say(`${def.name} - first sighting.`, 4);
+  }
+  onAmbush(def, n) {
+    this.ui.say(n > 1 ? `${def.name}s! ${n} of them, out of the sand.` : `${def.name}! Out of the sand.`, 4);
+    this.cam.shake(5);
+  }
+  onNewDay() {}
+  onDusk() { this.ui.say('The light is going.', 3); }
+  onDawn() {}
+  onWeather() {}
+
+  // -- save -----------------------------------------------------------------
+
+  save() {
+    Save.writeSave({
+      v: 1, x: this.crab.x, stage: this.crab.stage, hp: this.crab.hp,
+      hour: this.weather.hour, day: this.weather.day,
+      economy: this.economy.toJSON(), garden: this.garden.toJSON(),
+      wildlife: this.wildlife.toJSON(), seeds: this.seeds,
+      taken: [...this.encounters.taken], tutorial: this.tutorial,
     });
   }
 
-  _revive() {
-    this.state = 'play';
-    this.crab.hp = this.crab.hpMax * 0.5;
-    this.crab.water = Math.max(2, this.crab.water * 0.5);
-    this.crab.invuln = 3;
-    this.crab.buried = 0;
-    this.burrowT = 0;
-    this.crab.x = this.groveCenter.x;
-    this.crab.y = this.groveCenter.y;
-    this.crab._resetFeet();
-    this.cam.followEntity(this.crab, true);
-    // the desert takes a cut
-    this.res.nutrients = Math.floor(this.res.nutrients * 0.75);
-    this.notify('You woke up again. Something dragged you home.', 'info');
-    for (const c of this.creatures) if (c.hostile) c.state = 'wander';
+  load(d) {
+    try {
+      this.crab.setStage(d.stage || 'juvenile');
+      this.crab.x = d.x || 0;
+      this.crab.snapToGround();
+      this.crab.hp = d.hp ?? this.crab.hpMax;
+      this.weather.hour = d.hour ?? 11;
+      this.weather.day = d.day ?? 0;
+      this.economy.fromJSON(d.economy);
+      this.garden.fromJSON(d.garden);
+      this.wildlife.fromJSON(d.wildlife);
+      this.seeds = d.seeds || this.seeds;
+      this.encounters.taken = new Set(d.taken || []);
+      this.tutorial = d.tutorial || 3;
+      this.economy.recomputeGenes();
+      this.economy.markDirty();
+      this.cam.followEntity(this.crab, true);
+    } catch (err) { /* a corrupt save should not stop a new game */ }
   }
 
-  onRaidStart(n) {
-    this.notify(`Something is coming for the grove. (${n})`, 'bad');
-    this.audio.play('growl');
-    this.audio.setMood('danger');
-    this.renderer.doFlash('#601818', 0.35);
-    this.cam.addShake(3);
+  reset() {
+    Save.clearSave();
+    this.newRun();
   }
 
-  onRaidCleared(dawn) {
-    this.notify(dawn ? 'The sun came up. They scattered.' : 'The grove held.', 'good');
-    this.audio.setMood(this.weather.isNight ? 'night' : this.currentRegion.ambience);
-    this.gain('nutrients', 12, this.crab.x, this.crab.y - 16);
-    this.audio.play('discover');
-  }
-
-  onDusk() {
-    this.audio.setMood('night');
-    this.audio.play('night');
-    this.notify('Night.', 'info');
-    if (Math.random() < 0.62) this.spawner.startRaid();
-  }
-
-  onDawn() {
-    this.audio.setMood(this.currentRegion.ambience);
-    this.audio.play('dawn');
-    this.notify('Dawn.', 'good');
-    this.crab.vigor = 1;
-  }
-
-  onNewDay(day) {
-    this.notify(`Day ${day}.`, 'info');
-    if (day % 2 === 0) this.save();
-  }
-
-  onWeather(kind) {
-    const msg = {
-      sandstorm: 'Sandstorm rolling in.',
-      heatwave: 'The air is boiling.',
-      rain: 'It is raining. Actual rain.',
-      lightning: 'Dry lightning over the flats.',
-      fogbank: 'Fog, thick as wool.',
-    }[kind];
-    if (msg) this.notify(msg, kind === 'rain' ? 'rare' : 'info');
-  }
-
-  onTutorialComplete() {
-    this.notify('Dr. Pell has taught you everything he knows. Which was six things.', 'good');
-    this.pell.chirp('You have got this. I will be over here, digging.', 5);
-  }
-
-  // -- render ---------------------------------------------------------------
+  // -- draw -----------------------------------------------------------------
 
   draw() {
     const r = this.renderer;
@@ -1083,213 +502,143 @@ export class Game {
     const cam = this.cam;
     r.beginFrame(0);
 
-    if (this.state === 'title') { this._drawTitle(ctx, r); return; }
+    this.backdrop.drawSky(ctx, cam, this.weather);
+    this.backdrop.drawLayer(ctx, cam, this.weather, 'far', this.terrain);
+    this.backdrop.drawLayer(ctx, cam, this.weather, 'mid', this.terrain);
+    this.backdrop.drawLayer(ctx, cam, this.weather, 'near', this.terrain);
+    this.terrain.draw(ctx, cam);
+    this.terrain.drawSand(ctx, cam);
+    this.encounters.draw(ctx, cam);
+    this.fx.draw(ctx, cam, 'far');
 
-    // 1. terrain
-    this.world.draw(ctx, cam, this.weather.shadow);
-    // 2. moisture + decals
-    drawWetGround(ctx, cam, this);
-    this.particles.drawDecals(ctx, cam);
-    // 3. flat landmarks
-    const bounds = cam.bounds(80);
-    const visiblePois = this.world.pois.filter((p) =>
-      p.x > bounds.x0 - 160 && p.x < bounds.x1 + 160 && p.y > bounds.y0 - 160 && p.y < bounds.y1 + 160);
-    const FLAT = ['oasis', 'seep', 'crater', 'well'];
-    for (const p of visiblePois) if (FLAT.includes(p.kind)) drawPoi(ctx, cam, this, p);
+    // creatures behind the crab, then the crab, then whatever rides on it
+    this.wildlife.draw(ctx, cam, 'ground');
+    this.npc.draw(ctx, cam);
+    this.crab.draw(ctx, cam, this.garden);
+    this._drawStructures(ctx, cam);
+    this.wildlife.draw(ctx, cam, 'shell');
+    this.fx.draw(ctx, cam, 'near');
+    this.backdrop.drawForeground(ctx, cam, this.weather, this.terrain);
 
-    // 4. build the sorted entity list
-    const list = [];
-    for (const d of this.world.decorNear(bounds)) list.push({ y: d.y, kind: 'decor', ref: d });
-    for (const p of this.eco.plantsInBounds(bounds)) list.push({ y: p.y, kind: 'plant', ref: p });
-    for (const c of this.creatures) {
-      if (!cam.isVisible(c.x, c.y, 60)) continue;
-      list.push({ y: c.y, kind: 'creature', ref: c });
-    }
-    for (const p of visiblePois) if (!FLAT.includes(p.kind)) list.push({ y: p.y, kind: 'poi', ref: p });
-    list.push({ y: this.crab.y, kind: 'crab', ref: this.crab });
-    if (!this.pell.hidden && cam.isVisible(this.pell.x, this.pell.y, 60)) {
-      list.push({ y: this.pell.y, kind: 'pell', ref: this.pell });
-    }
-    list.sort((a, b) => a.y - b.y);
-
-    // 5. shadows first, so nothing casts onto a sprite
-    for (const e of list) {
-      switch (e.kind) {
-        case 'decor': drawDecorShadow(ctx, cam, this.weather, e.ref); break;
-        case 'plant': drawPlantShadow(ctx, cam, this.weather, e.ref); break;
-        case 'creature': drawCreatureShadow(ctx, cam, this.weather, e.ref); break;
-        case 'crab': e.ref.drawShadow(ctx, cam, this.weather); break;
-        case 'pell': e.ref.drawShadow(ctx, cam, this.weather); break;
-        default: break;
-      }
-    }
-
-    // 6. particles that belong under everything
-    this.particles.draw(ctx, cam, 'under');
-
-    // 7. entities
-    for (const e of list) {
-      switch (e.kind) {
-        case 'decor': drawDecor(ctx, cam, this, e.ref); break;
-        case 'plant': drawPlant(ctx, cam, this, e.ref); break;
-        case 'creature': e.ref.draw(ctx, cam, this); break;
-        case 'poi': drawPoi(ctx, cam, this, e.ref); break;
-        case 'crab': e.ref.draw(ctx, cam, this); break;
-        case 'pell': e.ref.draw(ctx, cam, this); break;
-        default: break;
-      }
-    }
-
-    // 8. selection + hover rings
-    if (this.selected && !this.selected.dead) {
-      const s = cam.worldToScreen(this.selected.x, this.selected.y);
-      selectionRing(ctx, s.x, s.y, this.selected.radius * cam.zoom + 4, '#ffb45a', this.time * 2);
-    }
-    if (this.uiHover && this.uiHover.type === 'creature' && this.uiHover.ref !== this.selected) {
-      const s = cam.worldToScreen(this.uiHover.ref.x, this.uiHover.ref.y);
-      selectionRing(ctx, s.x, s.y, this.uiHover.ref.radius * cam.zoom + 4, 'rgba(255,233,160,0.6)', -this.time * 1.4);
-    }
-    if (this.crab.controlled) {
-      const s = cam.worldToScreen(this.crab.x, this.crab.y);
-      selectionRing(ctx, s.x, s.y, this.crab.size * cam.zoom * 2, 'rgba(159,228,244,0.5)', this.time);
-    }
-
-    // 9. overlay particles + text
-    this.particles.draw(ctx, cam, 'over');
-    for (const p of visiblePois) drawPoiLabel(ctx, cam, this, p);
-    this.particles.drawTexts(ctx, cam);
-
-    // 10. lights
+    // lights
     r.beginLights(this.weather);
-    this.crab.drawLights(r, cam, this);
-    for (const c of this.creatures) {
-      if (cam.isVisible(c.x, c.y, 80)) c.drawLights(r, cam);
+    const lightPow = this.economy.stat('light');
+    if (lightPow > 0) {
+      const o = this.crab.shellWorld(0.5);
+      const s = cam.worldToScreen(o.x, o.y);
+      r.addLight(s.x, s.y, 90 * cam.zoom * (0.6 + lightPow * 0.5), '#ffd98a', 0.8);
     }
-    for (const p of visiblePois) {
-      if (p.waterLeft > 0 && (p.kind === 'oasis' || p.kind === 'seep' || p.kind === 'well')) {
-        const s = cam.worldToScreen(p.x, p.y);
-        r.addLight(s.x, s.y, p.radius * cam.zoom * 0.8, '#6fd8ee', 0.28);
-      }
+    for (const c of this.wildlife.list) {
+      if (!c.def.glow || !c.alive) continue;
+      const s = cam.worldToScreen(c.x, c.y);
+      r.addLight(s.x, s.y, 40 * cam.zoom, c.def.glow, 0.7);
     }
-    if (this.nightLight && this.weather.isNight) {
-      const s = cam.worldToScreen(this.groveCenter.x, this.groveCenter.y);
-      r.addLight(s.x, s.y, 120 * cam.zoom, '#ffb45a', 0.35 * Math.min(2, this.nightLight));
+    if (this.garden.pond > 0.3) {
+      const o = this.crab.shellWorld(0.24);
+      const s = cam.worldToScreen(o.x, o.y);
+      r.addLight(s.x, s.y, 34 * cam.zoom, '#9de3ee', 0.25 * this.garden.pond);
     }
-    this.particles.drawLights(r.light, cam);
     r.endLights();
-
-    // 11. UI onto its own crisp layer, then one composite pass
-    const ui = r.ui;
-    this.hud.draw(ui, this);
-    this.panels.draw(ui, this);
-    this.cutscene.draw(ui, this);
-    this.touch.draw(ui, this);
-    if (this.state === 'dead') this._drawDeath(ui, r);
+    r.drawWeatherOverlay(this.weather, this);
     r.composite(this.weather, this);
+
+    const ui = r.ui;
+    if (this.state === 'intro') this._drawCutscene(ui, r);
+    else this.ui.draw(ui, r);
+    this.fx.drawText(ui, cam, (c, t, x, y, o) => drawText(c, t, x, y, o));
+    if (this.state === 'dead') this._drawDead(ui, r);
+    if (this.npc.speech && this.state === 'play') this._drawSpeech(ui, cam, this.npc);
+    r.dctx.drawImage(r.uiC, 0, 0, r.vw, r.vh, 0, 0, r.vw * r.scale, r.vh * r.scale);
   }
 
-  _drawDeath(ctx, r) {
-    ctx.fillStyle = 'rgba(40,8,8,0.5)';
+  _drawStructures(ctx, cam) {
+    const crab = this.crab;
+    const f = crab.faceT < 0 ? -1 : 1;
+    const built = this.garden.plots.filter((p) => p.build);
+    if (!built.length) return;
+    const p0 = cam.worldToScreen(crab.x, crab.y + crab.bob);
+    ctx.save();
+    ctx.translate(Math.round(p0.x * 2) / 2, Math.round(p0.y * 2) / 2);
+    ctx.scale(cam.zoom, cam.zoom);
+    ctx.rotate(crab.bodyAngle);
+    for (const plot of built) {
+      const sp = crab.rig.shellPoint(plot.u);
+      const art = buildStructure(plot.build.def, clamp(crab.m.shellH / 96, 0.3, 1.1));
+      ctx.save();
+      ctx.translate(sp.x * f, sp.y + 1);
+      ctx.rotate(Math.atan2(sp.nx, -sp.ny) * 0.3 * f);
+      ctx.scale(f, 1);
+      ctx.drawImage(art.cv, -art.ox, -art.oy);
+      ctx.restore();
+    }
+    ctx.restore();
+  }
+
+  _drawSpeech(ctx, cam, who) {
+    const s = cam.worldToScreen(who.x, who.y - 26);
+    const lines = wrapText(who.speech, 130);
+    const w = Math.max(...lines.map((l) => textWidth(l))) + 10;
+    const h = lines.length * LINE_H + 6;
+    const x = clamp(Math.round(s.x - w / 2), 2, this.renderer.vw - w - 2);
+    const y = clamp(Math.round(s.y - h), 2, this.renderer.vh - h - 2);
+    ctx.fillStyle = 'rgba(18,13,9,0.9)';
+    ctx.fillRect(x, y, w, h);
+    ctx.strokeStyle = 'rgba(226,200,150,0.4)';
+    ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+    lines.forEach((l, i) => drawText(ctx, l, x + 5, y + 4 + i * LINE_H, { color: '#f2e4c2' }));
+  }
+
+  _drawCutscene(ctx, r) {
+    const bar = Math.round(22 * this.letterbox);
+    ctx.fillStyle = '#080604';
+    ctx.fillRect(0, 0, r.vw, bar);
+    ctx.fillRect(0, r.vh - bar, r.vw, bar);
+    if (this.dialog) {
+      const d = this.dialog;
+      const nar = d.who === 'narrator';
+      const lines = wrapText(d.text, r.vw - 60);
+      const h = lines.length * LINE_H + (nar ? 4 : 14);
+      const y = r.vh - bar - h - 8;
+      const x = 26;
+      if (!nar) {
+        ctx.fillStyle = 'rgba(16,12,8,0.9)';
+        ctx.fillRect(x - 6, y - 4, r.vw - 40, h + 8);
+        ctx.strokeStyle = 'rgba(226,200,150,0.35)';
+        ctx.strokeRect(x - 5.5, y - 3.5, r.vw - 41, h + 7);
+        drawText(ctx, d.who, x, y, { color: '#e2b74a' });
+      }
+      const cps = 48;
+      const shown = Math.floor(d.t * cps);
+      let used = 0;
+      lines.forEach((l, i) => {
+        const room = Math.max(0, shown - used);
+        used += l.length;
+        drawText(ctx, l.slice(0, room), x, y + (nar ? 0 : 11) + i * LINE_H,
+          { color: nar ? 'rgba(230,214,180,0.82)' : '#f2e4c2', outline: nar, outlineColor: 'rgba(0,0,0,0.6)' });
+      });
+    }
+    drawText(ctx, 'space / tap to skip', r.vw - 4, r.vh - bar - 8,
+      { color: 'rgba(230,214,180,0.4)', align: 'right' });
+  }
+
+  _drawDead(ctx, r) {
+    ctx.fillStyle = 'rgba(10,6,4,0.6)';
     ctx.fillRect(0, 0, r.vw, r.vh);
-    drawText(ctx, 'YOU WERE EATEN', r.vw / 2, r.vh / 2 - 16, {
-      color: '#ff8a7a', align: 'center', scale: 3, outline: true, outlineColor: '#1a0808',
-    });
-    drawText(ctx, 'a thousand years of sleep, ended by a scorpion', r.vw / 2, r.vh / 2 + 8, {
-      color: '#e8c0b8', align: 'center', scale: 1,
-    });
-    if (this.deathT > 3 && Math.floor(this.time * 2) % 2 === 0) {
-      drawText(ctx, 'click to wake up again', r.vw / 2, r.vh / 2 + 22, {
-        color: '#ffe9a0', align: 'center', scale: 1,
-      });
+    drawText(ctx, 'THE SAND TAKES WHAT IT TAKES', r.vw / 2, r.vh / 2 - 18,
+      { color: '#f2e4c2', align: 'center', scale: 2 });
+    const w = 110, x = (r.vw - w) / 2, y = r.vh / 2 + 8;
+    const hot = this.input.sx >= x && this.input.sx <= x + w && this.input.sy >= y && this.input.sy <= y + 16;
+    ctx.fillStyle = hot ? 'rgba(96,74,44,0.95)' : 'rgba(52,40,26,0.9)';
+    ctx.fillRect(x, y, w, 16);
+    ctx.strokeStyle = 'rgba(226,200,150,0.4)';
+    ctx.strokeRect(x + 0.5, y + 0.5, w - 1, 15);
+    drawText(ctx, 'PULL YOURSELF UP', x + w / 2, y + 5, { color: '#f2e4c2', align: 'center' });
+    if (hot && this.input.clicked) {
+      this.input.clicked = false;
+      this.crab.hp = this.crab.hpMax * 0.6;
+      this.crab.iframe = 2.5;
+      this.state = 'play';
+      for (const q of this.wildlife.hostiles) q.x += (q.x - this.crab.x > 0 ? 200 : -200);
     }
-  }
-
-  _drawTitle(ctx, r) {
-    const vw = r.vw, vh = r.vh;
-    const t = this.time;
-    // sky gradient
-    const g = ctx.createLinearGradient(0, 0, 0, vh);
-    g.addColorStop(0, '#2a1f38');
-    g.addColorStop(0.45, '#8a4a44');
-    g.addColorStop(0.62, '#e08a4a');
-    g.addColorStop(1, '#e8c88d');
-    ctx.fillStyle = g;
-    ctx.fillRect(0, 0, vw, vh);
-    // sun
-    const sy = vh * 0.6;
-    ctx.fillStyle = '#ffd68a';
-    ctx.beginPath(); ctx.arc(vw * 0.5, sy, 26, 0, TAU); ctx.fill();
-    // dune silhouettes
-    for (let layer = 0; layer < 4; layer++) {
-      const yBase = vh * (0.58 + layer * 0.11);
-      const col = ['#a8683c', '#8a5230', '#6b3d24', '#4a281a'][layer];
-      ctx.fillStyle = col;
-      ctx.beginPath();
-      ctx.moveTo(0, vh);
-      for (let x = 0; x <= vw; x += 4) {
-        const yy = yBase + Math.sin(x * 0.013 + layer * 2.1 + t * 0.02 * (layer + 1)) * (8 + layer * 4)
-          + Math.sin(x * 0.031 + layer) * 3;
-        ctx.lineTo(x, yy);
-      }
-      ctx.lineTo(vw, vh);
-      ctx.closePath();
-      ctx.fill();
-    }
-    // a little crab walking across the near dune
-    const cx = ((t * 14) % (vw + 60)) - 30;
-    const cy = vh * 0.9 + Math.sin(cx * 0.02) * 4;
-    ctx.fillStyle = '#2a170f';
-    for (let i = 0; i < 8; i++) {
-      const side = i < 4 ? -1 : 1;
-      const ph = t * 9 + i * 1.1;
-      const lx = cx + side * (5 + Math.sin(ph) * 3);
-      const ly = cy + 3 + Math.abs(Math.cos(ph)) * -2;
-      pxLine(ctx, cx, cy, lx, ly, '#2a170f', 1);
-    }
-    pxEllipse(ctx, cx, cy, 6, 4, '#2a170f');
-    pxEllipse(ctx, cx - 1, cy - 4, 2, 2, '#4fd0e0');
-    // title text lives on the UI layer so the shimmer never touches it
-    const ui = r.ui;
-    const bob = Math.sin(t * 1.2) * 1.5;
-    drawText(ui, 'CRABDEN', vw / 2, vh * 0.2 + bob, {
-      color: '#ffe9c0', align: 'center', scale: 5, outline: true, outlineColor: '#3a1a10',
-    });
-    drawText(ui, 'wake up. make water. fix everything.', vw / 2, vh * 0.2 + 42 + bob, {
-      color: '#ffd9a0', align: 'center', scale: 1, outline: true, outlineColor: '#3a1a10',
-    });
-    const touch = this.touch.active;
-    if (Math.floor(t * 1.6) % 2 === 0) {
-      drawText(ui, touch ? 'tap to begin' : 'click to begin', vw / 2, vh * 0.78, {
-        color: '#fff4dc', align: 'center', scale: 2, outline: true, outlineColor: '#3a1a10',
-      });
-    }
-    this._titleContinue = null;
-    if (Save.hasSave()) {
-      const info = Save.saveInfo();
-      const label = `continue - day ${info?.day ?? 1}`;
-      if (touch) {
-        const bw = textWidth(label, 1) + 20;
-        const bh = 18;
-        const bx = Math.round(vw / 2 - bw / 2), by = Math.round(vh * 0.87);
-        this._titleContinue = { x: bx, y: by, w: bw, h: bh };
-        panel(ui, bx, by, bw, bh, 'rgba(28,18,12,0.85)', '#e0c088');
-        drawText(ui, label, vw / 2, by + (bh - 7) / 2, { color: '#ffe9c0', align: 'center', scale: 1 });
-      } else {
-        drawText(ui, `press L to continue  (day ${info?.day ?? 1})`, vw / 2, vh * 0.88, {
-          color: 'rgba(255,244,220,0.75)', align: 'center', scale: 1, outline: true, outlineColor: '#3a1a10',
-        });
-      }
-    }
-    if (touch && vw < vh) {
-      drawText(ui, 'turn your phone sideways for more room', vw / 2, vh * 0.94, {
-        color: 'rgba(255,240,214,0.6)', align: 'center', scale: 1, outline: true, outlineColor: '#3a1a10',
-      });
-    }
-    drawText(ui, 'a game about a very old crab and a very dry planet', vw / 2, vh - 12, {
-      color: 'rgba(255,240,214,0.55)', align: 'center', scale: 1,
-    });
-
-    r.hazeAmount = 0.9;
-    r.composite(this.weather, this);
   }
 }

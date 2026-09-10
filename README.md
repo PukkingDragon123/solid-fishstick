@@ -1,231 +1,211 @@
 # CRABDEN
 
-You are a crab. You have been asleep for a thousand years. When you wake up,
-the ocean is gone, the whole world is desert, and the drop of water that woke
-you did not come from the sky.
+You are a crab. You have been asleep for a thousand years. The ocean you fell
+asleep in is gone, the seabed above you is now a desert, and the thing that
+woke you was an archaeologist relieving herself on what she took to be a rock.
 
-A 2D pixel-art game about making water, restoring an ecosystem, collecting the
-strange things that survived, and finding out where the sea went.
+There is a spring in your back. There used to be a sea here because of it.
 
-![the first puddle](docs/screenshot-first-puddle.png)
+**CRABDEN** is a side-scrolling pixel-art ecosystem tycoon. Water is currency.
+You pump it out of the organ in your shell, spend it on seeds, and grow the
+plants *on your own back*. Plants fix nutrients and express genes; genes are
+the only thing that unlocks evolution; the garden you are carrying decides
+which of the desert's thousand-year descendants walk out of the dunes to live
+on you. Some of them join your fleet. Some of them come up out of the sand at
+night with their mouths open.
 
-<p align="center">
-  <img src="docs/screenshot-grove.png" width="49%" alt="a grove of moss, berry bushes and stiltpalms">
-  <img src="docs/screenshot-evolution.png" width="49%" alt="the evolution tree">
-  <img src="docs/screenshot-codex.png" width="49%" alt="the codex, showing the Dune Skimmer">
-  <img src="docs/screenshot-map.png" width="49%" alt="the world map">
-</p>
+![The oasis on your back](docs/shot-03-oasis.png)
+
+---
 
 ## Play it
 
-**The quickest way:** open `dist/crabden.html`. It is the whole game in one
-self-contained file — no server, no install. Double-click it, or drag it into a
-browser tab, or mail it to someone.
+**Single file, no install, no server.** Open `dist/crabden.html` in any
+browser — including straight off the filesystem.
 
-**From source**, serve the folder (the game loads as ES modules, so it needs
-HTTP rather than `file://`):
-
-```sh
-python3 -m http.server 8080   # then open http://localhost:8080
+```
+git clone https://github.com/PukkingDragon123/solid-fishstick
+open solid-fishstick/dist/crabden.html
 ```
 
-**Rebuilding the single file** after changing anything under `js/`:
+To run from source, or to rebuild the bundle after a change:
 
-```sh
-npm install   # once; pulls esbuild
-npm run build # -> dist/crabden.html
 ```
-
-There are no asset files anywhere. The terrain, the animals, the plants, the
-font and the sound are all generated at runtime, so the source is text.
+npm install       # esbuild only, used for the bundle
+npm start         # http://localhost:8080
+npm run build     # -> dist/crabden.html + dist/crabden.body.html
+```
 
 ## Controls
 
-### Mouse and keyboard
+|  | keyboard | touch |
+| --- | --- | --- |
+| walk | `A` / `D` or arrows | left thumbstick (drag anywhere in the lower-left) |
+| pump water | `Space` | **PUMP** |
+| act — dig, harvest, tame, strike | `E` | **ACT** |
+| panels | `1`–`6`, `Tab` | **MENU**, then the tab rail |
+| zoom / pan | wheel, drag | pinch, drag |
+| close | `Esc` | **CLOSE** |
 
-| Input | Does |
-| --- | --- |
-| **click the crab** | take direct control (WASD to move, left click to strike) |
-| **click the ground** | in command mode, send the crab there |
-| **click / hold the organ** on its back, or hold **F** | pump water |
-| **right click / hold Q** | pour water onto the sand |
-| **T** | offer food to a nearby animal and befriend it |
-| **H** | harvest ripe berries within reach |
-| **R** | absorb water from an oasis or seep you are standing in |
-| **space / 1-4** | use equipped abilities |
-| **shift** | dash (once you have evolved it) |
-| **middle-drag / arrow keys** | pan the camera &nbsp;·&nbsp; **wheel** zoom &nbsp;·&nbsp; **Z** snap back to the crab |
-| **E / C / B / M** | evolution tree, companions, codex, map |
-| **Esc** | menu (also skips a cutscene) |
+The game autosaves every twenty seconds and reloads where you left off.
 
-### Touch
-
-On-screen controls appear by themselves on a touch device, and get out of the
-way again the moment a mouse is used. There is a manual switch in the menu.
-
-| Control | Does |
-| --- | --- |
-| **stick**, bottom left | walk (grabbing it takes direct control) |
-| **PUMP** | hold to make water |
-| **POUR** | hold to water the ground just ahead of you |
-| **round button**, bottom right | the one thing in reach: **TAME**, **PICK** or **DRINK** |
-| **square buttons** | equipped abilities, with their cooldowns |
-| **≡** and **✛** | menu, and snap the camera back to the crab |
-| **tap** | the crab to take control, an animal to select it, the ground to send the crab |
-| **drag** | pan the camera &nbsp;·&nbsp; **pinch** to zoom |
-| **SKIP** | during a cutscene |
-
-Attacks and blasts aim themselves at the nearest hostile, so combat needs one
-thumb rather than two. Panels get bigger hit targets, drag-to-scroll lists, and
-a close button; on a phone held upright the evolution tree and the codex split
-into two tappable halves rather than cramming side by side. It plays in
-portrait, but landscape gives the camera a lot more to work with.
+---
 
 ## The loop
 
-**Water is the currency.** The organ on your back makes it, slowly, and faster
-if you pump — which costs vigor, so you work in bursts.
+**Water → plants → genes → evolution → more water.**
 
-Pour water on sand and the sand stops being sand. Wet, fertile ground sprouts
-the best thing the neighbourhood can currently support, which is how the chain
-climbs itself:
+1. **Pump.** The organ on your back brings up water, and overflow fills the
+   stone basin behind your crest. When the basin is full it runs off the back
+   of your shell as a waterfall and wets the sand you are standing on.
+2. **Plant.** Water buys seeds. Seeds go into plots along your shell — ten dry
+   beds on the rock and two wet beds in the basin, which only take plants that
+   want their feet wet. Everything grows in place as you walk.
+3. **Mature.** A mature plant fixes nutrients every second and expresses a
+   **gene**. Genes are not purchasable. The only way to hold a gene is to be
+   carrying something alive that expresses it.
+4. **Attract.** Every species scores your shell — which genes it expresses,
+   how lush it is, whether there is standing water — and only makes the walk
+   when the score is worth it. Get close, offer fruit and water, and it joins
+   your fleet and starts working.
+5. **Evolve.** Evolutions cost nutrients *and* a specific set of genes. Growing
+   from juvenile to adult to ancient makes the shell bigger, the basin deeper,
+   and the garden on your back larger in every sense.
 
-```
-water -> thirstmoss -> ashberry bush -> birds -> animals -> stiltpalms -> waterwood
-```
+### The four skill branches
 
-Plants give **nutrients**. Nutrients buy **evolution**. Evolution makes more
-water, a bigger bladder, longer legs, a claw you could open a door with — and
-that makes a bigger grove, which brings stranger animals.
+**Spring** (deeper wells, bigger tanks, night condensers) · **Garden**
+(terracing for more plots, mulching, grafting, orchards) · **Fleet** (calling,
+patience, standing orders, roosting) · **Body** (stride, carapace, pincer,
+burrowing). Skills are cheap and broad and cost nutrients. Evolutions are rare
+and structural and cost genes.
 
-Leave your grove alone too long and it dries out and dies. It takes a while,
-and a watered plant recovers, but the desert is patient and you are not.
+### Building on yourself
 
-### Creatures
+Cisterns, windcatchers, compost frames, roosts, trellises, a watchpost and a
+salvaged shrine are built into free shell plots and stay there. They are
+permanent stat changes you can see from across a dune.
 
-Twenty-five species, each a plausible descendant of something alive today,
-1,000 desert years later. Feed one and it stays. Give it a job at the grove and
-it works:
+---
 
-- **Dune Skimmer** (sandpiper) — forages: brings back water, berries, scrap
-- **Wirefinch** (finch, nests in rebar) — spreads seeds around the grove
-- **Humprat** (rat, two humps) — dowses for underground water and opens seeps
-- **Sunlicker** (gecko) — guards the oasis, violently, for about four seconds
-- **Ashsnail** (garden snail) — leaves a trail of extremely good soil
-- **Mirage Jelly** (moon jellyfish that went *up* when the sea evaporated) — calls actual rain
-- **The Last Nautilus** — walked out of the ocean on its tentacles and never stopped
+## What is out there
 
-…and things that hunt you at night: Husk Scorpions, Rust Hounds, Glass
-Crawlers, Salt Wraiths, and one Leviathan.
+Seven biomes run for forty thousand pixels: the Weeping Salt Pan, the Bone
+Reef, the Sleeping Dunes, the Glass Flats, the Rustlands, the Ashwood and the
+Deep Well. Each has its own sky, ground, rock and residents.
 
-### Evolution
+Points of interest are generated deterministically from the world seed, so the
+ruin you walked past is still there tomorrow: buried relics, wild seed patches,
+water seeps, ruins to salvage, old kills, nests — and disturbed sand, which is
+not a point of interest so much as a warning you probably will not read in
+time.
 
-Forty-six traits across six branches — Hydrology, Carapace, Claws, Locomotion,
-Symbiosis, Mutation. Unlocking is permanent, but **active abilities need
-slots**, and slots are scarce, so a claw build and a water build play
-differently. Moult nodes physically grow the crab: bigger shell, more hit
-points, and at one point a fifth pair of legs, which the leg solver simply
-picks up and starts walking on.
+Hostiles do not bother a bare rock. Once you are carrying something worth
+taking they start arriving, faster at night: rust scarabs in threes, husk
+hounds in pairs, a thornstalker that buries itself along the path you are about
+to take, a raider crab that wants your garden rather than you, and, in a
+sandstorm, whatever a sandstorm makes.
 
-### The world
+![Night](docs/shot-07-night.png)
 
-Seven regions across a warped, procedurally generated desert, each with its own
-palette, hazard, plants and animals:
-
-*The Sleeping Dunes · The Bone Reef · The Glass Flats · The Rustlands · The
-Weeping Salt Pan · The Ashwood · The Deep Well*
-
-Oases, seeps, human ruins, whale falls, beached ark ships, water-table
-monoliths and one very large hole. Absorb the water, take the surviving
-cuttings home, read what the monoliths say about the shoreline moving.
+---
 
 ## How it is built
 
-### Procedural animation
+No engine, no framework, no dependencies at runtime, and **no asset files at
+all**. Every pixel in the game is generated in the browser when it starts.
 
-The crab has no walk cycle. Each leg picks its own foothold, steps when it has
-been left too far behind, and solves two-bone IK against the dune it is
-standing on. The body rides a spring on the average of its feet, so it bobs and
-tilts across terrain. Claws and eye stalks are springs that lag behind
-acceleration, which is where most of the personality comes from. Ground
-creatures use a cheaper version of the same system.
+### The painter
 
-### Rendering
+`js/render/pixel.js` is the reason the art looks the way it does. Sprites are
+not drawn with strokes and fills — each one is built as a set of fields
+(coverage, height, material, tint) and then *shaded*:
 
-Everything is drawn to a low-resolution buffer and upscaled by an integer
-factor, so the pixels stay square.
+- surface normals come from the gradient of the height field
+- lighting is lambert + rim + a cavity term (local height minus blurred height)
+  + specular + subsurface translucency for leaves and membranes
+- the result is quantised onto a per-material eight-colour ramp with 8×8 Bayer
+  ordered dithering, then given a dark outline
 
-- **scene** — the world, full colour
-- **light** — ambient tint for the time of day plus additive lights, multiplied over the scene
-- **ui** — HUD and dialogue, blitted last so the heat haze never wobbles text
+`js/lib/palette.js` holds about forty materials — chitin, shell rock, claw,
+leaf, moss, petal, berry, sand, bone, rust, water, fur, feather, scale,
+carapace, membrane, horn, rope, cloth, metal, glass, skin, khaki, leather — so
+a fern frond and a crab's leg are lit by the same sun and sit in the same
+desert. Everything is baked once into a canvas at load.
 
-Terrain is a continuous noise field rasterised into 128px chunks and cached as
-two canvases: an albedo pass, and a separate quantised shadow mask. The mask is
-drawn back with an offset derived from the sun's angle, so dune shadows stretch
-and swing through the day for the cost of one extra `drawImage`.
+### The crab
 
-The heat shimmer is the scene blitted to the display in two-pixel horizontal
-bands, each with its own offset — stronger toward the top of the screen, where
-the distance is.
+`js/art/crabart.js` builds the shell from a single profile function that is
+also the source of truth for where you can plant: horizontal bedding like the
+mesas it slept among, eroded shelves, fracture lines, desert varnish streaking
+down the flank, crest spikes, fossil barnacles, and a real stone basin behind
+the crest for the spring to fill.
 
-### Nothing on disk
+`js/entities/crab.js` walks it. Nothing is a sprite animation: each leg keeps a
+planted foot in world space, takes a step when the body has carried it too far,
+and every joint is solved with two-bone IK — so a leg on a dune slope and a leg
+in a hollow bend differently on the same frame. The body then rides on a line
+fitted through whichever feet are currently on the ground, which is what makes
+it tilt going uphill.
 
-- **Font** — a hand-drawn 5×7 bitmap face in `js/lib/font.js`, baked into a tinted atlas
-- **Creatures** — body plans (`bird`, `arachnid`, `nautilus`, `leviathan`, …) drawn from parameters, so a new species is a data entry
-- **Audio** — every sound synthesised in WebAudio; the score is a slow modal generator that changes key with the mood
+### Plants and animals
 
-## File map
+Plants are grown, not drawn (`js/art/floraart.js`): a stem is traced, branches
+split off it with a seeded angle, and leaves, petals and fruit hang on the
+tips. The same generator runs at every growth stage and at any size, so a bush
+you planted as a seed really is the same bush when it fruits, and a plant on an
+ancient crab's shell is a bigger version of the same individual.
+
+Animals share one generator (`js/art/faunaart.js`) driven by proportions — how
+deep the chest is, how long the neck runs, fur or feather or carapace — and
+bake body, head, neck, limbs, wings and tail separately so they can be posed at
+runtime. Every one of them walks on solved legs and keeps its feet on the sand.
+
+### The rest
+
+- **Terrain** is a heightfield over X, baked into 256px chunks, with a live
+  deformation map that footsteps push down and wind pulls back up.
+- **Parallax** is three layers with real aerial perspective: each layer is
+  painted into a scratch canvas and hazed toward the sky colour with
+  `source-atop`, so distance desaturates the buttes without washing the sky.
+- **Heat shimmer** blits the scene to the display in 2px horizontal bands with
+  per-band sine offsets, strongest near the horizon. The UI is composited after
+  it, so text never wobbles.
+- **Weather** runs a real clock: clear, sandstorm, heatwave, rain, overcast and
+  lightning, each with its own light colour, shadow length and haze.
+- **Input** routes mouse, keyboard, multi-touch and the on-screen controls into
+  the same virtual keys, so no gameplay code knows which one you used.
+
+### Layout
 
 ```
-index.html            shell
-css/style.css
-js/main.js             bootstrap + frame loop
-js/game.js             systems, frame body, render order, event callbacks
-js/lib/
-  math.js              seeded RNG, value noise, fbm, easing, colour
-  font.js              5x7 bitmap font, atlas, wrapping
-  audio.js             procedural SFX + generative score
-js/core/
-  input.js  camera.js  save.js
-js/world/
-  regions.js           7 regions, plant tech tree, ecosystem tiers
-  world.js             terrain field, chunk rasteriser, landmarks, scenery
-  weather.js           day/night, wind, sandstorm, rain, lightning
-  ecosystem.js         moisture grid, plant growth, spread, die-off
-js/entities/
-  crab.js              the crab: IK legs, claws, eye stalks, water organ
-  species.js           the bestiary (25 species) and companion jobs
-  creature.js          one class, driven by the species table
-  npc.js               Dr. Pell
-  particles.js         pooled particles, decals, floating text
-js/systems/
-  evolution.js         46-node tree, stat model, ability slots
-  combat.js            damage resolution and active abilities
-  spawner.js           ambient wildlife, grove attraction, night raids
-  tutorial.js          objectives and story milestones
-js/render/
-  renderer.js          layers, lighting, heat haze, weather post
-  sprites.js           pixel primitives, 2-bone IK, dithering
-  creatureart.js       procedural creature body plans
-  worldart.js          plants, scenery, landmarks, water
-js/ui/
-  hud.js  panels.js  cutscene.js  portraits.js
-  touch.js             on-screen controls; presses the same virtual keys
-js/cutscenes/script.js the story
-build.mjs              inlines everything into dist/crabden.html
+js/
+  art/       crabart floraart faunaart humanart buildart
+  core/      camera input save
+  data/      flora fauna progress
+  entities/  crab creature npc
+  lib/       math font audio palette
+  render/    pixel renderer backdrop
+  systems/   garden economy wildlife encounters fx
+  ui/        ui
+  world/     terrain biomes weather
 ```
 
-## Saving
+---
 
-Progress goes to `localStorage` (`crabden.save.v1`) — automatically every other
-in-game day, or from the menu. To wipe it: `localStorage.clear()` in the
-console, or *Abandon and restart* in the menu.
+## Screens
+
+| | |
+| --- | --- |
+| ![Waking up](docs/shot-01-waking.png) | ![The first garden](docs/shot-02-first-garden.png) |
+| ![Skills](docs/shot-04-skills.png) | ![Evolution](docs/shot-05-evolution.png) |
+| ![Seed stock](docs/shot-06-seeds.png) | ![Night](docs/shot-07-night.png) |
+
+---
 
 ## Notes
 
-- Tested in Chromium at 60fps from 800×480 up to 1920×1080, and with real
-  touch input on phone-sized viewports in both orientations.
-- The camera is free; the crab is a character you command, not a cursor.
-- Damage is disabled during cutscenes, on purpose.
-- If the crab goes down, something drags it home and the desert takes a cut of
-  your nutrients. You do not lose the grove.
+Runs at 60fps from 320×200 up to 4K, on desktop and on a phone. Tested against
+landscape phone, portrait phone and tablet profiles with real touch events.
+Save data lives in `localStorage` under `crabden.save.v1`; clearing it starts a
+new run.

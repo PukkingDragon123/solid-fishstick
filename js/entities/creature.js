@@ -1,523 +1,386 @@
-// CRABDEN - every animal that is not the crab.
+// CRABDEN - everything else that walks.
 //
-// One class, driven by the species table. Ground creatures get the same
-// foot-planting IK the crab uses (fewer legs, cheaper); fliers get hover +
-// wingbeat. Behaviour is a small steering stack rather than a state machine
-// soup, so a hostile and a companion share the same movement code.
+// One entity class covers the whole bestiary. What separates a Dunefowl from a
+// Husk Hound is its definition and its brain state, not its code path: both
+// walk on solved legs, both keep their feet on the sand, and both can end up
+// living on your shell.
 
-import { TAU, clamp, clamp01, lerp, damp, angleLerp, dist2, Rng, rgba } from '../lib/math.js';
-import { SPECIES, isHostile } from './species.js';
-import { drawCreature } from '../render/creatureart.js';
+import { clamp, clamp01, lerp, damp, TAU, dist } from '../lib/math.js';
+import { buildCreature } from '../art/faunaart.js';
+import { ik2 } from './crab.js';
+
 let NEXT_ID = 1;
 
-export class Creature {
-  constructor(game, speciesId, x, y, opts = {}) {
-    const sp = SPECIES[speciesId];
-    if (!sp) throw new Error('unknown species ' + speciesId);
-    this.game = game;
-    this.sp = sp;
-    this.id = NEXT_ID++;
-    this.x = x; this.y = y;
-    this.vx = 0; this.vy = 0;
-    this.z = sp.flying ? 12 + Math.random() * 8 : 0;
-    this.vz = 0;
-    this.facing = Math.random() * TAU;
-    this.size = sp.size * (opts.scale ?? 1);
-    this.scale = opts.scale ?? 1;
-    this.hpMax = sp.hp; this.hp = sp.hp;
-    this.t = Math.random() * 100;
-    this.wing = Math.random() * TAU;
-    this.gait = 0;
-    this.hurtFlash = 0;
-    this.state = 'wander';
-    this.stateT = 0;
-    this.target = null;
-    this.home = { x, y };
-    this.wanderA = Math.random() * TAU;
-    this.rng = new Rng(this.id * 7919);
-    this.tamed = !!opts.tamed;
-    this.hostile = isHostile(sp) && !this.tamed;
-    this.work = null;
-    this.workT = this.rng.float(4, 12);
-    this.attackCd = 0;
-    this.fleeT = 0;
-    this.dead = false;
-    this.deathT = 0;
-    this.alarmed = 0;
-    this.tameProgress = 0;
-    this.carrying = null;
-    this.mood = 'calm';
-    this.chirpT = this.rng.float(3, 14);
-    this.leader = null;
-    this.pal = sp.pal;
+export const MOOD = {
+  WANDER: 'wander', APPROACH: 'approach', FEED: 'feed', ROOST: 'roost',
+  FOLLOW: 'follow', FLEE: 'flee', HUNT: 'hunt', ATTACK: 'attack', DEAD: 'dead',
+};
 
-    this.feet = [];
-    const legs = (sp.body && sp.body.legs) || 0;
-    if (legs > 0 && !sp.flying) {
-      for (let i = 0; i < legs; i++) {
-        const side = i % 2 === 0 ? -1 : 1;
-        const row = Math.floor(i / 2);
-        const rows = Math.max(1, legs / 2);
-        this.feet.push({
-          side, row,
-          spread: (row - (rows - 1) / 2) * 0.5,
-          fx: x, fy: y, fz: 0,
-          stepping: false, t: 0, dur: 0.18,
-          ax: 0, ay: 0, bx: 0, by: 0, lift: 0,
+export class Creature {
+  constructor(game, def, x) {
+    this.game = game;
+    this.def = def;
+    this.uid = NEXT_ID++;
+    this.rig = buildCreature(def);
+    this.S = this.rig.S;
+
+    this.x = x;
+    this.y = game.terrain.surfaceY(x) - this.rig.standH;
+    this.vx = 0;
+    this.vy = 0;
+    this.facing = -1;
+    this.faceT = -1;
+
+    this.hp = def.hp;
+    this.hpMax = def.hp;
+    this.mood = MOOD.WANDER;
+    this.moodT = 0;
+    this.target = null;
+    this.homeX = x;
+    this.tamed = false;
+    this.trust = 0;
+    this.onShell = false;
+    this.shellU = 0.5;
+    this.hunger = Math.random();
+
+    this.bob = 0;
+    this.gait = Math.random() * TAU;
+    this.headA = 0;
+    this.tailA = 0;
+    this.wingA = 0;
+    this.flap = Math.random() * TAU;
+    this.hoverT = Math.random() * TAU;
+    this.blink = 0;
+    this.hurtT = 0;
+    this.atkT = 0;
+    this.recoil = 0;
+
+    this.legs = [];
+    const so = this.rig.sockets;
+    for (const far of [true, false]) {
+      for (const hip of [so.hip, so.shoulder]) {
+        this.legs.push({
+          far, hip,
+          foot: { x, y: game.terrain.surfaceY(x) },
+          from: { x, y: 0 }, to: { x, y: 0 },
+          stepping: false, t: 0, lift: 0,
+          phase: (far ? 0.5 : 0) + (hip === so.hip ? 0.25 : 0),
         });
       }
     }
+    this._snapFeet();
   }
 
-  get radius() { return this.size * 0.8; }
-  get isCompanion() { return this.tamed; }
+  get flies() { return !!this.def.flies; }
+  get hostile() { return !!this.def.hostile; }
+  get alive() { return this.hp > 0; }
 
-  // -- damage ---------------------------------------------------------------
-
-  hurt(amount, fromX, fromY, source) {
-    if (this.dead) return;
-    this.hp -= amount;
-    this.hurtFlash = 1;
-    this.alarmed = 4;
-    this.game.particles.text('-' + Math.round(amount), this.x, this.y - this.size - 4, {
-      color: '#ffd08a', scale: 1, shake: 1.5,
-    });
-    this.game.particles.burst('chunk', this.x, this.y - this.size * 0.4, 5, {
-      color: this.pal[2], speedMin: 12, speedMax: 40, life: 0.45, grav: 90, lift: 20,
-    });
-    if (fromX !== undefined) {
-      const a = Math.atan2(this.y - fromY, this.x - fromX);
-      this.vx += Math.cos(a) * 60;
-      this.vy += Math.sin(a) * 60;
+  _snapFeet() {
+    const t = this.game.terrain;
+    for (const l of this.legs) {
+      const fx = this.x + l.hip.x * this.faceT;
+      l.foot.x = fx; l.foot.y = t.surfaceY(fx);
+      l.from = { ...l.foot }; l.to = { ...l.foot };
     }
-    if (this.hp <= 0) this.die(source);
-    else if (!this.hostile && !this.tamed) { this.state = 'flee'; this.fleeT = 6; }
   }
 
-  die(source) {
-    if (this.dead) return;
-    this.dead = true;
-    this.deathT = 0;
-    this.game.onCreatureDied?.(this, source);
-    this.game.particles.burst('chunk', this.x, this.y - this.size * 0.3, 10, {
-      color: this.pal[0], color2: this.pal[2], speedMin: 14, speedMax: 52, life: 0.7, grav: 110, lift: 26,
-    });
-    this.game.particles.burst('puff', this.x, this.y, 4, {
-      color: rgba(this.pal[1], 0.6), speedMin: 4, speedMax: 14, life: 0.6,
-    });
-  }
+  // -------------------------------------------------------------------------
 
-  // -- taming ---------------------------------------------------------------
+  update(dt, ctx) {
+    if (!this.alive) return;
+    const t = this.game.terrain;
+    const crab = this.game.crab;
+    this.moodT += dt;
+    this.hurtT = Math.max(0, this.hurtT - dt);
+    this.atkT = Math.max(0, this.atkT - dt);
+    this.hunger = clamp01(this.hunger + dt * 0.012);
 
-  canTame() {
-    if (this.tamed || this.dead || !this.sp.tame) return false;
-    if (this.sp.role === 'hostile' || this.sp.role === 'boss') return false;
-    if (this.sp.hostileUntilTamed && this.hp > this.hpMax * 0.4) return false;
-    return true;
-  }
+    this._think(dt, crab);
 
-  tameCost() { return this.sp.tame; }
+    if (this.onShell) { this._rideShell(dt, crab); return; }
 
-  tame() {
-    this.tamed = true;
-    this.hostile = false;
-    this.state = 'follow';
-    this.hp = this.hpMax;
-    this.mood = 'happy';
-    this.game.particles.burst('spark', this.x, this.y - this.size, 14, {
-      color: '#ffe9a0', speedMin: 8, speedMax: 30, life: 0.9, glow: 5, grav: -6,
-    });
-    this.game.particles.text('!', this.x, this.y - this.size - 8, { color: '#ffe9a0', scale: 2 });
-  }
-
-  assignWork(workId) {
-    this.work = workId || null;
-    this.state = workId ? 'work' : 'follow';
-    this.workT = 2;
-  }
-
-  // -- update ---------------------------------------------------------------
-
-  update(dt, game) {
-    this.t += dt;
-    this.hurtFlash = Math.max(0, this.hurtFlash - dt * 2.5);
-    this.alarmed = Math.max(0, this.alarmed - dt);
-    this.attackCd = Math.max(0, this.attackCd - dt);
-    this.stateT += dt;
-
-    if (this.dead) {
-      this.deathT += dt;
-      this.vx *= Math.pow(0.02, dt);
-      this.vy *= Math.pow(0.02, dt);
-      return;
+    const speed = this.def.speed * (this.mood === MOOD.FLEE || this.mood === MOOD.HUNT ? 1.25 : 0.55);
+    let want = 0;
+    if (this.moveTo !== undefined) {
+      const d = this.moveTo - this.x;
+      want = Math.abs(d) > 3 ? Math.sign(d) : 0;
     }
-
-    const sp = this.sp;
-    const crab = game.crab;
-
-    // ambient chirping
-    this.chirpT -= dt;
-    if (this.chirpT <= 0) {
-      this.chirpT = this.rng.float(6, 22);
-      if (game.cam.isVisible(this.x, this.y, 80) && (sp.form === 'bird' || sp.form === 'bat')) {
-        game.audio.play('chirp', { pitch: 0.7 + this.size / 20 });
-      }
-    }
-
-    this._think(dt, game, crab);
-
-    // integrate
-    const drag = Math.pow(sp.flying ? 0.06 : 0.004, dt);
-    this.vx *= drag; this.vy *= drag;
-    const sp2 = Math.hypot(this.vx, this.vy);
-    const maxS = sp.speed * (this.alarmed > 0 ? 1.35 : 1) * (game.hazardSlow ?? 1);
-    if (sp2 > maxS) { this.vx = this.vx / sp2 * maxS; this.vy = this.vy / sp2 * maxS; }
+    this.vx = damp(this.vx, want * speed, 0.0004, dt);
     this.x += this.vx * dt;
-    this.y += this.vy * dt;
-    game.world.clampToWorld(this);
+    if (Math.abs(this.vx) > 4) this.facing = Math.sign(this.vx);
+    this.faceT = damp(this.faceT, this.facing, 0.0008, dt);
 
-    if (sp2 > 3) this.facing = angleLerp(this.facing, Math.atan2(this.vy, this.vx), 1 - Math.pow(0.0015, dt));
-    this.gait += sp2 * dt * 0.09;
-    this.wing += dt * (sp.flying ? 15 + sp2 * 0.15 : 6);
-
-    // vertical
-    if (sp.flying) {
-      const hover = sp.form === 'jelly' ? 26 : 14 + Math.sin(this.t * 1.4 + this.id) * 4;
-      const ground = game.world.elevAt(this.x, this.y);
-      this.z = damp(this.z, hover + ground * 0.4, 0.02, dt);
+    if (this.flies) {
+      this.hoverT += dt * 2.4;
+      const ground = t.surfaceY(this.x);
+      const want2 = ground - this.rig.standH - 18 - Math.sin(this.hoverT) * 5;
+      this.y = damp(this.y, want2, 0.0008, dt);
+      this.flap += dt * 16;
+      this.wingA = Math.sin(this.flap) * 0.85;
     } else {
-      this.z = game.world.elevAt(this.x, this.y) * 0.55;
-      this._updateFeet(dt, game, sp2);
+      this._stepLegs(dt, t);
+      this._rideFeet(dt, t);
+      this.gait += dt * (1.6 + Math.abs(this.vx) * 0.06);
+      this.bob = damp(this.bob, Math.sin(this.gait * 2) * clamp01(Math.abs(this.vx) / 40) * this.S * 1.2, 0.001, dt);
     }
 
-    // collide with solid scenery
-    if (!sp.flying) {
-      for (const d of game.world.solidsNear(this.x, this.y, this.radius * 1.5)) {
-        const dd = Math.hypot(d.x - this.x, d.y - this.y);
-        const min = d.r + this.radius * 0.8;
-        if (dd < min && dd > 0.01) {
-          this.x -= (d.x - this.x) / dd * (min - dd);
-          this.y -= (d.y - this.y) / dd * (min - dd);
-        }
-      }
-    }
+    // head, tail, wings
+    const look = clamp(this.vx / Math.max(1, this.def.speed), -1, 1);
+    const alert = this.mood === MOOD.HUNT || this.mood === MOOD.FLEE ? 0.25 : 0;
+    this.headA = damp(this.headA, -0.12 + look * 0.10 - alert + Math.sin(this.gait * 2) * 0.05, 0.002, dt);
+    this.tailA = damp(this.tailA, Math.sin(this.gait * 1.6) * 0.28 + (this.mood === MOOD.FLEE ? 0.4 : 0), 0.002, dt);
+    if (!this.flies && this.rig.wing) this.wingA = damp(this.wingA, Math.sin(this.gait) * 0.10, 0.002, dt);
   }
 
-  _think(dt, game, crab) {
-    // hostiles hunt; everyone else has jobs or nerves
-    if (this.hostile) return this._thinkHostile(dt, game, crab);
-    if (this.tamed) return this._thinkCompanion(dt, game, crab);
-    return this._thinkWild(dt, game, crab);
-  }
+  _think(dt, crab) {
+    const d = crab ? this.x - crab.x : 999;
+    const ad = Math.abs(d);
 
-  _thinkHostile(dt, game, crab) {
-    const sp = this.sp;
-    // pick the nearest thing worth biting
-    let best = null, bd = sp.sense * sp.sense;
-    const consider = (e) => {
-      if (!e || e.dead) return;
-      const d = dist2(this.x, this.y, e.x, e.y);
-      if (d < bd) { bd = d; best = e; }
-    };
-    consider(crab);
-    for (const c of game.creatures) if (c.tamed && !c.dead) consider(c);
-    // plants are also a target - they eat your work
-    if (!best && game.eco.plants.length) {
-      const near = game.eco.plantsNear(this.x, this.y, sp.sense * 0.6);
-      const alive = near.filter((p) => !p.dead && p.growth > 0.3);
-      if (alive.length) best = alive[0];
-    }
-
-    if (!best) { this._wander(dt, game, 0.5); return; }
-    this.target = best;
-    const d = Math.hypot(best.x - this.x, best.y - this.y);
-    const reach = this.radius + (best.radius || 6) + 4;
-
-    if (sp.behavior === 'ambush' && d > 60 && this.stateT < 3) {
-      // hold still, then burst
-      this.vx *= 0.6; this.vy *= 0.6;
-      return;
-    }
-
-    if (d > reach) {
-      this._seek(best.x, best.y, dt, 1);
-      this.state = 'hunt';
-    } else {
-      this.state = 'attack';
-      this.vx *= 0.5; this.vy *= 0.5;
-      if (this.attackCd <= 0) {
-        this.attackCd = 1.15;
-        game.combat.creatureAttack(this, best);
-      }
-    }
-  }
-
-  _thinkCompanion(dt, game, crab) {
-    // defend: guards and anything angry jump on nearby hostiles
-    const guard = this.work === 'guard' || this.alarmed > 0;
-    if (guard) {
-      let foe = null, bd = (this.work === 'guard' ? 180 : 110) ** 2;
-      for (const c of game.creatures) {
-        if (!c.hostile || c.dead) continue;
-        const d = dist2(this.x, this.y, c.x, c.y);
-        if (d < bd) { bd = d; foe = c; }
-      }
-      if (foe) {
-        const d = Math.hypot(foe.x - this.x, foe.y - this.y);
-        const reach = this.radius + foe.radius + 4;
-        if (d > reach) this._seek(foe.x, foe.y, dt, 1);
-        else if (this.attackCd <= 0) {
-          this.attackCd = 1.0;
-          game.combat.creatureAttack(this, foe);
-        }
-        this.state = 'defend';
+    if (this.hostile) {
+      // hunt, strike, then break off - so a fight has a rhythm you can read
+      if (this.recoil > 0) {
+        this.recoil -= dt;
+        this.mood = MOOD.HUNT;
+        this.moveTo = this.x + Math.sign(d) * 40;
         return;
       }
-    }
-
-    // ordered to attack
-    if (this.orderTarget && !this.orderTarget.dead) {
-      const o = this.orderTarget;
-      const d = Math.hypot(o.x - this.x, o.y - this.y);
-      const reach = this.radius + (o.radius || 6) + 4;
-      if (d > reach) this._seek(o.x, o.y, dt, 1);
-      else if (this.attackCd <= 0) {
-        this.attackCd = 1.0;
-        game.combat.creatureAttack(this, o);
-      }
-      this.state = 'order';
-      return;
-    }
-    if (this.orderTarget && this.orderTarget.dead) this.orderTarget = null;
-
-    // ordered to a spot
-    if (this.orderPoint) {
-      const d = Math.hypot(this.orderPoint.x - this.x, this.orderPoint.y - this.y);
-      if (d < 14) this.orderPoint = null;
-      else { this._seek(this.orderPoint.x, this.orderPoint.y, dt, 1); this.state = 'move'; return; }
-    }
-
-    if (this.work) { this._doWork(dt, game); return; }
-
-    // follow the crab, but keep some personal space
-    const d = Math.hypot(crab.x - this.x, crab.y - this.y);
-    const want = 22 + (this.id % 5) * 5;
-    if (d > want * 2.6) this._seek(crab.x, crab.y, dt, 1);
-    else if (d > want) this._seek(crab.x, crab.y, dt, 0.55);
-    else this._wander(dt, game, 0.25);
-    this._separate(dt, game);
-    this.state = 'follow';
-  }
-
-  _doWork(dt, game) {
-    const grove = game.groveCenter;
-    const R = Math.max(120, game.eco.groveRadius(grove.x, grove.y));
-    const d = Math.hypot(this.x - grove.x, this.y - grove.y);
-    if (d > R + 60) { this._seek(grove.x, grove.y, dt, 1); this.state = 'return'; return; }
-
-    this.state = 'work';
-    this.workT -= dt;
-    if (this.workT > 0) {
-      // drift around doing the job
-      if (this.workTarget) {
-        const wd = Math.hypot(this.workTarget.x - this.x, this.workTarget.y - this.y);
-        if (wd > 10) this._seek(this.workTarget.x, this.workTarget.y, dt, 0.7);
-        else this._wander(dt, game, 0.2);
-      } else this._wander(dt, game, 0.35);
-      return;
-    }
-    this.workT = this.rng.float(7, 15);
-    game.doCreatureWork(this);
-  }
-
-  _thinkWild(dt, game, crab) {
-    const sp = this.sp;
-    const dcrab = Math.hypot(crab.x - this.x, crab.y - this.y);
-
-    if (this.fleeT > 0) {
-      this.fleeT -= dt;
-      this._flee(crab.x, crab.y, dt);
-      this.state = 'flee';
-      return;
-    }
-
-    // skittish around the crab unless it is being fed
-    const shy = sp.role === 'companion' ? 26 : 40;
-    if (dcrab < shy && !this.beingFed && sp.role !== 'rare') {
-      this._flee(crab.x, crab.y, dt, 0.7);
-      this.state = 'wary';
-      return;
-    }
-
-    // drawn to food and water
-    switch (sp.behavior) {
-      case 'flock': {
-        const berry = this._findPlant(game, ['berry', 'ironvine'], 260);
-        if (berry) { this._seek(berry.x, berry.y, dt, 0.8); this.state = 'feed'; this._flockWith(dt, game); return; }
-        break;
-      }
-      case 'graze': case 'wade': case 'crawl': case 'bask': {
-        const p = this._findPlant(game, null, 200);
-        if (p) { this._seek(p.x, p.y, dt, 0.55); this.state = 'feed'; return; }
-        break;
-      }
-      case 'float': {
-        this._wander(dt, game, 0.3);
-        this.state = 'drift';
-        return;
-      }
-      default: break;
-    }
-    this._wander(dt, game, 0.55);
-    this._separate(dt, game);
-    this.state = 'wander';
-  }
-
-  _findPlant(game, types, range) {
-    const near = game.eco.plantsNear(this.x, this.y, range);
-    let best = null, bd = Infinity;
-    for (const p of near) {
-      if (p.dead || p.growth < 0.5) continue;
-      if (types && !types.includes(p.type)) continue;
-      const d = dist2(this.x, this.y, p.x, p.y);
-      if (d < bd) { bd = d; best = p; }
-    }
-    return best;
-  }
-
-  // -- steering -------------------------------------------------------------
-
-  _seek(tx, ty, dt, weight = 1) {
-    const d = Math.hypot(tx - this.x, ty - this.y) || 1;
-    const acc = this.sp.speed * 5 * weight;
-    this.vx += (tx - this.x) / d * acc * dt;
-    this.vy += (ty - this.y) / d * acc * dt;
-  }
-
-  _flee(tx, ty, dt, weight = 1) {
-    const d = Math.hypot(tx - this.x, ty - this.y) || 1;
-    const acc = this.sp.speed * 6 * weight;
-    this.vx -= (tx - this.x) / d * acc * dt;
-    this.vy -= (ty - this.y) / d * acc * dt;
-  }
-
-  _wander(dt, game, weight = 1) {
-    this.wanderA += (Math.random() - 0.5) * dt * 4;
-    const acc = this.sp.speed * 1.5 * weight;
-    this.vx += Math.cos(this.wanderA) * acc * dt;
-    this.vy += Math.sin(this.wanderA) * acc * dt;
-    // drift home so nobody wanders off the map
-    const hd = Math.hypot(this.x - this.home.x, this.y - this.home.y);
-    if (hd > 320) this._seek(this.home.x, this.home.y, dt, 0.5);
-  }
-
-  _separate(dt, game) {
-    let px2 = 0, py2 = 0, n = 0;
-    for (const c of game.creatures) {
-      if (c === this || c.dead) continue;
-      const d = dist2(this.x, this.y, c.x, c.y);
-      const min = (this.radius + c.radius + 4) ** 2;
-      if (d < min && d > 0.01) {
-        const dd = Math.sqrt(d);
-        px2 += (this.x - c.x) / dd;
-        py2 += (this.y - c.y) / dd;
-        n++;
-      }
-    }
-    if (n) {
-      this.vx += (px2 / n) * this.sp.speed * 2.2 * dt;
-      this.vy += (py2 / n) * this.sp.speed * 2.2 * dt;
-    }
-  }
-
-  _flockWith(dt, game) {
-    let cx = 0, cy = 0, vx = 0, vy = 0, n = 0;
-    for (const c of game.creatures) {
-      if (c === this || c.dead || c.sp.id !== this.sp.id) continue;
-      if (dist2(this.x, this.y, c.x, c.y) > 90 * 90) continue;
-      cx += c.x; cy += c.y; vx += c.vx; vy += c.vy; n++;
-    }
-    if (!n) return;
-    cx /= n; cy /= n; vx /= n; vy /= n;
-    this._seek(cx, cy, dt, 0.25);
-    this.vx += (vx - this.vx) * 0.6 * dt;
-    this.vy += (vy - this.vy) * 0.6 * dt;
-    this._separate(dt, game);
-  }
-
-  // -- procedural legs ------------------------------------------------------
-
-  _updateFeet(dt, game, speed) {
-    if (!this.feet.length) return;
-    const world = game.world;
-    const R = this.size;
-    const thresh = R * (0.55 + speed * 0.004);
-    let stepping = 0;
-    for (const f of this.feet) if (f.stepping) stepping++;
-
-    for (let i = 0; i < this.feet.length; i++) {
-      const f = this.feet[i];
-      const a = this.facing + f.side * (Math.PI / 2) + f.spread * -f.side;
-      const anchorX = this.x + Math.cos(a) * R * 0.95 + this.vx * 0.09;
-      const anchorY = this.y + Math.sin(a) * R * 0.95 + this.vy * 0.09;
-      if (f.stepping) {
-        f.t += dt / f.dur;
-        const t = clamp01(f.t);
-        f.fx = lerp(f.ax, f.bx, t);
-        f.fy = lerp(f.ay, f.by, t);
-        f.fz = Math.sin(Math.PI * t) * f.lift;
-        if (t >= 1) { f.stepping = false; f.fz = 0; }
+      const reach = 24 + (crab ? crab.m.shellW * 0.28 : 0);
+      if (ad < 240) {
+        this.mood = ad < reach ? MOOD.ATTACK : MOOD.HUNT;
+        this.moveTo = ad < reach ? this.x : crab.x - Math.sign(d) * (reach - 6);
+        if (this.mood === MOOD.ATTACK && this.atkT <= 0) {
+          this.atkT = 1.7;
+          this.recoil = 0.9;
+          this.game.onCreatureAttack?.(this);
+        }
       } else {
-        const d = Math.hypot(f.fx - anchorX, f.fy - anchorY);
-        const opposite = this.feet[i % 2 === 0 ? i + 1 : i - 1];
-        if (d > thresh && stepping < Math.max(1, this.feet.length / 2) && !(opposite && opposite.stepping)) {
-          f.stepping = true; stepping++;
-          f.t = 0;
-          f.dur = clamp(0.17 - speed * 0.0012, 0.06, 0.2);
-          f.ax = f.fx; f.ay = f.fy;
-          f.bx = anchorX + (anchorX - f.fx) * 0.28;
-          f.by = anchorY + (anchorY - f.fy) * 0.28;
-          f.lift = R * 0.5;
-        }
+        this._wander(dt);
       }
-      f.ground = world.elevAt(f.fx, f.fy);
+      return;
+    }
+
+    if (this.tamed) {
+      // fleet: stay near, or ride the shell when told to
+      if (this.orders === 'ride') {
+        if (ad < 40 && !this.onShell) this.boardShell(crab);
+        else this.moveTo = crab.x + (this.shellU - 0.5) * 20;
+      } else if (this.orders === 'guard') {
+        const foe = this.game.nearestHostile?.(crab.x, 180);
+        if (foe) { this.moveTo = foe.x - Math.sign(foe.x - this.x) * 14; this.mood = MOOD.HUNT; return; }
+        this.moveTo = crab.x + Math.sign(crab.faceT || 1) * (crab.m.shellW * 0.62 + 18);
+        this.mood = MOOD.FOLLOW;
+      } else {
+        this.mood = MOOD.FOLLOW;
+        // trail behind the shell, spaced so nobody stands inside anybody
+        const slot = this.uid % 5;
+        const back = crab.m.shellW * 0.62 + 14 + slot * 22;
+        this.moveTo = crab.x - Math.sign(crab.faceT || 1) * back;
+      }
+      return;
+    }
+
+    // wild: drawn in by the garden, spooked by sudden moves
+    if (crab && ad < 130 && this.game.garden) {
+      const appeal = this.game.attraction(this.def);
+      if (appeal > 0.2) {
+        this.mood = ad > 30 ? MOOD.APPROACH : MOOD.FEED;
+        this.moveTo = crab.x + (this.uid % 2 ? 22 : -22);
+        this.trust = clamp01(this.trust + dt * 0.10 * appeal);
+        return;
+      }
+    }
+    this._wander(dt);
+  }
+
+  _wander(dt) {
+    this.mood = MOOD.WANDER;
+    if (this.moodT > 2.6 || this.moveTo === undefined) {
+      this.moodT = 0;
+      this.moveTo = this.homeX + (Math.random() - 0.5) * 160;
+      if (Math.random() < 0.3) this.moveTo = this.x;   // pause and look around
     }
   }
 
-  // -- draw -----------------------------------------------------------------
+  boardShell(crab) {
+    this.onShell = true;
+    this.shellU = 0.35 + Math.random() * 0.55;
+    this.game.onBoard?.(this);
+  }
+  leaveShell() { this.onShell = false; }
 
-  draw(ctx, cam, game) { drawCreature(ctx, cam, game, this); }
-
-  drawLights(renderer, cam) {
-    const s = this.sp;
-    if (s.id === 'emberbat') {
-      const p = cam.worldToScreen(this.x, this.y - this.z);
-      renderer.addLight(p.x, p.y, 34 * cam.zoom, '#ff9a4a', 0.5);
-    } else if (s.id === 'miragejelly') {
-      const p = cam.worldToScreen(this.x, this.y - this.z);
-      renderer.addLight(p.x, p.y, 46 * cam.zoom, '#9fe8ff', 0.55);
-    } else if (s.id === 'prismling') {
-      const p = cam.worldToScreen(this.x, this.y - this.z);
-      renderer.addLight(p.x, p.y, 22 * cam.zoom, '#e8ffff', 0.3);
-    } else if (s.role === 'hostile' && this.state === 'hunt') {
-      const p = cam.worldToScreen(this.x, this.y - this.z);
-      renderer.addLight(p.x, p.y - this.size * 0.5, 14 * cam.zoom, s.pal[3], 0.5);
+  _rideShell(dt, crab) {
+    const p = crab.shellWorld(this.shellU);
+    this.x = damp(this.x, p.x, 0.0001, dt);
+    this.y = damp(this.y, p.y - this.rig.standH * 0.6, 0.0001, dt);
+    this.faceT = damp(this.faceT, crab.faceT, 0.002, dt);
+    this.gait += dt * 0.8;
+    this.headA = damp(this.headA, -0.2 + Math.sin(this.gait * 0.7) * 0.16, 0.002, dt);
+    this.tailA = damp(this.tailA, Math.sin(this.gait) * 0.2, 0.002, dt);
+    if (this.rig.wing) this.wingA = damp(this.wingA, Math.sin(this.gait * 0.6) * 0.08, 0.002, dt);
+    for (const l of this.legs) {
+      l.foot.x = this.x + l.hip.x * this.faceT;
+      l.foot.y = this.y + this.rig.standH * 0.6;
     }
   }
 
-  serialize() {
-    return {
-      sp: this.sp.id, x: Math.round(this.x), y: Math.round(this.y),
-      hp: this.hp, tamed: this.tamed, work: this.work, name: this.name || null,
-    };
+  _stepLegs(dt, t) {
+    const trig = this.rig.body.L * 0.20 + Math.abs(this.vx) * 0.05;
+    const lead = this.vx * 0.16;
+    for (const l of this.legs) {
+      const home = this.x + l.hip.x * this.faceT + lead;
+      if (l.stepping) {
+        l.t += dt / 0.20;
+        if (l.t >= 1) {
+          l.stepping = false; l.foot.x = l.to.x; l.foot.y = l.to.y; l.lift = 0;
+          if (Math.abs(this.vx) > 20) {
+            t.deform(l.foot.x, 0.5, 4);
+            this.game.fx?.footPuff(l.foot.x, l.foot.y, Math.abs(this.vx) * 0.4, l.far);
+          }
+        } else {
+          l.foot.x = lerp(l.from.x, l.to.x, l.t);
+          l.lift = Math.sin(l.t * Math.PI) * this.rig.standH * 0.24;
+          l.foot.y = lerp(l.from.y, l.to.y, l.t) - l.lift;
+        }
+      } else if (Math.abs(l.foot.x - home) > trig) {
+        const busy = this.legs.filter((o) => o.stepping).length;
+        if (busy < 2) {
+          l.stepping = true; l.t = 0;
+          l.from = { x: l.foot.x, y: l.foot.y };
+          const tx = home + Math.sign(home - l.foot.x) * trig * 0.7;
+          l.to = { x: tx, y: t.surfaceY(tx) };
+        }
+      } else {
+        l.foot.y = damp(l.foot.y, t.surfaceY(l.foot.x), 0.0006, dt);
+      }
+    }
   }
-}
 
-export function creatureFromSave(game, d) {
-  const c = new Creature(game, d.sp, d.x, d.y, { tamed: d.tamed });
-  c.hp = d.hp ?? c.hpMax;
-  c.work = d.work || null;
-  if (c.work) c.state = 'work';
-  if (d.name) c.name = d.name;
-  return c;
+  _rideFeet(dt, t) {
+    let sy = 0, n = 0;
+    for (const l of this.legs) { if (!l.stepping) { sy += l.foot.y; n++; } }
+    const ground = n ? sy / n : t.surfaceY(this.x);
+    this.y = damp(this.y, ground - this.rig.standH, 0.0006, dt);
+  }
+
+  hurt(n, fromX) {
+    if (!this.alive) return;
+    this.hp -= n;
+    this.hurtT = 0.28;
+    this.game.fx?.blood(this.x, this.y, 4);
+    if (this.hp <= 0) {
+      this.hp = 0;
+      this.mood = MOOD.DEAD;
+      this.game.onCreatureDown?.(this);
+    } else if (!this.hostile) {
+      this.mood = MOOD.FLEE;
+      this.moveTo = this.x + (this.x - fromX > 0 ? 160 : -160);
+      this.trust = Math.max(0, this.trust - 0.25);
+    }
+  }
+
+  // -- drawing --------------------------------------------------------------
+
+  draw(ctx, cam) {
+    const rig = this.rig;
+    const f = this.faceT < 0 ? -1 : 1;
+    const fa = Math.max(0.04, Math.abs(this.faceT));
+    const s = cam.worldToScreen(this.x, this.y + this.bob);
+    const z = cam.zoom;
+
+    if (!this.flies && !this.onShell) this._shadow(ctx, cam);
+
+    ctx.save();
+    ctx.translate(Math.round(s.x * 2) / 2, Math.round(s.y * 2) / 2);
+    ctx.scale(z, z);
+    if (this.hurtT > 0) ctx.globalAlpha = 0.55 + Math.sin(this.hurtT * 60) * 0.45;
+    ctx.save();
+    ctx.scale(f, 1);
+    ctx.scale(fa, 1);
+
+    const so = rig.sockets;
+    // far limbs
+    this._legs(ctx, true);
+    if (rig.wing) this._wing(ctx, rig.wing.far, -1);
+    if (rig.tail) this._tail(ctx, -1);
+
+    ctx.drawImage(rig.body.cv, -rig.body.ox, -rig.body.oy);
+
+    // neck and head
+    let hx = so.neck.x, hy = so.neck.y;
+    if (rig.neck) {
+      const na = -1.15 + this.headA * 0.5;
+      ctx.save();
+      ctx.translate(so.neck.x, so.neck.y);
+      ctx.rotate(na);
+      ctx.drawImage(rig.neck.cv, -rig.neck.ox, -rig.neck.oy);
+      ctx.restore();
+      hx += Math.cos(na) * rig.neck.len * 0.86;
+      hy += Math.sin(na) * rig.neck.len * 0.86;
+    }
+    ctx.save();
+    ctx.translate(hx, hy);
+    ctx.rotate(this.headA + (rig.neck ? 0.42 : 0));
+    ctx.drawImage(rig.head.cv, -rig.head.ox, -rig.head.oy);
+    ctx.restore();
+
+    if (rig.tail) this._tail(ctx, 1);
+    this._legs(ctx, false);
+    if (rig.wing) this._wing(ctx, rig.wing.near, 1);
+
+    ctx.restore();
+    ctx.globalAlpha = 1;
+    ctx.restore();
+  }
+
+  _legs(ctx, far) {
+    const rig = this.rig;
+    const art = far ? rig.legs.far : rig.legs.near;
+    const c = Math.cos(0), f = this.faceT < 0 ? -1 : 1;
+    for (const l of this.legs) {
+      if (l.far !== far) continue;
+      let lx = (l.foot.x - this.x) * f;
+      const ly = l.foot.y - (this.y + this.bob);
+      const hx = l.hip.x + (far ? -1.4 * this.S : 0.8 * this.S);
+      const hy = l.hip.y;
+      const sol = ik2(hx, hy, lx, ly, art.upper.len, art.lower.len, 1);
+      ctx.save(); ctx.translate(hx, hy); ctx.rotate(sol.a1);
+      ctx.drawImage(art.upper.cv, -art.upper.ox, -art.upper.oy); ctx.restore();
+      ctx.save(); ctx.translate(sol.kx, sol.ky); ctx.rotate(sol.a2);
+      ctx.drawImage(art.lower.cv, -art.lower.ox, -art.lower.oy); ctx.restore();
+    }
+  }
+
+  _wing(ctx, art, side) {
+    const so = this.rig.sockets;
+    ctx.save();
+    ctx.translate(so.wing.x + (side < 0 ? -1.6 * this.S : 0), so.wing.y);
+    ctx.rotate(Math.PI - 0.5 + this.wingA * side * 0.9 + (side < 0 ? -0.18 : 0));
+    ctx.drawImage(art.cv, -art.ox, -art.oy);
+    ctx.restore();
+  }
+
+  _tail(ctx, side) {
+    const so = this.rig.sockets;
+    if (side < 0 && !this.def.tailKind) return;
+    if (side > 0 && this.def.tailKind === 'plume') return;
+    ctx.save();
+    ctx.translate(so.tail.x, so.tail.y);
+    ctx.rotate(Math.PI + this.tailA * 0.5);
+    ctx.drawImage(this.rig.tail.cv, -this.rig.tail.ox, -this.rig.tail.oy);
+    ctx.restore();
+  }
+
+  _shadow(ctx, cam) {
+    const a = this.game.weather ? this.game.weather.shadowAlpha : 0.35;
+    if (a <= 0.02) return;
+    const gy = this.game.terrain.surfaceY(this.x);
+    const s = cam.worldToScreen(this.x, gy);
+    const w = this.rig.body.L * 0.9 * cam.zoom;
+    ctx.globalAlpha = a * 0.5;
+    ctx.fillStyle = '#2a1a10';
+    ctx.beginPath();
+    ctx.ellipse(s.x, s.y, w * 0.5, Math.max(1, w * 0.12), 0, 0, TAU);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  }
 }

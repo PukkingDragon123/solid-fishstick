@@ -1,4 +1,6 @@
-// CRABDEN - free camera with follow, smooth zoom, shake and cinematic control.
+// CRABDEN - side-scrolling camera. Follows X with lookahead, eases Y, and
+// keeps the horizon roughly where the eye expects it.
+
 import { clamp, damp, lerp, easeInOutCubic } from '../lib/math.js';
 
 export class Camera {
@@ -8,54 +10,40 @@ export class Camera {
     this.zoom = 2;
     this.targetZoom = 2;
     this.minZoom = 1;
-    this.maxZoom = 4;
-    this.follow = null;          // entity with {x,y}
-    this.followLead = 0.35;
-    this.shake = 0;
-    this.shakeX = 0; this.shakeY = 0;
-    this.vw = 320; this.vh = 180;
-    this.cine = null;            // active cinematic tween
-    this.freeMode = false;       // player has panned away from the crab
+    this.maxZoom = 3;
+    this.vw = 460; this.vh = 258;
+    this.follow = null;
+    this.lead = 0;
+    this.shakeAmt = 0;
+    this.sx = 0; this.sy = 0;
+    this.cine = null;
+    this.free = false;
+    this.freeT = 0;
   }
 
   setViewport(vw, vh) { this.vw = vw; this.vh = vh; }
-
-  snapTo(x, y) { this.x = this.tx = x; this.y = this.ty = y; }
-
   followEntity(e, snap = false) {
     this.follow = e;
-    this.freeMode = false;
-    if (snap && e) this.snapTo(e.x, e.y);
+    this.free = false;
+    if (snap && e) { this.x = this.tx = e.x; this.y = this.ty = e.y - 30; }
   }
-
-  pan(dxScreen, dyScreen) {
-    this.tx -= dxScreen / this.zoom;
-    this.ty -= dyScreen / this.zoom;
-    this.freeMode = true;
-  }
-
-  nudge(dx, dy) { this.tx += dx; this.ty += dy; this.freeMode = true; }
-
-  zoomBy(steps, focusSX, focusSY) {
-    const before = this.screenToWorld(focusSX, focusSY);
-    this.targetZoom = clamp(this.targetZoom * Math.pow(1.35, -steps), this.minZoom, this.maxZoom);
-    // keep the point under the cursor stable
-    const kz = this.targetZoom;
-    const afterX = this.tx + (focusSX - this.vw / 2) / kz;
-    const afterY = this.ty + (focusSY - this.vh / 2) / kz;
-    this.tx += before.x - afterX;
-    this.ty += before.y - afterY;
-  }
-
-  addShake(amount) { this.shake = Math.min(14, this.shake + amount); }
-
-  /** Cinematic move: to {x,y,zoom} over `dur` seconds. */
+  snapTo(x, y) { this.x = this.tx = x; this.y = this.ty = y; }
+  shake(a) { this.shakeAmt = Math.min(16, this.shakeAmt + a); }
+  pan(dx, dy) { this.tx -= dx / this.zoom; this.ty -= dy / this.zoom; this.free = true; this.freeT = 3; }
   cineTo(x, y, zoom, dur = 1.4) {
     this.cine = { fx: this.x, fy: this.y, fz: this.zoom, x, y, zoom: zoom ?? this.zoom, t: 0, dur };
   }
   cineCancel() { this.cine = null; }
 
-  update(dt, world) {
+  zoomBy(steps, fx, fy) {
+    const before = this.screenToWorld(fx, fy);
+    this.targetZoom = clamp(this.targetZoom * Math.pow(1.3, -steps), this.minZoom, this.maxZoom);
+    const after = { x: this.tx + (fx - this.vw / 2) / this.targetZoom, y: this.ty + (fy - this.vh / 2) / this.targetZoom };
+    this.tx += before.x - after.x;
+    this.ty += before.y - after.y;
+  }
+
+  update(dt) {
     if (this.cine) {
       const c = this.cine;
       c.t += dt;
@@ -65,56 +53,43 @@ export class Camera {
       this.zoom = this.targetZoom = lerp(c.fz, c.zoom, k);
       if (c.t >= c.dur) this.cine = null;
     } else {
-      if (this.follow && !this.freeMode) {
-        const f = this.follow;
-        const leadX = (f.vx || 0) * this.followLead;
-        const leadY = (f.vy || 0) * this.followLead;
-        this.tx = f.x + leadX;
-        this.ty = f.y + leadY;
+      if (this.free) {
+        this.freeT -= dt;
+        if (this.freeT <= 0) this.free = false;
       }
-      this.x = damp(this.x, this.tx, 0.0006, dt);
-      this.y = damp(this.y, this.ty, 0.0006, dt);
-      this.zoom = damp(this.zoom, this.targetZoom, 0.0001, dt);
+      if (this.follow && !this.free) {
+        const f = this.follow;
+        this.lead = damp(this.lead, clamp((f.vx || 0) * 0.34, -46, 46), 0.02, dt);
+        this.tx = f.x + this.lead;
+        this.ty = f.y - this.vh * 0.16 / this.zoom;
+      }
+      this.x = damp(this.x, this.tx, 0.0009, dt);
+      this.y = damp(this.y, this.ty, 0.004, dt);
+      this.zoom = damp(this.zoom, this.targetZoom, 0.0002, dt);
     }
 
-    if (world) {
-      const m = 64;
-      this.tx = clamp(this.tx, -world.halfSize - m, world.halfSize + m);
-      this.ty = clamp(this.ty, -world.halfSize - m, world.halfSize + m);
-    }
-
-    if (this.shake > 0.01) {
-      this.shake *= Math.pow(0.0012, dt);
+    if (this.shakeAmt > 0.02) {
+      this.shakeAmt *= Math.pow(0.0015, dt);
       const a = Math.random() * Math.PI * 2;
-      this.shakeX = Math.cos(a) * this.shake;
-      this.shakeY = Math.sin(a) * this.shake;
-    } else { this.shake = 0; this.shakeX = 0; this.shakeY = 0; }
+      this.sx = Math.cos(a) * this.shakeAmt;
+      this.sy = Math.sin(a) * this.shakeAmt;
+    } else { this.shakeAmt = 0; this.sx = 0; this.sy = 0; }
   }
 
-  get renderX() { return this.x + this.shakeX; }
-  get renderY() { return this.y + this.shakeY; }
+  get rx() { return this.x + this.sx; }
+  get ry() { return this.y + this.sy; }
 
   worldToScreen(x, y) {
-    return {
-      x: (x - this.renderX) * this.zoom + this.vw / 2,
-      y: (y - this.renderY) * this.zoom + this.vh / 2,
-    };
+    return { x: (x - this.rx) * this.zoom + this.vw / 2, y: (y - this.ry) * this.zoom + this.vh / 2 };
   }
   screenToWorld(sx, sy) {
-    return {
-      x: (sx - this.vw / 2) / this.zoom + this.renderX,
-      y: (sy - this.vh / 2) / this.zoom + this.renderY,
-    };
+    return { x: (sx - this.vw / 2) / this.zoom + this.rx, y: (sy - this.vh / 2) / this.zoom + this.ry };
   }
-
-  /** World-space rect currently visible (with margin). */
-  bounds(margin = 32) {
-    const hw = this.vw / 2 / this.zoom + margin;
-    const hh = this.vh / 2 / this.zoom + margin;
-    return { x0: this.renderX - hw, y0: this.renderY - hh, x1: this.renderX + hw, y1: this.renderY + hh };
+  bounds(m = 40) {
+    const hw = this.vw / 2 / this.zoom + m, hh = this.vh / 2 / this.zoom + m;
+    return { x0: this.rx - hw, x1: this.rx + hw, y0: this.ry - hh, y1: this.ry + hh };
   }
-
-  isVisible(x, y, r = 16) {
+  isVisible(x, y, r = 24) {
     const b = this.bounds(r);
     return x >= b.x0 && x <= b.x1 && y >= b.y0 && y <= b.y1;
   }
