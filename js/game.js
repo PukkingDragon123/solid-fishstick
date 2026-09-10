@@ -25,7 +25,6 @@ import { FLORA_BY_ID } from './data/flora.js';
 import { OBSERVE_STEPS } from './data/fauna.js';
 import { VESS_LORE } from './data/lore.js';
 import { BUILD_BY_ID, GENE_BY_ID } from './data/progress.js';
-import { buildStructure } from './art/buildart.js';
 
 export class Game {
   constructor(canvas) {
@@ -61,7 +60,7 @@ export class Game {
     this.backdrop = new Backdrop(this.seed);
     this.fx = new Fx(this);
 
-    this.crab = new Crab(this, 'juvenile');
+    this.crab = new Crab(this, 'hatchling');
     this.crab.x = 0;
     this.crab.snapToGround();
     this.player = this.crab;
@@ -303,7 +302,7 @@ export class Game {
     const gain = this.economy.stat('pumpGain');
     this.economy.water = clamp(this.economy.water + gain, 0, this.economy.stat('waterMax'));
     this.garden.pumpInto(0.055);
-    const o = this.crab.shellWorld(this.crab.m.organU);
+    const o = this.crab.shellWorldAB(this.crab.m.organ.a, this.crab.m.organ.b);
     this.fx.spring(o.x, o.y, o.nx, o.ny, 1);
     this.fx.popup(o.x, o.y - 8, `+${gain}`, '#9de3ee');
     this.audio.play('water');
@@ -579,7 +578,7 @@ export class Game {
 
   load(d) {
     try {
-      this.crab.setStage(d.stage || 'juvenile');
+      this.crab.setStage(d.stage || 'hatchling');
       this.crab.x = d.x || 0;
       this.crab.snapToGround();
       this.crab.hp = d.hp ?? this.crab.hpMax;
@@ -631,7 +630,6 @@ export class Game {
     this.npc.draw(ctx, cam);
     this.crab.draw(ctx, cam, this.garden);
     this.ui.drawGhost(ctx, cam);
-    this._drawStructures(ctx, cam);
     this.wildlife.draw(ctx, cam, 'shell');
     this.fx.draw(ctx, cam, 'near');
     this.world.drawScatter(ctx, cam, 'near');
@@ -641,7 +639,7 @@ export class Game {
     r.beginLights(this.weather);
     const lightPow = this.economy.stat('light');
     if (lightPow > 0) {
-      const o = this.crab.shellWorld(0.5);
+      const o = this.crab.shellWorldAB(0, 0.1);
       const s = cam.worldToScreen(o.x, o.y);
       r.addLight(s.x, s.y, 90 * cam.zoom * (0.6 + lightPow * 0.5), '#ffd98a', 0.8);
     }
@@ -651,7 +649,7 @@ export class Game {
       r.addLight(s.x, s.y, 40 * cam.zoom, c.def.glow, 0.7);
     }
     if (this.garden.pond > 0.3) {
-      const o = this.crab.shellWorld(0.24);
+      const o = this.crab.shellWorldAB(this.crab.m.basin.a, this.crab.m.basin.b);
       const s = cam.worldToScreen(o.x, o.y);
       r.addLight(s.x, s.y, 34 * cam.zoom, '#9de3ee', 0.25 * this.garden.pond);
     }
@@ -666,29 +664,6 @@ export class Game {
     if (this.state === 'dead') this._drawDead(ui, r);
     if (this.npc.speech && this.state === 'play') this._drawSpeech(ui, cam, this.npc);
     r.dctx.drawImage(r.uiC, 0, 0, r.vw, r.vh, 0, 0, r.vw * r.scale, r.vh * r.scale);
-  }
-
-  _drawStructures(ctx, cam) {
-    const crab = this.crab;
-    const f = crab.faceT < 0 ? -1 : 1;
-    const built = this.garden.plots.filter((p) => p.build);
-    if (!built.length) return;
-    const p0 = cam.worldToScreen(crab.x, crab.y + crab.bob);
-    ctx.save();
-    ctx.translate(Math.round(p0.x * 2) / 2, Math.round(p0.y * 2) / 2);
-    ctx.scale(cam.zoom, cam.zoom);
-    ctx.rotate(crab.bodyAngle);
-    for (const plot of built) {
-      const sp = crab.rig.shellPoint(plot.u);
-      const art = buildStructure(plot.build.def, clamp(crab.m.shellH / 96, 0.3, 1.1));
-      ctx.save();
-      ctx.translate(sp.x * f, sp.y + 1);
-      ctx.rotate(Math.atan2(sp.nx, -sp.ny) * 0.3 * f);
-      ctx.scale(f, 1);
-      ctx.drawImage(art.cv, -art.ox, -art.oy);
-      ctx.restore();
-    }
-    ctx.restore();
   }
 
   _drawSpeech(ctx, cam, who) {

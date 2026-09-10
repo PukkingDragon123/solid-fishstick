@@ -4304,28 +4304,35 @@ body {
   };
 
   // js/art/crabart.js
-  var LIGHT2 = { lightX: -0.6, lightY: -0.62, lightZ: 0.4, ambient: 0.36, dither: 0.7 };
-  var STAGE_T = { hatchling: 0, juvenile: 0.36, adult: 0.74, ancient: 1 };
+  var LIGHT2 = { lightX: -0.52, lightY: -0.7, lightZ: 0.44, ambient: 0.36, dither: 0.7 };
+  var STAGE_T = { hatchling: 0, juvenile: 0.34, adult: 0.72, ancient: 1 };
   var rnd = (n) => {
     let h = Math.imul(n | 0, 668265261);
     h = Math.imul(h ^ h >>> 15, 739982445);
     return ((h ^ h >>> 13) >>> 0) / 4294967296;
   };
+  var KY = 0.44;
+  var KZ = 0.86;
   function crabMetrics(stage = "adult") {
-    const t = STAGE_T[stage] ?? 0.74;
-    const shellW = Math.round(lerp(36, 84, t));
-    const shellH = Math.round(shellW * lerp(0.6, 0.49, t));
-    const bodyW = Math.round(shellW * 0.88);
-    const bodyH = Math.round(shellH * lerp(0.62, 0.52, t));
+    const t = STAGE_T[stage] ?? 0.72;
+    const shellW = Math.round(lerp(22, 92, Math.pow(t, 0.86)));
     const S = shellW / 92;
-    const eyeRise = Math.round(lerp(7, 13, t));
-    const pad = Math.round(6 + 6 * t);
-    const w = shellW + pad * 2;
-    const h = shellH + bodyH + eyeRise + pad * 2;
-    const ox = Math.round(w * 0.5);
-    const sbase = pad + eyeRise + shellH;
-    const oy = Math.round(sbase + bodyH * 0.62);
-    const legLen = [shellW * 0.17, shellW * 0.185, shellW * 0.115];
+    const rx = shellW * 0.5;
+    const ry = rx * lerp(0.54, 0.46, t);
+    const domeH = rx * lerp(0.58, 0.52, t);
+    const skirtH = rx * lerp(0.28, 0.33, t);
+    const faceH = rx * lerp(0.36, 0.3, t);
+    const eyeRise = rx * lerp(0.3, 0.22, t);
+    const pad = Math.round(6 + 8 * t);
+    const crownLift = domeH * KZ;
+    const w = Math.ceil(shellW + pad * 2);
+    const h = Math.ceil(crownLift + ry * 2 + skirtH + faceH + pad * 2);
+    const ox = Math.round(w / 2);
+    const topCy = Math.round(pad + crownLift + ry);
+    const rimY = topCy + ry + skirtH;
+    const oy = Math.round(rimY + faceH * 0.3);
+    const legN = t < 0.25 ? 3 : 4;
+    const legLen = [shellW * 0.13, shellW * 0.3, shellW * 0.235];
     return {
       stage,
       t,
@@ -4335,278 +4342,247 @@ body {
       ox,
       oy,
       shellW,
-      shellH,
-      bodyW,
-      bodyH,
+      rx,
+      ry,
+      domeH,
+      skirtH,
+      faceH,
       eyeRise,
       pad,
-      sbase,
-      sx0: ox - shellW / 2,
-      sx1: ox + shellW / 2,
-      speak: lerp(0.46, 0.41, t),
-      legN: t < 0.2 ? 3 : 4,
+      topCy,
+      rimY,
+      // kept so old callers still resolve; the surface is the real API
+      sbase: rimY,
+      sx0: ox - rx,
+      sx1: ox + rx,
+      shellH: Math.round(ry * 2 + domeH),
+      bodyW: Math.round(shellW * 0.8),
+      bodyH: Math.round(faceH),
+      legN,
       legLen,
       reach: (legLen[0] + legLen[1] + legLen[2] * 1.1) * 0.88,
-      clawLen: [shellW * 0.17, shellW * 0.135],
-      clawScale: lerp(0.3, 0.4, t),
-      organU: 0.285,
-      basin: [0.13, 0.36],
-      spillU: 0.045
+      clawLen: [shellW * 0.12, shellW * 0.1],
+      clawScale: lerp(0.26, 0.32, t),
+      basin: { a: 0, b: -0.3, r: 0.44 },
+      organ: { a: 0, b: -0.3 }
     };
   }
-  function shellTopOffset(m, u) {
-    if (u <= 0 || u >= 1) return 0;
-    const k = u < m.speak ? u / m.speak * 0.5 : 0.5 + (u - m.speak) / (1 - m.speak) * 0.5;
-    let v = Math.pow(Math.sin(k * Math.PI), lerp(0.62, 0.46, m.t));
-    v += Math.exp(-Math.pow((u - 0.75) / 0.15, 2)) * 0.075;
-    v -= Math.exp(-Math.pow((u - 0.06) / 0.1, 2)) * 0.07;
-    v -= Math.exp(-Math.pow((u - 0.235) / 0.085, 2)) * 0.26;
-    v += Math.exp(-Math.pow((u - 0.095) / 0.055, 2)) * 0.26;
-    v += Math.sin(u * 11.3 + 1.7) * 0.016 + Math.sin(u * 23.1) * 8e-3;
-    return clamp01(v) * m.shellH;
+  function basinCut(m, a, b) {
+    const d = Math.hypot((a - m.basin.a) / m.basin.r, (b - m.basin.b) / (m.basin.r * 0.9));
+    if (d >= 1) return 0;
+    const k = 1 - d;
+    return m.domeH * 0.42 * k * k * (3 - 2 * k);
   }
-  function shellBotOffset(m, u) {
-    return m.shellH * 0.06 * Math.pow(Math.sin(clamp01(u) * Math.PI), 0.45);
+  function shellSurface(m, a, b) {
+    const r2 = a * a + b * b;
+    const inside = r2 <= 1;
+    const q = Math.sqrt(Math.max(0, 1 - Math.min(1, r2)));
+    const z = m.domeH * q - basinCut(m, a, b);
+    const sx = m.ox + a * m.rx;
+    const sy = m.topCy + b * m.ry * KY * (m.ry / m.ry) * 1 - z * KZ;
+    const nx = a, ny = b * 0.5, nz = Math.max(0.2, q);
+    const l = Math.hypot(nx, ny, nz) || 1;
+    return {
+      a,
+      b,
+      inside,
+      z,
+      x: sx - m.ox,
+      y: sy - m.oy,
+      sx,
+      sy,
+      nx: nx / l,
+      ny: -nz / l,
+      nz: nz / l,
+      depth: b
+    };
   }
   function shellPoint(m, u) {
-    u = clamp01(u);
-    const x = lerp(m.sx0, m.sx1, u);
-    const y = m.sbase - shellTopOffset(m, u);
-    const e = 0.02;
-    const ax = lerp(m.sx0, m.sx1, clamp01(u - e)), ay = m.sbase - shellTopOffset(m, clamp01(u - e));
-    const bx = lerp(m.sx0, m.sx1, clamp01(u + e)), by = m.sbase - shellTopOffset(m, clamp01(u + e));
-    let nx = by - ay, ny = -(bx - ax);
-    const l = Math.hypot(nx, ny) || 1;
-    return { u, x: x - m.ox, y: y - m.oy, nx: nx / l, ny: ny / l, sx: x, sy: y };
+    const b = lerp(-0.86, 0.86, clamp01(u));
+    return shellSurface(m, 0, b);
   }
   function paintBody(m, seed = 3) {
     const p = new Painter(m.w, m.h);
-    const S = m.S;
-    const bx0 = m.ox - m.bodyW * 0.52, bx1 = m.ox + m.bodyW * 0.5;
-    const btop = m.sbase - m.shellH * 0.06;
-    const bw = bx1 - bx0;
-    p.field(bx0 - 3, btop - 2, bx1 + 4, btop + m.bodyH + 4, (x, y) => {
-      const u = (x - bx0) / bw;
-      if (u < 0 || u > 1) return null;
-      const taper = Math.pow(Math.sin(Math.pow(u, 0.78) * Math.PI * 0.97 + 0.09), 0.4);
-      const half = m.bodyH * 0.5 * (0.55 + 0.45 * taper);
-      const mid = btop + m.bodyH * 0.5 + Math.pow(u, 2.4) * m.bodyH * 0.24;
-      const dy = (y - mid) / half;
-      if (Math.abs(dy) > 1) return null;
-      const dz = Math.sqrt(clamp01(1 - dy * dy));
-      const su = Math.sqrt(clamp01(1 - Math.pow((u - 0.5) * 2, 4)));
-      return { h: dz * m.bodyH * 0.46 * (0.35 + 0.65 * su), tint: -0.06 };
-    }, { mat: "chitin" });
-    p.ridges("chitin", { angle: 0.3, freq: 0.7 / S, amp: 0.15, height: 1 * S, seed: seed + 4, warp: 0.6 });
-    {
-      const m0 = p._matIndex.get("chitin");
-      for (let y = 0; y < p.h; y++) {
-        for (let x = 0; x < p.w; x++) {
-          const i = y * p.w + x;
-          if (p.mat[i] !== m0) continue;
-          const d = (y - btop) / Math.max(1, m.bodyH);
-          if (d < 0.52) p.tint[i] -= (1 - d / 0.52) * 0.3;
+    const S = Math.max(0.45, m.S);
+    const { ox, topCy, rx, ry, domeH, skirtH, rimY } = m;
+    const maxY = new Int32Array(p.w).fill(-1);
+    const step = 1 / Math.max(14, Math.round(rx * 2));
+    for (let b2 = -1; b2 <= 1.0001; b2 += step) {
+      for (let a2 = -1; a2 <= 1.0001; a2 += step) {
+        const r2 = a2 * a2 + b2 * b2;
+        if (r2 > 1) continue;
+        const s = shellSurface(m, a2, b2);
+        const q = Math.sqrt(Math.max(0, 1 - r2));
+        const inBasin = basinCut(m, a2, b2) > 0.4;
+        let tint = 0.04 + q * 0.2 - Math.abs(a2 + 0.25) * 0.13 + b2 * 0.05;
+        if (inBasin) tint -= 0.26;
+        tint += Math.sin(r2 * 9.5 + b2 * 1.2) * 0.045;
+        const px = Math.round(s.sx), py = Math.round(s.sy);
+        p.ellipse(s.sx, s.sy, 1.05, 1.05, {
+          mat: "shellRock",
+          dome: 0,
+          addHeight: false,
+          tint,
+          lift: domeH * 0.62 * q + (inBasin ? -2.4 : 0) + b2 * 1.2
+        });
+        for (let dx = -1; dx <= 1; dx++) {
+          const cx2 = px + dx;
+          if (cx2 >= 0 && cx2 < p.w && py > maxY[cx2]) maxY[cx2] = py;
         }
       }
     }
-    p.grain("chitin", { freq: 0.36 / S, amp: 0.16, seed: seed + 9 });
-    for (let i = 0; i < 4; i++) {
-      const px = lerp(bx0 + bw * 0.16, bx1 - bw * 0.2, i / 3);
-      p.capsule(
-        px,
-        btop + m.bodyH * 0.3,
-        px - m.bodyH * 0.22,
-        btop + m.bodyH * 0.98,
-        1.5 * S,
-        1.1 * S,
-        { mat: "chitin", mask: true, tint: -0.24, dome: 0 }
-      );
-      p.capsule(
-        px + 1.6 * S,
-        btop + m.bodyH * 0.3,
-        px - m.bodyH * 0.22 + 1.6 * S,
-        btop + m.bodyH * 0.98,
-        1 * S,
-        0.8 * S,
-        { mat: "chitinPale", mask: true, tint: 0.1, dome: 0 }
-      );
-    }
-    const fx = bx1 - bw * 0.09, fy = btop + m.bodyH * 0.46;
-    p.ellipse(
-      fx - bw * 0.02,
-      fy - m.bodyH * 0.2,
-      bw * 0.13,
-      m.bodyH * 0.26,
-      { mat: "chitinPale", dome: 3 * S, tint: 0.06 }
-    );
-    p.ellipse(
-      fx - bw * 0.015,
-      fy - m.bodyH * 0.1,
-      bw * 0.055,
-      m.bodyH * 0.13,
-      { mat: "chitinDark", dome: -2.2 * S, tint: -0.28 }
-    );
-    p.ellipse(
-      fx - bw * 0.075,
-      fy - m.bodyH * 0.12,
-      bw * 0.045,
-      m.bodyH * 0.11,
-      { mat: "chitinDark", dome: -2 * S, tint: -0.34 }
-    );
-    for (let i = 0; i < 3; i++) {
-      p.capsule(
-        fx - 5 * S - i * 2 * S,
-        fy + m.bodyH * 0.26 - i * 2.6 * S,
-        fx + 2.6 * S,
-        fy + m.bodyH * 0.22 - i * 2.4 * S,
-        1.7 * S,
-        1.1 * S,
-        { mat: "chitinDark", dome: 1.6 * S, tint: -0.04 - i * 0.06 }
-      );
-    }
-    p.ellipse(fx - 1 * S, fy + m.bodyH * 0.34, 3 * S, 2.1 * S, { mat: "flesh", dome: 1.3 * S, tint: -0.2 });
-    const gully = [];
-    for (let i = 0; i < 4; i++) gully.push(0.16 + i * 0.21 + (rnd(seed * 31 + i * 7) - 0.5) * 0.07);
-    const ledges = [0.3, 0.55, 0.79];
-    p.field(m.sx0 - 3, m.sbase - m.shellH - 5, m.sx1 + 3, m.sbase + m.shellH * 0.16, (x, y) => {
-      const u = (x - m.sx0) / m.shellW;
-      if (u < 0 || u > 1) return null;
-      const top = m.sbase - shellTopOffset(m, u);
-      const bot = m.sbase + shellBotOffset(m, u);
-      if (y < top || y > bot) return null;
-      const th = Math.max(1, bot - top);
-      const tz = (y - top) / th;
-      const q = (y - top) / m.shellH;
-      const vert = Math.sqrt(clamp01(1 - Math.pow(tz * 2 - 1, 2)));
-      const horiz = Math.sqrt(clamp01(1 - Math.pow((u - 0.5) * 2, 2)));
-      let h = m.shellH * 0.44 * (0.26 + 0.74 * horiz) * (0.3 + 0.7 * vert);
-      let tint = -0.06;
-      const g = (y - (m.sbase - m.shellH)) / m.shellH;
-      const gw = g + Math.sin(u * 5.3) * 0.014 + Math.sin(u * 11.7 + 2) * 7e-3;
-      const bs = Math.sin(gw / 0.155 * Math.PI * 2 + Math.sin(gw * 9) * 0.5);
-      h += bs * 0.5 * S;
-      tint += bs * 0.032;
-      for (const L of ledges) {
-        const lg = L + Math.sin(u * 4.4 + L * 17) * 0.022;
-        const d = g - lg;
-        if (d > -0.045 && d < 0.065) {
-          if (d < 0) {
-            tint += (1 + d / 0.045) * 0.15;
-            h += (1 + d / 0.045) * 2.8 * S;
-          } else {
-            const k = 1 - d / 0.065;
-            tint -= k * k * 0.22;
-            h -= k * 2.4 * S;
+    const wallBase = new Int32Array(p.w).fill(-1);
+    for (let x = 0; x < p.w; x++) {
+      if (maxY[x] < 0) continue;
+      const sa = (x - ox) / rx;
+      const q = Math.sqrt(Math.max(0, 1 - Math.min(1, sa * sa)));
+      const wh = skirtH * (0.18 + 0.82 * Math.pow(q, 1.15));
+      const y0 = maxY[x] + 1, y1 = maxY[x] + wh;
+      wallBase[x] = Math.round(y1);
+      for (let y = y0; y <= y1; y++) {
+        const t = (y - y0) / Math.max(1, y1 - y0);
+        let h = domeH * 0.42 * q * (1 - t * 0.42);
+        let tint = -0.06 - Math.pow(Math.abs(sa), 2) * 0.22;
+        const g = (y - topCy) / (ry * 2 + skirtH);
+        const bs = Math.sin(g / 0.115 * Math.PI * 2 + Math.sin(g * 8) * 0.5);
+        h += bs * 0.5 * S;
+        tint += bs * 0.038;
+        for (const L of [0.34, 0.66]) {
+          const d = t - (L + Math.sin(sa * 3.6 + L * 15) * 0.03);
+          if (d > -0.07 && d < 0.09) {
+            if (d < 0) {
+              tint += (1 + d / 0.07) * 0.14;
+              h += (1 + d / 0.07) * 2.4 * S;
+            } else {
+              const k = 1 - d / 0.09;
+              tint -= k * k * 0.22;
+              h -= k * 2 * S;
+            }
           }
         }
-      }
-      if (tz < 0.13) {
-        const k = 1 - tz / 0.13;
-        tint += k * 0.34;
-        h += k * 3.6 * S;
-      }
-      if (tz > 0.78) {
-        const k = (tz - 0.78) / 0.22;
-        tint -= k * k * 0.5;
-        h -= k * 3.4 * S;
-      }
-      for (const c of gully) {
-        const d = Math.abs(u - c) * m.shellW;
-        const wdt = 2.6 * S;
-        if (d < wdt) {
-          const k = (1 - d / wdt) * clamp01((tz - 0.14) * 2.4);
-          tint -= k * 0.26;
-          h -= k * 2.8 * S;
+        if (t > 0.78) {
+          const k = (t - 0.78) / 0.22;
+          tint -= k * k * 0.48;
+          h -= k * 3 * S;
         }
+        p.rect(x, y, 1, 1, { mat: "shellRock", dome: 0, addHeight: false, tint, lift: h });
       }
-      for (let f = 0; f < 2; f++) {
-        const fg = 0.3 + f * 0.34 + Math.sin(u * 3.3 + f * 2.1) * 0.05;
-        const d = Math.abs(g - fg);
-        if (d < 0.018) {
-          const k = 1 - d / 0.018;
-          tint -= k * 0.24;
-          h -= k * 2.4 * S;
-        }
-      }
-      return { h, tint };
-    }, { mat: "shellRock" });
-    p.grain("shellRock", { freq: 0.055 / S, amp: 0.3, seed: seed + 77, oct: 2 });
-    p.grain("shellRock", { freq: 0.28 / S, amp: 0.18, seed, oct: 3, height: 0.55 * S });
-    p.grain("shellRock", { freq: 0.95 / S, amp: 0.09, seed: seed + 51, oct: 2 });
-    p.speckle("shellRock", { density: 0.045, amp: 0.32, seed: seed + 13, size: 1 });
+    }
+    p.grain("shellRock", { freq: 0.055 / S, amp: 0.26, seed: seed + 77, oct: 2 });
+    p.grain("shellRock", { freq: 0.28 / S, amp: 0.16, seed, oct: 3, height: 0.5 * S });
+    p.speckle("shellRock", { density: 0.045, amp: 0.3, seed: seed + 13, size: 1 });
     {
       const mid = p._matIndex.get("shellRock");
       const streaks = [];
-      for (let i = 0; i < 11; i++) {
+      for (let i = 0; i < 9; i++) {
         streaks.push({
-          u: 0.06 + rnd(seed * 401 + i * 11) * 0.88,
-          y0: m.shellH * (0.2 + rnd(seed * 91 + i) * 0.34),
-          len: m.shellH * (0.24 + rnd(seed * 133 + i) * 0.46),
-          w: (1.4 + rnd(seed * 55 + i) * 2.4) * S,
-          a: 0.1 + rnd(seed * 17 + i) * 0.13
+          sa: -0.9 + rnd(seed * 401 + i * 11) * 1.8,
+          drop: 0.15 + rnd(seed * 91 + i) * 0.4,
+          len: skirtH * (0.4 + rnd(seed * 133 + i) * 0.7),
+          w: (1.2 + rnd(seed * 55 + i) * 2) * S,
+          amp: 0.08 + rnd(seed * 17 + i) * 0.11
         });
       }
-      for (let y = 0; y < p.h; y++) {
-        for (let x = 0; x < p.w; x++) {
-          const i = y * p.w + x;
-          if (p.mat[i] !== mid) continue;
-          const u = (x - m.sx0) / m.shellW;
-          const g = y - (m.sbase - m.shellH);
-          for (const st of streaks) {
-            const dx = Math.abs(u - st.u) * m.shellW;
-            if (dx > st.w) continue;
-            const dy = g - st.y0;
-            if (dy < 0 || dy > st.len) continue;
+      for (let x = 0; x < p.w; x++) {
+        if (maxY[x] < 0) continue;
+        const sa = (x - ox) / rx;
+        for (const st of streaks) {
+          const dx = Math.abs(sa - st.sa) * rx;
+          if (dx > st.w) continue;
+          const y0 = maxY[x] + st.drop * skirtH;
+          for (let y = y0; y < y0 + st.len; y++) {
+            const i = Math.round(y) * p.w + x;
+            if (i < 0 || i >= p.mat.length || p.mat[i] !== mid) continue;
+            const dy = y - y0;
             const k = (1 - dx / st.w) * Math.min(1, dy / (st.len * 0.3)) * (1 - dy / st.len);
-            p.tint[i] -= k * st.a;
+            p.tint[i] -= k * st.amp;
           }
         }
       }
     }
-    const spikeN = Math.round(lerp(3, 6, m.t));
-    for (let i = 0; i < spikeN; i++) {
-      const u = 0.09 + i / Math.max(1, spikeN - 1) * 0.46;
-      const pt = shellPoint(m, u);
-      const hgt = (3 + rnd(seed * 7 + i * 13) * 4) * S;
-      const wid = (2.4 + rnd(seed * 17 + i) * 1.6) * S;
-      p.poly([
-        { x: pt.sx - wid, y: pt.sy + 2 * S },
-        { x: pt.sx + pt.nx * hgt - 1.2 * S, y: pt.sy + pt.ny * hgt },
-        { x: pt.sx + wid, y: pt.sy + 2 * S }
-      ], { mat: "shellRock", dome: wid * 1.1, feather: 2.2, tint: 0.1 });
+    for (let i = 0; i <= 52; i++) {
+      const th = i / 52 * TAU;
+      const a2 = m.basin.a + Math.cos(th) * m.basin.r * 1.16;
+      const b2 = m.basin.b + Math.sin(th) * m.basin.r * 1.06;
+      if (a2 * a2 + b2 * b2 > 0.94) continue;
+      const s = shellSurface(m, a2, b2);
+      p.ellipse(s.sx, s.sy, Math.max(1, 1.4 * S), Math.max(1, 1.2 * S), {
+        mat: "shellRock",
+        dome: 1.3 * S,
+        tint: Math.sin(th) < 0 ? 0.18 : -0.06,
+        lift: domeH * 0.62 * Math.sqrt(Math.max(0, 1 - a2 * a2 - b2 * b2)) + 2.6 * S
+      });
     }
-    const org = shellPoint(m, m.organU);
-    const orr = 5.6 * S;
-    p.ellipse(org.sx, org.sy - orr * 0.24, orr * 1.32, orr * 0.78, { mat: "chitinDark", dome: orr * 0.62, tint: 0.02 });
-    p.ellipse(org.sx, org.sy - orr * 0.34, orr * 0.88, orr * 0.46, { mat: "chitinDark", dome: -orr * 0.55, tint: -0.3 });
-    p.ellipse(org.sx, org.sy - orr * 0.36, orr * 0.6, orr * 0.3, { mat: "flesh", dome: -0.4, tint: -0.36 });
-    p.ridges("chitinDark", { angle: 1.35, freq: 1.5 / S, amp: 0.17, height: 0.9 * S, seed: seed + 3, warp: 0.4 });
-    for (let i = 0; i < Math.round(5 + m.t * 8); i++) {
-      const u = 0.1 + rnd(seed * 101 + i * 7) * 0.8;
-      const tz = 0.24 + rnd(seed * 211 + i * 3) * 0.58;
-      const top = m.sbase - shellTopOffset(m, u);
-      const x = m.sx0 + u * m.shellW;
-      const y = top + tz * (m.sbase + shellBotOffset(m, u) - top);
-      const r = (1.4 + rnd(seed * 53 + i) * 2.2) * S;
+    const spikeN = Math.round(lerp(3, 8, m.t));
+    for (let i = 0; i < spikeN; i++) {
+      const th = Math.PI * (1.1 + i / Math.max(1, spikeN - 1) * 0.8);
+      const a2 = Math.cos(th) * 0.88, b2 = Math.sin(th) * 0.88;
+      const s = shellSurface(m, a2, b2);
+      const hgt = (2.2 + rnd(seed * 7 + i * 13) * 3.2) * S;
+      const wid = Math.max(1, (1.8 + rnd(seed * 17 + i) * 1.3) * S);
+      p.poly([
+        { x: s.sx - wid, y: s.sy + 1.4 * S },
+        { x: s.sx + wid * 0.2, y: s.sy - hgt },
+        { x: s.sx + wid, y: s.sy + 1.4 * S }
+      ], { mat: "shellRock", dome: wid, feather: 2, tint: 0.1 });
+    }
+    const org = shellSurface(m, m.organ.a, m.organ.b);
+    const orr = Math.max(2.2, 4.6 * S);
+    p.ellipse(org.sx, org.sy, orr * 1.3, orr * 0.68, { mat: "chitinDark", dome: orr * 0.5, tint: 0.02 });
+    p.ellipse(org.sx, org.sy, orr * 0.82, orr * 0.4, { mat: "chitinDark", dome: -orr * 0.5, tint: -0.3 });
+    p.ellipse(org.sx, org.sy, orr * 0.5, orr * 0.24, { mat: "flesh", dome: -0.4, tint: -0.36 });
+    for (let i = 0; i < Math.round(3 + m.t * 7); i++) {
+      const sa = -0.8 + rnd(seed * 101 + i * 7) * 1.6;
+      const x = Math.round(ox + sa * rx);
+      if (x < 0 || x >= p.w || maxY[x] < 0) continue;
+      const y = maxY[x] + (0.2 + rnd(seed * 211 + i * 3) * 0.5) * skirtH;
+      const r = Math.max(1, (1 + rnd(seed * 53 + i) * 1.8) * S);
       p.ellipse(x, y, r, r * 0.84, { mat: "bone", mask: true, dome: r * 0.9, tint: 0.06 });
       p.ellipse(x, y, r * 0.4, r * 0.32, { mat: "bone", mask: true, dome: -r * 0.6, tint: -0.34 });
     }
+    let frontY = 0;
+    for (let x = Math.round(ox - rx * 0.4); x <= Math.round(ox + rx * 0.4); x++) {
+      if (x >= 0 && x < p.w) frontY = Math.max(frontY, wallBase[x]);
+    }
+    m.faceTop = frontY;
+    const faceW = rx * 0.34;
+    const faceMid = frontY - skirtH * 0.3;
+    p.field(ox - faceW - 2, faceMid - m.faceH, ox + faceW + 2, frontY + 2, (x, y) => {
+      const sa = (x - ox) / faceW;
+      if (Math.abs(sa) > 1) return null;
+      const half = m.faceH * 0.62 * (0.55 + 0.45 * Math.sqrt(1 - sa * sa));
+      const dy = (y - faceMid) / half;
+      if (Math.abs(dy) > 1) return null;
+      const dz = Math.sqrt(clamp01(1 - dy * dy)) * Math.sqrt(clamp01(1 - sa * sa * 0.8));
+      return { h: dz * m.faceH * 0.34, tint: -0.16 + dz * 0.14 };
+    }, { mat: "chitin" });
+    for (const sgn of [-1, 1]) {
+      p.ellipse(
+        ox + sgn * faceW * 0.46,
+        faceMid - m.faceH * 0.3,
+        faceW * 0.26,
+        m.faceH * 0.18,
+        { mat: "chitinDark", mask: true, dome: -1.6 * S, tint: -0.3 }
+      );
+    }
+    m.faceMid = faceMid;
+    p.grain("chitin", { freq: 0.36 / S, amp: 0.14, seed: seed + 9 });
     p.smoothHeight(1, 0.5);
     const cv = p.resolve(MATERIALS, { ...LIGHT2, outline: 1, outlineColor: "#171009" });
-    return { cv, ox: m.ox, oy: m.oy };
+    return { cv, ox: m.ox, oy: m.oy, faceTop: frontY };
   }
   function paintSegment(len, r0, r1, opts = {}) {
     const mat = opts.mat || "chitin";
     const far = !!opts.far;
     const bow = opts.bow ?? 0;
-    const S = opts.S ?? 1;
+    const S = Math.max(0.4, opts.S ?? 1);
     const pad = Math.ceil(Math.max(r0, r1) + Math.abs(bow) + 5);
     const w = Math.ceil(len) + pad * 2;
     const h = pad * 2 + Math.ceil(Math.abs(bow)) + 2;
     const p = new Painter(w, h);
     const cy = h / 2 - bow * 0.25;
     const x0 = pad, x1 = pad + len;
-    const ft = far ? -0.16 : 0;
+    const ft = far ? -0.17 : 0;
     p.curve(
       [{ x: x0, y: cy }, { x: (x0 + x1) / 2, y: cy - bow }, { x: x1, y: cy }],
       r0,
@@ -4627,26 +4603,10 @@ body {
         const t = (i + 0.5) / n;
         const x = lerp(x0, x1, t);
         const y = cy - bow * 4 * t * (1 - t) - lerp(r0, r1, t) * 0.8;
-        const sl = (1.4 + rnd(i * 37 + Math.round(len)) * 1.7) * S;
+        const sl = (1.2 + rnd(i * 37 + Math.round(len)) * 1.5) * S;
         p.poly(
-          [{ x: x - 1.4 * S, y: y + 1.2 * S }, { x: x + 0.5 * S, y: y - sl }, { x: x + 1.5 * S, y: y + 1.2 * S }],
-          { mat, dome: 1.2 * S, feather: 1.5, tint: ft + 0.08 }
-        );
-      }
-    }
-    if (opts.bristle) {
-      const n = Math.max(2, Math.round(len / (4.2 * S)));
-      for (let i = 0; i < n; i++) {
-        const t = (i + 0.4) / n;
-        const x = lerp(x0, x1, t), y = cy + lerp(r0, r1, t) * 0.8;
-        p.capsule(
-          x,
-          y,
-          x - 1.3 * S,
-          y + (1.3 + rnd(i * 11) * 1.4) * S,
-          0.7 * S,
-          0.4 * S,
-          { mat: "chitinDark", dome: 0.5, tint: ft - 0.2 }
+          [{ x: x - 1.3 * S, y: y + 1.1 * S }, { x: x + 0.4 * S, y: y - sl }, { x: x + 1.4 * S, y: y + 1.1 * S }],
+          { mat, dome: 1.1 * S, feather: 1.4, tint: ft + 0.08 }
         );
       }
     }
@@ -4661,16 +4621,16 @@ body {
     return { cv, ox: pad, oy: cy, len };
   }
   function paintFoot(len, r0, opts = {}) {
-    const far = !!opts.far, S = opts.S ?? 1;
+    const far = !!opts.far, S = Math.max(0.4, opts.S ?? 1);
     const mat = far ? "chitinDark" : "chitin";
-    const ft = far ? -0.16 : 0;
+    const ft = far ? -0.17 : 0;
     const pad = Math.ceil(r0 + 4);
     const p = new Painter(Math.ceil(len) + pad * 2, pad * 2 + 2);
     const cy = p.h / 2, x0 = pad, x1 = pad + len;
     p.curve(
       [{ x: x0, y: cy }, { x: (x0 + x1) * 0.5, y: cy - r0 * 0.55 }, { x: x1, y: cy + r0 * 0.25 }],
       r0,
-      0.7 * S,
+      Math.max(0.5, 0.7 * S),
       { mat, dome: r0 * 0.92, steps: 14, tint: ft }
     );
     p.ellipse(x0, cy, r0 * 1.14, r0 * 1.08, { mat, dome: r0, tint: ft + 0.04 });
@@ -4680,13 +4640,21 @@ body {
       x1,
       cy + r0 * 0.25,
       r0 * 0.55,
-      0.6 * S,
+      Math.max(0.5, 0.6 * S),
       { mat: "horn", dome: r0 * 0.5, tint: ft + 0.02 }
     );
     for (let i = 0; i < 4; i++) {
       const t = 0.2 + i * 0.2;
       const x = lerp(x0, x1, t), y = cy + lerp(r0, 1 * S, t) * 0.85;
-      p.capsule(x, y, x - 1.2 * S, y + 1.6 * S, 0.6 * S, 0.35 * S, { mat: "chitinDark", dome: 0.4, tint: ft - 0.2 });
+      p.capsule(
+        x,
+        y,
+        x - 1.1 * S,
+        y + 1.4 * S,
+        0.55 * S,
+        0.32 * S,
+        { mat: "chitinDark", dome: 0.4, tint: ft - 0.2 }
+      );
     }
     p.grain(mat, { freq: 0.6 / S, amp: 0.12, seed: 21 });
     const cv = p.resolve(MATERIALS, {
@@ -4698,15 +4666,14 @@ body {
     return { cv, ox: pad, oy: cy, len };
   }
   function paintClaw(m, far = false) {
-    const S = m.S * (m.clawScale / 0.62) * 1;
-    const K = m.shellW * m.clawScale;
+    const S = Math.max(0.4, m.S);
+    const K = Math.max(8, m.shellW * m.clawScale);
     const mat = far ? "chitinDark" : "claw";
-    const ft = far ? -0.16 : 0;
+    const ft = far ? -0.17 : 0;
     const L = K * 0.52, Hh = K * 0.33, tip = K * 0.5;
     const pad = 5;
-    const w = Math.ceil(L + tip) + pad * 2, h = Math.ceil(Hh * 2) + pad * 2;
-    const p = new Painter(w, h);
-    const cy = h * 0.5, x0 = pad;
+    const p = new Painter(Math.ceil(L + tip) + pad * 2, Math.ceil(Hh * 2) + pad * 2);
+    const cy = p.h * 0.5, x0 = pad;
     p.field(x0 - 2, cy - Hh - 1, x0 + L + 2, cy + Hh + 1, (x, y) => {
       const u = (x - x0) / L;
       if (u < -0.04 || u > 1.02) return null;
@@ -4722,7 +4689,7 @@ body {
       { x: x0 + L * 0.86, y: cy + Hh * 0.42 },
       { x: x0 + L + tip * 0.52, y: cy + Hh * 0.72 },
       { x: x0 + L + tip, y: cy + Hh * 0.16 }
-    ], K * 0.085, K * 0.024, { mat, dome: K * 0.09, steps: 16, tint: ft });
+    ], K * 0.085, K * 0.024, { mat, dome: K * 0.075, steps: 16, tint: ft });
     for (let i = 0; i < 4; i++) {
       const t = 0.16 + i * 0.21;
       const bx = lerp(x0 + L * 0.86, x0 + L + tip, t);
@@ -4735,7 +4702,6 @@ body {
     }
     p.ridges(mat, { angle: 0.9, freq: 0.55 / S, amp: 0.12, height: 1 * S, seed: 5, warp: 1.1 });
     p.grain(mat, { freq: 0.3 / S, amp: 0.17, seed: 29 });
-    p.speckle(mat, { density: 0.04, amp: 0.3, seed: 41, size: 1 });
     p.smoothHeight(1, 0.45);
     const palm = p.resolve(MATERIALS, {
       ...LIGHT2,
@@ -4750,7 +4716,7 @@ body {
       { x: qx, y: qy },
       { x: qx + tip * 0.48, y: qy - K * 0.2 },
       { x: qx + tip, y: qy - K * 0.03 }
-    ], K * 0.105, K * 0.03, { mat, dome: K * 0.095, steps: 16, tint: ft });
+    ], K * 0.105, K * 0.03, { mat, dome: K * 0.09, steps: 16, tint: ft });
     q.ellipse(qx, qy, K * 0.115, K * 0.105, { mat, dome: K * 0.1, tint: ft + 0.05 });
     for (let i = 0; i < 4; i++) {
       const t = 0.2 + i * 0.21;
@@ -4776,98 +4742,86 @@ body {
       hinge: { x: L * 0.84, y: -Hh * 0.1 }
     };
   }
-  function paintEye(m, far = false) {
-    const S = m.S;
-    const len = 13 * S, r = 5 * S;
-    const pad = Math.ceil(r + 5);
+  function paintEye(m) {
+    const S = Math.max(0.4, m.S);
+    const len = Math.max(2.5, m.eyeRise * 0.62);
+    const r = Math.max(1.4, 2.5 * S);
+    const pad = Math.ceil(r + 4);
     const p = new Painter(Math.ceil(len + r) + pad * 2, pad * 2 + 2);
     const cy = p.h / 2, x0 = pad;
-    const ft = far ? -0.18 : 0;
     p.capsule(
       x0,
       cy,
-      x0 + len - r * 0.3,
+      x0 + len - r * 0.2,
       cy,
-      2.2 * S,
-      2.9 * S,
-      { mat: far ? "chitinDark" : "chitin", dome: 2.2 * S, tint: ft }
+      Math.max(0.8, 1.5 * S),
+      Math.max(0.9, 1.7 * S),
+      { mat: "chitin", dome: 1.4 * S, tint: 0 }
     );
-    p.ellipse(x0 + len, cy, r, r * 1.05, { mat: "eyeball", dome: r * 1.2, tint: ft + 0.05 });
-    p.ellipse(
-      x0 + len - r * 0.34,
-      cy - r * 0.42,
-      r * 0.3,
-      r * 0.26,
-      { mat: "eyeball", mask: true, dome: r, tint: 0.55 }
-    );
-    const cv = p.resolve(MATERIALS, {
-      ...LIGHT2,
-      ambient: far ? 0.27 : LIGHT2.ambient,
-      outline: 1,
-      outlineColor: far ? "#100a06" : "#171009"
-    });
+    p.ellipse(x0 + len, cy, r, r, { mat: "eye", dome: r * 1.5, tint: -0.18 });
+    const cv = p.resolve(MATERIALS, { ...LIGHT2, outline: 1, outlineColor: "#171009" });
     return { cv, ox: pad, oy: cy, len, r, globe: len };
   }
   function paintMouth(m) {
-    const S = m.S;
-    const w = Math.ceil(9 * S) + 8, h = Math.ceil(7 * S) + 8;
+    const S = Math.max(0.4, m.S);
+    const w = Math.ceil(9 * S) + 8, h = Math.ceil(8 * S) + 8;
     const p = new Painter(w, h);
-    const cx = w * 0.35, cy = h / 2;
-    p.ellipse(cx, cy, 3.4 * S, 2.4 * S, { mat: "chitinDark", dome: 2 * S, tint: -0.02 });
-    p.capsule(
-      cx - 1.6 * S,
-      cy - 0.6 * S,
-      cx + 3.4 * S,
-      cy - 0.2 * S,
-      1.2 * S,
-      0.8 * S,
-      { mat: "chitinPale", dome: 1.1 * S, tint: 0.08 }
-    );
+    const cx = w * 0.5, cy = h * 0.5;
+    p.ellipse(cx, cy, 3.2 * S, 2.6 * S, { mat: "chitinDark", dome: 2 * S, tint: -0.04 });
+    for (const sgn of [-1, 1]) {
+      p.capsule(
+        cx + sgn * 0.6 * S,
+        cy - 1.4 * S,
+        cx + sgn * 2.6 * S,
+        cy + 1.6 * S,
+        1.1 * S,
+        0.7 * S,
+        { mat: "chitinPale", dome: 1 * S, tint: sgn > 0 ? 0.08 : -0.02 }
+      );
+    }
+    p.ellipse(cx, cy + 1 * S, 1.5 * S, 1 * S, { mat: "flesh", dome: 0.8 * S, tint: -0.2 });
     const cv = p.resolve(MATERIALS, { ...LIGHT2, outline: 1, outlineColor: "#171009" });
     return { cv, ox: cx, oy: cy };
-  }
-  function paintAntenna(m) {
-    const S = m.S;
-    const len = 15 * S;
-    const pad = 4;
-    const p = new Painter(Math.ceil(len) + pad * 2, Math.ceil(6 * S) + pad * 2);
-    const cy = p.h * 0.72, x0 = pad;
-    p.curve(
-      [{ x: x0, y: cy }, { x: x0 + len * 0.5, y: cy - 4 * S }, { x: x0 + len, y: cy - 5 * S }],
-      1.5 * S,
-      0.5 * S,
-      { mat: "chitinDark", dome: 1.2 * S, steps: 12 }
-    );
-    const cv = p.resolve(MATERIALS, { ...LIGHT2, outline: 1, outlineColor: "#171009" });
-    return { cv, ox: pad, oy: cy, len };
   }
   var cache3 = /* @__PURE__ */ new Map();
   function buildCrab(stage = "adult") {
     if (cache3.has(stage)) return cache3.get(stage);
     const m = crabMetrics(stage);
-    const S = m.S;
+    const S = Math.max(0.4, m.S);
     const body = paintBody(m);
-    const seg = (len, r0, r1, far, extra) => paintSegment(len, r0, r1, { mat: far ? "chitinDark" : "chitin", far, S, ...extra });
+    const seg = (len, r0, r1, far, extra) => paintSegment(
+      Math.max(3, len),
+      Math.max(1, r0),
+      Math.max(0.8, r1),
+      { mat: far ? "chitinDark" : "chitin", far, S, ...extra }
+    );
     const legArt = {};
     for (const far of [false, true]) {
       legArt[far ? "far" : "near"] = {
-        coxa: seg(m.legLen[0], 3.9 * S, 3.2 * S, far, { bow: -1.1 * S }),
-        femur: seg(m.legLen[1], 3.2 * S, 2.3 * S, far, { bow: 2.2 * S, spines: true }),
-        tibia: paintFoot(m.legLen[2] * 1.1, 2.2 * S, { far, S })
+        coxa: seg(m.legLen[0], 3.2 * S, 2.6 * S, far, { bow: -0.8 * S }),
+        femur: seg(m.legLen[1], 2.6 * S, 1.7 * S, far, { bow: 1.6 * S, spines: true }),
+        tibia: paintFoot(Math.max(3, m.legLen[2] * 1.1), Math.max(1, 1.8 * S), { far, S })
       };
     }
-    const hipY = m.sbase + m.bodyH * 0.34 - m.oy;
+    const faceTop = body.faceTop || m.rimY;
+    const faceMid = m.faceMid ?? faceTop - m.skirtH * 0.3;
+    const hipY = faceTop - m.oy - m.skirtH * 0.18;
     const legs = [];
-    for (let side = 0; side < 2; side++) {
-      const far = side === 1;
+    for (const side of [-1, 1]) {
       for (let i = 0; i < m.legN; i++) {
         const t = m.legN === 1 ? 0.5 : i / (m.legN - 1);
+        const spread = lerp(0.4, 0.96, t);
+        const back = i >= Math.floor(m.legN / 2);
+        const depth = back ? 1 : 0;
         legs.push({
-          x: lerp(-m.bodyW * 0.36, m.bodyW * 0.26, t) + (far ? -2.2 * S : 1.6 * S),
-          y: hipY + (far ? -1.4 * S : 0.8 * S),
-          far,
+          x: side * m.rx * spread * 0.8,
+          y: hipY - m.skirtH * (back ? 0.34 : 0.1) - depth * m.rx * 0.05,
+          side,
+          depth,
+          far: back,
+          spread: side * spread,
           reach: m.reach,
-          spread: lerp(-1.1, 0.72, t) + (far ? -0.12 : 0.07)
+          order: i
         });
       }
     }
@@ -4879,30 +4833,32 @@ body {
       legArt,
       claw: {
         near: {
-          arm: seg(m.clawLen[0], 3.6 * S, 3.2 * S, false, { bow: -1.4 * S }),
-          fore: seg(m.clawLen[1], 3.4 * S, 3.7 * S, false, { bow: 1.2 * S, spines: true }),
+          arm: seg(m.clawLen[0], 3.4 * S, 3 * S, false, { bow: -1.2 * S }),
+          fore: seg(m.clawLen[1], 3.2 * S, 3.5 * S, false, { bow: 1 * S, spines: true }),
           ...paintClaw(m, false)
         },
         far: {
-          arm: seg(m.clawLen[0], 3.6 * S, 3.2 * S, true, { bow: -1.4 * S }),
-          fore: seg(m.clawLen[1], 3.4 * S, 3.7 * S, true, { bow: 1.2 * S }),
+          arm: seg(m.clawLen[0], 3.4 * S, 3 * S, true, { bow: -1.2 * S }),
+          fore: seg(m.clawLen[1], 3.2 * S, 3.5 * S, true, { bow: 1 * S }),
           ...paintClaw(m, true)
         }
       },
-      eye: { near: paintEye(m, false), far: paintEye(m, true) },
+      eye: paintEye(m),
       mouth: paintMouth(m),
-      antenna: paintAntenna(m),
       sockets: {
         legs,
-        claw: { x: m.bodyW * 0.4, y: hipY - m.bodyH * 0.18 },
-        eyes: [
-          { x: m.bodyW * 0.34, y: m.sbase - m.oy - m.bodyH * 0.06, far: true },
-          { x: m.bodyW * 0.42, y: m.sbase - m.oy + m.bodyH * 0.06, far: false }
+        claws: [
+          { x: -m.rx * 0.4, y: hipY - m.skirtH * 0.1, side: -1 },
+          { x: m.rx * 0.4, y: hipY - m.skirtH * 0.1, side: 1 }
         ],
-        antenna: { x: m.bodyW * 0.44, y: m.sbase - m.oy + m.bodyH * 0.18 },
-        organ: shellPoint(m, m.organU),
-        mouth: { x: m.bodyW * 0.42, y: hipY - m.bodyH * 0.02 }
+        eyes: [
+          { x: -m.rx * 0.115, y: faceMid - m.oy - m.faceH * 0.26, side: -1 },
+          { x: m.rx * 0.115, y: faceMid - m.oy - m.faceH * 0.26, side: 1 }
+        ],
+        mouth: { x: 0, y: faceMid - m.oy + m.faceH * 0.16 },
+        organ: shellSurface(m, m.organ.a, m.organ.b)
       },
+      shellSurface: (a, b) => shellSurface(m, a, b),
       shellPoint: (u) => shellPoint(m, u),
       hipY
     };
@@ -4912,8 +4868,8 @@ body {
 
   // js/entities/crab.js
   function ik2(hx, hy, tx, ty, l1, l2, up = 1) {
-    let dx = tx - hx, dy = ty - hy;
-    let d = Math.hypot(dx, dy) || 1e-3;
+    const dx = tx - hx, dy = ty - hy;
+    const d = Math.hypot(dx, dy) || 1e-3;
     const dmin = Math.abs(l1 - l2) + 0.01;
     const dmax = l1 + l2 - 0.01;
     const dc = clamp(d, dmin, dmax);
@@ -4926,9 +4882,8 @@ body {
     return { a1, a2, kx, ky, reached: d <= dmax };
   }
   var Crab = class {
-    constructor(game2, stage = "juvenile") {
+    constructor(game2, stage = "hatchling") {
       this.game = game2;
-      this.setStage(stage, true);
       this.x = 0;
       this.y = 0;
       this.vx = 0;
@@ -4938,11 +4893,6 @@ body {
       this.roll = 0;
       this.lurch = 0;
       this.breathe = Math.random() * TAU;
-      this.look = { x: 0.4, y: -0.2 };
-      this.lookT = 0;
-      this.blinkPhase = 0;
-      this.mouthT = Math.random() * TAU;
-      this.alarm = 0;
       this.bodyAngle = 0;
       this.bob = 0;
       this.bobT = 0;
@@ -4951,28 +4901,31 @@ body {
       this.pumpT = 0;
       this.clawT = 0;
       this.clawOpen = 0;
-      this.eyeLook = 0;
+      this.look = { x: 0, y: -0.2 };
+      this.lookT = 0;
+      this.idleLook = null;
       this.blink = 0;
       this.blinkT = 2;
+      this.mouthT = Math.random() * TAU;
+      this.alarm = 0;
+      this.threat = null;
       this.hp = 120;
       this.hpMax = 120;
       this.iframe = 0;
-      this.threat = null;
-      this.idleLook = null;
+      this.setStage(stage, true);
     }
     setStage(stage, snap = false) {
       this.stage = stage;
       this.rig = buildCrab(stage);
       this.m = this.rig.m;
       this.S = this.rig.S;
-      this.standH = this.m.bodyH * 0.4 + this.m.reach * 0.54;
-      this.speed = lerp(64, 96, this.m.t);
+      this.standH = this.m.faceH * 0.9 + this.m.shellW * 0.13;
+      this.speed = lerp(48, 100, this.m.t);
       this._buildLegs();
       if (snap && this.game && this.game.terrain) this.snapToGround();
     }
     _buildLegs() {
-      const rig = this.rig;
-      this.legs = rig.sockets.legs.map((s, i) => ({
+      this.legs = this.rig.sockets.legs.map((s, i) => ({
         def: s,
         foot: { x: 0, y: 0 },
         from: { x: 0, y: 0 },
@@ -4981,20 +4934,26 @@ body {
         t: 0,
         dur: 0.22,
         lift: 0,
-        order: i,
-        planted: true
+        // opposite sides alternate, so it never has both leading legs in the air
+        group: (i + (s.side > 0 ? 1 : 0)) % 2
       }));
-      this.legs.forEach((l, i) => {
-        l.group = (i + (l.def.far ? 1 : 0)) % 2;
-      });
+    }
+    /** Where this leg wants its foot: a little outboard of its own socket. */
+    homeX(l, lead = 0) {
+      const sp = Math.abs(l.def.spread || 0.6);
+      return this.x + l.def.side * this.m.rx * (1.05 + sp * 0.78) + lead;
+    }
+    /** Back legs contact further away, so their feet sit higher on screen. */
+    footLift(l) {
+      return (l.def.depth || 0) * this.m.rx * 0.3;
     }
     snapToGround() {
       const t = this.game.terrain;
       this.y = t.surfaceY(this.x) - this.standH;
       for (const l of this.legs) {
-        const fx = this.x + l.def.spread * this.m.bodyW * 0.5;
+        const fx = this.homeX(l);
         l.foot.x = fx;
-        l.foot.y = t.surfaceY(fx);
+        l.foot.y = t.surfaceY(fx) - this.footLift(l);
         l.from = { ...l.foot };
         l.to = { ...l.foot };
       }
@@ -5002,20 +4961,23 @@ body {
     get worldY() {
       return this.y;
     }
-    /** Where the shell surface point `u` lands in world space, this frame. */
+    /** Where a point on the shell's top surface lands in world space. */
+    shellWorldAB(a, b) {
+      const p = this.rig.shellSurface(a, b);
+      return this.localToWorld(p.x, p.y, p.nx, p.ny);
+    }
     shellWorld(u) {
       const p = this.rig.shellPoint(u);
       return this.localToWorld(p.x, p.y, p.nx, p.ny);
     }
     localToWorld(lx, ly, nx = 0, ny = 0) {
-      const f = this.faceT;
-      const c = Math.cos(this.bodyAngle), s = Math.sin(this.bodyAngle);
-      const px = lx * f, py = ly;
+      const c = Math.cos(this.bodyAngle + this.roll), s = Math.sin(this.bodyAngle + this.roll);
+      const px = lx + this.lean * 3, py = ly;
       return {
-        x: this.x + px * c - py * s,
+        x: this.x + this.lurch * 0.35 + px * c - py * s,
         y: this.y + px * s + py * c + this.bob,
-        nx: nx * f * c - ny * s,
-        ny: nx * f * s + ny * c
+        nx: nx * c - ny * s,
+        ny: nx * s + ny * c
       };
     }
     // -------------------------------------------------------------------------
@@ -5028,26 +4990,26 @@ body {
       this.x += this.vx * dt;
       if (move > 0.1) this.facing = 1;
       else if (move < -0.1) this.facing = -1;
-      this.lean = damp(this.lean, clamp(this.vx / this.speed, -1, 1) * 0.13, 9e-4, dt);
+      this.lean = damp(this.lean, clamp(this.vx / this.speed, -1, 1) * 0.7, 9e-4, dt);
       this._stepLegs(dt, t);
       this._rideFeet(dt, t);
       const spd = Math.abs(this.vx);
       const run = clamp01(spd / (this.speed * 0.85));
       this.bobT += dt * (2.4 + spd * 0.085);
       this.breathe += dt * (1.1 + run * 1.4);
-      const walkBob = Math.sin(this.bobT * 2) * run * this.S * 1.6;
+      const walkBob = Math.sin(this.bobT * 2) * run * this.S * 1.5;
       const idleBob = Math.sin(this.breathe) * this.S * 0.5;
       this.bob = damp(this.bob, walkBob + idleBob, 1e-3, dt);
-      this.lurch = damp(this.lurch, Math.sin(this.bobT * 2 + 0.9) * run * this.S * 1.9 * this.facing, 1e-3, dt);
-      this.roll = damp(this.roll, Math.sin(this.bobT) * run * 0.045, 12e-4, dt);
+      this.lurch = damp(this.lurch, Math.sin(this.bobT * 2 + 0.9) * run * this.S * 1.6 * this.facing, 1e-3, dt);
+      this.roll = damp(this.roll, Math.sin(this.bobT) * run * 0.05 * this.facing, 12e-4, dt);
       this.lookT -= dt;
-      let tx = clamp(this.vx / this.speed, -1, 1) * 0.9, ty = -0.35;
+      let tx = clamp(this.vx / this.speed, -1, 1) * 0.85, ty = -0.3;
       if (this.alarm > 0.1 && this.threat) {
         tx = clamp((this.threat.x - this.x) / 70, -1.2, 1.2);
         ty = clamp((this.threat.y - this.y) / 70, -1, 0.6);
       } else if (this.lookT <= 0) {
         this.lookT = 1.2 + Math.random() * 2.6;
-        this.idleLook = { x: (Math.random() - 0.5) * 1.4, y: -0.2 - Math.random() * 0.5 };
+        this.idleLook = { x: (Math.random() - 0.5) * 1.3, y: -0.15 - Math.random() * 0.5 };
       }
       if (spd < 6 && this.alarm < 0.1 && this.idleLook) {
         tx = this.idleLook.x;
@@ -5060,12 +5022,12 @@ body {
       this.blinkT -= dt;
       if (this.blinkT <= 0) {
         this.blinkT = 2.2 + Math.random() * 4.5;
-        this.blink = 0.18;
+        this.blink = 0.16;
       }
       this.blink = Math.max(0, this.blink - dt);
       this.mouthT += dt * (5.5 + (this.pumping > 0 ? 9 : 0));
       this.clawT += dt;
-      const wantOpen = ctrl.grab ? 1 : this.alarm > 0.2 ? 0.85 + Math.sin(this.clawT * 9) * 0.15 : this.pumping > 0 ? 0.7 : 0.4 + Math.sin(this.clawT * 1.3) * 0.1;
+      const wantOpen = ctrl.grab ? 1 : this.alarm > 0.2 ? 0.85 + Math.sin(this.clawT * 9) * 0.15 : this.pumping > 0 ? 0.7 : 0.34 + Math.sin(this.clawT * 1.3) * 0.1;
       this.clawOpen = damp(this.clawOpen, wantOpen, 1e-3, dt);
       this.pumpT += dt;
       this.pumping = Math.max(0, this.pumping - dt);
@@ -5073,17 +5035,16 @@ body {
     }
     _stepLegs(dt, t) {
       const lead = this.vx * 0.2;
-      const trigger = this.m.bodyW * 0.155 + Math.abs(this.vx) * 0.055;
+      const trigger = this.m.rx * 0.24 + Math.abs(this.vx) * 0.05;
       let lifting = 0;
       for (const l of this.legs) if (l.stepping) lifting++;
       for (const l of this.legs) {
-        const homeX = this.x + l.def.spread * this.m.bodyW * 0.52 * this.faceT + lead;
+        const home = this.homeX(l, lead);
         if (l.stepping) {
           l.t += dt / l.dur;
           if (l.t >= 1) {
             l.t = 1;
             l.stepping = false;
-            l.planted = true;
             l.foot.x = l.to.x;
             l.foot.y = l.to.y;
             this._land(l, t);
@@ -5091,33 +5052,32 @@ body {
             const k = l.t;
             l.foot.x = lerp(l.from.x, l.to.x, k);
             const base = lerp(l.from.y, l.to.y, k);
-            l.lift = Math.sin(k * Math.PI) * (this.m.legLen[1] * 0.52 + Math.abs(this.vx) * 0.045);
+            l.lift = Math.sin(k * Math.PI) * (this.m.legLen[1] * 0.5 + Math.abs(this.vx) * 0.04);
             l.foot.y = base - l.lift;
           }
         } else {
           l.lift = damp(l.lift, 0, 1e-4, dt);
-          const off = Math.abs(l.foot.x - homeX);
+          const off = Math.abs(l.foot.x - home);
           const partnerBusy = this.legs.some((o) => o !== l && o.stepping && o.group === l.group);
           if (off > trigger && lifting < 3 && !partnerBusy) {
             l.stepping = true;
-            l.planted = false;
             l.t = 0;
             l.dur = clamp(0.3 - Math.abs(this.vx) * 16e-4, 0.13, 0.3);
             l.from = { x: l.foot.x, y: l.foot.y };
-            const tx = homeX + Math.sign(homeX - l.foot.x) * trigger * 0.75;
-            l.to = { x: tx, y: t.surfaceY(tx) };
+            const tx = home + Math.sign(home - l.foot.x) * trigger * 0.75;
+            l.to = { x: tx, y: t.surfaceY(tx) - this.footLift(l) };
             lifting++;
           } else {
-            l.foot.y = damp(l.foot.y, t.surfaceY(l.foot.x), 5e-4, dt);
+            l.foot.y = damp(l.foot.y, t.surfaceY(l.foot.x) - this.footLift(l), 5e-4, dt);
           }
         }
       }
     }
     _land(l, t) {
       const w = Math.abs(this.vx);
-      t.deform(l.foot.x, 1.5 + w * 0.012, 5 + this.m.bodyW * 0.05);
-      if (this.game.fx && (l.def.far || Math.random() < 0.45)) {
-        this.game.fx.footPuff(l.foot.x, l.foot.y, w * 0.55, l.def.far);
+      t.deform(l.foot.x, 1.2 + w * 0.01, 4 + this.m.rx * 0.08);
+      if (this.game.fx && (l.def.far || Math.random() < 0.4)) {
+        this.game.fx.footPuff(l.foot.x, l.foot.y + this.footLift(l), w * 0.5, l.def.far);
       }
       if (this.game.audio && w > 12 && !l.def.far) this.game.audio.play("step", { vol: 0.3 });
     }
@@ -5126,25 +5086,24 @@ body {
       for (const l of this.legs) {
         if (l.stepping) continue;
         const dx = l.foot.x - this.x;
+        const fy = l.foot.y + this.footLift(l);
         sx += dx;
-        sy += l.foot.y;
+        sy += fy;
         sxx += dx * dx;
-        sxy += dx * l.foot.y;
+        sxy += dx * fy;
         n++;
       }
       let groundY = t.surfaceY(this.x), slope = 0;
       if (n >= 2) {
         const denom = n * sxx - sx * sx;
         if (Math.abs(denom) > 1e-3) slope = (n * sxy - sx * sy) / denom;
-        groundY = sy / n - slope * (sx / n) * 0;
         groundY = (sy - slope * sx) / n;
       }
       const targetY = groundY - this.standH * (1 - this.crouch * 0.28);
       this.y = damp(this.y, targetY, 8e-4, dt);
-      const targetA = clamp(Math.atan(slope), -0.55, 0.55);
-      this.bodyAngle = damp(this.bodyAngle, targetA, 9e-4, dt);
+      this.bodyAngle = damp(this.bodyAngle, clamp(Math.atan(slope), -0.5, 0.5), 9e-4, dt);
     }
-    /** Something worth watching: sets the gaze and lifts the claw. */
+    /** Something worth watching: sets the gaze and lifts a claw. */
     alertTo(ent, amount = 1) {
       this.threat = ent;
       this.alarm = Math.min(1.4, this.alarm + amount);
@@ -5156,40 +5115,138 @@ body {
     // -------------------------------------------------------------------------
     draw(ctx, cam, garden) {
       const rig = this.rig;
-      const f = 1;
       const sc = cam.zoom;
       const p = cam.worldToScreen(this.x + this.lurch * 0.35, this.y + this.bob);
       this._drawShadow(ctx, cam);
       ctx.save();
       ctx.translate(Math.round(p.x * 2) / 2, Math.round(p.y * 2) / 2);
       ctx.scale(sc, sc);
+      const rot = this.bodyAngle + this.roll;
       ctx.save();
-      ctx.rotate(this.bodyAngle + this.roll);
+      ctx.rotate(rot);
       this._drawLegs(ctx, true);
-      this._drawClaw(ctx, true);
       ctx.restore();
       if (garden) garden.drawFar(ctx, this);
       ctx.save();
-      ctx.rotate(this.bodyAngle + this.roll);
+      ctx.rotate(rot);
       ctx.translate(this.lean * 3, 0);
-      const br = 1 + Math.sin(this.breathe) * 0.012;
-      ctx.scale(1, br);
+      ctx.scale(1, 1 + Math.sin(this.breathe) * 0.012);
       ctx.drawImage(rig.body.cv, -rig.body.ox, -rig.body.oy);
       ctx.restore();
       if (garden) garden.drawNear(ctx, this);
       ctx.save();
-      ctx.rotate(this.bodyAngle + this.roll);
+      ctx.rotate(rot);
       this._drawLegs(ctx, false);
-      this._drawClaw(ctx, false);
       this._drawFace(ctx);
+      this._drawClaws(ctx);
       ctx.restore();
       ctx.restore();
+    }
+    _drawLegs(ctx, far) {
+      const rig = this.rig;
+      const a = -(this.bodyAngle + this.roll);
+      const c = Math.cos(a), s = Math.sin(a);
+      for (const leg of this.legs) {
+        if (!!leg.def.far !== far) continue;
+        const art = far ? rig.legArt.far : rig.legArt.near;
+        const l1 = art.coxa.len, l2 = art.femur.len, l3 = art.tibia.len;
+        const wx = leg.foot.x - (this.x + this.lurch * 0.35);
+        const wy = leg.foot.y - (this.y + this.bob);
+        const lx = wx * c - wy * s, ly = wx * s + wy * c;
+        const hx = leg.def.x, hy = leg.def.y;
+        const side = leg.def.side;
+        const ankX = lx - side * l3 * 0.4;
+        const ankY = ly - l3 * 0.8;
+        const sol = ik2(hx, hy, ankX, ankY, l1, l2, side);
+        this._seg(ctx, art.coxa, hx, hy, sol.a1);
+        this._seg(ctx, art.femur, sol.kx, sol.ky, sol.a2);
+        const fx = sol.kx + Math.cos(sol.a2) * l2, fy = sol.ky + Math.sin(sol.a2) * l2;
+        this._seg(ctx, art.tibia, fx, fy, Math.atan2(ly - fy, lx - fx));
+      }
+    }
+    _seg(ctx, seg, x, y, a) {
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(a);
+      ctx.drawImage(seg.cv, -seg.ox, -seg.oy);
+      ctx.restore();
+    }
+    _drawClaws(ctx) {
+      const rig = this.rig;
+      const order = this.facing >= 0 ? [-1, 1] : [1, -1];
+      for (const side of order) {
+        const near = side === (this.facing >= 0 ? 1 : -1);
+        const art = near ? rig.claw.near : rig.claw.far;
+        const so = rig.sockets.claws.find((q) => q.side === side);
+        const sw = Math.sin(this.clawT * (near ? 1.07 : 0.83)) * 0.07;
+        const raise = this.clawOpen * 0.5 + this.pumping * 0.6 + this.alarm * 0.5;
+        ctx.save();
+        ctx.translate(so.x, so.y);
+        ctx.scale(side, 1);
+        const a1 = 0.92 + sw - raise * 0.62 + this.crouch * 0.2;
+        const ex = Math.cos(a1) * art.arm.len, ey = Math.sin(a1) * art.arm.len;
+        const a2 = a1 - 1.1 - raise * 0.34;
+        const fx = ex + Math.cos(a2) * art.fore.len, fy = ey + Math.sin(a2) * art.fore.len;
+        const a3 = a2 + 0.18 - raise * 0.22 + Math.sin(this.clawT * 1.9 + side) * 0.04;
+        this._seg(ctx, art.arm, 0, 0, a1);
+        this._seg(ctx, art.fore, ex, ey, a2);
+        ctx.save();
+        ctx.translate(fx, fy);
+        ctx.rotate(a3);
+        ctx.drawImage(art.palm.cv, -art.palm.ox, -art.palm.oy);
+        ctx.save();
+        ctx.translate(art.hinge.x, art.hinge.y);
+        ctx.rotate(-0.28 - this.clawOpen * 0.55);
+        ctx.drawImage(art.dactyl.cv, -art.dactyl.ox, -art.dactyl.oy);
+        ctx.restore();
+        ctx.restore();
+        ctx.restore();
+      }
+    }
+    /** Mouthparts, then two small black beads on short stalks. */
+    _drawFace(ctx) {
+      const rig = this.rig;
+      const S = this.S;
+      const mo = rig.sockets.mouth;
+      if (rig.mouth) {
+        ctx.save();
+        ctx.translate(mo.x, mo.y + Math.sin(this.mouthT) * 0.4 * S);
+        ctx.rotate(Math.sin(this.mouthT * 1.3) * 0.12);
+        ctx.drawImage(rig.mouth.cv, -rig.mouth.ox, -rig.mouth.oy);
+        ctx.restore();
+      }
+      const art = rig.eye;
+      for (const e of rig.sockets.eyes) {
+        const base = -Math.PI / 2 + e.side * 0.34;
+        const a = base + this.look.x * 0.22 * e.side + this.look.y * 0.18;
+        const shrink = this.blink > 0 ? 1 - Math.sin(clamp01(this.blink / 0.16) * Math.PI) * 0.7 : 1;
+        ctx.save();
+        ctx.translate(e.x, e.y);
+        ctx.rotate(a);
+        ctx.scale(1, shrink);
+        ctx.drawImage(art.cv, -art.ox, -art.oy);
+        ctx.restore();
+        if (shrink > 0.55) {
+          const r = art.r;
+          const ex = e.x + Math.cos(a) * art.globe;
+          const ey = e.y + Math.sin(a) * art.globe;
+          const px = ex + this.look.x * r * 0.22 - r * 0.34;
+          const py = ey + this.look.y * r * 0.22 - r * 0.36;
+          ctx.fillStyle = "rgba(246,242,248,0.95)";
+          ctx.fillRect(
+            Math.round(px),
+            Math.round(py),
+            Math.max(1, Math.round(r * 0.42)),
+            Math.max(1, Math.round(r * 0.42))
+          );
+        }
+      }
     }
     _drawShadow(ctx, cam) {
       const t = this.game.terrain;
       const sun = this.game.weather ? this.game.weather.shadowAlpha : 0.4;
       if (sun <= 0.02) return;
-      const w = this.m.shellW * 0.52;
+      const w = this.m.rx * 1.05;
       const steps = 10;
       ctx.save();
       ctx.globalAlpha = sun * 0.55;
@@ -5209,97 +5266,6 @@ body {
         );
       }
       ctx.restore();
-    }
-    /** Legs are solved in body space so the whole rig can be flipped at once. */
-    _drawLegs(ctx, far) {
-      const rig = this.rig;
-      const art = far ? rig.legArt.far : rig.legArt.near;
-      const l1 = art.coxa.len, l2 = art.femur.len, l3 = art.tibia.len;
-      const a = -(this.bodyAngle + this.roll);
-      const c = Math.cos(a), s = Math.sin(a);
-      for (const leg of this.legs) {
-        if (!!leg.def.far !== far) continue;
-        const wx = leg.foot.x - (this.x + this.lurch * 0.35);
-        const wy = leg.foot.y - (this.y + this.bob);
-        const lx = wx * c - wy * s, ly = wx * s + wy * c;
-        const hx = leg.def.x, hy = leg.def.y;
-        const dirx = lx - hx;
-        const ankX = lx - Math.sign(dirx || 1) * l3 * 0.46 + leg.def.spread * l1 * 0.3;
-        const ankY = ly - l3 * 0.88;
-        const sol = ik2(hx, hy, ankX, ankY, l1, l2, -1);
-        this._seg(ctx, art.coxa, hx, hy, sol.a1);
-        this._seg(ctx, art.femur, sol.kx, sol.ky, sol.a2);
-        const fx = sol.kx + Math.cos(sol.a2) * l2, fy = sol.ky + Math.sin(sol.a2) * l2;
-        this._seg(ctx, art.tibia, fx, fy, Math.atan2(ly - fy, lx - fx));
-      }
-    }
-    _seg(ctx, seg, x, y, a) {
-      ctx.save();
-      ctx.translate(x, y);
-      ctx.rotate(a);
-      ctx.drawImage(seg.cv, -seg.ox, -seg.oy);
-      ctx.restore();
-    }
-    _drawClaw(ctx, far) {
-      const rig = this.rig;
-      const art = far ? rig.claw.far : rig.claw.near;
-      const so = rig.sockets.claw;
-      const sx = so.x + (far ? -3 * this.S : 1.5 * this.S);
-      const sy = so.y + (far ? -2 * this.S : 1.5 * this.S);
-      const sw = Math.sin(this.clawT * (far ? 0.83 : 1.07)) * 0.07;
-      const raise = this.clawOpen * 0.55 + this.pumping * 0.6 + this.alarm * 0.5;
-      const a1 = 1.24 + sw - raise * 0.7 + this.crouch * 0.2;
-      const armEnd = { x: sx + Math.cos(a1) * art.arm.len, y: sy + Math.sin(a1) * art.arm.len };
-      const a2 = a1 - 1.42 - raise * 0.34 + (far ? 0.1 : 0);
-      const foreEnd = { x: armEnd.x + Math.cos(a2) * art.fore.len, y: armEnd.y + Math.sin(a2) * art.fore.len };
-      const a3 = a2 + 0.16 - raise * 0.22 + Math.sin(this.clawT * 1.9 + (far ? 1 : 0)) * 0.04;
-      this._seg(ctx, art.arm, sx, sy, a1);
-      this._seg(ctx, art.fore, armEnd.x, armEnd.y, a2);
-      ctx.save();
-      ctx.translate(foreEnd.x, foreEnd.y);
-      ctx.rotate(a3);
-      ctx.drawImage(art.palm.cv, -art.palm.ox, -art.palm.oy);
-      ctx.save();
-      ctx.translate(art.hinge.x, art.hinge.y);
-      ctx.rotate(-0.3 - this.clawOpen * 0.55);
-      ctx.drawImage(art.dactyl.cv, -art.dactyl.ox, -art.dactyl.oy);
-      ctx.restore();
-      ctx.restore();
-    }
-    /** Eyes on stalks, plus the mouthparts, which never stop moving. */
-    _drawFace(ctx) {
-      const rig = this.rig;
-      const S = this.S;
-      const mo = rig.sockets.mouth;
-      if (rig.mouth) {
-        ctx.save();
-        ctx.translate(mo.x, mo.y + Math.sin(this.mouthT) * 0.4 * S);
-        ctx.rotate(Math.sin(this.mouthT * 1.3) * 0.14);
-        ctx.drawImage(rig.mouth.cv, -rig.mouth.ox, -rig.mouth.oy);
-        ctx.restore();
-      }
-      for (const e of rig.sockets.eyes) {
-        const art = e.far ? rig.eye.far : rig.eye.near;
-        const a = -1.02 + this.look.x * 0.22 + this.look.y * 0.3 + (e.far ? -0.2 : 0.14) + Math.sin(this.clawT * 0.9 + (e.far ? 2 : 0)) * 0.04;
-        const shrink = this.blink > 0 ? 1 - Math.sin(clamp01(this.blink / 0.18) * Math.PI) * 0.55 : 1;
-        ctx.save();
-        ctx.translate(e.x, e.y);
-        ctx.rotate(a);
-        ctx.scale(1, shrink);
-        ctx.drawImage(art.cv, -art.ox, -art.oy);
-        if (shrink > 0.6) {
-          const r = art.r || 4 * S;
-          const px = art.globe + this.look.x * r * 0.34;
-          const py = this.look.y * r * 0.34;
-          ctx.fillStyle = "#120d14";
-          ctx.beginPath();
-          ctx.ellipse(px, py, r * 0.42, r * 0.46, 0, 0, TAU);
-          ctx.fill();
-          ctx.fillStyle = "rgba(244,240,246,0.85)";
-          ctx.fillRect(Math.round(px - r * 0.3), Math.round(py - r * 0.34), Math.max(1, r * 0.22), Math.max(1, r * 0.22));
-        }
-        ctx.restore();
-      }
     }
   };
 
@@ -5859,6 +5825,193 @@ body {
     }
   };
 
+  // js/art/buildart.js
+  var LIGHT3 = { lightX: -0.6, lightY: -0.62, lightZ: 0.4, ambient: 0.38, dither: 0.7 };
+  function rng2(seed) {
+    let s = seed | 0 || 3;
+    return () => {
+      s ^= s << 13;
+      s ^= s >>> 17;
+      s ^= s << 5;
+      s |= 0;
+      return (s >>> 0) % 1e5 / 1e5;
+    };
+  }
+  var KIND = {
+    /** Sealed stone tank with a metal collar and a spigot. */
+    tank(p, W, H, x, y, K, R) {
+      p.field(x - W / 2, y - H, x + W / 2, y, (px, py) => {
+        const u = (px - (x - W / 2)) / W;
+        const v = (py - (y - H)) / H;
+        if (u < 0 || u > 1 || v < 0 || v > 1) return null;
+        const bulge = Math.sin(v * Math.PI * 0.9 + 0.2);
+        const half = 0.5 * (0.72 + 0.28 * bulge);
+        if (Math.abs(u - 0.5) > half) return null;
+        const dz = Math.sqrt(clamp01(1 - Math.pow((u - 0.5) / half, 2)));
+        return { h: dz * W * 0.42, tint: -0.04 + (v < 0.12 ? 0.14 : 0) };
+      }, { mat: "shellRock" });
+      p.grain("shellRock", { freq: 0.5 / K, amp: 0.2, seed: 5 });
+      for (let i = 0; i < 3; i++) {
+        const yy = y - H * (0.22 + i * 0.28);
+        p.rect(x - W * 0.52, yy, W * 1.04, 1.4 * K, { mat: "metal", mask: true, tint: 0.05, dome: 1.2 * K });
+      }
+      p.capsule(
+        x + W * 0.42,
+        y - H * 0.18,
+        x + W * 0.66,
+        y - H * 0.1,
+        1.2 * K,
+        0.9 * K,
+        { mat: "metal", dome: 1.1 * K, tint: 0.06 }
+      );
+      p.ellipse(x, y - H, W * 0.34, 2.2 * K, { mat: "wood", dome: 2 * K, tint: 0.06 });
+    },
+    /** A slender mast with vanes, guyed with rope. */
+    tower(p, W, H, x, y, K, R) {
+      const legs = 3;
+      for (let i = 0; i < legs; i++) {
+        const f = (i / (legs - 1) - 0.5) * 2;
+        p.capsule(
+          x + f * W * 0.45,
+          y,
+          x + f * W * 0.09,
+          y - H * 0.72,
+          1.3 * K,
+          1 * K,
+          { mat: "wood", dome: 1.2 * K, tint: -0.04 + i * 0.04 }
+        );
+      }
+      for (let i = 0; i < 3; i++) {
+        const yy = y - H * (0.2 + i * 0.22);
+        const w = W * (0.42 - i * 0.1);
+        p.capsule(x - w, yy, x + w, yy - 0.6 * K, 0.9 * K, 0.9 * K, { mat: "wood", dome: 0.8 * K, tint: -0.1 });
+      }
+      p.capsule(x, y - H * 0.66, x, y - H, 1.4 * K, 1 * K, { mat: "wood", dome: 1.2 * K, tint: 0.04 });
+      for (let i = 0; i < 4; i++) {
+        const a = -0.5 + i * 0.5;
+        p.poly([
+          { x, y: y - H },
+          { x: x + Math.cos(a) * W * 0.7, y: y - H + Math.sin(a) * W * 0.5 },
+          { x: x + Math.cos(a) * W * 0.62, y: y - H + Math.sin(a) * W * 0.5 + 2.4 * K }
+        ], { mat: "cloth", dome: 1.2 * K, feather: 1.6, tint: (i - 1.5) * 0.06 });
+      }
+      p.capsule(x, y - H * 0.55, x - W * 0.7, y, 0.55 * K, 0.4 * K, { mat: "rope", dome: 0.5 * K, tint: -0.05 });
+      p.capsule(x, y - H * 0.55, x + W * 0.7, y, 0.55 * K, 0.4 * K, { mat: "rope", dome: 0.5 * K, tint: -0.05 });
+    },
+    /** Slatted crate, open at the top, full of leaf litter. */
+    crate(p, W, H, x, y, K, R) {
+      p.rect(x - W / 2, y - H, W, H, { mat: "wood", dome: 3.2 * K, tint: -0.05 });
+      for (let i = 1; i < 5; i++) {
+        const xx = x - W / 2 + W * i / 5;
+        p.capsule(xx, y - H + 1, xx, y - 1, 0.7 * K, 0.7 * K, { mat: "wood", mask: true, tint: -0.22, dome: 0 });
+      }
+      p.rect(x - W / 2 - 0.8 * K, y - H, W + 1.6 * K, 1.8 * K, { mat: "wood", dome: 1.6 * K, tint: 0.1 });
+      p.rect(x - W / 2 - 0.8 * K, y - 2.2 * K, W + 1.6 * K, 1.8 * K, { mat: "wood", dome: 1.6 * K, tint: 0.06 });
+      for (let i = 0; i < 16; i++) {
+        const px = x + (R() - 0.5) * W * 0.86;
+        const py = y - H - R() * 2.4 * K;
+        p.ellipse(px, py, 1.5 * K, 1 * K, {
+          mat: R() < 0.4 ? "leafDry" : "moss",
+          dome: 1.3 * K,
+          tint: (R() - 0.5) * 0.3
+        });
+      }
+      p.grain("wood", { freq: 0.7 / K, amp: 0.18, seed: 11 });
+    },
+    /** Woven hut on stilts - a roost. */
+    hut(p, W, H, x, y, K, R) {
+      p.capsule(x - W * 0.34, y, x - W * 0.3, y - H * 0.28, 1.1 * K, 1 * K, { mat: "wood", dome: 1 * K });
+      p.capsule(x + W * 0.34, y, x + W * 0.3, y - H * 0.28, 1.1 * K, 1 * K, { mat: "wood", dome: 1 * K, tint: -0.08 });
+      p.rect(x - W * 0.44, y - H * 0.72, W * 0.88, H * 0.46, { mat: "canvasBag", dome: 3.4 * K, tint: -0.02 });
+      p.ridges("canvasBag", { angle: 0.2, freq: 1.1 / K, amp: 0.16, height: 0.8 * K, seed: 7, warp: 0.6 });
+      p.poly([
+        { x: x - W * 0.56, y: y - H * 0.7 },
+        { x, y: y - H },
+        { x: x + W * 0.56, y: y - H * 0.7 }
+      ], { mat: "leafDry", dome: 3.6 * K, feather: 2.4, tint: 0.05 });
+      for (let i = 0; i < 8; i++) {
+        const t = i / 7;
+        p.capsule(
+          lerp(x - W * 0.52, x, t),
+          lerp(y - H * 0.7, y - H, t),
+          lerp(x - W * 0.46, x + 1, t),
+          lerp(y - H * 0.66, y - H * 0.94, t),
+          0.5 * K,
+          0.4 * K,
+          { mat: "leafDry", mask: true, tint: -0.2, dome: 0 }
+        );
+      }
+      p.ellipse(x + W * 0.06, y - H * 0.46, W * 0.16, H * 0.14, { mat: "canvasBag", mask: true, tint: -0.42, dome: -2 * K });
+    },
+    /** An A-frame of poles for climbers. */
+    frame(p, W, H, x, y, K, R) {
+      for (const f of [-1, 1]) {
+        p.capsule(
+          x + f * W * 0.44,
+          y,
+          x - f * W * 0.06,
+          y - H,
+          1.2 * K,
+          0.9 * K,
+          { mat: "wood", dome: 1.1 * K, tint: f > 0 ? 0 : -0.1 }
+        );
+      }
+      for (let i = 0; i < 4; i++) {
+        const t = 0.2 + i * 0.22;
+        const yy = y - H * t;
+        const w = W * (0.46 - t * 0.34);
+        p.capsule(x - w, yy, x + w, yy, 0.7 * K, 0.7 * K, { mat: "rope", dome: 0.7 * K, tint: -0.04 });
+      }
+      for (let i = 0; i < 12; i++) {
+        const t = R();
+        const px = x + (R() - 0.5) * W * 0.8, py = y - H * (0.15 + t * 0.8);
+        p.ellipse(px, py, 1.6 * K, 1.1 * K, { mat: "leaf", dome: 1.4 * K, tint: (R() - 0.5) * 0.3 });
+      }
+    },
+    /** Salvaged ruin-stone, standing. */
+    shrine(p, W, H, x, y, K, R) {
+      p.poly([
+        { x: x - W * 0.34, y },
+        { x: x - W * 0.28, y: y - H * 0.92 },
+        { x: x + W * 0.1, y: y - H },
+        { x: x + W * 0.3, y: y - H * 0.8 },
+        { x: x + W * 0.36, y }
+      ], { mat: "rock", dome: W * 0.4, feather: 3, tint: -0.02 });
+      p.grain("rock", { freq: 0.35 / K, amp: 0.24, seed: 3, height: 0.6 * K });
+      for (let i = 0; i < 5; i++) {
+        const yy = y - H * (0.18 + i * 0.15);
+        for (let k = 0; k < 3; k++) {
+          p.rect(
+            x - W * 0.18 + k * W * 0.14,
+            yy,
+            W * 0.08,
+            1.1 * K,
+            { mat: "rock", mask: true, tint: -0.34, dome: -1.4 * K }
+          );
+        }
+      }
+      p.ellipse(x + W * 0.02, y - H * 0.86, W * 0.13, W * 0.13, { mat: "glow", dome: W * 0.16, tint: 0.3, emissive: 0.8 });
+      p.rect(x - W * 0.46, y - 2.4 * K, W * 0.92, 2.6 * K, { mat: "rock", dome: 2.2 * K, tint: 0.06 });
+    }
+  };
+  var cache4 = /* @__PURE__ */ new Map();
+  function buildStructure(def3, size = 1) {
+    const K = Math.round(size * 20) / 20;
+    const key = `${def3.id}|${K}`;
+    if (cache4.has(key)) return cache4.get(key);
+    const W = def3.w * K, H = def3.h * K;
+    const pad = Math.ceil(6 * K) + 5;
+    const p = new Painter(Math.ceil(W * 1.9) + pad * 2, Math.ceil(H) + pad * 2);
+    const x = p.w / 2, y = p.h - pad;
+    const R = rng2(def3.id.length * 977 + def3.w);
+    (KIND[def3.kind] || KIND.crate)(p, W, H, x, y, K, R);
+    p.smoothHeight(1, 0.4);
+    const cv = p.resolve(MATERIALS, { ...LIGHT3, outline: 1, outlineColor: "#170f09" });
+    const out = { cv, ox: x, oy: y, w: W, h: H };
+    cache4.set(key, out);
+    return out;
+  }
+
   // js/systems/garden.js
   var GROW_STAGES = 4;
   var Garden = class {
@@ -5876,31 +6029,32 @@ body {
     /** Plots run along the shell; growing the crab unlocks more of them. */
     buildPlots(n) {
       const spots = [
-        { u: 0.48, row: 1 },
-        { u: 0.64, row: 1 },
-        { u: 0.56, row: 0 },
-        { u: 0.75, row: 0 },
-        { u: 0.82, row: 1 },
-        { u: 0.4, row: 0 },
-        { u: 0.91, row: 1 },
-        { u: 0.88, row: 0 },
-        { u: 0.7, row: 1 },
-        { u: 0.44, row: 1 },
-        { u: 0.17, row: 1, wet: true },
-        { u: 0.29, row: 0, wet: true }
+        { a: 0, b: 0.52 },
+        { a: -0.44, b: 0.4 },
+        { a: 0.44, b: 0.4 },
+        { a: -0.66, b: 0.02 },
+        { a: 0.66, b: 0.02 },
+        { a: -0.26, b: 0.76 },
+        { a: 0.26, b: 0.76 },
+        { a: -0.74, b: -0.34 },
+        { a: 0.74, b: -0.34 },
+        { a: 0, b: 0.18 },
+        { a: -0.19, b: -0.3, wet: true },
+        { a: 0.19, b: -0.3, wet: true }
       ];
       this.plots = spots.map((s, i) => ({
         ...s,
         i,
         unlocked: i < n,
         plant: null,
+        u: (s.b + 1) / 2,
         sway: Math.random() * TAU,
         variant: i % 3
       }));
     }
     /** Plants are grown to fit the shell they live on. */
     plantScale(crab) {
-      return clamp(crab.m.shellH / 84, 0.3, 1.3);
+      return clamp(crab.m.rx / 78, 0.16, 0.95);
     }
     get unlockedCount() {
       return this.plots.filter((p) => p.unlocked).length;
@@ -6000,7 +6154,7 @@ body {
       const over = this.pond > 0.88;
       const crabRef = crab;
       if (over && this.falls.length < 3 && Math.random() < dt * 6) {
-        this.falls.push({ u: (crab && crab.m.spillU || 0.045) + Math.random() * 0.03, t: 0, life: 1.6 + Math.random() * 2.6, w: 1 + Math.random() * 1.4 });
+        this.falls.push({ a: (Math.random() - 0.5) * 0.5, t: 0, life: 1.6 + Math.random() * 2.6, w: 1 + Math.random() * 1.4 });
       }
       for (let i = this.falls.length - 1; i >= 0; i--) {
         const f = this.falls[i];
@@ -6008,7 +6162,7 @@ body {
         if (f.t > f.life || !over && f.t > 0.6) this.falls.splice(i, 1);
       }
       if (over && crab && this.game.fx && Math.random() < dt * 22) {
-        const lip = crab.shellWorld(0.07);
+        const lip = crab.shellWorldAB(0, crab.m.basin.b + crab.m.basin.r);
         const gy = this.game.terrain.surfaceY(lip.x);
         this.game.fx.splash(lip.x, gy, 1, 16);
         if (Math.random() < 0.35) this.game.fx.mist(lip.x, gy - 6, 1, 10);
@@ -6024,9 +6178,7 @@ body {
     }
     // -- placement ------------------------------------------------------------
     plotWorld(plot) {
-      const crab = this.game.crab;
-      const p = crab.shellWorld(plot.u);
-      return p;
+      return this.game.crab.shellWorldAB(plot.a, plot.b);
     }
     /** Which plot is nearest a world point, for tap-to-plant. */
     pickPlot(wx, wy, maxDist = 18) {
@@ -6043,148 +6195,154 @@ body {
       return best;
     }
     // -- drawing --------------------------------------------------------------
-    /** Plants on the far side of the shell, behind the crab's body. */
+    /** Anything rooted beyond the crown, which the shell itself occludes. */
     drawFar(ctx, crab) {
       this._drawRow(ctx, crab, 0);
     }
-    /** Plants on the near side, plus the water. */
+    /** The basin, then everything on the near half of the dome. */
     drawNear(ctx, crab) {
       this._drawWater(ctx, crab);
       this._drawRow(ctx, crab, 1);
     }
     _drawRow(ctx, crab, row) {
-      const m = crab.m;
-      const f = crab.faceT < 0 ? -1 : 1;
       const wind = this.game.weather ? this.game.weather.windSpeed : 0.3;
       ctx.save();
-      ctx.rotate(crab.bodyAngle);
-      const list = this.plots.filter((p) => p.row === row && p.plant);
-      list.sort((a, b) => (a.u - b.u) * f);
+      ctx.rotate(crab.bodyAngle + crab.roll);
+      const list = this.plots.filter((p) => (p.plant || p.build) && (p.b < -0.05 ? 0 : 1) === row).sort((x, y) => x.b - y.b);
       for (const plot of list) {
-        const pl = plot.plant;
-        const sp = crab.rig.shellPoint(plot.u);
-        const art = buildPlant(pl.def, pl.stage, pl.variant, this.plantScale(crab), row === 0 ? 0.34 : 0);
-        const sway = Math.sin(this.t * (1.3 + plot.i * 0.13) + plot.sway) * (0.035 + wind * 0.07) + Math.sin(this.t * 3.1 + plot.sway) * 0.012;
-        const tilt = Math.atan2(sp.nx, -sp.ny) * 0.26 * f;
+        const sp = crab.rig.shellSurface(plot.a, plot.b);
+        const depth = (plot.b + 1) / 2;
+        const scale = lerp(0.8, 1.06, depth);
+        const sway = Math.sin(this.t * (1.3 + plot.i * 0.13) + plot.sway) * (0.03 + wind * 0.06) + Math.sin(this.t * 3.1 + plot.sway) * 0.01;
+        const tilt = Math.atan2(sp.nx, -sp.ny) * 0.3;
         ctx.save();
-        ctx.translate(sp.x * f, sp.y + 1);
+        ctx.translate(sp.x, sp.y + 1);
         ctx.rotate(tilt + sway);
-        const wilt = 1 - pl.thirst * 0.22;
-        ctx.scale(f * wilt, wilt);
-        ctx.drawImage(art.cv, -art.ox, -art.oy);
-        ctx.restore();
-        if (pl.thirst > 0.75 && Math.random() < 0.02) {
-          const w = this.plotWorld(plot);
-          this.game.fx?.drift(w.x, w.y - 3, "#8a7338", 1);
+        if (plot.plant) {
+          const pl = plot.plant;
+          const wilt = 1 - pl.thirst * 0.22;
+          const art = buildPlant(
+            pl.def,
+            pl.stage,
+            pl.variant,
+            this.plantScale(crab) * scale,
+            plot.b < -0.05 ? 0.3 : 0
+          );
+          ctx.scale(wilt, wilt);
+          ctx.drawImage(art.cv, -art.ox, -art.oy);
+          if (pl.thirst > 0.75 && Math.random() < 0.02) {
+            const w = this.plotWorld(plot);
+            this.game.fx?.drift(w.x, w.y - 3, "#8a7338", 1);
+          }
+        } else if (plot.build) {
+          const art = buildStructure(
+            plot.build.def,
+            clamp(crab.m.rx / 52, 0.24, 1.1) * scale
+          );
+          ctx.drawImage(art.cv, -art.ox, -art.oy);
         }
+        ctx.restore();
       }
       ctx.restore();
     }
     /** The basin, the spring and the fall - all of the shell's water. */
     _drawWater(ctx, crab) {
       const m = crab.m;
-      const f = crab.faceT < 0 ? -1 : 1;
-      const [b0, b1] = m.basin;
       ctx.save();
-      ctx.rotate(crab.bodyAngle);
+      ctx.rotate(crab.bodyAngle + crab.roll);
       if (this.pond > 0.02) {
-        const dip = (b0 + b1) * 0.5;
-        const uAt = (u) => crab.rig.shellPoint(u);
-        const floorY = uAt(dip).y;
-        const spillY = Math.max(uAt(b0 - 0.045).y, uAt(b1 + 0.035).y);
-        const level = lerp(floorY - 0.4, spillY, clamp01(this.pond));
-        if (level < floorY - 0.2) {
-          let uL = dip, uR = dip;
-          for (let u = dip; u >= 0.01; u -= 6e-3) {
-            if (uAt(u).y < level) break;
-            uL = u;
-          }
-          for (let u = dip; u <= 0.99; u += 6e-3) {
-            if (uAt(u).y < level) break;
-            uR = u;
-          }
-          const N = 30;
-          const pts = [];
-          for (let i = 0; i <= N; i++) pts.push(uAt(lerp(uL, uR, i / N)));
-          ctx.beginPath();
-          ctx.moveTo(pts[0].x * f, level);
-          for (const sp of pts) ctx.lineTo(sp.x * f, Math.max(sp.y, level));
-          ctx.lineTo(pts[pts.length - 1].x * f, level);
-          ctx.closePath();
-          const deep = Math.max(...pts.map((q) => q.y));
-          const grad = ctx.createLinearGradient(0, level - 1, 0, deep + 1);
-          grad.addColorStop(0, "#8adcea");
-          grad.addColorStop(0.35, "#2d93a9");
-          grad.addColorStop(1, "#0f3b49");
-          ctx.fillStyle = grad;
-          ctx.fill();
-          ctx.save();
-          ctx.clip();
-          const xa = pts[0].x * f, xb = pts[pts.length - 1].x * f;
-          const x0 = Math.min(xa, xb), wpx = Math.max(2, Math.abs(xb - xa));
-          ctx.fillStyle = "#d6f2f8";
-          ctx.fillRect(Math.round(x0), Math.round(level), Math.round(wpx), 1);
-          for (let i = 0; i < 6; i++) {
-            const ph = this.t * (0.6 + i * 0.13) + i * 1.9;
-            const gx = x0 + (Math.sin(ph) * 0.5 + 0.5) * wpx;
-            ctx.globalAlpha = 0.5 - i % 3 * 0.13;
-            ctx.fillStyle = "#eafbfd";
-            ctx.fillRect(Math.round(gx - 2), Math.round(level + 1 + i % 3), 3 + i % 2 * 2, 1);
-          }
-          if (this.spring > 0.05) {
-            const org = crab.rig.sockets.organ;
-            ctx.globalAlpha = clamp01(this.spring) * 0.7;
-            ctx.strokeStyle = "#eafbfd";
-            ctx.lineWidth = 1;
-            for (let i = 0; i < 3; i++) {
-              const r = (this.t * 14 + i * 5) % 15 + 1;
-              ctx.globalAlpha = clamp01(this.spring) * (1 - r / 16) * 0.6;
-              ctx.beginPath();
-              ctx.ellipse(org.x * f, level + 1, r, r * 0.3, 0, 0, Math.PI * 2);
-              ctx.stroke();
-            }
-          }
-          ctx.globalAlpha = 1;
-          ctx.restore();
+        const c = crab.rig.shellSurface(m.basin.a, m.basin.b);
+        const fill = Math.pow(clamp01(this.pond), 0.55);
+        const rx = m.rx * m.basin.r * 0.98 * fill;
+        const ry = rx * 0.42;
+        ctx.save();
+        ctx.beginPath();
+        ctx.ellipse(c.x, c.y, rx, ry, 0, 0, TAU);
+        const g = ctx.createLinearGradient(0, c.y - ry, 0, c.y + ry);
+        g.addColorStop(0, "#1d6f86");
+        g.addColorStop(0.45, "#2f9db4");
+        g.addColorStop(1, "#8adcea");
+        ctx.fillStyle = g;
+        ctx.fill();
+        ctx.clip();
+        ctx.fillStyle = "rgba(200,238,246,0.30)";
+        ctx.fillRect(c.x - rx, c.y + ry * 0.35, rx * 2, ry);
+        for (let i = 0; i < 7; i++) {
+          const ph = this.t * (0.5 + i * 0.12) + i * 1.7;
+          const gx = c.x + Math.sin(ph) * rx * 0.66;
+          const gy = c.y + (i % 3 - 1) * ry * 0.42;
+          ctx.globalAlpha = 0.55 - i % 3 * 0.14;
+          ctx.fillStyle = "#eafbfd";
+          ctx.fillRect(Math.round(gx - rx * 0.16), Math.round(gy), Math.max(1, rx * 0.32), 1);
         }
+        if (this.spring > 0.05) {
+          const org = crab.rig.sockets.organ;
+          ctx.strokeStyle = "#eafbfd";
+          ctx.lineWidth = 1;
+          for (let i = 0; i < 3; i++) {
+            const rr = (this.t * 16 + i * 6) % 18 + 1;
+            ctx.globalAlpha = clamp01(this.spring) * (1 - rr / 19) * 0.7;
+            ctx.beginPath();
+            ctx.ellipse(org.x, org.y, rr, rr * 0.42, 0, 0, TAU);
+            ctx.stroke();
+          }
+        }
+        ctx.globalAlpha = 1;
+        ctx.restore();
+        ctx.strokeStyle = "rgba(230,248,252,0.5)";
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.ellipse(c.x, c.y, rx, ry, 0, Math.PI, TAU);
+        ctx.stroke();
       }
       if (this.spring > 0.02) {
         const org = crab.rig.sockets.organ;
-        const x = org.x * f, y = org.y;
-        const h = 4 + this.spring * 9;
+        const h = 4 + this.spring * 10;
         ctx.globalAlpha = clamp01(this.spring);
         ctx.fillStyle = "#c4ecf1";
         for (let i = 0; i < 5; i++) {
           const ph = this.t * 9 + i * 1.3;
           const w = 3 - i * 0.4;
-          ctx.fillRect(Math.round(x - w / 2 + Math.sin(ph) * 1.2), Math.round(y - h * (i / 5)), Math.max(1, w), 2);
+          ctx.fillRect(
+            Math.round(org.x - w / 2 + Math.sin(ph) * 1.2),
+            Math.round(org.y - h * (i / 5)),
+            Math.max(1, w),
+            2
+          );
         }
         ctx.globalAlpha = 1;
       }
-      if (this.falls.length) {
-        for (const fl of this.falls) {
-          const sp = crab.rig.shellPoint(fl.u);
-          const x = sp.x * f, y0 = sp.y;
-          const drop = crab.standH + m.bodyH * 0.6;
-          const age = clamp01(fl.t / 0.4);
-          ctx.globalAlpha = 0.72 * age * clamp01((fl.life - fl.t) / 0.5);
-          const g = ctx.createLinearGradient(0, y0, 0, y0 + drop);
-          g.addColorStop(0, "#c4ecf1");
-          g.addColorStop(0.3, "#5fc6d8");
-          g.addColorStop(1, "rgba(120,214,228,0.18)");
-          ctx.fillStyle = g;
-          const wob = Math.sin(this.t * 4 + fl.u * 20) * 1.2;
-          ctx.fillRect(Math.round(x - fl.w / 2), Math.round(y0), Math.max(1, fl.w), Math.round(drop * age));
-          ctx.fillRect(
-            Math.round(x - fl.w / 2 + wob),
-            Math.round(y0 + drop * 0.55 * age),
-            Math.max(1, fl.w * 0.7),
-            Math.round(drop * 0.45 * age)
-          );
-          ctx.fillStyle = "#eafbfd";
-          ctx.fillRect(Math.round(x - fl.w / 2 - 1), Math.round(y0 - 1), Math.max(1, fl.w) + 2, 2);
-          ctx.globalAlpha = 1;
-        }
+      for (const fl of this.falls) {
+        const spill = crab.rig.shellSurface(fl.a, m.basin.b + m.basin.r * 0.92);
+        const drop = crab.standH + m.faceH * 0.4;
+        const age = clamp01(fl.t / 0.4);
+        ctx.globalAlpha = 0.72 * age * clamp01((fl.life - fl.t) / 0.5);
+        const g = ctx.createLinearGradient(0, spill.y, 0, spill.y + drop);
+        g.addColorStop(0, "#c4ecf1");
+        g.addColorStop(0.3, "#5fc6d8");
+        g.addColorStop(1, "rgba(120,214,228,0.16)");
+        ctx.fillStyle = g;
+        const wob = Math.sin(this.t * 4 + fl.a * 20) * 1.1;
+        ctx.fillRect(
+          Math.round(spill.x - fl.w / 2),
+          Math.round(spill.y),
+          Math.max(1, fl.w),
+          Math.round(drop * age)
+        );
+        ctx.fillRect(
+          Math.round(spill.x - fl.w / 2 + wob),
+          Math.round(spill.y + drop * 0.55 * age),
+          Math.max(1, fl.w * 0.7),
+          Math.round(drop * 0.45 * age)
+        );
+        ctx.fillStyle = "#eafbfd";
+        ctx.fillRect(
+          Math.round(spill.x - fl.w / 2 - 1),
+          Math.round(spill.y - 1),
+          Math.max(1, fl.w) + 2,
+          2
+        );
+        ctx.globalAlpha = 1;
       }
       ctx.restore();
     }
@@ -6855,8 +7013,8 @@ body {
   };
 
   // js/art/faunaart.js
-  var LIGHT3 = { lightX: -0.58, lightY: -0.64, lightZ: 0.4, ambient: 0.37, dither: 0.68 };
-  function rng2(seed) {
+  var LIGHT4 = { lightX: -0.58, lightY: -0.64, lightZ: 0.4, ambient: 0.37, dither: 0.68 };
+  function rng3(seed) {
     let s = seed | 0 || 7;
     return () => {
       s ^= s << 13;
@@ -6974,7 +7132,7 @@ body {
   function furFringe(p, mat, S, seed, density = 0.55) {
     const m = p._matIndex.get(mat);
     if (!m) return;
-    const R = rng2(seed * 31 + 7);
+    const R = rng3(seed * 31 + 7);
     const edges = [];
     for (let y = 1; y < p.h - 1; y++) {
       for (let x = 1; x < p.w - 1; x++) {
@@ -7232,7 +7390,7 @@ body {
     if (D.skin === "fur") furFringe(p, D.mat, S, (D.seed || 3) + 5, 0.5);
     p.smoothHeight(1, 0.38);
     return {
-      cv: p.resolve(MATERIALS, { ...LIGHT3, outline: 1, outlineColor: D.outline || "#160f0a" }),
+      cv: p.resolve(MATERIALS, { ...LIGHT4, outline: 1, outlineColor: D.outline || "#160f0a" }),
       ox: cx - L * 0.3,
       oy: cy,
       L,
@@ -7327,8 +7485,8 @@ body {
     if (D.skin === "fur" && !far) furFringe(p, mat, S, 61, 0.34);
     return {
       cv: p.resolve(MATERIALS, {
-        ...LIGHT3,
-        ambient: far ? 0.28 : LIGHT3.ambient,
+        ...LIGHT4,
+        ambient: far ? 0.28 : LIGHT4.ambient,
         outline: 1,
         outlineColor: far ? "#100a06" : D.outline || "#160f0a"
       }),
@@ -7423,7 +7581,7 @@ body {
     }
     if (D.skin === "fur") furFringe(p, D.tailMat || D.mat, S, 91, 0.45);
     return {
-      cv: p.resolve(MATERIALS, { ...LIGHT3, outline: 0.95, outlineColor: D.outline || "#160f0a" }),
+      cv: p.resolve(MATERIALS, { ...LIGHT4, outline: 0.95, outlineColor: D.outline || "#160f0a" }),
       ox: x0,
       oy: cy,
       len: L
@@ -7498,8 +7656,8 @@ body {
     }
     return {
       cv: p.resolve(MATERIALS, {
-        ...LIGHT3,
-        ambient: far ? 0.28 : LIGHT3.ambient,
+        ...LIGHT4,
+        ambient: far ? 0.28 : LIGHT4.ambient,
         outline: 0.85,
         outlineColor: D.outline || "#160f0a"
       }),
@@ -7778,16 +7936,16 @@ body {
       }
     }
   }
-  var cache4 = /* @__PURE__ */ new Map();
+  var cache5 = /* @__PURE__ */ new Map();
   function buildCreature(def3) {
-    if (cache4.has(def3.id)) return cache4.get(def3.id);
+    if (cache5.has(def3.id)) return cache5.get(def3.id);
     const S = def3.scale ?? 1;
-    const R = rng2(def3.seed || 5);
+    const R = rng3(def3.seed || 5);
     const D = def3;
     const plan = D.plan || "beast";
     const built = (PLAN[plan] || PLAN.beast)(D, S);
     const bodyCv = built.p.smoothHeight(1, 0.36).resolve(MATERIALS, {
-      ...LIGHT3,
+      ...LIGHT4,
       outline: 1,
       outlineColor: D.outline || "#160f0a"
     });
@@ -7862,7 +8020,7 @@ body {
     const stance = plan === "sprawler" ? 0.68 : plan === "insect" || plan === "arachnid" || plan === "myriapod" ? 0.58 : 0.84;
     rig.standH = D.legU ? (D.legU + D.legL) * S * stance + body.H * 0.4 : body.H * 0.5;
     rig.width = body.L;
-    cache4.set(def3.id, rig);
+    cache5.set(def3.id, rig);
     return rig;
   }
 
@@ -8122,7 +8280,9 @@ body {
       this.onShell = false;
     }
     _rideShell(dt, crab) {
-      const p = crab.shellWorld(this.shellU);
+      const a = Math.cos(this.shellU * Math.PI * 2) * 0.6;
+      const b = 0.15 + Math.sin(this.shellU * Math.PI * 2) * 0.35;
+      const p = crab.shellWorldAB(a, b);
       this.x = damp(this.x, p.x, 1e-4, dt);
       this.y = damp(this.y, p.y - this.rig.standH * 0.6, 1e-4, dt);
       this.faceT = damp(this.faceT, crab.faceT, 2e-3, dt);
@@ -10154,193 +10314,6 @@ body {
     }
   }
 
-  // js/art/buildart.js
-  var LIGHT4 = { lightX: -0.6, lightY: -0.62, lightZ: 0.4, ambient: 0.38, dither: 0.7 };
-  function rng3(seed) {
-    let s = seed | 0 || 3;
-    return () => {
-      s ^= s << 13;
-      s ^= s >>> 17;
-      s ^= s << 5;
-      s |= 0;
-      return (s >>> 0) % 1e5 / 1e5;
-    };
-  }
-  var KIND = {
-    /** Sealed stone tank with a metal collar and a spigot. */
-    tank(p, W, H, x, y, K, R) {
-      p.field(x - W / 2, y - H, x + W / 2, y, (px, py) => {
-        const u = (px - (x - W / 2)) / W;
-        const v = (py - (y - H)) / H;
-        if (u < 0 || u > 1 || v < 0 || v > 1) return null;
-        const bulge = Math.sin(v * Math.PI * 0.9 + 0.2);
-        const half = 0.5 * (0.72 + 0.28 * bulge);
-        if (Math.abs(u - 0.5) > half) return null;
-        const dz = Math.sqrt(clamp01(1 - Math.pow((u - 0.5) / half, 2)));
-        return { h: dz * W * 0.42, tint: -0.04 + (v < 0.12 ? 0.14 : 0) };
-      }, { mat: "shellRock" });
-      p.grain("shellRock", { freq: 0.5 / K, amp: 0.2, seed: 5 });
-      for (let i = 0; i < 3; i++) {
-        const yy = y - H * (0.22 + i * 0.28);
-        p.rect(x - W * 0.52, yy, W * 1.04, 1.4 * K, { mat: "metal", mask: true, tint: 0.05, dome: 1.2 * K });
-      }
-      p.capsule(
-        x + W * 0.42,
-        y - H * 0.18,
-        x + W * 0.66,
-        y - H * 0.1,
-        1.2 * K,
-        0.9 * K,
-        { mat: "metal", dome: 1.1 * K, tint: 0.06 }
-      );
-      p.ellipse(x, y - H, W * 0.34, 2.2 * K, { mat: "wood", dome: 2 * K, tint: 0.06 });
-    },
-    /** A slender mast with vanes, guyed with rope. */
-    tower(p, W, H, x, y, K, R) {
-      const legs = 3;
-      for (let i = 0; i < legs; i++) {
-        const f = (i / (legs - 1) - 0.5) * 2;
-        p.capsule(
-          x + f * W * 0.45,
-          y,
-          x + f * W * 0.09,
-          y - H * 0.72,
-          1.3 * K,
-          1 * K,
-          { mat: "wood", dome: 1.2 * K, tint: -0.04 + i * 0.04 }
-        );
-      }
-      for (let i = 0; i < 3; i++) {
-        const yy = y - H * (0.2 + i * 0.22);
-        const w = W * (0.42 - i * 0.1);
-        p.capsule(x - w, yy, x + w, yy - 0.6 * K, 0.9 * K, 0.9 * K, { mat: "wood", dome: 0.8 * K, tint: -0.1 });
-      }
-      p.capsule(x, y - H * 0.66, x, y - H, 1.4 * K, 1 * K, { mat: "wood", dome: 1.2 * K, tint: 0.04 });
-      for (let i = 0; i < 4; i++) {
-        const a = -0.5 + i * 0.5;
-        p.poly([
-          { x, y: y - H },
-          { x: x + Math.cos(a) * W * 0.7, y: y - H + Math.sin(a) * W * 0.5 },
-          { x: x + Math.cos(a) * W * 0.62, y: y - H + Math.sin(a) * W * 0.5 + 2.4 * K }
-        ], { mat: "cloth", dome: 1.2 * K, feather: 1.6, tint: (i - 1.5) * 0.06 });
-      }
-      p.capsule(x, y - H * 0.55, x - W * 0.7, y, 0.55 * K, 0.4 * K, { mat: "rope", dome: 0.5 * K, tint: -0.05 });
-      p.capsule(x, y - H * 0.55, x + W * 0.7, y, 0.55 * K, 0.4 * K, { mat: "rope", dome: 0.5 * K, tint: -0.05 });
-    },
-    /** Slatted crate, open at the top, full of leaf litter. */
-    crate(p, W, H, x, y, K, R) {
-      p.rect(x - W / 2, y - H, W, H, { mat: "wood", dome: 3.2 * K, tint: -0.05 });
-      for (let i = 1; i < 5; i++) {
-        const xx = x - W / 2 + W * i / 5;
-        p.capsule(xx, y - H + 1, xx, y - 1, 0.7 * K, 0.7 * K, { mat: "wood", mask: true, tint: -0.22, dome: 0 });
-      }
-      p.rect(x - W / 2 - 0.8 * K, y - H, W + 1.6 * K, 1.8 * K, { mat: "wood", dome: 1.6 * K, tint: 0.1 });
-      p.rect(x - W / 2 - 0.8 * K, y - 2.2 * K, W + 1.6 * K, 1.8 * K, { mat: "wood", dome: 1.6 * K, tint: 0.06 });
-      for (let i = 0; i < 16; i++) {
-        const px = x + (R() - 0.5) * W * 0.86;
-        const py = y - H - R() * 2.4 * K;
-        p.ellipse(px, py, 1.5 * K, 1 * K, {
-          mat: R() < 0.4 ? "leafDry" : "moss",
-          dome: 1.3 * K,
-          tint: (R() - 0.5) * 0.3
-        });
-      }
-      p.grain("wood", { freq: 0.7 / K, amp: 0.18, seed: 11 });
-    },
-    /** Woven hut on stilts - a roost. */
-    hut(p, W, H, x, y, K, R) {
-      p.capsule(x - W * 0.34, y, x - W * 0.3, y - H * 0.28, 1.1 * K, 1 * K, { mat: "wood", dome: 1 * K });
-      p.capsule(x + W * 0.34, y, x + W * 0.3, y - H * 0.28, 1.1 * K, 1 * K, { mat: "wood", dome: 1 * K, tint: -0.08 });
-      p.rect(x - W * 0.44, y - H * 0.72, W * 0.88, H * 0.46, { mat: "canvasBag", dome: 3.4 * K, tint: -0.02 });
-      p.ridges("canvasBag", { angle: 0.2, freq: 1.1 / K, amp: 0.16, height: 0.8 * K, seed: 7, warp: 0.6 });
-      p.poly([
-        { x: x - W * 0.56, y: y - H * 0.7 },
-        { x, y: y - H },
-        { x: x + W * 0.56, y: y - H * 0.7 }
-      ], { mat: "leafDry", dome: 3.6 * K, feather: 2.4, tint: 0.05 });
-      for (let i = 0; i < 8; i++) {
-        const t = i / 7;
-        p.capsule(
-          lerp(x - W * 0.52, x, t),
-          lerp(y - H * 0.7, y - H, t),
-          lerp(x - W * 0.46, x + 1, t),
-          lerp(y - H * 0.66, y - H * 0.94, t),
-          0.5 * K,
-          0.4 * K,
-          { mat: "leafDry", mask: true, tint: -0.2, dome: 0 }
-        );
-      }
-      p.ellipse(x + W * 0.06, y - H * 0.46, W * 0.16, H * 0.14, { mat: "canvasBag", mask: true, tint: -0.42, dome: -2 * K });
-    },
-    /** An A-frame of poles for climbers. */
-    frame(p, W, H, x, y, K, R) {
-      for (const f of [-1, 1]) {
-        p.capsule(
-          x + f * W * 0.44,
-          y,
-          x - f * W * 0.06,
-          y - H,
-          1.2 * K,
-          0.9 * K,
-          { mat: "wood", dome: 1.1 * K, tint: f > 0 ? 0 : -0.1 }
-        );
-      }
-      for (let i = 0; i < 4; i++) {
-        const t = 0.2 + i * 0.22;
-        const yy = y - H * t;
-        const w = W * (0.46 - t * 0.34);
-        p.capsule(x - w, yy, x + w, yy, 0.7 * K, 0.7 * K, { mat: "rope", dome: 0.7 * K, tint: -0.04 });
-      }
-      for (let i = 0; i < 12; i++) {
-        const t = R();
-        const px = x + (R() - 0.5) * W * 0.8, py = y - H * (0.15 + t * 0.8);
-        p.ellipse(px, py, 1.6 * K, 1.1 * K, { mat: "leaf", dome: 1.4 * K, tint: (R() - 0.5) * 0.3 });
-      }
-    },
-    /** Salvaged ruin-stone, standing. */
-    shrine(p, W, H, x, y, K, R) {
-      p.poly([
-        { x: x - W * 0.34, y },
-        { x: x - W * 0.28, y: y - H * 0.92 },
-        { x: x + W * 0.1, y: y - H },
-        { x: x + W * 0.3, y: y - H * 0.8 },
-        { x: x + W * 0.36, y }
-      ], { mat: "rock", dome: W * 0.4, feather: 3, tint: -0.02 });
-      p.grain("rock", { freq: 0.35 / K, amp: 0.24, seed: 3, height: 0.6 * K });
-      for (let i = 0; i < 5; i++) {
-        const yy = y - H * (0.18 + i * 0.15);
-        for (let k = 0; k < 3; k++) {
-          p.rect(
-            x - W * 0.18 + k * W * 0.14,
-            yy,
-            W * 0.08,
-            1.1 * K,
-            { mat: "rock", mask: true, tint: -0.34, dome: -1.4 * K }
-          );
-        }
-      }
-      p.ellipse(x + W * 0.02, y - H * 0.86, W * 0.13, W * 0.13, { mat: "glow", dome: W * 0.16, tint: 0.3, emissive: 0.8 });
-      p.rect(x - W * 0.46, y - 2.4 * K, W * 0.92, 2.6 * K, { mat: "rock", dome: 2.2 * K, tint: 0.06 });
-    }
-  };
-  var cache5 = /* @__PURE__ */ new Map();
-  function buildStructure(def3, size = 1) {
-    const K = Math.round(size * 20) / 20;
-    const key = `${def3.id}|${K}`;
-    if (cache5.has(key)) return cache5.get(key);
-    const W = def3.w * K, H = def3.h * K;
-    const pad = Math.ceil(6 * K) + 5;
-    const p = new Painter(Math.ceil(W * 1.9) + pad * 2, Math.ceil(H) + pad * 2);
-    const x = p.w / 2, y = p.h - pad;
-    const R = rng3(def3.id.length * 977 + def3.w);
-    (KIND[def3.kind] || KIND.crate)(p, W, H, x, y, K, R);
-    p.smoothHeight(1, 0.4);
-    const cv = p.resolve(MATERIALS, { ...LIGHT4, outline: 1, outlineColor: "#170f09" });
-    const out = { cv, ox: x, oy: y, w: W, h: H };
-    cache5.set(key, out);
-    return out;
-  }
-
   // js/ui/icons.js
   var LIGHT5 = { lightX: -0.55, lightY: -0.68, lightZ: 0.42, ambient: 0.42, dither: 0.6 };
   var cache6 = /* @__PURE__ */ new Map();
@@ -10664,107 +10637,140 @@ body {
   }
 
   // js/ui/tree.js
-  var TRUNK_STEP = 96;
-  var BOUGH_LEN = 210;
+  var TRUNK_BASE = -118;
+  var TRUNK_STEP = 94;
+  var BOUGH_BASE = 112;
+  var BOUGH_STEP = 88;
+  var BOUGH_ANGLE = [-156, -124, -56, -24];
+  var D2R = Math.PI / 180;
   function layout() {
     const nodes = [];
     const links = [];
+    const seed = { id: "__root", kind: "root", x: 0, y: 0, r: 12, color: "#a8e878" };
+    nodes.push(seed);
     EVOLUTIONS.forEach((e, i) => {
       nodes.push({
-        id: e.id,
+        id: "evo:" + e.id,
         kind: "evo",
         data: e,
         tier: i,
-        x: (i % 2 ? 1 : -1) * (i === 0 ? 0 : 14),
-        y: -70 - i * TRUNK_STEP,
-        r: 11,
+        x: (i % 2 ? 1 : -1) * 13,
+        y: TRUNK_BASE - i * TRUNK_STEP,
+        r: 11.5,
         color: "#c9e08a"
       });
+      links.push({
+        from: i === 0 ? "__root" : "evo:" + EVOLUTIONS[i - 1].id,
+        to: "evo:" + e.id,
+        w: 27 - i * 2.4,
+        trunk: true
+      });
     });
-    nodes.push({ id: "__root", kind: "root", x: 0, y: 0, r: 17, color: "#8cc468" });
-    for (let i = 0; i < EVOLUTIONS.length; i++) {
-      const prev = i === 0 ? "__root" : EVOLUTIONS[i - 1].id;
-      links.push({ from: prev, to: EVOLUTIONS[i].id, w: 26 - i * 2.6 });
-    }
     BRANCHES.forEach((br, bi) => {
-      const side = bi % 2 ? 1 : -1;
-      const attach = EVOLUTIONS[Math.min(EVOLUTIONS.length - 1, bi)];
-      const ay = -70 - bi * TRUNK_STEP;
+      const th = BOUGH_ANGLE[bi % BOUGH_ANGLE.length] * D2R;
+      const dx = Math.cos(th), dy = Math.sin(th);
+      const px = -dy, py = dx;
       const list = SKILLS.filter((s) => s.branch === br.id);
-      list.forEach((s) => {
-        const t = s.x / 3;
-        const spread = s.y * 42 * (0.4 + t);
+      for (const s of list) {
+        const along = BOUGH_BASE + s.x * BOUGH_STEP;
+        const off = s.y * 36 * (0.62 + s.x * 0.16);
         nodes.push({
-          id: s.id,
+          id: "skill:" + s.id,
           kind: "skill",
           data: s,
           branch: br.id,
           tier: s.x,
-          x: side * (52 + t * BOUGH_LEN),
-          y: ay - 30 - t * 92 + spread,
+          x: dx * along + px * off,
+          y: dy * along + py * off - s.x * 44,
+          // boughs lift as they run
           r: 8.5,
           color: br.color
         });
-      });
-      for (const s of list) {
-        if (!s.req.length) links.push({ from: attach.id, to: s.id, w: 11 });
-        else for (const r of s.req) links.push({ from: r, to: s.id, w: 8.5 - s.x * 1.6 });
+        if (!s.req.length) links.push({ from: "__root", to: "skill:" + s.id, w: 12, branch: br.id });
+        else for (const r of s.req) {
+          links.push({ from: "skill:" + r, to: "skill:" + s.id, w: 10 - s.x * 1.7, branch: br.id });
+        }
       }
       nodes.push({
         id: "__lbl_" + br.id,
         kind: "label",
         label: br.name,
         color: br.color,
-        x: side * 46,
-        y: ay - 6,
+        x: dx * (BOUGH_BASE - 38) + px * 42,
+        y: dy * (BOUGH_BASE - 38) + py * 42,
         r: 0
       });
     });
     GENES.forEach((g, i) => {
       const t = (i + 0.5) / GENES.length;
-      const a = Math.PI * (0.1 + t * 0.8);
-      const d = 60 + i % 4 * 34;
+      const a = Math.PI * (0.08 + t * 0.84);
+      const d = 40 + i % 4 * 19;
       nodes.push({
         id: "gene:" + g.id,
         kind: "gene",
         data: g,
         x: -Math.cos(a) * d,
-        y: Math.sin(a) * d * 0.62 + 24,
-        r: 6,
+        y: Math.sin(a) * d * 0.62 + 22,
+        r: 5,
         color: "#7fe0c8"
       });
-      links.push({ from: "__root", to: "gene:" + g.id, w: 6.5, root: true });
+      links.push({ from: "__root", to: "gene:" + g.id, w: 7, root: true });
     });
     const by = Object.fromEntries(nodes.map((n) => [n.id, n]));
+    for (const ln of links) {
+      const c = by[ln.to];
+      if (c) c.parent = ln.from;
+    }
     return { nodes, links, by };
+  }
+  function curveAt(pa, pb, mx, my, t) {
+    const u = 1 - t;
+    return {
+      x: u * u * pa.x + 2 * u * t * mx + t * t * pb.x,
+      y: u * u * pa.y + 2 * u * t * my + t * t * pb.y
+    };
   }
   var TreeScreen = class {
     constructor(game2) {
       this.game = game2;
       this.L = layout();
-      this.cam = { x: 0, y: -230, z: 0.7 };
-      this.target = { x: 0, y: -230, z: 0.7 };
+      this.cam = { x: 0, y: -60, z: 1.4 };
+      this.target = { x: 0, y: -60, z: 1.4 };
       this.grow = {};
+      this.seen = {};
+      this.pulses = [];
+      this.motes = [];
       this.t = 0;
       this.dive = 0;
       this.diving = false;
-      this.sel = null;
+      this.manual = false;
       this.toast = null;
       this.toastT = 0;
-      this.leafSeed = 1;
+      this.flash = 0;
     }
     /** Start the dive from a screen point (the orb on the HUD). */
     open(fromX, fromY, vw = 460, vh = 258) {
-      const z = clamp(Math.min(vh / 900, vw / 1e3), 0.28, 0.9);
-      this.target.z = this.cam.z = z;
-      this.target.x = this.cam.x = 0;
-      this.target.y = this.cam.y = -360 + 120 / z * 0.35;
       this.diving = true;
       this.dive = 0;
+      this.manual = false;
       this.from = { x: fromX, y: fromY };
       this.t = 0;
+      this.pulses.length = 0;
       for (const n of this.L.nodes) {
-        if (this.owned(n)) this.grow[n.id] = 1;
+        const on = this.owned(n);
+        this.grow[n.id] = on ? 1 : 0;
+        this.seen[n.id] = this.visible(n) ? 1 : 0;
+      }
+      this._frame(vw, vh, true);
+      this.motes = [];
+      for (let i = 0; i < 70; i++) {
+        this.motes.push({
+          x: Math.random(),
+          y: Math.random(),
+          s: 0.3 + Math.random() * 0.9,
+          p: Math.random() * TAU,
+          r: Math.random() < 0.16 ? 1 : 0
+        });
       }
       this.game.audio?.play("discover");
     }
@@ -10773,15 +10779,30 @@ body {
     }
     owned(n) {
       const e = this.game.economy;
-      if (n.kind === "skill") return e.skills.has(n.id);
-      if (n.kind === "evo") return e.evolutions.has(n.id);
+      if (n.kind === "skill") return e.skills.has(n.data.id);
+      if (n.kind === "evo") return e.evolutions.has(n.data.id);
       if (n.kind === "gene") return e.genes.has(n.data.id);
       return n.kind === "root";
     }
+    /**
+     * Whether the tree has any business showing this node yet. The rule is one
+     * step of foresight: you see what you own, and the buds directly on it.
+     * Everything past that does not exist until the wood gets there.
+     */
+    visible(n) {
+      if (n.kind === "root" || n.kind === "gene" || n.kind === "label") return true;
+      if (this.owned(n)) return true;
+      const e = this.game.economy;
+      if (n.kind === "evo") {
+        const i = n.tier;
+        return i === 0 || e.evolutions.has(EVOLUTIONS[i - 1].id);
+      }
+      return n.data.req.every((r) => e.skills.has(r));
+    }
     state(n) {
       const e = this.game.economy;
-      if (n.kind === "skill") return e.skillState(n.id);
-      if (n.kind === "evo") return e.evoState(n.id);
+      if (n.kind === "skill") return e.skillState(n.data.id);
+      if (n.kind === "evo") return e.evoState(n.data.id);
       if (n.kind === "gene") return e.genes.has(n.data.id) ? "owned" : "locked";
       return "owned";
     }
@@ -10790,42 +10811,84 @@ body {
       this.toastT = secs;
     }
     // -------------------------------------------------------------------------
+    /** Fit the camera to whatever of the tree currently exists. */
+    _frame(vw, vh, snap = false) {
+      let x0 = -60, x1 = 60, y0 = -40, y1 = 60;
+      for (const n of this.L.nodes) {
+        if (n.kind === "label") continue;
+        if (n.kind === "gene" && (this.grow[n.id] ?? 0) < 0.5) continue;
+        const a = Math.max(this.grow[n.id] ?? 0, (this.seen[n.id] ?? 0) * 0.9);
+        if (a < 0.05) continue;
+        const r = n.r + 22;
+        x0 = Math.min(x0, n.x - r);
+        x1 = Math.max(x1, n.x + r);
+        y0 = Math.min(y0, n.y - r);
+        y1 = Math.max(y1, n.y + r);
+      }
+      const w = Math.max(120, x1 - x0), h = Math.max(120, y1 - y0);
+      const z = clamp(Math.min((vw - 40) / w, (vh - 70) / h), 0.26, 1.9);
+      this.target.x = (x0 + x1) / 2;
+      this.target.y = (y0 + y1) / 2;
+      this.target.z = z;
+      if (snap) {
+        this.cam.x = this.target.x;
+        this.cam.y = this.target.y;
+        this.cam.z = this.target.z;
+      }
+    }
     update(dt, vw, vh) {
       this.t += dt;
       if (this.toastT > 0) {
         this.toastT -= dt;
         if (this.toastT <= 0) this.toast = null;
       }
+      this.flash = Math.max(0, this.flash - dt * 1.6);
       this.dive = damp(this.dive, this.diving ? 1 : 0, 6e-4, dt);
       if (!this.diving && this.dive < 0.02) return false;
       for (const n of this.L.nodes) {
-        const want = this.owned(n) ? 1 : 0;
-        const cur = this.grow[n.id] ?? 0;
-        if (cur !== want) this.grow[n.id] = damp(cur, want, 0.02, dt);
+        const w = this.owned(n) ? 1 : 0;
+        const c = this.grow[n.id] ?? 0;
+        if (c !== w) this.grow[n.id] = damp(c, w, 0.02, dt);
+        const v = this.visible(n) ? 1 : 0;
+        const s = this.seen[n.id] ?? 0;
+        if (s !== v) this.seen[n.id] = damp(s, v, 0.06, dt);
+      }
+      for (let i2 = this.pulses.length - 1; i2 >= 0; i2--) {
+        const p = this.pulses[i2];
+        p.t += dt / p.dur;
+        if (p.t >= 1) this.pulses.splice(i2, 1);
       }
       const i = this.game.input;
       if (this.diving && this.dive > 0.7) {
-        if (i.dragging) {
+        if (i.dragging && Math.abs(i.dragDX) + Math.abs(i.dragDY) > 0.4) {
+          this.manual = true;
           this.target.x -= i.dragDX / this.cam.z;
           this.target.y -= i.dragDY / this.cam.z;
         }
-        if (i.wheel) this.target.z = clamp(this.target.z * Math.pow(1.22, -i.wheel), 0.45, 2.4);
+        if (i.wheel) {
+          this.manual = true;
+          this.target.z = clamp(this.target.z * Math.pow(1.22, -i.wheel), 0.28, 2.6);
+        }
         const ax = i.axis();
         if (ax.len > 0.1) {
+          this.manual = true;
           this.target.x += ax.x * 220 * dt;
           this.target.y += ax.y * 220 * dt;
         }
-        this.target.x = clamp(this.target.x, -430, 430);
-        this.target.y = clamp(this.target.y, -820, 140);
+        if (this.manual) {
+          this.target.x = clamp(this.target.x, -520, 520);
+          this.target.y = clamp(this.target.y, -900, 200);
+        }
         if (i.justPressed("Escape") || i.justPressed("Tab")) {
           i.consumeKey("Escape");
           i.consumeKey("Tab");
           this.close();
         }
       }
+      if (!this.manual) this._frame(vw, vh);
       this.cam.x = damp(this.cam.x, this.target.x, 6e-4, dt);
       this.cam.y = damp(this.cam.y, this.target.y, 6e-4, dt);
-      this.cam.z = damp(this.cam.z, this.target.z, 4e-4, dt);
+      this.cam.z = damp(this.cam.z, this.target.z, 6e-4, dt);
       return true;
     }
     _toScreen(n, vw, vh) {
@@ -10841,7 +10904,7 @@ body {
       const k = clamp01(d);
       ctx.save();
       ctx.globalAlpha = clamp01(k * 1.6);
-      ctx.fillStyle = "#060a0c";
+      ctx.fillStyle = "#050a0b";
       ctx.fillRect(0, 0, vw, vh);
       if (k < 0.62) {
         const r = lerp(10, Math.hypot(vw, vh), easeOutCubic(k / 0.62));
@@ -10862,136 +10925,262 @@ body {
       const fade = clamp01((k - 0.34) / 0.5);
       ctx.save();
       ctx.globalAlpha = fade;
-      const bg = ctx.createRadialGradient(vw / 2, vh * 0.62, 10, vw / 2, vh * 0.62, Math.max(vw, vh) * 0.8);
-      bg.addColorStop(0, "#123032");
-      bg.addColorStop(0.5, "#0c1e22");
-      bg.addColorStop(1, "#060d10");
+      this._drawDeep(ctx, vw, vh, fade);
+      const gy = vh / 2 + (10 - this.cam.y) * this.cam.z;
+      this._drawGround(ctx, vw, vh, gy);
+      this._drawHelix(ctx, vw, vh);
+      this._drawBranches(ctx, vw, vh, fade);
+      const hover = this._drawNodes(ctx, vw, vh, fade);
+      this._drawPulses(ctx, vw, vh);
+      this._drawChrome(ctx, vw, vh, fade, hover);
+      ctx.restore();
+    }
+    /** Inside the orb: a warm green deep, with genetic motes suspended in it. */
+    _drawDeep(ctx, vw, vh, fade) {
+      const bg = ctx.createRadialGradient(vw / 2, vh * 0.58, 10, vw / 2, vh * 0.58, Math.max(vw, vh) * 0.85);
+      bg.addColorStop(0, `rgb(${18 + this.flash * 40},${52 + this.flash * 46},${52 + this.flash * 30})`);
+      bg.addColorStop(0.5, "#0b1d21");
+      bg.addColorStop(1, "#050c0f");
       ctx.fillStyle = bg;
       ctx.fillRect(0, 0, vw, vh);
-      for (let i2 = 0; i2 < 40; i2++) {
-        const s = Math.sin(i2 * 12.9898) * 43758.5453;
-        const fx = ((s - Math.floor(s)) * vw + this.t * (6 + i2 % 5 * 3)) % vw;
-        const fy = (Math.sin(i2 * 78.233) * 43758.5453 % 1 + 1) % 1 * vh + Math.sin(this.t * 0.5 + i2) * 6;
-        ctx.globalAlpha = fade * (0.1 + i2 % 4 * 0.05);
-        ctx.fillStyle = "#9fe8d4";
-        ctx.fillRect(Math.round(fx), Math.round(fy % vh), 1, 1);
+      for (const m of this.motes) {
+        const y = (m.y - this.t * 0.012 * m.s + 2) % 1;
+        const x = (m.x + Math.sin(this.t * 0.3 * m.s + m.p) * 0.012 + 1) % 1;
+        const px = Math.round(x * vw), py = Math.round(y * vh);
+        const tw = 0.4 + 0.6 * (0.5 + 0.5 * Math.sin(this.t * 2.2 + m.p));
+        ctx.globalAlpha = fade * 0.42 * tw * m.s;
+        ctx.fillStyle = m.r ? "#ffe9a8" : "#9fe8d4";
+        ctx.fillRect(px, py, 1, 1);
+        if (m.s > 0.9) {
+          ctx.globalAlpha = fade * 0.14 * tw;
+          ctx.fillRect(px - 1, py, 3, 1);
+          ctx.fillRect(px, py - 1, 1, 3);
+        }
       }
       ctx.globalAlpha = fade;
-      const gy = vh / 2 + (12 - this.cam.y) * this.cam.z;
-      ctx.fillStyle = "rgba(40,28,18,0.55)";
-      ctx.fillRect(0, gy, vw, vh - gy);
-      ctx.fillStyle = "rgba(120,96,64,0.5)";
+    }
+    _drawGround(ctx, vw, vh, gy) {
+      const g = ctx.createLinearGradient(0, gy - 6, 0, vh);
+      g.addColorStop(0, "rgba(46,34,22,0.0)");
+      g.addColorStop(0.12, "rgba(40,30,20,0.62)");
+      g.addColorStop(1, "rgba(14,12,10,0.86)");
+      ctx.fillStyle = g;
+      ctx.fillRect(0, gy - 6, vw, vh - gy + 6);
+      ctx.fillStyle = "rgba(150,124,82,0.45)";
       ctx.fillRect(0, Math.round(gy), vw, 1);
-      const curveAt = (pa, pb, mx, my, t) => {
-        const u = 1 - t;
-        return {
-          x: u * u * pa.x + 2 * u * t * mx + t * t * pb.x,
-          y: u * u * pa.y + 2 * u * t * my + t * t * pb.y
-        };
-      };
+    }
+    /**
+     * The helix: two strands winding up inside the trunk, as tall as the trunk
+     * has actually grown. This is the tree's genome, and it is why the thing
+     * reads as a gene and not as a plant.
+     */
+    _drawHelix(ctx, vw, vh) {
+      let topY = 0;
+      for (const n of this.L.nodes) {
+        if (n.kind !== "evo") continue;
+        const g = this.grow[n.id] ?? 0;
+        if (g > 0.05) topY = Math.min(topY, n.y * g);
+      }
+      topY = Math.min(topY, TRUNK_BASE * 0.72);
+      const seed = this.L.by.__root;
+      const base = this._toScreen(seed, vw, vh);
+      const top = this._toScreen({ x: 0, y: topY - 46 }, vw, vh);
+      const h = base.y - top.y;
+      if (h < 8) return;
+      const z = this.cam.z;
+      const amp = 9 * z;
+      const turns = h / (34 * z);
+      const steps = Math.max(12, Math.round(h / 2));
+      const expressed = this.game.economy.genes.size / Math.max(1, GENES.length);
+      for (const dir of [0, 1]) {
+        ctx.beginPath();
+        for (let i = 0; i <= steps; i++) {
+          const t = i / steps;
+          const ph = t * turns * TAU + dir * Math.PI + this.t * 0.55;
+          const x = base.x + Math.sin(ph) * amp;
+          const y = base.y - t * h;
+          if (i === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        }
+        ctx.strokeStyle = dir ? "rgba(120,224,200,0.30)" : "rgba(168,232,140,0.34)";
+        ctx.lineWidth = Math.max(1, 1.6 * z);
+        ctx.stroke();
+      }
+      const rungs = Math.max(4, Math.round(turns * 5));
+      for (let i = 0; i <= rungs; i++) {
+        const t = i / rungs;
+        const ph = t * turns * TAU + this.t * 0.55;
+        const s = Math.sin(ph);
+        const depth = Math.cos(ph);
+        if (depth < -0.1) continue;
+        const x0 = base.x + s * amp, x1 = base.x - s * amp;
+        const y = base.y - t * h;
+        const lit = t < expressed ? 1 : 0.28;
+        ctx.globalAlpha = (0.1 + 0.32 * lit) * (0.4 + 0.6 * clamp01(depth));
+        ctx.strokeStyle = t < expressed ? "#c9ffe4" : "#6f9a90";
+        ctx.lineWidth = Math.max(1, 1.2 * z);
+        ctx.beginPath();
+        ctx.moveTo(x0, y);
+        ctx.lineTo(x1, y);
+        ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+    }
+    /** Geometry of one branch, shared by the wood and by the sap pulses. */
+    _branchPath(ln, vw, vh) {
+      const a = this.L.by[ln.from], b = this.L.by[ln.to];
+      if (!a || !b) return null;
+      const pa = this._toScreen(a, vw, vh), pb = this._toScreen(b, vw, vh);
+      const bend = ln.root ? 10 : ln.trunk ? 6 : 22;
+      const mx = (pa.x + pb.x) / 2 + (b.x - a.x) * 0.09;
+      const my = (pa.y + pb.y) / 2 - bend * this.cam.z * (ln.root ? -1 : 1);
+      return { pa, pb, mx, my };
+    }
+    _drawBranches(ctx, vw, vh, fade) {
       for (const ln of this.L.links) {
-        const a = this.L.by[ln.from], b = this.L.by[ln.to];
-        if (!a || !b) continue;
-        const g = this.grow[b.id] ?? 0;
-        const alive = g > 0.02;
-        const pa = this._toScreen(a, vw, vh), pb = this._toScreen(b, vw, vh);
-        const mx = (pa.x + pb.x) / 2 + (b.x - a.x) * 0.1;
-        const my = (pa.y + pb.y) / 2 - 16 * this.cam.z;
-        const tip = alive ? Math.max(0.04, g) : 0.9;
-        const w0 = ln.w * this.cam.z * (alive ? 1 : 0.46);
-        const w1 = w0 * 0.45;
-        const steps = 14;
-        const left = [], right = [];
-        for (let i2 = 0; i2 <= steps; i2++) {
-          const t = i2 / steps * tip;
+        const child = this.L.by[ln.to];
+        const seen = this.seen[child.id] ?? 0;
+        if (seen < 0.03) continue;
+        const g = this.grow[child.id] ?? 0;
+        const path = this._branchPath(ln, vw, vh);
+        if (!path) continue;
+        const { pa, pb, mx, my } = path;
+        const reach = Math.max((ln.root ? 0.85 : 0.58) * seen, g);
+        const w0 = ln.w * this.cam.z * lerp(0.42, 1, g);
+        const w1 = w0 * (ln.root ? 0.3 : 0.42);
+        const steps = 16;
+        const left = [], right = [], mid = [];
+        for (let i = 0; i <= steps; i++) {
+          const t = i / steps * reach;
           const p1 = curveAt(pa, pb, mx, my, t);
           const p2 = curveAt(pa, pb, mx, my, Math.min(1, t + 0.02));
           let nx = -(p2.y - p1.y), ny = p2.x - p1.x;
           const l = Math.hypot(nx, ny) || 1;
           nx /= l;
           ny /= l;
-          const w = lerp(w0, w1, t / Math.max(1e-3, tip)) * 0.5;
+          const w = lerp(w0, w1, t / Math.max(1e-3, reach)) * 0.5;
           left.push({ x: p1.x + nx * w, y: p1.y + ny * w });
           right.push({ x: p1.x - nx * w, y: p1.y - ny * w });
+          mid.push(p1);
         }
+        ctx.globalAlpha = fade * lerp(0.4, 1, Math.max(g, seen * 0.6)) * (ln.root && g < 0.5 ? 0.5 : 1);
         ctx.beginPath();
         ctx.moveTo(left[0].x, left[0].y);
-        for (const p1 of left) ctx.lineTo(p1.x, p1.y);
-        for (let i2 = right.length - 1; i2 >= 0; i2--) ctx.lineTo(right[i2].x, right[i2].y);
+        for (const p of left) ctx.lineTo(p.x, p.y);
+        for (let i = right.length - 1; i >= 0; i--) ctx.lineTo(right[i].x, right[i].y);
         ctx.closePath();
-        ctx.fillStyle = ln.root ? alive ? "#5f9a86" : "rgba(84,110,100,0.30)" : alive ? "#5c3f26" : "rgba(116,100,78,0.26)";
+        ctx.fillStyle = ln.root ? g > 0.5 ? "#4f8f7d" : "#3a5a52" : g > 0.5 ? "#523823" : "#4a3e2c";
         ctx.fill();
-        if (alive) {
-          ctx.fillStyle = ln.root ? "rgba(160,232,210,0.45)" : "rgba(150,116,74,0.55)";
+        if (g > 0.05) {
           ctx.beginPath();
           ctx.moveTo(left[0].x, left[0].y);
-          for (const p1 of left) ctx.lineTo(p1.x, p1.y);
-          for (let i2 = left.length - 1; i2 >= 0; i2--) {
-            const t = i2 / steps;
-            ctx.lineTo(lerp(left[i2].x, right[i2].x, 0.34), lerp(left[i2].y, right[i2].y, 0.34));
+          for (const p of left) ctx.lineTo(p.x, p.y);
+          for (let i = left.length - 1; i >= 0; i--) {
+            ctx.lineTo(lerp(left[i].x, right[i].x, 0.36), lerp(left[i].y, right[i].y, 0.36));
           }
           ctx.closePath();
+          ctx.fillStyle = ln.root ? "rgba(158,232,208,0.42)" : "rgba(148,114,72,0.55)";
           ctx.fill();
-          if (!ln.root) {
-            const leaves = Math.round(3 + ln.w);
-            for (let i2 = 0; i2 < leaves; i2++) {
-              const t = (i2 + 0.5) / leaves * tip;
-              if (t > g) continue;
-              const p1 = curveAt(pa, pb, mx, my, t);
-              const sgn = i2 % 2 ? 1 : -1;
-              const sw = Math.sin(this.t * 1.6 + i2 * 2.1) * 1.2;
-              ctx.fillStyle = i2 % 3 === 0 ? "#8cc468" : "#5c8f43";
-              const sz = Math.max(1.5, 2.8 * this.cam.z);
-              ctx.beginPath();
-              ctx.ellipse(p1.x + sgn * sz * 1.5 + sw, p1.y - sz * 0.5, sz * 1.25, sz * 0.6, sgn * 0.6, 0, TAU);
-              ctx.fill();
-            }
+        }
+        if (g > 0.4 && !ln.root) {
+          ctx.globalAlpha = fade * 0.16 * (0.6 + 0.4 * Math.sin(this.t * 1.3 + ln.w));
+          ctx.strokeStyle = "#a8e878";
+          ctx.lineWidth = Math.max(1, w1 * 0.8);
+          ctx.beginPath();
+          mid.forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y));
+          ctx.stroke();
+          ctx.globalAlpha = fade;
+        }
+        if (!ln.root && g > 0.25) {
+          const leaves = Math.round(3 + ln.w * 1.3);
+          const col = ln.branch ? BRANCHES.find((b) => b.id === ln.branch)?.color || "#8cc468" : "#8cc468";
+          for (let i = 0; i < leaves; i++) {
+            const t = (i + 0.6) / leaves * g;
+            if (t > g - 0.06) continue;
+            const p1 = curveAt(pa, pb, mx, my, t);
+            const sgn = i % 2 ? 1 : -1;
+            const sw = Math.sin(this.t * 1.5 + i * 2.1 + ln.w) * 1.3;
+            const sz = Math.max(1.4, 2.9 * this.cam.z);
+            ctx.globalAlpha = fade * lerp(0.5, 1, g);
+            ctx.fillStyle = i % 3 === 0 ? col : "#4f8340";
+            ctx.beginPath();
+            ctx.ellipse(p1.x + sgn * sz * 1.5 + sw, p1.y - sz * 0.5, sz * 1.25, sz * 0.58, sgn * 0.6, 0, TAU);
+            ctx.fill();
           }
         }
+        ctx.globalAlpha = fade;
       }
+    }
+    _drawNodes(ctx, vw, vh, fade) {
       const i = this.game.input;
       let hover = null;
       for (const n of this.L.nodes) {
-        const p = this._toScreen(n, vw, vh);
+        const seen = this.seen[n.id] ?? 0;
         if (n.kind === "label") {
-          drawText(ctx, n.label.toUpperCase(), p.x, p.y, { color: n.color, align: "center", alpha: fade * 0.8 });
+          const anyBud = SKILLS.some((s) => s.branch === n.id.slice(6) && (this.seen["skill:" + s.id] ?? 0) > 0.4);
+          if (!anyBud || this.cam.z < 0.45 || this.cam.z > 1.15) continue;
+          const p2 = this._toScreen(n, vw, vh);
+          drawText(ctx, n.label.toUpperCase(), p2.x, p2.y, { color: n.color, align: "center", alpha: fade * 0.75 });
           continue;
         }
-        const r = n.r * this.cam.z;
-        if (p.x < -40 || p.x > vw + 40 || p.y < -40 || p.y > vh + 40) continue;
+        if (seen < 0.05) continue;
+        const p = this._toScreen(n, vw, vh);
+        if (p.x < -50 || p.x > vw + 50 || p.y < -50 || p.y > vh + 50) continue;
         const st = this.state(n);
         const g = this.grow[n.id] ?? 0;
         const on = st === "owned";
         const ready = st === "ready";
-        const hot = Math.hypot(i.sx - p.x, i.sy - p.y) < r + 6;
+        const dim = n.kind === "gene" && !on ? 0.42 : 1;
+        const r = n.r * this.cam.z * lerp(0.55, 1, Math.max(g, 0.55)) * seen * (dim < 1 ? 0.82 : 1);
+        const hot = Math.hypot(i.sx - p.x, i.sy - p.y) < r + 7;
         if (hot && n.kind !== "root") hover = { n, p };
-        const pulse = ready ? 0.5 + Math.sin(this.t * 3.4) * 0.5 : 0;
-        ctx.globalAlpha = fade * (on ? 0.34 : ready ? 0.18 + pulse * 0.22 : 0.07);
+        const pulse = ready ? 0.5 + Math.sin(this.t * 3.2 + n.x * 0.02) * 0.5 : 0;
+        ctx.globalAlpha = fade * seen * dim * (on ? 0.3 : ready ? 0.14 + pulse * 0.24 : 0.06);
         ctx.fillStyle = n.color;
         ctx.beginPath();
-        ctx.arc(p.x, p.y, r * (1.9 + pulse * 0.4), 0, TAU);
+        ctx.arc(p.x, p.y, r * (2 + pulse * 0.5), 0, TAU);
         ctx.fill();
-        ctx.globalAlpha = fade;
-        ctx.fillStyle = on ? n.color : ready ? "#3d5140" : "#25302c";
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, r * lerp(0.7, 1, Math.max(g, 0.6)), 0, TAU);
-        ctx.fill();
-        ctx.strokeStyle = on ? "rgba(255,255,255,0.55)" : hot ? "#cfe8d8" : "rgba(190,220,205,0.35)";
-        ctx.lineWidth = Math.max(1, 1.4 * this.cam.z);
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, r, 0, TAU);
-        ctx.stroke();
-        ctx.fillStyle = on ? "rgba(255,255,255,0.8)" : "rgba(200,230,215,0.35)";
-        ctx.beginPath();
-        ctx.arc(p.x - r * 0.28, p.y - r * 0.3, Math.max(1, r * 0.22), 0, TAU);
-        ctx.fill();
-        if (n.kind === "evo" && this.cam.z > 0.7) {
+        ctx.globalAlpha = fade * seen * dim;
+        if (on || n.kind === "root") {
+          ctx.fillStyle = n.color;
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, r, 0, TAU);
+          ctx.fill();
+          ctx.strokeStyle = "rgba(255,255,255,0.6)";
+          ctx.lineWidth = Math.max(1, 1.4 * this.cam.z);
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, r, 0, TAU);
+          ctx.stroke();
+          ctx.fillStyle = "rgba(255,255,255,0.85)";
+          ctx.beginPath();
+          ctx.arc(p.x - r * 0.3, p.y - r * 0.32, Math.max(1, r * 0.24), 0, TAU);
+          ctx.fill();
+        } else {
+          const rot = -0.5 + Math.sin(this.t * 0.9 + n.x * 0.03) * 0.1;
+          ctx.save();
+          ctx.translate(p.x, p.y);
+          ctx.rotate(rot);
+          ctx.fillStyle = ready ? "#3f5c44" : "#26332e";
+          ctx.beginPath();
+          ctx.ellipse(0, 0, r * 0.78, r * 1.1, 0, 0, TAU);
+          ctx.fill();
+          ctx.strokeStyle = hot ? "#dff4e6" : ready ? "rgba(190,230,170,0.75)" : "rgba(150,182,168,0.35)";
+          ctx.lineWidth = Math.max(1, 1.2 * this.cam.z);
+          ctx.stroke();
+          ctx.strokeStyle = ready ? `rgba(200,255,190,${0.35 + pulse * 0.5})` : "rgba(160,200,180,0.22)";
+          ctx.beginPath();
+          ctx.moveTo(0, -r * 0.95);
+          ctx.lineTo(0, r * 0.85);
+          ctx.stroke();
+          ctx.restore();
+        }
+        if (n.kind === "evo" && this.cam.z > 0.62) {
           drawText(
             ctx,
             n.data.name,
             p.x,
             p.y + r + 4,
-            { color: on ? "#e8f2d8" : "rgba(220,236,210,0.55)", align: "center", alpha: fade }
+            { color: on ? "#e8f2d8" : "rgba(220,236,210,0.55)", align: "center", alpha: fade * seen }
           );
         }
         if (hot && i.clicked && n.kind !== "root") {
@@ -11000,18 +11189,47 @@ body {
         }
       }
       ctx.globalAlpha = fade;
+      return hover;
+    }
+    /** Sap: a bright bead running from the roots into whatever just opened. */
+    _drawPulses(ctx, vw, vh) {
+      for (const p of this.pulses) {
+        const ln = p.ln;
+        const path = this._branchPath(ln, vw, vh);
+        if (!path) continue;
+        const t = clamp01(p.t);
+        const c = curveAt(path.pa, path.pb, path.mx, path.my, t);
+        const a = Math.sin(t * Math.PI);
+        const r = Math.max(1.6, 3.4 * this.cam.z) * (0.6 + a * 0.6);
+        const g = ctx.createRadialGradient(c.x, c.y, 0, c.x, c.y, r * 3.6);
+        g.addColorStop(0, `rgba(226,255,224,${0.85 * a})`);
+        g.addColorStop(0.35, `rgba(150,236,180,${0.45 * a})`);
+        g.addColorStop(1, "rgba(120,220,180,0)");
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(c.x, c.y, r * 3.6, 0, TAU);
+        ctx.fill();
+        ctx.fillStyle = `rgba(255,255,255,${0.9 * a})`;
+        ctx.beginPath();
+        ctx.arc(c.x, c.y, r * 0.6, 0, TAU);
+        ctx.fill();
+      }
+    }
+    _drawChrome(ctx, vw, vh, fade, hover) {
       const e = this.game.economy;
-      drawText(ctx, "THE TREE OF LIFE", vw / 2, 8, { color: "#cfe8d8", align: "center", scale: 1 });
+      const total = EVOLUTIONS.length + SKILLS.length;
+      const open = e.evolutions.size + e.skills.size;
+      drawText(ctx, "THE TREE OF LIFE", vw / 2, 8, { color: "#cfe8d8", align: "center" });
       drawText(
         ctx,
-        `${Math.round(e.nutrients)} nutrients   ${e.genes.size}/${GENES.length} genes expressed`,
+        `${Math.round(e.nutrients)} nutrients   ${e.genes.size}/${GENES.length} genes expressed   ${open}/${total} grown`,
         vw / 2,
         20,
         { color: "rgba(200,226,210,0.6)", align: "center" }
       );
       drawText(
         ctx,
-        "drag to look around   esc to wake up",
+        this.manual ? "drag to look around   esc to wake up" : "esc to wake up",
         vw / 2,
         vh - 12,
         { color: "rgba(200,226,210,0.4)", align: "center" }
@@ -11025,7 +11243,6 @@ body {
         ctx.strokeRect((vw - w) / 2 + 0.5, vh - 41.5, w - 1, 13);
         drawText(ctx, this.toast, vw / 2, vh - 39, { color: "#cfe8d8", align: "center" });
       }
-      ctx.restore();
     }
     _tip(ctx, n, p, vw, vh) {
       const e = this.game.economy;
@@ -11044,7 +11261,7 @@ body {
         extra = miss.length ? "needs genes: " + miss.map((g) => GENE_BY_ID[g]?.name || g).join(", ") : "genes: " + d.genes.map((g) => GENE_BY_ID[g]?.name || g).join(", ");
       } else if (n.kind === "gene") {
         title = d.name;
-        cost = e.genes.has(d.id) ? "expressed" : "not expressed";
+        cost = e.genes.has(d.id) ? "expressed" : "dormant";
         body = d.desc;
         extra = "from " + d.from;
       }
@@ -11063,6 +11280,20 @@ body {
       drawText(ctx, cost, x + w - 5, y + 4, { color: n.color, align: "right" });
       lines.forEach((l, i) => drawText(ctx, l, x + 5, y + 15 + i * LINE_H, { color: "rgba(210,232,216,0.72)" }));
     }
+    /** Sap runs from the seed out to whatever just opened, one branch at a time. */
+    _sap(id) {
+      const chain = [];
+      let cur = id;
+      for (let i = 0; i < 12 && cur && cur !== "__root"; i++) {
+        const node = this.L.by[cur];
+        const ln = this.L.links.find((l) => l.to === cur);
+        if (!ln) break;
+        chain.unshift(ln);
+        cur = ln.from;
+      }
+      chain.forEach((ln, i) => this.pulses.push({ ln, t: -i * 0.55, dur: 0.55 }));
+      this.flash = 1;
+    }
     _buy(n) {
       const e = this.game.economy;
       const st = this.state(n);
@@ -11072,18 +11303,21 @@ body {
         return;
       }
       if (n.kind === "skill") {
-        if (e.buySkill(n.id)) {
+        if (e.buySkill(n.data.id)) {
           this.say(`${n.data.name} learned.`);
+          this._sap(n.id);
           this.game.audio?.play("grow");
         } else this.say(st === "locked" ? "The branch has not reached that far yet." : "Not enough nutrients.");
         return;
       }
       if (n.kind === "evo") {
-        if (e.evolve(n.id)) {
+        if (e.evolve(n.data.id)) {
           this.say(`${n.data.name}. Something in you unfolds.`);
+          this._sap(n.id);
           this.game.audio?.play("evolve");
-        } else if (st === "genes") this.say("Missing genes: " + e.missingGenes(n.data.genes).map((g) => GENE_BY_ID[g]?.name || g).join(", "));
-        else if (st === "locked") this.say("An earlier form first.");
+        } else if (st === "genes") {
+          this.say("Missing genes: " + e.missingGenes(n.data.genes).map((g) => GENE_BY_ID[g]?.name || g).join(", "));
+        } else if (st === "locked") this.say("An earlier form first.");
         else this.say("Not enough nutrients.");
       }
     }
@@ -11528,11 +11762,11 @@ body {
       if (!plot) return;
       const wp = g.garden.plotWorld(plot);
       const s = cam.worldToScreen(wp.x, wp.y);
-      const sp = crab.rig.shellPoint(plot.u);
+      const sp = crab.rig.shellSurface(plot.a, plot.b);
       ctx.save();
       ctx.translate(Math.round(s.x), Math.round(s.y));
       ctx.scale(cam.zoom, cam.zoom);
-      ctx.rotate(Math.atan2(sp.nx, -sp.ny) * 0.26);
+      ctx.rotate(Math.atan2(sp.nx, -sp.ny) * 0.3);
       const bob = Math.sin(this.t * 4) * 0.6;
       ctx.translate(0, bob);
       ctx.globalAlpha = 0.62 + Math.sin(this.t * 5) * 0.12;
@@ -11542,7 +11776,7 @@ body {
         ctx.drawImage(art.cv, -art.ox, -art.oy);
       } else {
         const def3 = BUILD_BY_ID[this.placing.id];
-        const art = buildStructure(def3, clamp(crab.m.shellH / 96, 0.3, 1.1));
+        const art = buildStructure(def3, clamp(crab.m.rx / 52, 0.24, 1.1));
         ctx.drawImage(art.cv, -art.ox, -art.oy);
       }
       ctx.restore();
@@ -12016,7 +12250,7 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
       this.weather = new Weather(11);
       this.backdrop = new Backdrop(this.seed);
       this.fx = new Fx(this);
-      this.crab = new Crab(this, "juvenile");
+      this.crab = new Crab(this, "hatchling");
       this.crab.x = 0;
       this.crab.snapToGround();
       this.player = this.crab;
@@ -12318,7 +12552,7 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
       const gain = this.economy.stat("pumpGain");
       this.economy.water = clamp(this.economy.water + gain, 0, this.economy.stat("waterMax"));
       this.garden.pumpInto(0.055);
-      const o = this.crab.shellWorld(this.crab.m.organU);
+      const o = this.crab.shellWorldAB(this.crab.m.organ.a, this.crab.m.organ.b);
       this.fx.spring(o.x, o.y, o.nx, o.ny, 1);
       this.fx.popup(o.x, o.y - 8, `+${gain}`, "#9de3ee");
       this.audio.play("water");
@@ -12611,7 +12845,7 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
     }
     load(d) {
       try {
-        this.crab.setStage(d.stage || "juvenile");
+        this.crab.setStage(d.stage || "hatchling");
         this.crab.x = d.x || 0;
         this.crab.snapToGround();
         this.crab.hp = d.hp ?? this.crab.hpMax;
@@ -12658,7 +12892,6 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
       this.npc.draw(ctx, cam);
       this.crab.draw(ctx, cam, this.garden);
       this.ui.drawGhost(ctx, cam);
-      this._drawStructures(ctx, cam);
       this.wildlife.draw(ctx, cam, "shell");
       this.fx.draw(ctx, cam, "near");
       this.world.drawScatter(ctx, cam, "near");
@@ -12666,7 +12899,7 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
       r.beginLights(this.weather);
       const lightPow = this.economy.stat("light");
       if (lightPow > 0) {
-        const o = this.crab.shellWorld(0.5);
+        const o = this.crab.shellWorldAB(0, 0.1);
         const s = cam.worldToScreen(o.x, o.y);
         r.addLight(s.x, s.y, 90 * cam.zoom * (0.6 + lightPow * 0.5), "#ffd98a", 0.8);
       }
@@ -12676,7 +12909,7 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
         r.addLight(s.x, s.y, 40 * cam.zoom, c.def.glow, 0.7);
       }
       if (this.garden.pond > 0.3) {
-        const o = this.crab.shellWorld(0.24);
+        const o = this.crab.shellWorldAB(this.crab.m.basin.a, this.crab.m.basin.b);
         const s = cam.worldToScreen(o.x, o.y);
         r.addLight(s.x, s.y, 34 * cam.zoom, "#9de3ee", 0.25 * this.garden.pond);
       }
@@ -12690,28 +12923,6 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
       if (this.state === "dead") this._drawDead(ui, r);
       if (this.npc.speech && this.state === "play") this._drawSpeech(ui, cam, this.npc);
       r.dctx.drawImage(r.uiC, 0, 0, r.vw, r.vh, 0, 0, r.vw * r.scale, r.vh * r.scale);
-    }
-    _drawStructures(ctx, cam) {
-      const crab = this.crab;
-      const f = crab.faceT < 0 ? -1 : 1;
-      const built = this.garden.plots.filter((p) => p.build);
-      if (!built.length) return;
-      const p0 = cam.worldToScreen(crab.x, crab.y + crab.bob);
-      ctx.save();
-      ctx.translate(Math.round(p0.x * 2) / 2, Math.round(p0.y * 2) / 2);
-      ctx.scale(cam.zoom, cam.zoom);
-      ctx.rotate(crab.bodyAngle);
-      for (const plot of built) {
-        const sp = crab.rig.shellPoint(plot.u);
-        const art = buildStructure(plot.build.def, clamp(crab.m.shellH / 96, 0.3, 1.1));
-        ctx.save();
-        ctx.translate(sp.x * f, sp.y + 1);
-        ctx.rotate(Math.atan2(sp.nx, -sp.ny) * 0.3 * f);
-        ctx.scale(f, 1);
-        ctx.drawImage(art.cv, -art.ox, -art.oy);
-        ctx.restore();
-      }
-      ctx.restore();
     }
     _drawSpeech(ctx, cam, who) {
       const s = cam.worldToScreen(who.x, who.y - 40);

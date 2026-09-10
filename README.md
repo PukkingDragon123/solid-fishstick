@@ -84,12 +84,23 @@ walking, because the only thing out here worth having is over the next dune.**
 There is no skill menu. There is an orb on your own back, and you can look into
 it — the screen is swallowed by the orb and you wake up inside your own genome.
 
-Everything you can become is one tree. The genes you express are its **roots**,
-glowing where a plant or an animal on your back is currently expressing them.
-Your physical form is the **trunk**: hatchling, juvenile, adult, ancient, with
-the structural evolutions stacked up it. Four **boughs** carry what you have
-learned — Spring, Garden, Fleet, Body. Buying a node does not tick a checkbox:
-the branch grows out to it, puts on bark, and leafs.
+Everything you can become is one tree, and at the start it is not a tree at
+all. It is a seed sitting on the ground with four closed buds around it and a
+double helix rising out of it where the trunk will be. Nothing is laid out in
+advance and greyed out: a branch only exists once it has somewhere to go, and
+the camera frames whatever currently exists — so the screen starts full of one
+sprout and pulls back on its own as you grow.
+
+The genes you express are the **roots**, dormant ones sitting as dim nodules
+under the seed and lighting up as a plant or an animal on your back expresses
+them. Your physical form is the **trunk**: hatchling, juvenile, adult, ancient,
+with the helix of your genome winding up inside it, its rungs lit as far as
+your genome is filled in. Four **boughs** carry what you have learned — Spring,
+Garden, Fleet, Body.
+
+Buying a node does not tick a checkbox. The bud opens, the wood actually pushes
+out and thickens and leafs, and a bright bead of sap runs all the way up from
+the roots into the new growth.
 
 ![The Tree of Life](docs/shot-04-tree.png)
 
@@ -189,19 +200,39 @@ desert. Everything is baked once into a canvas at load.
 
 ### The crab
 
-`js/art/crabart.js` builds the shell from a single profile function that is
-also the source of truth for where you can plant: horizontal bedding like the
-mesas it slept among, eroded shelves, fracture lines, desert varnish streaking
-down the flank, crest spikes, fossil barnacles, and a real stone basin behind
-the crest for the spring to fill.
+The crab is drawn **head-on**, because that is how a crab moves: it does not
+turn to walk, it faces you and goes sideways underneath itself. The camera sits
+a little above the animal, so the top of the shell is a real foreshortened
+surface rather than a silhouette. `shellSurface(a, b)` in `js/art/crabart.js`
+is the single source of truth for that surface — the art is painted from it and
+the garden is planted on it, so a plant can never float off the rock.
+
+The carapace is stamped as a height field over that surface and the shell wall
+is then hung off the lowest pixel of each column of the result, which is what
+makes the whole thing read as one solid animal instead of a rock with legs.
+On it: horizontal bedding like the mesas it slept among, eroded shelves,
+fracture lines, desert varnish streaking down the flank, crest spikes, fossil
+barnacles, and a real stone basin behind the crest for the spring to fill.
+The face is a chitin plate set into the front wall with two shallow orbits in
+it, and the eyes are small hard black beads on short stalks with one live
+specular dot — crabs do not have big expressive eyes, and pretending otherwise
+makes them look like a toy.
+
+You start as a **hatchling**: a coin with legs, about a quarter the width of
+the adult, whose shell is rounder and whose legs are stubbier. Every number in
+`crabMetrics()` interpolates on one growth parameter, so growing up is the same
+animal at a different age rather than a different sprite.
 
 `js/entities/crab.js` walks it. Nothing is a sprite animation: each leg keeps a
 planted foot in world space, takes a step when the body has carried it too far,
 and every joint is solved with two-bone IK — so a leg on a dune slope and a leg
-in a hollow bend differently on the same frame. The body then rides on a line
-fitted through whichever feet are currently on the ground, which is what makes
-it tilt going uphill, and rocks across its own gait as it scuttles. The eyes
-are pale globes with the pupils drawn live, so the stalks actually track.
+in a hollow bend differently on the same frame. Each foot wants to be well
+outboard of its own socket, so the legs splay the way a crab's do — knees up
+and out, feet planted wider than the shell — and the four back legs contact
+further away, which on screen puts them higher up and behind the body. The
+body then rides on a line fitted through whichever feet are currently on the
+ground, which is what makes it tilt going uphill, and rocks across its own gait
+as it scuttles. The eye stalks track live, and the maxillipeds never stop.
 
 ### Plants and animals
 

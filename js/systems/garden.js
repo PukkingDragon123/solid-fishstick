@@ -8,6 +8,7 @@
 
 import { clamp, clamp01, lerp, damp, TAU } from '../lib/math.js';
 import { buildPlant } from '../art/floraart.js';
+import { buildStructure } from '../art/buildart.js';
 import { FLORA_BY_ID, STAGE_NAME } from '../data/flora.js';
 import { MATERIALS } from '../lib/palette.js';
 
@@ -30,21 +31,25 @@ export class Garden {
   buildPlots(n) {
     // dry plots run along the crest and the front slope; two wet plots sit
     // in the basin itself and only take plants that want their feet wet
+    // beds are laid across the top of the shell: `a` runs left to right,
+    // `b` runs from the far rim to the near one. Two sit in the basin itself
+    // and only take plants that want their feet wet.
     const spots = [
-      { u: 0.48, row: 1 }, { u: 0.64, row: 1 }, { u: 0.56, row: 0 },
-      { u: 0.75, row: 0 }, { u: 0.82, row: 1 }, { u: 0.40, row: 0 },
-      { u: 0.91, row: 1 }, { u: 0.88, row: 0 }, { u: 0.70, row: 1 },
-      { u: 0.44, row: 1 },
-      { u: 0.17, row: 1, wet: true }, { u: 0.29, row: 0, wet: true },
+      { a: 0.00, b: 0.52 }, { a: -0.44, b: 0.40 }, { a: 0.44, b: 0.40 },
+      { a: -0.66, b: 0.02 }, { a: 0.66, b: 0.02 }, { a: -0.26, b: 0.76 },
+      { a: 0.26, b: 0.76 }, { a: -0.74, b: -0.34 }, { a: 0.74, b: -0.34 },
+      { a: 0.00, b: 0.18 },
+      { a: -0.19, b: -0.30, wet: true }, { a: 0.19, b: -0.30, wet: true },
     ];
     this.plots = spots.map((s, i) => ({
       ...s, i, unlocked: i < n, plant: null,
+      u: (s.b + 1) / 2,
       sway: Math.random() * TAU, variant: i % 3,
     }));
   }
 
   /** Plants are grown to fit the shell they live on. */
-  plantScale(crab) { return clamp(crab.m.shellH / 84, 0.3, 1.3); }
+  plantScale(crab) { return clamp(crab.m.rx / 78, 0.16, 0.95); }
 
   get unlockedCount() { return this.plots.filter((p) => p.unlocked).length; }
   freeFor(def) {
@@ -139,7 +144,7 @@ export class Garden {
     const over = this.pond > 0.88;
     const crabRef = crab;
     if (over && this.falls.length < 3 && Math.random() < dt * 6) {
-      this.falls.push({ u: (crab && crab.m.spillU || 0.045) + Math.random() * 0.03, t: 0, life: 1.6 + Math.random() * 2.6, w: 1 + Math.random() * 1.4 });
+      this.falls.push({ a: (Math.random() - 0.5) * 0.5, t: 0, life: 1.6 + Math.random() * 2.6, w: 1 + Math.random() * 1.4 });
     }
     for (let i = this.falls.length - 1; i >= 0; i--) {
       const f = this.falls[i];
@@ -147,7 +152,7 @@ export class Garden {
       if (f.t > f.life || (!over && f.t > 0.6)) this.falls.splice(i, 1);
     }
     if (over && crab && this.game.fx && Math.random() < dt * 22) {
-      const lip = crab.shellWorld(0.07);
+      const lip = crab.shellWorldAB(0, crab.m.basin.b + crab.m.basin.r);
       const gy = this.game.terrain.surfaceY(lip.x);
       this.game.fx.splash(lip.x, gy, 1, 16);
       if (Math.random() < 0.35) this.game.fx.mist(lip.x, gy - 6, 1, 10);
@@ -166,9 +171,7 @@ export class Garden {
   // -- placement ------------------------------------------------------------
 
   plotWorld(plot) {
-    const crab = this.game.crab;
-    const p = crab.shellWorld(plot.u);
-    return p;
+    return this.game.crab.shellWorldAB(plot.a, plot.b);
   }
 
   /** Which plot is nearest a world point, for tap-to-plant. */
@@ -185,42 +188,49 @@ export class Garden {
 
   // -- drawing --------------------------------------------------------------
 
-  /** Plants on the far side of the shell, behind the crab's body. */
+  /** Anything rooted beyond the crown, which the shell itself occludes. */
   drawFar(ctx, crab) { this._drawRow(ctx, crab, 0); }
-  /** Plants on the near side, plus the water. */
+  /** The basin, then everything on the near half of the dome. */
   drawNear(ctx, crab) {
     this._drawWater(ctx, crab);
     this._drawRow(ctx, crab, 1);
   }
 
   _drawRow(ctx, crab, row) {
-    const m = crab.m;
-    const f = crab.faceT < 0 ? -1 : 1;
     const wind = this.game.weather ? this.game.weather.windSpeed : 0.3;
     ctx.save();
-    ctx.rotate(crab.bodyAngle);
-    const list = this.plots.filter((p) => p.row === row && p.plant);
-    list.sort((a, b) => (a.u - b.u) * f);
+    ctx.rotate(crab.bodyAngle + crab.roll);
+    const list = this.plots
+      .filter((p) => (p.plant || p.build) && (p.b < -0.05 ? 0 : 1) === row)
+      .sort((x, y) => x.b - y.b);
     for (const plot of list) {
-      const pl = plot.plant;
-      const sp = crab.rig.shellPoint(plot.u);
-      const art = buildPlant(pl.def, pl.stage, pl.variant, this.plantScale(crab), row === 0 ? 0.34 : 0);
-      const sway = Math.sin(this.t * (1.3 + plot.i * 0.13) + plot.sway) * (0.035 + wind * 0.07)
-        + Math.sin(this.t * 3.1 + plot.sway) * 0.012;
-      // plants stand up, but lean a little with the rock they root in
-      const tilt = Math.atan2(sp.nx, -sp.ny) * 0.26 * f;
+      const sp = crab.rig.shellSurface(plot.a, plot.b);
+      // things further away are smaller and cooler, the same as any other depth
+      const depth = (plot.b + 1) / 2;
+      const scale = lerp(0.80, 1.06, depth);
+      const sway = Math.sin(this.t * (1.3 + plot.i * 0.13) + plot.sway) * (0.03 + wind * 0.06)
+        + Math.sin(this.t * 3.1 + plot.sway) * 0.010;
+      const tilt = Math.atan2(sp.nx, -sp.ny) * 0.30;
       ctx.save();
-      ctx.translate(sp.x * f, sp.y + 1);
+      ctx.translate(sp.x, sp.y + 1);
       ctx.rotate(tilt + sway);
-      const wilt = 1 - pl.thirst * 0.22;
-      ctx.scale(f * wilt, wilt);
-      ctx.drawImage(art.cv, -art.ox, -art.oy);
-      ctx.restore();
-      // a dry plant sheds
-      if (pl.thirst > 0.75 && Math.random() < 0.02) {
-        const w = this.plotWorld(plot);
-        this.game.fx?.drift(w.x, w.y - 3, '#8a7338', 1);
+      if (plot.plant) {
+        const pl = plot.plant;
+        const wilt = 1 - pl.thirst * 0.22;
+        const art = buildPlant(pl.def, pl.stage, pl.variant,
+          this.plantScale(crab) * scale, plot.b < -0.05 ? 0.30 : 0);
+        ctx.scale(wilt, wilt);
+        ctx.drawImage(art.cv, -art.ox, -art.oy);
+        if (pl.thirst > 0.75 && Math.random() < 0.02) {
+          const w = this.plotWorld(plot);
+          this.game.fx?.drift(w.x, w.y - 3, '#8a7338', 1);
+        }
+      } else if (plot.build) {
+        const art = buildStructure(plot.build.def,
+          clamp(crab.m.rx / 52, 0.24, 1.1) * scale);
+        ctx.drawImage(art.cv, -art.ox, -art.oy);
       }
+      ctx.restore();
     }
     ctx.restore();
   }
@@ -228,109 +238,94 @@ export class Garden {
   /** The basin, the spring and the fall - all of the shell's water. */
   _drawWater(ctx, crab) {
     const m = crab.m;
-    const f = crab.faceT < 0 ? -1 : 1;
-    const [b0, b1] = m.basin;
     ctx.save();
-    ctx.rotate(crab.bodyAngle);
+    ctx.rotate(crab.bodyAngle + crab.roll);
 
     if (this.pond > 0.02) {
-      // the basin is a real dip in the shell, held by a stone rim behind it.
-      // water fills to whichever rim is lower - that is the one it spills over.
-      const dip = (b0 + b1) * 0.5;
-      const uAt = (u) => crab.rig.shellPoint(u);
-      const floorY = uAt(dip).y;
-      const spillY = Math.max(uAt(b0 - 0.045).y, uAt(b1 + 0.035).y);
-      const level = lerp(floorY - 0.4, spillY, clamp01(this.pond));
-
-      if (level < floorY - 0.2) {
-        // walk out from the dip until the rock climbs above the waterline
-        let uL = dip, uR = dip;
-        for (let u = dip; u >= 0.01; u -= 0.006) { if (uAt(u).y < level) break; uL = u; }
-        for (let u = dip; u <= 0.99; u += 0.006) { if (uAt(u).y < level) break; uR = u; }
-        const N = 30;
-        const pts = [];
-        for (let i = 0; i <= N; i++) pts.push(uAt(lerp(uL, uR, i / N)));
-        ctx.beginPath();
-        ctx.moveTo(pts[0].x * f, level);
-        for (const sp of pts) ctx.lineTo(sp.x * f, Math.max(sp.y, level));
-        ctx.lineTo(pts[pts.length - 1].x * f, level);
-        ctx.closePath();
-        const deep = Math.max(...pts.map((q) => q.y));
-        const grad = ctx.createLinearGradient(0, level - 1, 0, deep + 1);
-        grad.addColorStop(0, '#8adcea');
-        grad.addColorStop(0.35, '#2d93a9');
-        grad.addColorStop(1, '#0f3b49');
-        ctx.fillStyle = grad;
-        ctx.fill();
-        ctx.save();
-        ctx.clip();
-        const xa = pts[0].x * f, xb = pts[pts.length - 1].x * f;
-        const x0 = Math.min(xa, xb), wpx = Math.max(2, Math.abs(xb - xa));
-        ctx.fillStyle = '#d6f2f8';
-        ctx.fillRect(Math.round(x0), Math.round(level), Math.round(wpx), 1);
-        for (let i = 0; i < 6; i++) {
-          const ph = this.t * (0.6 + i * 0.13) + i * 1.9;
-          const gx = x0 + (Math.sin(ph) * 0.5 + 0.5) * wpx;
-          ctx.globalAlpha = 0.5 - (i % 3) * 0.13;
-          ctx.fillStyle = '#eafbfd';
-          ctx.fillRect(Math.round(gx - 2), Math.round(level + 1 + (i % 3)), 3 + (i % 2) * 2, 1);
-        }
-        // ripple rings where the spring breaks the surface
-        if (this.spring > 0.05) {
-          const org = crab.rig.sockets.organ;
-          ctx.globalAlpha = clamp01(this.spring) * 0.7;
-          ctx.strokeStyle = '#eafbfd';
-          ctx.lineWidth = 1;
-          for (let i = 0; i < 3; i++) {
-            const r = ((this.t * 14 + i * 5) % 15) + 1;
-            ctx.globalAlpha = clamp01(this.spring) * (1 - r / 16) * 0.6;
-            ctx.beginPath();
-            ctx.ellipse(org.x * f, level + 1, r, r * 0.3, 0, 0, Math.PI * 2);
-            ctx.stroke();
-          }
-        }
-        ctx.globalAlpha = 1;
-        ctx.restore();
+      // seen from above the pool is an ellipse that widens as it fills
+      const c = crab.rig.shellSurface(m.basin.a, m.basin.b);
+      const fill = Math.pow(clamp01(this.pond), 0.55);
+      const rx = m.rx * m.basin.r * 0.98 * fill;
+      const ry = rx * 0.42;
+      ctx.save();
+      ctx.beginPath();
+      ctx.ellipse(c.x, c.y, rx, ry, 0, 0, TAU);
+      const g = ctx.createLinearGradient(0, c.y - ry, 0, c.y + ry);
+      g.addColorStop(0, '#1d6f86');
+      g.addColorStop(0.45, '#2f9db4');
+      g.addColorStop(1, '#8adcea');
+      ctx.fillStyle = g;
+      ctx.fill();
+      ctx.clip();
+      // the far lip catches the sky, the near lip is bright
+      ctx.fillStyle = 'rgba(200,238,246,0.30)';
+      ctx.fillRect(c.x - rx, c.y + ry * 0.35, rx * 2, ry);
+      for (let i = 0; i < 7; i++) {
+        const ph = this.t * (0.5 + i * 0.12) + i * 1.7;
+        const gx = c.x + Math.sin(ph) * rx * 0.66;
+        const gy = c.y + ((i % 3) - 1) * ry * 0.42;
+        ctx.globalAlpha = 0.55 - (i % 3) * 0.14;
+        ctx.fillStyle = '#eafbfd';
+        ctx.fillRect(Math.round(gx - rx * 0.16), Math.round(gy), Math.max(1, rx * 0.32), 1);
       }
+      // the spring breaking the surface
+      if (this.spring > 0.05) {
+        const org = crab.rig.sockets.organ;
+        ctx.strokeStyle = '#eafbfd';
+        ctx.lineWidth = 1;
+        for (let i = 0; i < 3; i++) {
+          const rr = ((this.t * 16 + i * 6) % 18) + 1;
+          ctx.globalAlpha = clamp01(this.spring) * (1 - rr / 19) * 0.7;
+          ctx.beginPath();
+          ctx.ellipse(org.x, org.y, rr, rr * 0.42, 0, 0, TAU);
+          ctx.stroke();
+        }
+      }
+      ctx.globalAlpha = 1;
+      ctx.restore();
+      // rim highlight so the pool sits in a bowl rather than on a plate
+      ctx.strokeStyle = 'rgba(230,248,252,0.5)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.ellipse(c.x, c.y, rx, ry, 0, Math.PI, TAU);
+      ctx.stroke();
     }
 
     // the spring itself: a plume out of the organ
     if (this.spring > 0.02) {
       const org = crab.rig.sockets.organ;
-      const x = org.x * f, y = org.y;
-      const h = 4 + this.spring * 9;
+      const h = 4 + this.spring * 10;
       ctx.globalAlpha = clamp01(this.spring);
       ctx.fillStyle = '#c4ecf1';
       for (let i = 0; i < 5; i++) {
         const ph = this.t * 9 + i * 1.3;
         const w = 3 - i * 0.4;
-        ctx.fillRect(Math.round(x - w / 2 + Math.sin(ph) * 1.2), Math.round(y - h * (i / 5)), Math.max(1, w), 2);
+        ctx.fillRect(Math.round(org.x - w / 2 + Math.sin(ph) * 1.2),
+          Math.round(org.y - h * (i / 5)), Math.max(1, w), 2);
       }
       ctx.globalAlpha = 1;
     }
 
-    // overflow: strands falling off the back edge of the shell
-    if (this.falls.length) {
-      for (const fl of this.falls) {
-        const sp = crab.rig.shellPoint(fl.u);
-        const x = sp.x * f, y0 = sp.y;
-        const drop = crab.standH + m.bodyH * 0.6;
-        const age = clamp01(fl.t / 0.4);
-        ctx.globalAlpha = 0.72 * age * clamp01((fl.life - fl.t) / 0.5);
-        const g = ctx.createLinearGradient(0, y0, 0, y0 + drop);
-        g.addColorStop(0, '#c4ecf1');
-        g.addColorStop(0.3, '#5fc6d8');
-        g.addColorStop(1, 'rgba(120,214,228,0.18)');
-        ctx.fillStyle = g;
-        const wob = Math.sin(this.t * 4 + fl.u * 20) * 1.2;
-        ctx.fillRect(Math.round(x - fl.w / 2), Math.round(y0), Math.max(1, fl.w), Math.round(drop * age));
-        ctx.fillRect(Math.round(x - fl.w / 2 + wob), Math.round(y0 + drop * 0.55 * age),
-          Math.max(1, fl.w * 0.7), Math.round(drop * 0.45 * age));
-        // white water at the lip
-        ctx.fillStyle = '#eafbfd';
-        ctx.fillRect(Math.round(x - fl.w / 2 - 1), Math.round(y0 - 1), Math.max(1, fl.w) + 2, 2);
-        ctx.globalAlpha = 1;
-      }
+    // overflow: it comes over the near lip of the basin and down the shell
+    for (const fl of this.falls) {
+      const spill = crab.rig.shellSurface(fl.a, m.basin.b + m.basin.r * 0.92);
+      const drop = crab.standH + m.faceH * 0.4;
+      const age = clamp01(fl.t / 0.4);
+      ctx.globalAlpha = 0.72 * age * clamp01((fl.life - fl.t) / 0.5);
+      const g = ctx.createLinearGradient(0, spill.y, 0, spill.y + drop);
+      g.addColorStop(0, '#c4ecf1');
+      g.addColorStop(0.3, '#5fc6d8');
+      g.addColorStop(1, 'rgba(120,214,228,0.16)');
+      ctx.fillStyle = g;
+      const wob = Math.sin(this.t * 4 + fl.a * 20) * 1.1;
+      ctx.fillRect(Math.round(spill.x - fl.w / 2), Math.round(spill.y),
+        Math.max(1, fl.w), Math.round(drop * age));
+      ctx.fillRect(Math.round(spill.x - fl.w / 2 + wob), Math.round(spill.y + drop * 0.55 * age),
+        Math.max(1, fl.w * 0.7), Math.round(drop * 0.45 * age));
+      ctx.fillStyle = '#eafbfd';
+      ctx.fillRect(Math.round(spill.x - fl.w / 2 - 1), Math.round(spill.y - 1),
+        Math.max(1, fl.w) + 2, 2);
+      ctx.globalAlpha = 1;
     }
     ctx.restore();
   }

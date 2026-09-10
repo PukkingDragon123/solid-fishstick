@@ -422,11 +422,11 @@ export class UI {
     if (!plot) return;
     const wp = g.garden.plotWorld(plot);
     const s = cam.worldToScreen(wp.x, wp.y);
-    const sp = crab.rig.shellPoint(plot.u);
+    const sp = crab.rig.shellSurface(plot.a, plot.b);
     ctx.save();
     ctx.translate(Math.round(s.x), Math.round(s.y));
     ctx.scale(cam.zoom, cam.zoom);
-    ctx.rotate(Math.atan2(sp.nx, -sp.ny) * 0.26);
+    ctx.rotate(Math.atan2(sp.nx, -sp.ny) * 0.30);
     const bob = Math.sin(this.t * 4) * 0.6;
     ctx.translate(0, bob);
     ctx.globalAlpha = 0.62 + Math.sin(this.t * 5) * 0.12;
@@ -436,7 +436,7 @@ export class UI {
       ctx.drawImage(art.cv, -art.ox, -art.oy);
     } else {
       const def = BUILD_BY_ID[this.placing.id];
-      const art = buildStructure(def, clamp(crab.m.shellH / 96, 0.3, 1.1));
+      const art = buildStructure(def, clamp(crab.m.rx / 52, 0.24, 1.1));
       ctx.drawImage(art.cv, -art.ox, -art.oy);
     }
     ctx.restore();

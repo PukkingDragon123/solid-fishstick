@@ -255,7 +255,10 @@ export class Creature {
   leaveShell() { this.onShell = false; }
 
   _rideShell(dt, crab) {
-    const p = crab.shellWorld(this.shellU);
+    // riders perch on the near half of the dome, spread across it
+    const a = Math.cos(this.shellU * Math.PI * 2) * 0.6;
+    const b = 0.15 + Math.sin(this.shellU * Math.PI * 2) * 0.35;
+    const p = crab.shellWorldAB(a, b);
     this.x = damp(this.x, p.x, 0.0001, dt);
     this.y = damp(this.y, p.y - this.rig.standH * 0.6, 0.0001, dt);
     this.faceT = damp(this.faceT, crab.faceT, 0.002, dt);
