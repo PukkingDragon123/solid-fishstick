@@ -20,10 +20,11 @@
 //   - Buying one is an event: the ring closes, sap runs out from the middle,
 //     and the organ at the end of that arm visibly grows.
 
-import { clamp, clamp01, lerp, damp, TAU, easeOutCubic, easeInOutCubic } from '../lib/math.js';
+import { clamp, clamp01, lerp, damp, TAU, easeOutCubic, easeInOutCubic, mulberry32 } from '../lib/math.js';
 import { drawText, textWidth, wrapText, LINE_H } from '../lib/font.js';
 import { SKILLS, SKILL_BY_ID, BRANCHES, EVOLUTIONS, GENES, GENE_BY_ID } from '../data/progress.js';
 import { organArt, orbArt } from '../art/anatomy.js';
+import { crabPlates } from '../art/crabpose.js';
 import { drawNodeIcon } from './icons.js';
 
 // -- the six arms -----------------------------------------------------------
@@ -44,6 +45,7 @@ const R_GENE = 92;            // the ring of genes around the seed
 const R_TIER = [210, 330, 450, 570];   // how far out each tier sits
 const R_ORGAN = 700;          // and the organ that the arm ends in
 const FORK = [34, 46, 58, 70];         // how far a fork steps off the axis
+const ORGAN_GAP = 165;        // how far past the last bead its organ hangs
 
 /** Where an arm points. 0 is straight up. */
 function armDir(deg) {
@@ -69,7 +71,7 @@ function layout() {
     const p = place(0, R_TIER[Math.min(3, i)] + Math.floor(i / 4) * 120, 0);
     nodes.push({
       id: 'evo:' + e.id, kind: 'evo', data: e, arm: 'form', tier: i,
-      x: p.x, y: p.y, r: 21, color: '#c9e08a', big: true,
+      x: p.x, y: p.y, r: 25, color: '#c9e08a', big: true,
     });
     links.push({
       from: i === 0 ? '__seed' : 'evo:' + EVOLUTIONS[i - 1].id,
@@ -85,7 +87,7 @@ function layout() {
       const p = place(arm.deg, R_TIER[Math.min(3, s.x)], s.y * FORK[Math.min(3, s.x)]);
       nodes.push({
         id: 'skill:' + s.id, kind: 'skill', data: s, arm: arm.id, tier: s.x,
-        x: p.x, y: p.y, r: s.x >= 3 ? 20 : 15, color: arm.colour, big: s.x >= 3,
+        x: p.x, y: p.y, r: s.x >= 3 ? 24 : 18, color: arm.colour, big: s.x >= 3,
       });
       if (!s.req.length) links.push({ from: '__seed', to: 'skill:' + s.id, arm: arm.id, w: 6 });
       else for (const r of s.req) links.push({ from: 'skill:' + r, to: 'skill:' + s.id, arm: arm.id, w: 5 });
@@ -98,7 +100,7 @@ function layout() {
     nodes.push({
       id: 'gene:' + g.id, kind: 'gene', data: g, arm: null,
       x: Math.cos(th) * R_GENE, y: Math.sin(th) * R_GENE * 0.86,
-      r: 7, color: '#7fe0c8',
+      r: 8, color: '#7fe0c8',
     });
   });
 
@@ -124,6 +126,8 @@ export class TreeScreen {
     this.grow = {};
     this.seen = {};
     this.pulses = [];
+    this.rings = [];
+    this.spores = [];
     this.motes = [];
     this.t = 0;
     this.beat = 0;
@@ -143,6 +147,16 @@ export class TreeScreen {
     this.from = { x: fromX, y: fromY };
     this.t = 0;
     this.pulses.length = 0;
+    this.rings.length = 0;
+    this.spores = [];
+    for (let i = 0; i < 46; i++) {
+      this.spores.push({
+        a: Math.random() * TAU, r: 120 + Math.random() * 620,
+        sp: (0.05 + Math.random() * 0.16) * (Math.random() < 0.5 ? -1 : 1),
+        rise: 6 + Math.random() * 22, p: Math.random() * TAU,
+        c: ARMS[(Math.random() * ARMS.length) | 0].colour,
+      });
+    }
     for (const n of this.L.nodes) {
       this.grow[n.id] = this.owned(n) ? 1 : 0;
       this.seen[n.id] = this.visible(n) ? 1 : 0;
@@ -229,12 +243,28 @@ export class TreeScreen {
       if (n.kind === 'gene') continue;
       const a = Math.max(this.grow[n.id] ?? 0, (this.seen[n.id] ?? 0) * 0.95);
       if (a < 0.08) continue;
-      const r = n.r + 54;
+      const r = n.r + 34;
       x0 = Math.min(x0, n.x - r); x1 = Math.max(x1, n.x + r);
       y0 = Math.min(y0, n.y - r); y1 = Math.max(y1, n.y + r);
     }
+    // the organs hang past the end of each arm; frame them too, or they sit
+    // half off the screen with their labels under the chrome
+    for (const arm of ARMS) {
+      if (arm.id === 'form' || this.armLevel(arm.id) <= 0.001) continue;
+      let reach = R_TIER[0];
+      for (const n of this.L.nodes) {
+        if (n.arm !== arm.id) continue;
+        if ((this.seen[n.id] ?? 0) < 0.4) continue;
+        reach = Math.max(reach, Math.hypot(n.x, n.y));
+      }
+      const d = armDir(arm.deg);
+      const ox = d.x * (reach + ORGAN_GAP), oy = d.y * (reach + ORGAN_GAP);
+      const r = 72;
+      x0 = Math.min(x0, ox - r); x1 = Math.max(x1, ox + r);
+      y0 = Math.min(y0, oy - r); y1 = Math.max(y1, oy + r);
+    }
     const w = Math.max(240, x1 - x0), h = Math.max(200, y1 - y0);
-    const z = clamp(Math.min((vw - 30) / w, (vh - 76) / h), 0.26, 1.9);
+    const z = clamp(Math.min((vw - 20) / w, (vh - 52) / h), 0.26, 2.2);
     this.target.x = (x0 + x1) / 2;
     this.target.y = (y0 + y1) / 2;
     this.target.z = z;
@@ -248,7 +278,11 @@ export class TreeScreen {
     this.flash = Math.max(0, this.flash - dt * 1.6);
     // slow going in - it is a journey through your own shell - and quick on
     // the way out, because waking up is not a journey
-    this.dive = damp(this.dive, this.diving ? 1 : 0, this.diving ? 0.14 : 0.0004, dt);
+    // a paced journey in - a second and a bit of falling through your own
+    // shell - and a quick snap back out, because waking up is not a journey
+    this.dive = this.diving
+      ? Math.min(1, this.dive + dt / 1.25)
+      : Math.max(0, this.dive - dt / 0.30);
     if (!this.diving && this.dive < 0.02) return false;
 
     for (const n of this.L.nodes) {
@@ -263,6 +297,11 @@ export class TreeScreen {
       const p = this.pulses[i];
       p.t += dt / p.dur;
       if (p.t >= 1) this.pulses.splice(i, 1);
+    }
+    for (let i = this.rings.length - 1; i >= 0; i--) {
+      const r = this.rings[i];
+      r.t += dt / r.dur;
+      if (r.t >= 1) this.rings.splice(i, 1);
     }
 
     const i = this.game.input;
@@ -322,12 +361,43 @@ export class TreeScreen {
 
     this._drawSky(ctx, vw, vh, fade);
     this._drawBody(ctx, vw, vh, fade);
+    // a pool of light under the genome, so beads read off the body, and a
+    // vignette to keep the eye in the middle
+    {
+      const O = this._S(0, 0, vw, vh);
+      const R = Math.max(vw, vh) * 0.52;
+      const g = ctx.createRadialGradient(O.x, O.y, 0, O.x, O.y, R);
+      g.addColorStop(0, 'rgba(120,190,210,0.15)');
+      g.addColorStop(0.45, 'rgba(60,110,140,0.06)');
+      g.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = fade;
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(O.x, O.y, R, 0, TAU); ctx.fill();
+      ctx.globalCompositeOperation = 'source-over';
+      const v = ctx.createRadialGradient(vw / 2, vh / 2, Math.min(vw, vh) * 0.32,
+        vw / 2, vh / 2, Math.max(vw, vh) * 0.74);
+      v.addColorStop(0, 'rgba(0,0,0,0)');
+      v.addColorStop(1, 'rgba(2,3,7,0.62)');
+      ctx.fillStyle = v;
+      ctx.fillRect(0, 0, vw, vh);
+    }
+
     this._drawArms(ctx, vw, vh, fade);
     this._drawLinks(ctx, vw, vh, fade);
     this._drawOrgans(ctx, vw, vh, fade);
     const hover = this._drawNodes(ctx, vw, vh, fade);
     this._drawPulses(ctx, vw, vh);
     this._drawChrome(ctx, vw, vh, fade, hover);
+
+    if (this.flash > 0.01) {
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = fade * this.flash * this.flash * 0.30;
+      ctx.fillStyle = '#9fe8c0';
+      ctx.fillRect(0, 0, vw, vh);
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.globalAlpha = fade;
+    }
 
     ctx.restore();
   }
@@ -360,6 +430,31 @@ export class TreeScreen {
       ctx.moveTo(cx + Math.cos(a) * r0, cy + Math.sin(a) * r0);
       ctx.lineTo(cx + Math.cos(a) * (r0 + len), cy + Math.sin(a) * (r0 + len));
       ctx.stroke();
+    }
+
+    // you, rushing up at the camera. The same plates the genome is drawn on,
+    // scaled from a speck to bigger than the screen, so the thing you dive
+    // into is visibly yourself
+    {
+      const pl = this._plates();
+      const kk = (Math.pow(t, 2.1) * 5.4 + 0.05) * Math.max(vw / pl.w, vh / pl.h);
+      const w = pl.w * kk, h = pl.h * kk;
+      const a = clamp01(1.35 - t * 1.7) * clamp01(t * 5);
+      if (a > 0.01) {
+        ctx.save();
+        ctx.imageSmoothingEnabled = false;
+        ctx.globalAlpha = a * 0.92;
+        ctx.drawImage(pl.fill, cx - w / 2, cy - h / 2, w, h);
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = a * 0.8;
+        ctx.drawImage(pl.ghost, cx - w / 2, cy - h / 2, w, h);
+        const rw = pl.rim.width * kk, rh = pl.rim.height * kk;
+        ctx.globalAlpha = a;
+        ctx.shadowColor = 'rgba(150,240,255,0.9)';
+        ctx.shadowBlur = 18;
+        ctx.drawImage(pl.rim, cx - rw / 2, cy - rh / 2, rw, rh);
+        ctx.restore();
+      }
     }
 
     // the three layers of your own shell, passing you on the way through
@@ -399,92 +494,187 @@ export class TreeScreen {
   // -- the sky --------------------------------------------------------------
 
   _skyPlate(vw, vh) {
-    const w = Math.ceil(vw * 1.3), h = Math.ceil(vh * 1.3);
-    if (this._plate && this._plate.width === w && this._plate.height === h) return this._plate;
+    const S = Math.ceil(Math.hypot(vw, vh) * 1.12);
+    if (this._plate && this._plate.width === S) return this._plate;
     const cv = document.createElement('canvas');
-    cv.width = w; cv.height = h;
+    cv.width = S; cv.height = S;
     const c = cv.getContext('2d');
     c.imageSmoothingEnabled = false;
-    this._paintSky(c, w, h);
+    this._paintSky(c, S);
     this._plate = cv;
     return cv;
   }
 
   /**
-   * Outside you is the sky you have never been above ground long enough to
-   * look at. Painted once: a galaxy on its side, a bright core, dust across
-   * it, and cold clouds of gas hanging off the arm.
+   * Outside you is a galaxy, painted once into a square plate so it can be
+   * turned. It is built the way one actually looks: a bulge, two logarithmic
+   * arms scattered with stars rather than drawn as bands, pink nurseries
+   * strung along their leading edges, dust lanes eating the inside of each
+   * arm, and a halo of old stars around the whole thing - all of it tipped
+   * over so you are looking at it from slightly above its plane.
    */
-  _paintSky(ctx, vw, vh) {
-    const deep = ctx.createLinearGradient(0, 0, vw * 0.35, vh);
-    deep.addColorStop(0, '#06050f');
-    deep.addColorStop(0.45, '#0b0718');
-    deep.addColorStop(1, '#040509');
-    ctx.fillStyle = deep;
-    ctx.fillRect(0, 0, vw, vh);
+  _paintSky(ctx, S) {
+    const R = S / 2;
+    const rng = mulberry32(0x5eed1e);
+    const px = (x, y, col, a, w = 1) => {
+      ctx.globalAlpha = a;
+      ctx.fillStyle = col;
+      ctx.fillRect(Math.round(x), Math.round(y), w, w);
+    };
 
-    const R = Math.max(vw, vh);
-    ctx.save();
-    ctx.translate(vw * 0.66, vh * 0.30);
-    ctx.rotate(-0.46);
-    // the arm, as three nested lenses of light
-    for (const [flat, a, c] of [[0.46, 0.10, '120,140,215'], [0.26, 0.12, '195,205,250'], [0.12, 0.16, '255,248,232']]) {
-      ctx.save();
-      ctx.scale(1, flat);
-      const g = ctx.createRadialGradient(0, 0, 0, 0, 0, R * 0.95);
-      g.addColorStop(0, `rgba(${c},${a})`);
-      g.addColorStop(0.4, `rgba(${c},${a * 0.72})`);
-      g.addColorStop(1, `rgba(${c},0)`);
-      ctx.fillStyle = g;
-      ctx.beginPath(); ctx.arc(0, 0, R * 0.95, 0, TAU); ctx.fill();
-      ctx.restore();
+    // deep space
+    const deep = ctx.createRadialGradient(R, R, 0, R, R, R);
+    deep.addColorStop(0, '#0d0a1c');
+    deep.addColorStop(0.45, '#080612');
+    deep.addColorStop(1, '#030308');
+    ctx.fillStyle = deep;
+    ctx.fillRect(0, 0, S, S);
+
+    // far field, before anything else: the universe behind the galaxy
+    for (let i = 0; i < 2600; i++) {
+      const x = rng() * S, y = rng() * S;
+      const b = rng();
+      px(x, y, b > 0.94 ? '#ffd9b0' : b > 0.86 ? '#b8d0ff' : '#e8ecf8', 0.10 + b * 0.35);
     }
-    // the core
-    const core = ctx.createRadialGradient(0, 0, 0, 0, 0, R * 0.30);
-    core.addColorStop(0, 'rgba(255,248,224,0.40)');
-    core.addColorStop(0.22, 'rgba(255,214,150,0.22)');
-    core.addColorStop(0.65, 'rgba(170,130,200,0.07)');
-    core.addColorStop(1, 'rgba(0,0,0,0)');
-    ctx.fillStyle = core;
-    ctx.beginPath(); ctx.ellipse(0, 0, R * 0.30, R * 0.13, 0, 0, TAU); ctx.fill();
-    // dust across the front of it
-    for (let i = 0; i < 4; i++) {
-      const yy = (i - 1.4) * R * 0.048;
-      ctx.fillStyle = `rgba(5,3,9,${0.10 + (i % 2) * 0.06})`;
-      ctx.beginPath();
-      ctx.moveTo(-R * 1.4, yy);
-      ctx.quadraticCurveTo(0, yy + R * 0.05 * (i % 2 ? 1 : -1), R * 1.4, yy + R * 0.018);
-      ctx.lineTo(R * 1.4, yy + R * 0.042);
-      ctx.quadraticCurveTo(0, yy + R * 0.05 * (i % 2 ? 1 : -1) + R * 0.042, -R * 1.4, yy + R * 0.042);
-      ctx.closePath();
-      ctx.fill();
+
+    ctx.save();
+    ctx.translate(R, R);
+    ctx.rotate(-0.38);
+    ctx.scale(1, 0.46);                 // the tilt of the disc
+
+    const RG = R * 0.90;
+    // the disc glow the arms sit in
+    const disc = ctx.createRadialGradient(0, 0, 0, 0, 0, RG);
+    disc.addColorStop(0, 'rgba(255,242,214,0.30)');
+    disc.addColorStop(0.10, 'rgba(255,206,150,0.20)');
+    disc.addColorStop(0.34, 'rgba(150,160,230,0.13)');
+    disc.addColorStop(0.72, 'rgba(88,104,190,0.06)');
+    disc.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = disc;
+    ctx.beginPath(); ctx.arc(0, 0, RG, 0, TAU); ctx.fill();
+
+    // two arms, each a stream of stars scattered around a logarithmic spiral
+    const B = 0.30;
+    const arm = (turn, tint) => {
+      const N = 5200;
+      for (let i = 0; i < N; i++) {
+        const u = Math.pow(rng(), 0.62);
+        const th = u * 5.0 + turn;
+        const r = RG * 0.085 * Math.exp(B * th);
+        if (r > RG) continue;
+        // scatter: tight near the core, loose out in the fringe
+        const spread = RG * (0.018 + u * 0.085);
+        const g1 = (rng() + rng() + rng() - 1.5) * spread;
+        const g2 = (rng() + rng() + rng() - 1.5) * spread;
+        const x = Math.cos(th) * r + g1, y = Math.sin(th) * r + g2;
+        const d = Math.hypot(x, y) / RG;
+        const b = rng();
+        let col = '#dfe6ff';
+        if (b > 0.965) col = '#ff9ec0';               // a nursery
+        else if (b > 0.90) col = '#9fc4ff';
+        else if (d < 0.30 && b > 0.55) col = tint;
+        px(x, y, col, (0.16 + rng() * 0.62) * (1 - d * 0.45), b > 0.988 ? 2 : 1);
+        if (b > 0.9955) {
+          // the big ones bloom
+          const gg = ctx.createRadialGradient(x, y, 0, x, y, RG * 0.02);
+          gg.addColorStop(0, 'rgba(255,190,220,0.55)');
+          gg.addColorStop(1, 'rgba(255,120,180,0)');
+          ctx.globalAlpha = 0.8;
+          ctx.fillStyle = gg;
+          ctx.beginPath(); ctx.arc(x, y, RG * 0.02, 0, TAU); ctx.fill();
+        }
+      }
+    };
+    arm(0, '#ffd9a8');
+    arm(Math.PI, '#ffd0b0');
+
+    // dust, laid along the inside edge of each arm
+    ctx.globalAlpha = 1;
+    for (const turn of [0.36, Math.PI + 0.36]) {
+      for (let i = 0; i < 1700; i++) {
+        const u = Math.pow(rng(), 0.5);
+        const th = u * 4.6 + turn;
+        const r = RG * 0.085 * Math.exp(B * th) * 0.90;
+        if (r > RG) continue;
+        const spread = RG * (0.010 + u * 0.038);
+        const x = Math.cos(th) * r + (rng() + rng() - 1) * spread;
+        const y = Math.sin(th) * r + (rng() + rng() - 1) * spread;
+        px(x, y, '#0a0714', 0.10 + rng() * 0.30, rng() > 0.7 ? 2 : 1);
+      }
+    }
+
+    // the bulge, over the top of the arms where they wind into it
+    ctx.globalAlpha = 1;
+    for (const [rr, col, a] of [[0.30, '255,224,170', 0.16], [0.17, '255,238,200', 0.24], [0.075, '255,252,236', 0.5]]) {
+      const g = ctx.createRadialGradient(0, 0, 0, 0, 0, RG * rr);
+      g.addColorStop(0, `rgba(${col},${a})`);
+      g.addColorStop(0.5, `rgba(${col},${a * 0.5})`);
+      g.addColorStop(1, `rgba(${col},0)`);
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(0, 0, RG * rr, 0, TAU); ctx.fill();
+    }
+    for (let i = 0; i < 2200; i++) {
+      const a = rng() * TAU, r = Math.pow(rng(), 2.4) * RG * 0.30;
+      px(Math.cos(a) * r, Math.sin(a) * r, rng() > 0.6 ? '#fff4d8' : '#ffd9a8', 0.18 + rng() * 0.6);
     }
     ctx.restore();
 
-    // cold gas, hanging off the arm
+    // the halo: old stars, well off the plane, and globular knots
+    ctx.save();
+    ctx.translate(R, R);
+    for (let i = 0; i < 900; i++) {
+      const a = rng() * TAU, r = Math.pow(rng(), 0.7) * R * 0.95;
+      px(Math.cos(a) * r, Math.sin(a) * r * 0.86, '#ffe8c8', 0.06 + rng() * 0.22);
+    }
+    for (let i = 0; i < 9; i++) {
+      const a = rng() * TAU, r = (0.35 + rng() * 0.55) * R;
+      const x = Math.cos(a) * r, y = Math.sin(a) * r * 0.8;
+      const g = ctx.createRadialGradient(x, y, 0, x, y, R * 0.035);
+      g.addColorStop(0, 'rgba(255,240,210,0.35)');
+      g.addColorStop(1, 'rgba(255,220,180,0)');
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(x, y, R * 0.035, 0, TAU); ctx.fill();
+    }
+    ctx.restore();
+
+    // cold gas, hanging in front of everything
     for (const c of [
-      { x: 0.16, y: 0.70, r: 0.50, c: '118,58,168' },
-      { x: 0.82, y: 0.76, r: 0.42, c: '28,108,158' },
-      { x: 0.36, y: 0.14, r: 0.36, c: '178,66,108' },
-      { x: 0.94, y: 0.32, r: 0.32, c: '58,150,148' },
+      { x: 0.14, y: 0.74, r: 0.50, c: '118,58,168' },
+      { x: 0.86, y: 0.78, r: 0.40, c: '28,108,158' },
+      { x: 0.30, y: 0.12, r: 0.34, c: '178,66,108' },
+      { x: 0.92, y: 0.24, r: 0.30, c: '58,150,148' },
     ]) {
-      const cx = c.x * vw, cy = c.y * vh, r = c.r * Math.max(vw, vh) * 0.6;
+      const cx = c.x * S, cy = c.y * S, r = c.r * S * 0.5;
       const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
-      g.addColorStop(0, `rgba(${c.c},0.22)`);
-      g.addColorStop(0.4, `rgba(${c.c},0.09)`);
+      g.addColorStop(0, `rgba(${c.c},0.20)`);
+      g.addColorStop(0.4, `rgba(${c.c},0.08)`);
       g.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.globalAlpha = 1;
       ctx.fillStyle = g;
       ctx.beginPath(); ctx.arc(cx, cy, r, 0, TAU); ctx.fill();
     }
+    ctx.globalAlpha = 1;
   }
 
+  /**
+   * The sky, turning. The galaxy is a plate on a very slow spin; four layers
+   * of near stars slide across it at different rates as you pan, so the
+   * distance between you and it reads. Once in a while something falls.
+   */
   _drawSky(ctx, vw, vh, fade) {
     const plate = this._skyPlate(vw, vh);
-    ctx.fillStyle = '#04060c';
+    ctx.fillStyle = '#03040a';
     ctx.fillRect(0, 0, vw, vh);
-    const ox = clamp(-vw * 0.15 - this.cam.x * 0.04, -vw * 0.3, 0);
-    const oy = clamp(-vh * 0.15 - this.cam.y * 0.04, -vh * 0.3, 0);
-    ctx.drawImage(plate, Math.round(ox), Math.round(oy));
+
+    const S = plate.width;
+    ctx.save();
+    ctx.translate(vw * 0.80 - this.cam.x * 0.012, vh * 0.22 - this.cam.y * 0.012);
+    ctx.rotate(this.t * 0.0045);
+    ctx.globalAlpha = fade;
+    ctx.drawImage(plate, -S / 2, -S / 2);
+    ctx.restore();
 
     for (let layer = 0; layer < 4; layer++) {
       const n = 110 - layer * 24;
@@ -506,6 +696,29 @@ export class TreeScreen {
         }
       }
     }
+
+    // something falling, every twelve seconds or so
+    const period = 11.5;
+    const ph = (this.t % period) / period;
+    if (ph < 0.10) {
+      const seed = Math.floor(this.t / period);
+      const r1 = ((Math.sin(seed * 91.17) * 43758.5) % 1 + 1) % 1;
+      const r2 = ((Math.sin(seed * 33.71) * 24634.1) % 1 + 1) % 1;
+      const k = ph / 0.10;
+      const x0 = r1 * vw, y0 = r2 * vh * 0.5;
+      const len = vw * 0.28;
+      const hx = x0 + len * k, hy = y0 + len * 0.42 * k;
+      ctx.globalAlpha = fade * Math.sin(k * Math.PI) * 0.9;
+      const g = ctx.createLinearGradient(hx - len * 0.22, hy - len * 0.09, hx, hy);
+      g.addColorStop(0, 'rgba(255,255,255,0)');
+      g.addColorStop(1, 'rgba(255,255,255,0.95)');
+      ctx.strokeStyle = g;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(hx - len * 0.22, hy - len * 0.09);
+      ctx.lineTo(hx, hy);
+      ctx.stroke();
+    }
     ctx.globalAlpha = fade;
   }
 
@@ -519,193 +732,244 @@ export class TreeScreen {
   }
 
   /**
-   * The body you are standing in, drawn from the same numbers the crab in the
-   * desert is built from: its carapace shape, its leg count, its claws, its
-   * basin. It is a dark silhouette with a live rim, because everything that
-   * matters on this screen is inside it.
+   * The body you are standing in. Not a drawing of a crab: the crab. The same
+   * rig the animal in the desert is assembled from, posed standing and baked
+   * once, so the silhouette around the genome is the silhouette you walk
+   * around in - every leg joint, both claws, the eyestalks, the shell.
+   *
+   * The shape is filled dark and lit at the rim; the full-colour render sits
+   * inside it as a ghost, so you can see your own plating through yourself.
    */
+  _plates() {
+    const stage = this.game.crab.stage;
+    if (!this._pl || this._pl.stage !== stage) this._pl = crabPlates(stage, 3);
+    return this._pl;
+  }
+
+  /**
+   * Where the animal sits on screen. It is not laid out in tree units: it is
+   * fitted to the view, so that however far into the genome you have zoomed
+   * you are still looking at the whole of yourself. It drifts a little against
+   * the camera so it reads as a body you are inside rather than wallpaper.
+   */
+  _fit(vw, vh) {
+    const pl = this._plates();
+    // never blow one sprite pixel up past a certain size: a hatchling is a
+    // coin with legs, and stretched over the whole screen it stops looking
+    // like an animal. It grows here as it grows out there.
+    const cap = 6 / pl.sc;
+    const k = Math.min((vw * 0.97) / pl.w, (vh * 0.84) / pl.h, cap);
+    const breathe = 1 + Math.sin(this.t * 0.55) * 0.008;
+    const kk = k * breathe;
+    const px = clamp(-this.cam.x * 0.055 * this.cam.z, -vw * 0.14, vw * 0.14);
+    const py = clamp(-this.cam.y * 0.055 * this.cam.z, -vh * 0.12, vh * 0.12);
+    const w = pl.w * kk, h = pl.h * kk;
+    // centred on the animal's bounding box, not on its hip line, or the shell
+    // walks off the top of the screen
+    const x = vw / 2 + px - w / 2;
+    // line the middle of the carapace up with the middle of the genome, then
+    // hold the whole animal on screen
+    const shellY = (pl.oy + pl.shell.y * pl.sc) * kk;
+    let y = vh * 0.47 + py - shellY;
+    if (h < vh - 26) y = clamp(y, 24, vh - h - 2);
+    else y = vh / 2 - h / 2;
+    const rw = pl.rimOx - pl.ox, rh = pl.rimOy - pl.oy;
+    return {
+      pl, k: kk, x, y, w, h,
+      rx: x - rw * kk, ry: y - rh * kk,
+      rw: pl.rim.width * kk, rh: pl.rim.height * kk,
+    };
+  }
+
+  /** A point on the shell's top surface, in screen pixels. */
+  _shellPt(a, b, vw, vh) {
+    const f = this._fit(vw, vh);
+    const p = f.pl.rig.shellSurface(a, b);
+    return { x: f.x + (f.pl.ox + p.x * f.pl.sc) * f.k, y: f.y + (f.pl.oy + p.y * f.pl.sc) * f.k };
+  }
+
   _drawBody(ctx, vw, vh, fade) {
-    const z = this.cam.z;
-    const m = this.game.crab.m;
-    const P = (x, y) => this._S(x, y, vw, vh);
-    const RX = 860, RY = 700;                    // the cavity, in tree units
-    const c = P(0, 0);
+    const f = this._fit(vw, vh);
+    const pl = f.pl;
+    const m = pl.m;
     const beat = Math.pow(1 - Math.abs(this.beat * 2 - 1), 3);
 
-    // limbs, outside the shell only
+    ctx.save();
+    ctx.imageSmoothingEnabled = false;
+
+    // the halo the animal throws onto the dark
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.globalAlpha = fade * (0.20 + beat * 0.12);
+    ctx.shadowColor = 'rgba(120,224,244,0.95)';
+    ctx.shadowBlur = 26;
+    ctx.drawImage(pl.rim, f.rx, f.ry, f.rw, f.rh);
+    ctx.shadowBlur = 0;
+
+    // the body, solid
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.globalAlpha = fade * 0.96;
+    ctx.drawImage(pl.fill, f.x, f.y, f.w, f.h);
+
+    // your own plating, showing faintly through
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.globalAlpha = fade * (0.30 + beat * 0.10);
+    ctx.drawImage(pl.ghost, f.x, f.y, f.w, f.h);
+    ctx.globalAlpha = fade * (0.10 + beat * 0.16);
+    ctx.drawImage(pl.glow, f.x, f.y, f.w, f.h);
+
+    // a slow band of light travelling down you, shaped by your own outline
+    const bandH = Math.max(16, vh * 0.20);
+    const bandY = ((this.t * 0.13) % 1.5 - 0.25) * (vh + bandH);
     ctx.save();
     ctx.beginPath();
-    ctx.rect(0, 0, vw, vh);
-    ctx.ellipse(c.x, c.y, RX * z, RY * z, 0, 0, TAU, true);
-    ctx.clip('evenodd');
-    const legN = m.legN;
-    const span = (m.reach / m.rx) * RX * 0.36;
-    for (const side of [-1, 1]) {
-      for (let i = 0; i < legN; i++) {
-        const t = legN === 1 ? 0.5 : i / (legN - 1);
-        const th = (-0.70 + t * 1.40) * side;
-        const hx = Math.sin(th) * RX * 0.97, hy = Math.cos(th) * RY * -0.34 + RY * 0.10;
-        const wob = Math.sin(this.t * 0.8 + i * 1.3 + (side > 0 ? 0 : 2)) * 10;
-        const pts = [
-          [hx, hy],
-          [hx + side * span * 0.46, hy - span * 0.24 - t * 24 + wob],
-          [hx + side * span * 0.86, hy + span * 0.18 + wob * 0.6],
-          [hx + side * span * 1.06, hy + span * 0.74 + t * 46 + wob],
-        ];
-        this._limb(ctx, pts, (m.legLen[0] / m.rx) * RX * 0.30 * (1 - i * 0.09), z, P);
-      }
-      const K = (m.clawLen[0] / m.rx) * RX * 0.34;
-      const ax = side * RX * 0.54, ay = RY * 0.62;
-      const open = 0.16 + Math.sin(this.t * 0.7 + side) * 0.09;
-      const wx = ax + side * K * 2.0, wy = ay + K * 2.0;
-      this._limb(ctx, [[ax, ay], [ax + side * K * 1.1, ay + K * 0.4], [wx, wy]], K * 0.32, z, P);
-      const wrist = P(wx, wy);
-      for (const [ang, len, w] of [[0.28 + open, K * 1.7, K * 0.24], [1.06 - open, K * 1.3, K * 0.17]]) {
-        const tip = P(wx + side * Math.sin(ang) * len, wy + Math.cos(ang) * len);
-        const bend = P(wx + side * Math.sin(ang * 0.5) * len * 0.6, wy + Math.cos(ang * 0.5) * len * 0.55);
-        for (const [col, kind] of [['rgba(5,8,13,0.95)', 'dark'], ['rgba(126,178,200,0.9)', 'mid'], ['rgba(210,244,250,0.5)', 'lit']]) {
-          ctx.beginPath();
-          ctx.moveTo(wrist.x, wrist.y);
-          ctx.quadraticCurveTo(bend.x, bend.y, tip.x, tip.y);
-          ctx.strokeStyle = col;
-          ctx.lineWidth = kind === 'dark' ? w * z + 4 : kind === 'mid' ? w * z : Math.max(1, w * z * 0.3);
-          ctx.stroke();
-        }
-      }
-    }
+    ctx.rect(0, bandY, vw, bandH);
+    ctx.clip();
+    ctx.globalAlpha = fade * 0.22;
+    ctx.drawImage(pl.glow, f.x, f.y, f.w, f.h);
     ctx.restore();
 
-    // the cavity itself
-    ctx.save();
-    ctx.beginPath();
-    ctx.ellipse(c.x, c.y, RX * z, RY * z, 0, 0, TAU);
-    const g = ctx.createRadialGradient(c.x, c.y, 0, c.x, c.y, RX * z);
-    g.addColorStop(0, `rgba(${24 + beat * 20},${17 + beat * 9},${26 + beat * 14},0.92)`);
-    g.addColorStop(0.66, 'rgba(13,10,16,0.95)');
-    g.addColorStop(1, 'rgba(6,6,11,0.97)');
-    ctx.fillStyle = g;
-    ctx.fill();
+    // and the outline, lit
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.globalAlpha = fade * (0.66 + beat * 0.24);
+    ctx.drawImage(pl.rim, f.rx, f.ry, f.rw, f.rh);
     ctx.restore();
-
-    const ring = (rx, ry, light, w, dark) => {
-      ctx.beginPath();
-      ctx.ellipse(c.x, c.y, rx * z, ry * z, 0, 0, TAU);
-      if (dark) { ctx.strokeStyle = dark; ctx.lineWidth = w + 4; ctx.stroke(); }
-      ctx.strokeStyle = light; ctx.lineWidth = w; ctx.stroke();
-    };
-    ring(RX, RY, 'rgba(150,208,220,0.72)', Math.max(1, 2.4 * z), 'rgba(6,8,14,0.95)');
-    ring(RX * 0.93, RY * 0.92, 'rgba(120,178,196,0.20)', Math.max(1, 1.2 * z));
 
     // the basin on your back, where it actually is, with what is in it
-    const br = m.basin.r * RX * 0.9;
-    const bp = P(m.basin.a * RX, m.basin.b * RY);
+    const b0 = this._shellPt(m.basin.a, m.basin.b, vw, vh);
+    const b1 = this._shellPt(m.basin.a + m.basin.r, m.basin.b, vw, vh);
+    const b2 = this._shellPt(m.basin.a, m.basin.b + m.basin.r, vw, vh);
+    const brx = Math.abs(b1.x - b0.x), bry = Math.max(2, Math.abs(b2.y - b0.y));
+    ctx.globalAlpha = fade * 0.55;
     ctx.beginPath();
-    ctx.ellipse(bp.x, bp.y, br * z, br * 0.70 * z, 0, 0, TAU);
-    ctx.strokeStyle = 'rgba(120,178,196,0.26)';
-    ctx.lineWidth = Math.max(1, 1.2 * z);
+    ctx.ellipse(b0.x, b0.y, brx, bry, 0, 0, TAU);
+    ctx.strokeStyle = 'rgba(140,208,224,0.34)';
+    ctx.lineWidth = 1;
     ctx.stroke();
     const pond = clamp01(this.game.garden.pond);
     if (pond > 0.02) {
-      ctx.globalAlpha = fade * (0.08 + pond * 0.20);
+      const q = Math.sqrt(pond);
+      ctx.globalAlpha = fade * (0.12 + pond * 0.26);
       ctx.fillStyle = '#5fc6d8';
       ctx.beginPath();
-      ctx.ellipse(bp.x, bp.y, br * z * Math.sqrt(pond), br * 0.70 * z * Math.sqrt(pond), 0, 0, TAU);
+      ctx.ellipse(b0.x, b0.y, brx * q, bry * q, 0, 0, TAU);
       ctx.fill();
-      ctx.globalAlpha = fade;
     }
 
-    // eyestalks at the front
-    for (const side of [-1, 1]) {
-      const e0 = P(side * RX * 0.13, RY * 0.82), e1 = P(side * RX * 0.22, RY * 1.16);
-      ctx.beginPath();
-      ctx.moveTo(e0.x, e0.y); ctx.lineTo(e1.x, e1.y);
-      ctx.strokeStyle = 'rgba(150,208,220,0.6)';
-      ctx.lineWidth = Math.max(1.5, 7 * z);
-      ctx.stroke();
-      ctx.fillStyle = '#0c0a10';
-      ctx.beginPath(); ctx.arc(e1.x, e1.y, Math.max(2.4, 15 * z), 0, TAU); ctx.fill();
-      ctx.fillStyle = 'rgba(215,245,255,0.9)';
-      ctx.beginPath(); ctx.arc(e1.x - 5 * z, e1.y - 5 * z, Math.max(1, 4.5 * z), 0, TAU); ctx.fill();
-    }
-
-    // haemolymph
+    // haemolymph, drifting inside the carapace
+    const cx = f.x + pl.ox * f.k, cy = f.y + (pl.oy + pl.shell.y * pl.sc) * f.k;
+    const hrx = m.rx * pl.sc * f.k, hry = (m.ry + m.domeH * 0.7) * pl.sc * f.k;
     for (const mo of this.motes) {
       const yy = (mo.y - this.t * 0.010 * mo.s + 2) % 1;
       const xx = (mo.x + Math.sin(this.t * 0.26 * mo.s + mo.p) * 0.014 + 1) % 1;
-      const bx = lerp(-RX, RX, xx), by = lerp(-RY, RY, yy);
-      if ((bx / RX) ** 2 + (by / RY) ** 2 > 0.9) continue;
-      const sp = P(bx, by);
+      const dx = (xx - 0.5) * 2, dy = (yy - 0.5) * 2;
+      if (dx * dx + dy * dy > 0.86) continue;
+      const sx = cx + dx * hrx, sy = cy + dy * hry;
       const tw = 0.4 + 0.6 * (0.5 + 0.5 * Math.sin(this.t * 2.1 + mo.p)) + beat * 0.4;
-      ctx.globalAlpha = fade * 0.38 * tw * mo.s;
+      ctx.globalAlpha = fade * 0.42 * tw * mo.s;
       ctx.fillStyle = mo.r ? '#cd7a6c' : '#9fe8d4';
-      ctx.fillRect(Math.round(sp.x), Math.round(sp.y), 1, 1);
+      ctx.fillRect(Math.round(sx), Math.round(sy), 1, 1);
     }
     ctx.globalAlpha = fade;
-  }
-
-  _limb(ctx, pts, w, z, P) {
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    const trace = () => {
-      ctx.beginPath();
-      const s0 = P(pts[0][0], pts[0][1]);
-      ctx.moveTo(s0.x, s0.y);
-      for (let i = 1; i < pts.length - 1; i++) {
-        const a = P(pts[i][0], pts[i][1]);
-        const b = P(pts[i + 1][0], pts[i + 1][1]);
-        ctx.quadraticCurveTo(a.x, a.y, (a.x + b.x) / 2, (a.y + b.y) / 2);
-      }
-      const last = P(pts[pts.length - 1][0], pts[pts.length - 1][1]);
-      ctx.lineTo(last.x, last.y);
-    };
-    trace(); ctx.strokeStyle = 'rgba(5,8,13,0.95)'; ctx.lineWidth = w * z + 5; ctx.stroke();
-    trace(); ctx.strokeStyle = 'rgba(104,150,172,0.85)'; ctx.lineWidth = w * z; ctx.stroke();
-    trace(); ctx.strokeStyle = 'rgba(206,244,250,0.5)'; ctx.lineWidth = Math.max(1, w * z * 0.32); ctx.stroke();
   }
 
   // -- the tree itself ------------------------------------------------------
 
   /**
-   * The six spokes, drawn as faint guides out to the horizon of each system
-   * with its name on it. This is the thing that makes a radial tree learnable:
-   * a direction always means the same system, whether or not you have grown it.
+   * The frame the whole thing hangs on: rings at each tier so depth is
+   * visible at a glance, six spokes so a direction always means the same
+   * system, and a name with a filled bar at the end of each so you can read
+   * how far you have taken it without counting beads.
    */
   _drawArms(ctx, vw, vh, fade) {
     const z = this.cam.z;
+    const O = this._S(0, 0, vw, vh);
+
+    // the tiers, as rings. Reached ones are lit; the next one is a promise.
+    const deepest = {};
+    for (const n of this.L.nodes) {
+      if (!n.arm || (this.grow[n.id] ?? 0) < 0.5) continue;
+      deepest[n.arm] = Math.max(deepest[n.arm] ?? -1, n.tier ?? 0);
+    }
+    const maxTier = Math.max(-1, ...Object.values(deepest));
+    for (let i = 0; i < R_TIER.length; i++) {
+      const r = R_TIER[i];
+      const on = i <= maxTier;
+      const near = i === maxTier + 1;
+      if (!on && !near) continue;
+      ctx.globalAlpha = fade * (on ? 0.16 : 0.07 + 0.04 * Math.sin(this.t * 1.6));
+      ctx.strokeStyle = on ? 'rgba(190,232,226,0.9)' : 'rgba(150,180,190,0.9)';
+      ctx.lineWidth = 1;
+      if (!on) ctx.setLineDash([3, 5]);
+      ctx.beginPath();
+      ctx.ellipse(O.x, O.y, r * z, r * 0.86 * z, 0, 0, TAU);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
     for (const arm of ARMS) {
       const lv = this.armLevel(arm.id);
       const d = armDir(arm.deg);
       const a = this._S(d.x * (R_GENE + 26), d.y * (R_GENE + 26), vw, vh);
       let reach = R_TIER[0] + 40;
-      for (const n of this.L.nodes) {
-        if (n.arm !== arm.id) continue;
-        if ((this.seen[n.id] ?? 0) < 0.4) continue;
-        reach = Math.max(reach, Math.hypot(n.x, n.y) + 70);
-      }
-      const b = this._S(d.x * reach, d.y * reach, vw, vh);
-      ctx.globalAlpha = fade * (0.10 + lv * 0.16);
-      ctx.strokeStyle = arm.colour;
-      ctx.lineWidth = Math.max(1, 10 * z);
-      ctx.beginPath();
-      ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y);
-      ctx.stroke();
-      // the name of the system, just past the furthest thing it has grown, so
-      // the label follows the arm out instead of sitting off the screen
       let far = R_GENE + 40;
       for (const n of this.L.nodes) {
         if (n.arm !== arm.id) continue;
         if ((this.seen[n.id] ?? 0) < 0.4) continue;
-        far = Math.max(far, Math.hypot(n.x, n.y) + 84);
+        const dd = Math.hypot(n.x, n.y);
+        reach = Math.max(reach, dd + 70);
+        far = Math.max(far, dd + 18);
       }
-      // set beside the spoke rather than on it, so it never lands on an organ
+      const b = this._S(d.x * reach, d.y * reach, vw, vh);
+      // the spoke: a dark bed with the arm's colour laid into it
+      ctx.lineCap = 'round';
+      ctx.globalAlpha = fade * 0.30;
+      ctx.strokeStyle = 'rgba(4,7,12,0.9)';
+      ctx.lineWidth = Math.max(2, 13 * z);
+      ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+      const gr = ctx.createLinearGradient(a.x, a.y, b.x, b.y);
+      gr.addColorStop(0, arm.colour);
+      gr.addColorStop(1, 'rgba(255,255,255,0)');
+      ctx.globalAlpha = fade * (0.14 + lv * 0.26);
+      ctx.strokeStyle = gr;
+      ctx.lineWidth = Math.max(1, 9 * z);
+      ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+
+      // the name, set beside the spoke so it never lands on an organ, with a
+      // bar underneath it that fills as the system grows
       const px2 = -d.y, py2 = d.x;
-      const lp = this._S(d.x * far + px2 * 86, d.y * far + py2 * 86, vw, vh);
-      if (lp.x > 24 && lp.x < vw - 24 && lp.y > 26 && lp.y < vh - 18) {
-        ctx.globalAlpha = fade * (0.40 + lv * 0.5);
-        drawText(ctx, arm.name, lp.x, lp.y - 4, { color: arm.colour, align: 'center' });
+      const lp = this._S(d.x * far + px2 * 124, d.y * far + py2 * 124, vw, vh);
+      if (lp.x > 30 && lp.x < vw - 30 && lp.y > 28 && lp.y < vh - 16) {
+        const nw = textWidth(arm.name);
+        ctx.globalAlpha = fade * 0.62;
+        ctx.fillStyle = 'rgba(4,7,11,0.78)';
+        ctx.fillRect(Math.round(lp.x - nw / 2) - 4, Math.round(lp.y) - 10, nw + 8, 19);
+        ctx.globalAlpha = fade * (0.24 + lv * 0.3);
+        ctx.strokeStyle = arm.colour;
+        ctx.lineWidth = 1;
+        ctx.strokeRect(Math.round(lp.x - nw / 2) - 3.5, Math.round(lp.y) - 9.5, nw + 7, 18);
+        ctx.globalAlpha = fade * (0.62 + lv * 0.38);
+        drawText(ctx, arm.name, lp.x, lp.y - 7, { color: arm.colour, align: 'center' });
+        const bw = 34, bx = Math.round(lp.x - bw / 2), by = Math.round(lp.y + 3);
         ctx.globalAlpha = fade * 0.32;
-        drawText(ctx, `${Math.round(lv * 100)}%`, lp.x, lp.y + 6, { color: arm.colour, align: 'center' });
+        ctx.fillStyle = 'rgba(8,12,16,0.9)';
+        ctx.fillRect(bx - 1, by - 1, bw + 2, 4);
+        ctx.fillStyle = 'rgba(150,170,175,0.45)';
+        ctx.fillRect(bx, by, bw, 2);
+        ctx.globalAlpha = fade * (0.55 + lv * 0.45);
+        ctx.fillStyle = arm.colour;
+        ctx.fillRect(bx, by, Math.max(lv > 0 ? 1 : 0, Math.round(bw * lv)), 2);
       }
+    }
+
+    // spores, turning slowly round the middle of you
+    for (const sp of this.spores) {
+      const a = sp.a + this.t * sp.sp * 0.12;
+      const r = sp.r + Math.sin(this.t * 0.5 + sp.p) * sp.rise;
+      const p = this._S(Math.cos(a) * r, Math.sin(a) * r * 0.86, vw, vh);
+      if (p.x < 0 || p.x > vw || p.y < 0 || p.y > vh) continue;
+      ctx.globalAlpha = fade * (0.12 + 0.16 * (0.5 + 0.5 * Math.sin(this.t * 1.4 + sp.p)));
+      ctx.fillStyle = sp.c;
+      ctx.fillRect(Math.round(p.x), Math.round(p.y), 1, 1);
     }
     ctx.globalAlpha = fade;
   }
@@ -723,9 +987,10 @@ export class TreeScreen {
   }
 
   /**
-   * The connections. A grown one is a bright cord with the arm's colour
-   * running through it; an ungrown one is a dashed lead showing where the next
-   * thing would attach, which is how you know a choice exists at all.
+   * The connections. A grown one is a cord: a dark bed, the arm's colour laid
+   * into it, a bright filament down the middle and something running out
+   * along it, always away from the seed. An ungrown one is a dashed lead with
+   * a chevron at the end, so an unbought choice still reads as a choice.
    */
   _drawLinks(ctx, vw, vh, fade) {
     const z = this.cam.z;
@@ -738,41 +1003,56 @@ export class TreeScreen {
       if (!path) continue;
       const { pa, pb, mx, my } = path;
       const colour = (ARM_BY_ID[ln.arm] || {}).colour || '#c9e08a';
-      const steps = 16;
+      const steps = 18;
       const pts = [];
-      for (let i = 0; i <= steps; i++) pts.push(curveAt(pa, pb, mx, my, i / steps));
+      for (let i = 0; i <= steps; i++) pts.push(curveAt(pa, pb, mx, my, (i / steps) * Math.max(0.06, g > 0.5 ? 1 : seen)));
       const trace = () => {
         ctx.beginPath();
         pts.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)));
       };
-      const w = Math.max(1.4, ln.w * z * lerp(0.5, 1, g));
+      const w = Math.max(1.6, ln.w * z * lerp(0.55, 1, g));
 
       ctx.lineCap = 'round';
-      ctx.globalAlpha = fade * lerp(0.45, 1, Math.max(g, seen * 0.7));
-      if (g > 0.5) {
-        trace(); ctx.strokeStyle = 'rgba(5,7,12,0.9)'; ctx.lineWidth = w + 4 * z; ctx.stroke();
+      ctx.lineJoin = 'round';
+      if (g > 0.35) {
+        ctx.globalAlpha = fade * g;
+        trace(); ctx.strokeStyle = 'rgba(4,6,11,0.92)'; ctx.lineWidth = w + 4 * z + 1.5; ctx.stroke();
         trace(); ctx.strokeStyle = colour; ctx.lineWidth = w; ctx.stroke();
-        ctx.globalAlpha = fade * 0.5;
-        trace(); ctx.strokeStyle = 'rgba(255,255,255,0.8)'; ctx.lineWidth = Math.max(1, w * 0.28); ctx.stroke();
-        // something running out along it, always outward
-        const flow = (this.t * 0.4 + ln.w * 0.13) % 1;
-        const bead = curveAt(pa, pb, mx, my, flow);
-        ctx.globalAlpha = fade * 0.55;
-        const gg = ctx.createRadialGradient(bead.x, bead.y, 0, bead.x, bead.y, w * 2.6);
-        gg.addColorStop(0, '#ffffff');
-        gg.addColorStop(0.35, colour);
-        gg.addColorStop(1, 'rgba(0,0,0,0)');
-        ctx.fillStyle = gg;
-        ctx.beginPath(); ctx.arc(bead.x, bead.y, w * 2.6, 0, TAU); ctx.fill();
+        ctx.globalAlpha = fade * g * 0.55;
+        trace(); ctx.strokeStyle = 'rgba(255,255,255,0.85)'; ctx.lineWidth = Math.max(1, w * 0.26); ctx.stroke();
+        // sap, running outward
+        for (let k = 0; k < 2; k++) {
+          const flow = (this.t * 0.30 + ln.w * 0.13 + k * 0.5) % 1;
+          const bead = curveAt(pa, pb, mx, my, flow);
+          const rad = Math.max(2, w * 2.4);
+          ctx.globalAlpha = fade * g * (0.30 + 0.25 * Math.sin(flow * Math.PI));
+          const gg = ctx.createRadialGradient(bead.x, bead.y, 0, bead.x, bead.y, rad);
+          gg.addColorStop(0, '#ffffff');
+          gg.addColorStop(0.35, colour);
+          gg.addColorStop(1, 'rgba(0,0,0,0)');
+          ctx.fillStyle = gg;
+          ctx.beginPath(); ctx.arc(bead.x, bead.y, rad, 0, TAU); ctx.fill();
+        }
       } else {
-        // not grown: a dashed lead, so an unbought choice still reads as one
-        ctx.setLineDash([4 * z, 4 * z]);
-        ctx.lineDashOffset = -this.t * 14 * z;
+        ctx.globalAlpha = fade * seen * (0.45 + 0.18 * Math.sin(this.t * 2.2 + pb.x * 0.01));
+        ctx.setLineDash([4 * z + 1, 4 * z + 2]);
+        ctx.lineDashOffset = -this.t * 16 * z;
         trace();
-        ctx.strokeStyle = 'rgba(160,178,190,0.5)';
-        ctx.lineWidth = Math.max(1, w * 0.7);
+        ctx.strokeStyle = 'rgba(176,196,206,0.75)';
+        ctx.lineWidth = Math.max(1, w * 0.65);
         ctx.stroke();
         ctx.setLineDash([]);
+        // a chevron pointing at what you could grow next
+        const p1 = pts[pts.length - 1], p0 = pts[pts.length - 3] || pts[0];
+        const an = Math.atan2(p1.y - p0.y, p1.x - p0.x);
+        const L = Math.max(3, 5 * z);
+        ctx.beginPath();
+        ctx.moveTo(p1.x - Math.cos(an - 0.5) * L, p1.y - Math.sin(an - 0.5) * L);
+        ctx.lineTo(p1.x, p1.y);
+        ctx.lineTo(p1.x - Math.cos(an + 0.5) * L, p1.y - Math.sin(an + 0.5) * L);
+        ctx.strokeStyle = 'rgba(210,230,238,0.8)';
+        ctx.lineWidth = 1;
+        ctx.stroke();
       }
       ctx.globalAlpha = fade;
     }
@@ -793,7 +1073,7 @@ export class TreeScreen {
         if ((this.seen[n.id] ?? 0) < 0.4) continue;
         reach = Math.max(reach, Math.hypot(n.x, n.y));
       }
-      const p = this._S(d.x * (reach + 210), d.y * (reach + 210), vw, vh);
+      const p = this._S(d.x * (reach + ORGAN_GAP), d.y * (reach + ORGAN_GAP), vw, vh);
       if (p.x < -200 || p.x > vw + 200 || p.y < -200 || p.y > vh + 200) continue;
       const art = organArt(arm.organ, clamp(z * 1.4, 0.3, 2), lv);
       let sx = 1, sy = 1, glow = 0.08 + lv * 0.2;
@@ -888,68 +1168,129 @@ export class TreeScreen {
       if (hot) hover = { n, p };
       const pulse = ready ? 0.5 + Math.sin(this.t * 3.0) * 0.5 : 0;
       const arm = ARM_BY_ID[n.arm] || {};
+      const grown = this.grow[n.id] ?? 0;
 
       // the halo says the state before you have read anything
-      ctx.globalAlpha = fade * seen * (on ? 0.34 : ready ? 0.20 + pulse * 0.32 : 0.16);
-      const gg = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, rr * 2.4);
+      ctx.globalAlpha = fade * seen * (on ? 0.40 : ready ? 0.20 + pulse * 0.34 : 0.14);
+      const gg = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, rr * 2.8);
       gg.addColorStop(0, on || ready ? n.color : '#7a8a90');
+      gg.addColorStop(0.45, on || ready ? n.color : '#5a6a70');
       gg.addColorStop(1, 'rgba(0,0,0,0)');
       ctx.fillStyle = gg;
-      ctx.beginPath(); ctx.arc(p.x, p.y, rr * 2.4, 0, TAU); ctx.fill();
+      ctx.beginPath(); ctx.arc(p.x, p.y, rr * 2.8, 0, TAU); ctx.fill();
+
+      // a socket behind it, so a bead sits in the tree instead of on it
+      ctx.globalAlpha = fade * seen * 0.85;
+      ctx.fillStyle = 'rgba(5,8,12,0.85)';
+      ctx.beginPath(); ctx.arc(p.x, p.y, rr + 2.5 * z + 1, 0, TAU); ctx.fill();
 
       // the bead
       ctx.globalAlpha = fade * seen;
-      const art = orbArt(n.color, rr * (on ? 1 : 0.88), on);
+      const art = orbArt(n.color, rr * (on ? 1 : 0.86), on);
       ctx.save();
       ctx.translate(p.x, p.y);
-      if (ready) ctx.scale(1 + pulse * 0.06, 1 + pulse * 0.06);
+      if (ready) ctx.scale(1 + pulse * 0.07, 1 + pulse * 0.07);
       ctx.drawImage(art.cv, -art.ox, -art.oy);
       ctx.restore();
-
-      // a keystone gets a ring around it, so the big ones read as big
-      if (n.big) {
-        ctx.strokeStyle = on ? n.color : 'rgba(180,190,190,0.45)';
-        ctx.lineWidth = Math.max(1, 1.6 * z);
-        ctx.beginPath(); ctx.arc(p.x, p.y, rr + 5 * z, 0, TAU); ctx.stroke();
-        if (on) {
-          ctx.globalAlpha = fade * 0.35;
-          ctx.beginPath(); ctx.arc(p.x, p.y, rr + 9 * z, 0, TAU); ctx.stroke();
-          ctx.globalAlpha = fade * seen;
-        }
-      }
 
       // what it does, stamped into it
       const ico = n.data && n.data.icon;
       if (ico && rr > 6) {
         drawNodeIcon(ctx, ico, p.x, p.y,
-          on ? 'rgba(10,8,6,0.88)' : ready ? 'rgba(244,238,222,0.9)' : 'rgba(190,196,196,0.55)',
-          Math.max(1, Math.round(rr / 4.4)));
+          on ? 'rgba(10,13,10,0.86)' : ready ? 'rgba(246,242,226,0.92)' : 'rgba(176,186,190,0.55)',
+          Math.max(1, Math.round(rr / 5.8)));
+      }
+
+      // owned: a closed ring with three lights going round it, which is the
+      // clearest way to say "this one is running"
+      if (on) {
+        ctx.globalAlpha = fade * (0.55 + 0.2 * Math.sin(this.t * 1.5 + n.x * 0.01));
+        ctx.strokeStyle = n.color;
+        ctx.lineWidth = Math.max(1, 1.4 * z);
+        ctx.beginPath(); ctx.arc(p.x, p.y, rr + 3.5 * z, 0, TAU); ctx.stroke();
+        if (rr > 7) {
+          for (let k = 0; k < 3; k++) {
+            const a2 = this.t * 0.7 + (k / 3) * TAU + n.x * 0.01;
+            const sx = p.x + Math.cos(a2) * (rr + 3.5 * z);
+            const sy = p.y + Math.sin(a2) * (rr + 3.5 * z);
+            ctx.globalAlpha = fade * 0.85;
+            ctx.fillStyle = '#f6fff0';
+            ctx.fillRect(Math.round(sx), Math.round(sy), 1, 1);
+          }
+        }
+      } else if (rr > 6) {
+        // not owned: an arc that fills with how much of the price you have
+        const c = Math.max(1, this.cost(n));
+        const k = clamp01(this.game.economy.nutrients / c);
+        ctx.globalAlpha = fade * seen * 0.30;
+        ctx.strokeStyle = 'rgba(170,186,190,0.8)';
+        ctx.lineWidth = Math.max(1, 1.6 * z);
+        ctx.beginPath(); ctx.arc(p.x, p.y, rr + 3.5 * z, 0, TAU); ctx.stroke();
+        ctx.globalAlpha = fade * seen * (ready ? 0.95 : 0.7);
+        ctx.strokeStyle = ready ? '#d8f0a4' : '#e2b74a';
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, rr + 3.5 * z, -Math.PI / 2, -Math.PI / 2 + TAU * k);
+        ctx.stroke();
+      }
+
+      // a keystone gets a second ring, so the big decisions read as big
+      if (n.big) {
+        ctx.globalAlpha = fade * seen * (on ? 0.5 : 0.3);
+        ctx.strokeStyle = on ? n.color : 'rgba(180,190,190,0.6)';
+        ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.arc(p.x, p.y, rr + 7.5 * z, 0, TAU); ctx.stroke();
+        if (on) {
+          for (let k = 0; k < 4; k++) {
+            const a2 = -this.t * 0.35 + (k / 4) * TAU;
+            const sx = p.x + Math.cos(a2) * (rr + 7.5 * z);
+            const sy = p.y + Math.sin(a2) * (rr + 7.5 * z);
+            ctx.globalAlpha = fade * 0.7;
+            ctx.fillStyle = n.color;
+            ctx.fillRect(Math.round(sx) - 1, Math.round(sy) - 1, 2, 2);
+          }
+        }
+      }
+
+      // hovering it lights it up and names it
+      if (hot) {
+        ctx.globalAlpha = fade * (0.5 + 0.3 * Math.sin(this.t * 6));
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.arc(p.x, p.y, rr + 11 * z, 0, TAU); ctx.stroke();
       }
 
       // the price, under anything you do not own yet
-      if (!on && z > 0.4) {
+      if (!on && z > 0.34) {
         const c = this.cost(n);
-        drawText(ctx, `${c}`, p.x, p.y + rr + 4, {
-          color: ready ? '#cfe89a' : costly ? '#e08c9c' : 'rgba(200,206,206,0.6)',
+        const label = `${c}`;
+        const tw = textWidth(label);
+        ctx.globalAlpha = fade * seen * 0.8;
+        ctx.fillStyle = 'rgba(6,9,12,0.8)';
+        ctx.fillRect(Math.round(p.x - tw / 2) - 2, Math.round(p.y + rr + 5.5 * z), tw + 4, 9);
+        ctx.globalAlpha = fade * seen;
+        drawText(ctx, label, p.x, p.y + rr + 6.5 * z, {
+          color: ready ? '#dff0a8' : costly ? '#e08c9c' : 'rgba(200,206,206,0.7)',
           align: 'center',
         });
       }
       // and the name of a keystone, because keystones are decisions
-      if (n.big && on && z > 0.5) {
-        drawText(ctx, n.data.name, p.x, p.y - rr - 12,
-          { color: arm.colour || n.color, align: 'center', alpha: fade * 0.8 });
+      if (n.big && (on || ready) && z > 0.45) {
+        drawText(ctx, n.data.name, p.x, p.y - rr - 13 * z - 4,
+          { color: arm.colour || n.color, align: 'center', alpha: fade * 0.85 });
       }
 
       // a stub where the chain keeps going, so you know there is more
-      if (on && this._hasMore(n) && z > 0.35) {
+      if (on && this._hasMore(n) && z > 0.3) {
         const d = armDir((arm.deg ?? 0));
-        const s2 = this._S(n.x + d.x * 46, n.y + d.y * 46, vw, vh);
-        ctx.globalAlpha = fade * (0.25 + 0.2 * Math.sin(this.t * 2 + n.x));
+        const s2 = this._S(n.x + d.x * 52, n.y + d.y * 52, vw, vh);
+        ctx.globalAlpha = fade * (0.22 + 0.2 * Math.sin(this.t * 2 + n.x));
         ctx.strokeStyle = n.color;
         ctx.lineWidth = Math.max(1, 2 * z);
+        ctx.setLineDash([3, 3]);
         ctx.beginPath();
         ctx.moveTo(p.x, p.y); ctx.lineTo(s2.x, s2.y);
         ctx.stroke();
+        ctx.setLineDash([]);
         ctx.globalAlpha = fade;
       }
 
@@ -979,6 +1320,31 @@ export class TreeScreen {
       ctx.fillStyle = `rgba(255,255,255,${0.9 * a})`;
       ctx.beginPath(); ctx.arc(c.x, c.y, r * 0.6, 0, TAU); ctx.fill();
     }
+
+    // what a purchase looks like: the ring opening out of the node, and a
+    // handful of sparks thrown off it
+    for (const R of this.rings) {
+      const t = clamp01(R.t);
+      const p = this._S(R.x, R.y, vw, vh);
+      const rad = lerp(R.r0, R.r1, easeOutCubic(t)) * this.cam.z;
+      const a = 1 - t;
+      ctx.globalAlpha = a * a * 0.9;
+      ctx.strokeStyle = R.color;
+      ctx.lineWidth = Math.max(1, 3 * (1 - t) * this.cam.z);
+      ctx.beginPath(); ctx.arc(p.x, p.y, rad, 0, TAU); ctx.stroke();
+      ctx.globalAlpha = a * a * 0.4;
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.arc(p.x, p.y, rad * 0.72, 0, TAU); ctx.stroke();
+      for (let k = 0; k < 10; k++) {
+        const an = (k / 10) * TAU + R.seed;
+        const d = rad * (0.9 + 0.35 * ((k * 7 + R.seed * 3) % 1));
+        ctx.globalAlpha = a * 0.9;
+        ctx.fillStyle = k % 3 === 0 ? '#ffffff' : R.color;
+        ctx.fillRect(Math.round(p.x + Math.cos(an) * d), Math.round(p.y + Math.sin(an) * d * 0.9), 1, 1);
+      }
+      ctx.globalAlpha = 1;
+    }
   }
 
   // -- chrome ---------------------------------------------------------------
@@ -988,14 +1354,33 @@ export class TreeScreen {
     const total = EVOLUTIONS.length + SKILLS.length;
     const open = e.evolutions.size + e.skills.size;
 
-    // a bar across the top: what you have to spend, and how far you have got
-    ctx.fillStyle = 'rgba(6,8,12,0.72)';
+    // a bar across the top: what you have to spend, and how far you have got.
+    // The line under it is the whole genome, filling as you grow it.
+    ctx.fillStyle = 'rgba(6,8,12,0.80)';
     ctx.fillRect(0, 0, vw, 20);
-    ctx.fillStyle = 'rgba(150,208,220,0.20)';
+    ctx.fillStyle = 'rgba(150,208,220,0.18)';
     ctx.fillRect(0, 20, vw, 1);
+    const done = clamp01(open / Math.max(1, total));
+    const grad = ctx.createLinearGradient(0, 0, vw * done, 0);
+    grad.addColorStop(0, '#5fc6d8');
+    grad.addColorStop(0.5, '#8cc468');
+    grad.addColorStop(1, '#e2d07a');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 20, Math.round(vw * done), 1);
     drawText(ctx, 'YOUR GENOME', 6, 3, { color: '#cfe8d8' });
-    drawText(ctx, `${Math.round(e.nutrients)} nutrients`, vw / 2, 3,
-      { color: '#cfe89a', align: 'center' });
+    // a bead of nutrient beside the count, so the currency has a face
+    const label = `${Math.round(e.nutrients)} nutrients`;
+    const lw = textWidth(label);
+    const bx = Math.round(vw / 2 - lw / 2) - 7, by = 8;
+    const pulse = 0.5 + 0.5 * Math.sin(this.t * 2.2);
+    ctx.fillStyle = '#cfe89a';
+    ctx.fillRect(bx - 1, by - 2, 3, 5);
+    ctx.fillRect(bx - 2, by - 1, 5, 3);
+    ctx.globalAlpha = fade * (0.3 + pulse * 0.4);
+    ctx.fillStyle = '#f4ffd0';
+    ctx.fillRect(bx - 1, by - 1, 2, 2);
+    ctx.globalAlpha = fade;
+    drawText(ctx, label, vw / 2, 3, { color: '#cfe89a', align: 'center' });
     drawText(ctx, `${open}/${total} grown   ${e.genes.size}/${GENES.length} genes`, vw - 6, 3,
       { color: 'rgba(200,226,210,0.7)', align: 'right' });
 
@@ -1087,6 +1472,13 @@ export class TreeScreen {
       cur = ln.from;
     }
     chain.forEach((ln, i) => this.pulses.push({ ln, t: -i * 0.45, dur: 0.5 }));
+    const n = this.L.by[id];
+    if (n) {
+      this.rings.push({ x: n.x, y: n.y, r0: n.r, r1: n.r + 190, dur: 0.9, t: -chain.length * 0.4,
+        color: n.color, seed: Math.random() });
+      this.rings.push({ x: n.x, y: n.y, r0: n.r, r1: n.r + 96, dur: 0.6, t: -chain.length * 0.4 - 0.1,
+        color: '#ffffff', seed: Math.random() });
+    }
     this.flash = 1;
   }
 

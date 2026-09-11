@@ -2893,9 +2893,9 @@ body {
           0.4 * K,
           { mat: D.stemMat || "wood", dome: 0.9 * K, steps: 14, tint: -0.1 }
         );
-        const seg = Math.round(4 + 5 * g);
-        for (let k = 1; k <= seg; k++) {
-          const s = k / (seg + 0.5), u = 1 - s;
+        const seg2 = Math.round(4 + 5 * g);
+        for (let k = 1; k <= seg2; k++) {
+          const s = k / (seg2 + 0.5), u = 1 - s;
           const px = u * u * D.x + 2 * u * s * midx + s * s * tipx;
           const py = u * u * D.y + 2 * u * s * midy + s * s * tipy;
           const tx = 2 * u * (midx - D.x) + 2 * s * (tipx - midx);
@@ -3183,9 +3183,9 @@ body {
         const sway = (R() - 0.5) * w * 0.5;
         const pts = [{ x: bx, y: D.y }, { x: bx + sway, y: D.y + len * 0.55 }, { x: bx + sway * 0.4, y: D.y + len }];
         p.curve(pts, 1 * K, 0.5 * K, { mat: D.stemMat || "wood", dome: 0.9 * K, steps: 14, tint: -0.08 });
-        const seg = Math.round(2 + 4 * g);
-        for (let k = 1; k <= seg; k++) {
-          const s = k / (seg + 1), u = 1 - s;
+        const seg2 = Math.round(2 + 4 * g);
+        for (let k = 1; k <= seg2; k++) {
+          const s = k / (seg2 + 1), u = 1 - s;
           const px = u * u * pts[0].x + 2 * u * s * pts[1].x + s * s * pts[2].x;
           const py = u * u * pts[0].y + 2 * u * s * pts[1].y + s * s * pts[2].y;
           const ll = (3.4 + 5.2 * g) * (0.75 + R() * 0.45) * K;
@@ -5030,7 +5030,7 @@ body {
     const m = crabMetrics(stage);
     const S = Math.max(0.4, m.S);
     const body = paintBody(m);
-    const seg = (len, r0, r1, far, extra) => paintSegment(
+    const seg2 = (len, r0, r1, far, extra) => paintSegment(
       Math.max(3, len),
       Math.max(1, r0),
       Math.max(0.8, r1),
@@ -5039,8 +5039,8 @@ body {
     const legArt = {};
     for (const far of [false, true]) {
       legArt[far ? "far" : "near"] = {
-        coxa: seg(m.legLen[0], 3.2 * S, 2.6 * S, far, { bow: -0.8 * S }),
-        femur: seg(m.legLen[1], 2.6 * S, 1.7 * S, far, { bow: 1.6 * S, spines: true }),
+        coxa: seg2(m.legLen[0], 3.2 * S, 2.6 * S, far, { bow: -0.8 * S }),
+        femur: seg2(m.legLen[1], 2.6 * S, 1.7 * S, far, { bow: 1.6 * S, spines: true }),
         tibia: paintFoot(Math.max(3, m.legLen[2] * 1.1), Math.max(1, 1.8 * S), { far, S })
       };
     }
@@ -5074,13 +5074,13 @@ body {
       legArt,
       claw: {
         near: {
-          arm: seg(m.clawLen[0], 3.4 * S, 3 * S, false, { bow: -1.2 * S }),
-          fore: seg(m.clawLen[1], 3.2 * S, 3.5 * S, false, { bow: 1 * S, spines: true }),
+          arm: seg2(m.clawLen[0], 3.4 * S, 3 * S, false, { bow: -1.2 * S }),
+          fore: seg2(m.clawLen[1], 3.2 * S, 3.5 * S, false, { bow: 1 * S, spines: true }),
           ...paintClaw(m, false)
         },
         far: {
-          arm: seg(m.clawLen[0], 3.4 * S, 3 * S, true, { bow: -1.2 * S }),
-          fore: seg(m.clawLen[1], 3.2 * S, 3.5 * S, true, { bow: 1 * S }),
+          arm: seg2(m.clawLen[0], 3.4 * S, 3 * S, true, { bow: -1.2 * S }),
+          fore: seg2(m.clawLen[1], 3.2 * S, 3.5 * S, true, { bow: 1 * S }),
           ...paintClaw(m, true)
         }
       },
@@ -5455,11 +5455,11 @@ body {
         this._seg(ctx, art.tibia, fx, fy, Math.atan2(ly - fy, lx - fx));
       }
     }
-    _seg(ctx, seg, x, y, a) {
+    _seg(ctx, seg2, x, y, a) {
       ctx.save();
       ctx.translate(x, y);
       ctx.rotate(a);
-      ctx.drawImage(seg.cv, -seg.ox, -seg.oy);
+      ctx.drawImage(seg2.cv, -seg2.ox, -seg2.oy);
       ctx.restore();
     }
     _drawClaws(ctx) {
@@ -8351,9 +8351,9 @@ body {
         p.ridges(mat, { angle: 1.42, freq: 0.44 / S, amp: 0.24, height: 1.5 * S, seed, warp: 0.35 });
         overMat(p, mat, (i, x, y) => {
           const { u, v } = bodyUV(sp, x, y);
-          const seg = Math.sin(u / Math.max(1.4, 3.4 * S));
-          const k = Math.pow(clamp01(seg), 2);
-          p.tint[i] += k * 0.16 - clamp01(-seg) * 0.22;
+          const seg2 = Math.sin(u / Math.max(1.4, 3.4 * S));
+          const k = Math.pow(clamp01(seg2), 2);
+          p.tint[i] += k * 0.16 - clamp01(-seg2) * 0.22;
           p.hgt[i] += k * 1.1 * S;
           const pit = fbmTex(x * 0.9 / S, y * 0.9 / S, seed + 55, 1);
           if (pit > 0.72) {
@@ -9286,8 +9286,8 @@ body {
       tail: D.tail ? paintTail(D, S) : null,
       sockets
     };
-    const stance = plan === "sprawler" ? 0.68 : plan === "insect" || plan === "arachnid" || plan === "myriapod" ? 0.58 : 0.84;
-    rig.standH = D.legU ? (D.legU + D.legL) * S * stance + body.H * 0.4 : body.H * 0.5;
+    const stance2 = plan === "sprawler" ? 0.68 : plan === "insect" || plan === "arachnid" || plan === "myriapod" ? 0.58 : 0.84;
+    rig.standH = D.legU ? (D.legU + D.legL) * S * stance2 + body.H * 0.4 : body.H * 0.5;
     rig.width = body.L;
     cache5.set(def3.id, rig);
     return rig;
@@ -12620,6 +12620,225 @@ body {
     return v;
   }
 
+  // js/art/crabpose.js
+  var cache8 = /* @__PURE__ */ new Map();
+  function cv2(w, h) {
+    const cv = document.createElement("canvas");
+    cv.width = Math.max(1, Math.ceil(w));
+    cv.height = Math.max(1, Math.ceil(h));
+    const c = cv.getContext("2d");
+    c.imageSmoothingEnabled = false;
+    return { cv, c };
+  }
+  function seg(ctx, s, x, y, a) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(a);
+    ctx.drawImage(s.cv, -s.ox, -s.oy);
+    ctx.restore();
+  }
+  function stance(m, def3, standH) {
+    const sp = Math.abs(def3.spread || 0.6);
+    return {
+      x: def3.side * m.rx * (1.05 + sp * 0.78),
+      y: standH - (def3.depth || 0) * m.rx * 0.3
+    };
+  }
+  function drawLegs(ctx, rig, m, standH, far, phase) {
+    for (const def3 of rig.sockets.legs) {
+      if (!!def3.far !== far) continue;
+      const art = far ? rig.legArt.far : rig.legArt.near;
+      const l1 = art.coxa.len, l2 = art.femur.len, l3 = art.tibia.len;
+      const f = stance(m, def3, standH);
+      const sw = Math.sin(phase + def3.order * 0.9 + (def3.side > 0 ? 0 : 1.7)) * m.rx * 0.02;
+      const lx = f.x + sw, ly = f.y;
+      const side = def3.side;
+      const ankX = lx - side * l3 * 0.4;
+      const ankY = ly - l3 * 0.8;
+      const sol = ik2(def3.x, def3.y, ankX, ankY, l1, l2, side);
+      seg(ctx, art.coxa, def3.x, def3.y, sol.a1);
+      seg(ctx, art.femur, sol.kx, sol.ky, sol.a2);
+      const fx = sol.kx + Math.cos(sol.a2) * l2, fy = sol.ky + Math.sin(sol.a2) * l2;
+      seg(ctx, art.tibia, fx, fy, Math.atan2(ly - fy, lx - fx));
+    }
+  }
+  function drawClaws(ctx, rig, open) {
+    for (const side of [-1, 1]) {
+      const art = side > 0 ? rig.claw.near : rig.claw.far;
+      const so = rig.sockets.claws.find((q) => q.side === side);
+      const raise = open * 0.5;
+      ctx.save();
+      ctx.translate(so.x, so.y);
+      ctx.scale(side, 1);
+      const a1 = 0.92 - raise * 0.62;
+      const ex = Math.cos(a1) * art.arm.len, ey = Math.sin(a1) * art.arm.len;
+      const a2 = a1 - 1.1 - raise * 0.34;
+      const fx = ex + Math.cos(a2) * art.fore.len, fy = ey + Math.sin(a2) * art.fore.len;
+      const a3 = a2 + 0.18 - raise * 0.22;
+      seg(ctx, art.arm, 0, 0, a1);
+      seg(ctx, art.fore, ex, ey, a2);
+      ctx.save();
+      ctx.translate(fx, fy);
+      ctx.rotate(a3);
+      ctx.drawImage(art.palm.cv, -art.palm.ox, -art.palm.oy);
+      ctx.save();
+      ctx.translate(art.hinge.x, art.hinge.y);
+      ctx.rotate(-0.28 - open * 0.55);
+      ctx.drawImage(art.dactyl.cv, -art.dactyl.ox, -art.dactyl.oy);
+      ctx.restore();
+      ctx.restore();
+      ctx.restore();
+    }
+  }
+  function drawFace(ctx, rig, m) {
+    const mo = rig.sockets.mouth;
+    if (rig.mouth) {
+      ctx.save();
+      ctx.translate(mo.x, mo.y);
+      ctx.drawImage(rig.mouth.cv, -rig.mouth.ox, -rig.mouth.oy);
+      ctx.restore();
+    }
+    const art = rig.eye;
+    for (const e of rig.sockets.eyes) {
+      const a = -Math.PI / 2 + e.side * 0.34 - 0.036;
+      ctx.save();
+      ctx.translate(e.x, e.y);
+      ctx.rotate(a);
+      ctx.drawImage(art.cv, -art.ox, -art.oy);
+      ctx.restore();
+      const r = art.r;
+      const ex = e.x + Math.cos(a) * art.globe, ey = e.y + Math.sin(a) * art.globe;
+      ctx.fillStyle = "rgba(246,242,248,0.95)";
+      ctx.fillRect(
+        Math.round(ex - r * 0.34),
+        Math.round(ey - r * 0.36),
+        Math.max(1, Math.round(r * 0.42)),
+        Math.max(1, Math.round(r * 0.42))
+      );
+    }
+  }
+  function paintPose(ctx, rig, m, standH, phase) {
+    drawLegs(ctx, rig, m, standH, true, phase);
+    ctx.drawImage(rig.body.cv, -rig.body.ox, -rig.body.oy);
+    drawLegs(ctx, rig, m, standH, false, phase);
+    drawFace(ctx, rig, m);
+    drawClaws(ctx, rig, 0.34);
+  }
+  function alphaBounds(c, w, h) {
+    const d = c.getImageData(0, 0, w, h).data;
+    let x0 = w, y0 = h, x1 = -1, y1 = -1;
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        if (d[(y * w + x) * 4 + 3] > 8) {
+          if (x < x0) x0 = x;
+          if (x > x1) x1 = x;
+          if (y < y0) y0 = y;
+          if (y > y1) y1 = y;
+        }
+      }
+    }
+    if (x1 < 0) return { x0: 0, y0: 0, x1: w - 1, y1: h - 1 };
+    return { x0, y0, x1, y1 };
+  }
+  function crabPlates(stage = "adult", sc = 3) {
+    const key2 = stage + ":" + sc;
+    if (cache8.has(key2)) return cache8.get(key2);
+    const rig = buildCrab(stage);
+    const m = rig.m;
+    const standH = m.faceH * 0.9 + m.shellW * 0.13;
+    const phase = 0.6;
+    const W = Math.ceil((m.rx * 5 + m.w) * sc);
+    const H = Math.ceil((standH * 2.6 + m.h) * sc);
+    const a = cv2(W, H);
+    const ax = Math.round(W / 2), ay = Math.round(H * 0.46);
+    a.c.save();
+    a.c.translate(ax, ay);
+    a.c.scale(sc, sc);
+    paintPose(a.c, rig, m, standH, phase);
+    a.c.restore();
+    const b = alphaBounds(a.c, W, H);
+    const pad = 2;
+    const w = b.x1 - b.x0 + 1 + pad * 2, h = b.y1 - b.y0 + 1 + pad * 2;
+    const ox = ax - b.x0 + pad, oy = ay - b.y0 + pad;
+    const body = cv2(w, h);
+    body.c.drawImage(a.cv, b.x0 - pad, b.y0 - pad, w, h, 0, 0, w, h);
+    const mask = cv2(w, h);
+    mask.c.drawImage(body.cv, 0, 0);
+    mask.c.globalCompositeOperation = "source-in";
+    mask.c.fillStyle = "#ffffff";
+    mask.c.fillRect(0, 0, w, h);
+    const rimW = Math.max(1, Math.round(sc * 0.8));
+    const rim = cv2(w + rimW * 2, h + rimW * 2);
+    for (let i = 0; i < 8; i++) {
+      const th = i / 8 * TAU;
+      rim.c.drawImage(
+        mask.cv,
+        rimW + Math.round(Math.cos(th) * rimW),
+        rimW + Math.round(Math.sin(th) * rimW)
+      );
+    }
+    rim.c.globalCompositeOperation = "destination-out";
+    rim.c.drawImage(mask.cv, rimW, rimW);
+    const fill = cv2(w, h);
+    {
+      const g = fill.c.createRadialGradient(ox, oy - m.ry * sc, 0, ox, oy, Math.max(w, h) * 0.62);
+      g.addColorStop(0, "#1a1526");
+      g.addColorStop(0.42, "#0e0b16");
+      g.addColorStop(1, "#05050a");
+      fill.c.fillStyle = g;
+      fill.c.fillRect(0, 0, w, h);
+      fill.c.globalCompositeOperation = "destination-in";
+      fill.c.drawImage(mask.cv, 0, 0);
+    }
+    const ghost = cv2(w, h);
+    ghost.c.drawImage(body.cv, 0, 0);
+    ghost.c.globalCompositeOperation = "color";
+    ghost.c.fillStyle = "#3f8fa8";
+    ghost.c.fillRect(0, 0, w, h);
+    ghost.c.globalCompositeOperation = "destination-in";
+    ghost.c.drawImage(mask.cv, 0, 0);
+    const glow = cv2(w, h);
+    glow.c.drawImage(mask.cv, 0, 0);
+    glow.c.globalCompositeOperation = "source-in";
+    {
+      const g = glow.c.createRadialGradient(ox, oy - m.ry * sc, 0, ox, oy, Math.max(w, h) * 0.55);
+      g.addColorStop(0, "#4e7f8c");
+      g.addColorStop(0.5, "#22404c");
+      g.addColorStop(1, "#0d1a22");
+      glow.c.fillStyle = g;
+      glow.c.fillRect(0, 0, w, h);
+    }
+    rim.c.globalCompositeOperation = "source-in";
+    rim.c.fillStyle = "#aff0fb";
+    rim.c.fillRect(0, 0, rim.cv.width, rim.cv.height);
+    const s0 = rig.shellSurface(0, 0);
+    const out = {
+      stage,
+      sc,
+      m,
+      rig,
+      w,
+      h,
+      ox,
+      oy,
+      body: body.cv,
+      ghost: ghost.cv,
+      mask: mask.cv,
+      fill: fill.cv,
+      glow: glow.cv,
+      rim: rim.cv,
+      rimOx: ox + rimW,
+      rimOy: oy + rimW,
+      // anchor-relative sprite coordinates of useful landmarks
+      shell: { x: s0.x, y: s0.y },
+      standH,
+      // half-extents of the whole animal in sprite pixels, from the anchor
+      ext: { l: ox / sc, r: (w - ox) / sc, t: oy / sc, b: (h - oy) / sc }
+    };
+    cache8.set(key2, out);
+    return out;
+  }
+
   // js/ui/tree.js
   var ARMS = [
     { id: "form", deg: 0, name: "FORM", colour: "#c9e08a", organ: "seed", blurb: "what you physically are" },
@@ -12633,6 +12852,7 @@ body {
   var R_GENE = 92;
   var R_TIER = [210, 330, 450, 570];
   var FORK = [34, 46, 58, 70];
+  var ORGAN_GAP = 165;
   function armDir(deg) {
     const th = (deg - 90) * Math.PI / 180;
     return { x: Math.cos(th), y: Math.sin(th) * 0.86 };
@@ -12656,7 +12876,7 @@ body {
         tier: i,
         x: p.x,
         y: p.y,
-        r: 21,
+        r: 25,
         color: "#c9e08a",
         big: true
       });
@@ -12680,7 +12900,7 @@ body {
           tier: s.x,
           x: p.x,
           y: p.y,
-          r: s.x >= 3 ? 20 : 15,
+          r: s.x >= 3 ? 24 : 18,
           color: arm.colour,
           big: s.x >= 3
         });
@@ -12697,7 +12917,7 @@ body {
         arm: null,
         x: Math.cos(th) * R_GENE,
         y: Math.sin(th) * R_GENE * 0.86,
-        r: 7,
+        r: 8,
         color: "#7fe0c8"
       });
     });
@@ -12721,6 +12941,8 @@ body {
       this.grow = {};
       this.seen = {};
       this.pulses = [];
+      this.rings = [];
+      this.spores = [];
       this.motes = [];
       this.t = 0;
       this.beat = 0;
@@ -12739,6 +12961,18 @@ body {
       this.from = { x: fromX, y: fromY };
       this.t = 0;
       this.pulses.length = 0;
+      this.rings.length = 0;
+      this.spores = [];
+      for (let i = 0; i < 46; i++) {
+        this.spores.push({
+          a: Math.random() * TAU,
+          r: 120 + Math.random() * 620,
+          sp: (0.05 + Math.random() * 0.16) * (Math.random() < 0.5 ? -1 : 1),
+          rise: 6 + Math.random() * 22,
+          p: Math.random() * TAU,
+          c: ARMS[Math.random() * ARMS.length | 0].colour
+        });
+      }
       for (const n of this.L.nodes) {
         this.grow[n.id] = this.owned(n) ? 1 : 0;
         this.seen[n.id] = this.visible(n) ? 1 : 0;
@@ -12822,14 +13056,30 @@ body {
         if (n.kind === "gene") continue;
         const a = Math.max(this.grow[n.id] ?? 0, (this.seen[n.id] ?? 0) * 0.95);
         if (a < 0.08) continue;
-        const r = n.r + 54;
+        const r = n.r + 34;
         x0 = Math.min(x0, n.x - r);
         x1 = Math.max(x1, n.x + r);
         y0 = Math.min(y0, n.y - r);
         y1 = Math.max(y1, n.y + r);
       }
+      for (const arm of ARMS) {
+        if (arm.id === "form" || this.armLevel(arm.id) <= 1e-3) continue;
+        let reach = R_TIER[0];
+        for (const n of this.L.nodes) {
+          if (n.arm !== arm.id) continue;
+          if ((this.seen[n.id] ?? 0) < 0.4) continue;
+          reach = Math.max(reach, Math.hypot(n.x, n.y));
+        }
+        const d = armDir(arm.deg);
+        const ox = d.x * (reach + ORGAN_GAP), oy = d.y * (reach + ORGAN_GAP);
+        const r = 72;
+        x0 = Math.min(x0, ox - r);
+        x1 = Math.max(x1, ox + r);
+        y0 = Math.min(y0, oy - r);
+        y1 = Math.max(y1, oy + r);
+      }
       const w = Math.max(240, x1 - x0), h = Math.max(200, y1 - y0);
-      const z = clamp(Math.min((vw - 30) / w, (vh - 76) / h), 0.26, 1.9);
+      const z = clamp(Math.min((vw - 20) / w, (vh - 52) / h), 0.26, 2.2);
       this.target.x = (x0 + x1) / 2;
       this.target.y = (y0 + y1) / 2;
       this.target.z = z;
@@ -12847,7 +13097,7 @@ body {
         if (this.toastT <= 0) this.toast = null;
       }
       this.flash = Math.max(0, this.flash - dt * 1.6);
-      this.dive = damp(this.dive, this.diving ? 1 : 0, this.diving ? 0.14 : 4e-4, dt);
+      this.dive = this.diving ? Math.min(1, this.dive + dt / 1.25) : Math.max(0, this.dive - dt / 0.3);
       if (!this.diving && this.dive < 0.02) return false;
       for (const n of this.L.nodes) {
         const w = this.owned(n) ? 1 : 0;
@@ -12861,6 +13111,11 @@ body {
         const p = this.pulses[i2];
         p.t += dt / p.dur;
         if (p.t >= 1) this.pulses.splice(i2, 1);
+      }
+      for (let i2 = this.rings.length - 1; i2 >= 0; i2--) {
+        const r = this.rings[i2];
+        r.t += dt / r.dur;
+        if (r.t >= 1) this.rings.splice(i2, 1);
       }
       const i = this.game.input;
       if (this.diving && this.dive > 0.7) {
@@ -12916,12 +13171,47 @@ body {
       ctx.globalAlpha = fade;
       this._drawSky(ctx, vw, vh, fade);
       this._drawBody(ctx, vw, vh, fade);
+      {
+        const O = this._S(0, 0, vw, vh);
+        const R = Math.max(vw, vh) * 0.52;
+        const g = ctx.createRadialGradient(O.x, O.y, 0, O.x, O.y, R);
+        g.addColorStop(0, "rgba(120,190,210,0.15)");
+        g.addColorStop(0.45, "rgba(60,110,140,0.06)");
+        g.addColorStop(1, "rgba(0,0,0,0)");
+        ctx.globalCompositeOperation = "lighter";
+        ctx.globalAlpha = fade;
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(O.x, O.y, R, 0, TAU);
+        ctx.fill();
+        ctx.globalCompositeOperation = "source-over";
+        const v = ctx.createRadialGradient(
+          vw / 2,
+          vh / 2,
+          Math.min(vw, vh) * 0.32,
+          vw / 2,
+          vh / 2,
+          Math.max(vw, vh) * 0.74
+        );
+        v.addColorStop(0, "rgba(0,0,0,0)");
+        v.addColorStop(1, "rgba(2,3,7,0.62)");
+        ctx.fillStyle = v;
+        ctx.fillRect(0, 0, vw, vh);
+      }
       this._drawArms(ctx, vw, vh, fade);
       this._drawLinks(ctx, vw, vh, fade);
       this._drawOrgans(ctx, vw, vh, fade);
       const hover = this._drawNodes(ctx, vw, vh, fade);
       this._drawPulses(ctx, vw, vh);
       this._drawChrome(ctx, vw, vh, fade, hover);
+      if (this.flash > 0.01) {
+        ctx.globalCompositeOperation = "lighter";
+        ctx.globalAlpha = fade * this.flash * this.flash * 0.3;
+        ctx.fillStyle = "#9fe8c0";
+        ctx.fillRect(0, 0, vw, vh);
+        ctx.globalCompositeOperation = "source-over";
+        ctx.globalAlpha = fade;
+      }
       ctx.restore();
     }
     /**
@@ -12949,6 +13239,27 @@ body {
         ctx.moveTo(cx + Math.cos(a) * r0, cy + Math.sin(a) * r0);
         ctx.lineTo(cx + Math.cos(a) * (r0 + len), cy + Math.sin(a) * (r0 + len));
         ctx.stroke();
+      }
+      {
+        const pl = this._plates();
+        const kk = (Math.pow(t, 2.1) * 5.4 + 0.05) * Math.max(vw / pl.w, vh / pl.h);
+        const w = pl.w * kk, h = pl.h * kk;
+        const a = clamp01(1.35 - t * 1.7) * clamp01(t * 5);
+        if (a > 0.01) {
+          ctx.save();
+          ctx.imageSmoothingEnabled = false;
+          ctx.globalAlpha = a * 0.92;
+          ctx.drawImage(pl.fill, cx - w / 2, cy - h / 2, w, h);
+          ctx.globalCompositeOperation = "lighter";
+          ctx.globalAlpha = a * 0.8;
+          ctx.drawImage(pl.ghost, cx - w / 2, cy - h / 2, w, h);
+          const rw = pl.rim.width * kk, rh = pl.rim.height * kk;
+          ctx.globalAlpha = a;
+          ctx.shadowColor = "rgba(150,240,255,0.9)";
+          ctx.shadowBlur = 18;
+          ctx.drawImage(pl.rim, cx - rw / 2, cy - rh / 2, rw, rh);
+          ctx.restore();
+        }
       }
       const layers = [
         { at: 0.06, c0: "#8a6a44", c1: "#33291f", label: "ROCK" },
@@ -12992,91 +13303,176 @@ body {
     }
     // -- the sky --------------------------------------------------------------
     _skyPlate(vw, vh) {
-      const w = Math.ceil(vw * 1.3), h = Math.ceil(vh * 1.3);
-      if (this._plate && this._plate.width === w && this._plate.height === h) return this._plate;
+      const S = Math.ceil(Math.hypot(vw, vh) * 1.12);
+      if (this._plate && this._plate.width === S) return this._plate;
       const cv = document.createElement("canvas");
-      cv.width = w;
-      cv.height = h;
+      cv.width = S;
+      cv.height = S;
       const c = cv.getContext("2d");
       c.imageSmoothingEnabled = false;
-      this._paintSky(c, w, h);
+      this._paintSky(c, S);
       this._plate = cv;
       return cv;
     }
     /**
-     * Outside you is the sky you have never been above ground long enough to
-     * look at. Painted once: a galaxy on its side, a bright core, dust across
-     * it, and cold clouds of gas hanging off the arm.
+     * Outside you is a galaxy, painted once into a square plate so it can be
+     * turned. It is built the way one actually looks: a bulge, two logarithmic
+     * arms scattered with stars rather than drawn as bands, pink nurseries
+     * strung along their leading edges, dust lanes eating the inside of each
+     * arm, and a halo of old stars around the whole thing - all of it tipped
+     * over so you are looking at it from slightly above its plane.
      */
-    _paintSky(ctx, vw, vh) {
-      const deep = ctx.createLinearGradient(0, 0, vw * 0.35, vh);
-      deep.addColorStop(0, "#06050f");
-      deep.addColorStop(0.45, "#0b0718");
-      deep.addColorStop(1, "#040509");
+    _paintSky(ctx, S) {
+      const R = S / 2;
+      const rng4 = mulberry32(6221086);
+      const px = (x, y, col, a, w = 1) => {
+        ctx.globalAlpha = a;
+        ctx.fillStyle = col;
+        ctx.fillRect(Math.round(x), Math.round(y), w, w);
+      };
+      const deep = ctx.createRadialGradient(R, R, 0, R, R, R);
+      deep.addColorStop(0, "#0d0a1c");
+      deep.addColorStop(0.45, "#080612");
+      deep.addColorStop(1, "#030308");
       ctx.fillStyle = deep;
-      ctx.fillRect(0, 0, vw, vh);
-      const R = Math.max(vw, vh);
+      ctx.fillRect(0, 0, S, S);
+      for (let i = 0; i < 2600; i++) {
+        const x = rng4() * S, y = rng4() * S;
+        const b = rng4();
+        px(x, y, b > 0.94 ? "#ffd9b0" : b > 0.86 ? "#b8d0ff" : "#e8ecf8", 0.1 + b * 0.35);
+      }
       ctx.save();
-      ctx.translate(vw * 0.66, vh * 0.3);
-      ctx.rotate(-0.46);
-      for (const [flat, a, c] of [[0.46, 0.1, "120,140,215"], [0.26, 0.12, "195,205,250"], [0.12, 0.16, "255,248,232"]]) {
-        ctx.save();
-        ctx.scale(1, flat);
-        const g = ctx.createRadialGradient(0, 0, 0, 0, 0, R * 0.95);
-        g.addColorStop(0, `rgba(${c},${a})`);
-        g.addColorStop(0.4, `rgba(${c},${a * 0.72})`);
-        g.addColorStop(1, `rgba(${c},0)`);
+      ctx.translate(R, R);
+      ctx.rotate(-0.38);
+      ctx.scale(1, 0.46);
+      const RG = R * 0.9;
+      const disc = ctx.createRadialGradient(0, 0, 0, 0, 0, RG);
+      disc.addColorStop(0, "rgba(255,242,214,0.30)");
+      disc.addColorStop(0.1, "rgba(255,206,150,0.20)");
+      disc.addColorStop(0.34, "rgba(150,160,230,0.13)");
+      disc.addColorStop(0.72, "rgba(88,104,190,0.06)");
+      disc.addColorStop(1, "rgba(0,0,0,0)");
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = disc;
+      ctx.beginPath();
+      ctx.arc(0, 0, RG, 0, TAU);
+      ctx.fill();
+      const B = 0.3;
+      const arm = (turn, tint) => {
+        const N = 5200;
+        for (let i = 0; i < N; i++) {
+          const u = Math.pow(rng4(), 0.62);
+          const th = u * 5 + turn;
+          const r = RG * 0.085 * Math.exp(B * th);
+          if (r > RG) continue;
+          const spread = RG * (0.018 + u * 0.085);
+          const g1 = (rng4() + rng4() + rng4() - 1.5) * spread;
+          const g2 = (rng4() + rng4() + rng4() - 1.5) * spread;
+          const x = Math.cos(th) * r + g1, y = Math.sin(th) * r + g2;
+          const d = Math.hypot(x, y) / RG;
+          const b = rng4();
+          let col = "#dfe6ff";
+          if (b > 0.965) col = "#ff9ec0";
+          else if (b > 0.9) col = "#9fc4ff";
+          else if (d < 0.3 && b > 0.55) col = tint;
+          px(x, y, col, (0.16 + rng4() * 0.62) * (1 - d * 0.45), b > 0.988 ? 2 : 1);
+          if (b > 0.9955) {
+            const gg = ctx.createRadialGradient(x, y, 0, x, y, RG * 0.02);
+            gg.addColorStop(0, "rgba(255,190,220,0.55)");
+            gg.addColorStop(1, "rgba(255,120,180,0)");
+            ctx.globalAlpha = 0.8;
+            ctx.fillStyle = gg;
+            ctx.beginPath();
+            ctx.arc(x, y, RG * 0.02, 0, TAU);
+            ctx.fill();
+          }
+        }
+      };
+      arm(0, "#ffd9a8");
+      arm(Math.PI, "#ffd0b0");
+      ctx.globalAlpha = 1;
+      for (const turn of [0.36, Math.PI + 0.36]) {
+        for (let i = 0; i < 1700; i++) {
+          const u = Math.pow(rng4(), 0.5);
+          const th = u * 4.6 + turn;
+          const r = RG * 0.085 * Math.exp(B * th) * 0.9;
+          if (r > RG) continue;
+          const spread = RG * (0.01 + u * 0.038);
+          const x = Math.cos(th) * r + (rng4() + rng4() - 1) * spread;
+          const y = Math.sin(th) * r + (rng4() + rng4() - 1) * spread;
+          px(x, y, "#0a0714", 0.1 + rng4() * 0.3, rng4() > 0.7 ? 2 : 1);
+        }
+      }
+      ctx.globalAlpha = 1;
+      for (const [rr, col, a] of [[0.3, "255,224,170", 0.16], [0.17, "255,238,200", 0.24], [0.075, "255,252,236", 0.5]]) {
+        const g = ctx.createRadialGradient(0, 0, 0, 0, 0, RG * rr);
+        g.addColorStop(0, `rgba(${col},${a})`);
+        g.addColorStop(0.5, `rgba(${col},${a * 0.5})`);
+        g.addColorStop(1, `rgba(${col},0)`);
         ctx.fillStyle = g;
         ctx.beginPath();
-        ctx.arc(0, 0, R * 0.95, 0, TAU);
+        ctx.arc(0, 0, RG * rr, 0, TAU);
         ctx.fill();
-        ctx.restore();
       }
-      const core = ctx.createRadialGradient(0, 0, 0, 0, 0, R * 0.3);
-      core.addColorStop(0, "rgba(255,248,224,0.40)");
-      core.addColorStop(0.22, "rgba(255,214,150,0.22)");
-      core.addColorStop(0.65, "rgba(170,130,200,0.07)");
-      core.addColorStop(1, "rgba(0,0,0,0)");
-      ctx.fillStyle = core;
-      ctx.beginPath();
-      ctx.ellipse(0, 0, R * 0.3, R * 0.13, 0, 0, TAU);
-      ctx.fill();
-      for (let i = 0; i < 4; i++) {
-        const yy = (i - 1.4) * R * 0.048;
-        ctx.fillStyle = `rgba(5,3,9,${0.1 + i % 2 * 0.06})`;
+      for (let i = 0; i < 2200; i++) {
+        const a = rng4() * TAU, r = Math.pow(rng4(), 2.4) * RG * 0.3;
+        px(Math.cos(a) * r, Math.sin(a) * r, rng4() > 0.6 ? "#fff4d8" : "#ffd9a8", 0.18 + rng4() * 0.6);
+      }
+      ctx.restore();
+      ctx.save();
+      ctx.translate(R, R);
+      for (let i = 0; i < 900; i++) {
+        const a = rng4() * TAU, r = Math.pow(rng4(), 0.7) * R * 0.95;
+        px(Math.cos(a) * r, Math.sin(a) * r * 0.86, "#ffe8c8", 0.06 + rng4() * 0.22);
+      }
+      for (let i = 0; i < 9; i++) {
+        const a = rng4() * TAU, r = (0.35 + rng4() * 0.55) * R;
+        const x = Math.cos(a) * r, y = Math.sin(a) * r * 0.8;
+        const g = ctx.createRadialGradient(x, y, 0, x, y, R * 0.035);
+        g.addColorStop(0, "rgba(255,240,210,0.35)");
+        g.addColorStop(1, "rgba(255,220,180,0)");
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = g;
         ctx.beginPath();
-        ctx.moveTo(-R * 1.4, yy);
-        ctx.quadraticCurveTo(0, yy + R * 0.05 * (i % 2 ? 1 : -1), R * 1.4, yy + R * 0.018);
-        ctx.lineTo(R * 1.4, yy + R * 0.042);
-        ctx.quadraticCurveTo(0, yy + R * 0.05 * (i % 2 ? 1 : -1) + R * 0.042, -R * 1.4, yy + R * 0.042);
-        ctx.closePath();
+        ctx.arc(x, y, R * 0.035, 0, TAU);
         ctx.fill();
       }
       ctx.restore();
       for (const c of [
-        { x: 0.16, y: 0.7, r: 0.5, c: "118,58,168" },
-        { x: 0.82, y: 0.76, r: 0.42, c: "28,108,158" },
-        { x: 0.36, y: 0.14, r: 0.36, c: "178,66,108" },
-        { x: 0.94, y: 0.32, r: 0.32, c: "58,150,148" }
+        { x: 0.14, y: 0.74, r: 0.5, c: "118,58,168" },
+        { x: 0.86, y: 0.78, r: 0.4, c: "28,108,158" },
+        { x: 0.3, y: 0.12, r: 0.34, c: "178,66,108" },
+        { x: 0.92, y: 0.24, r: 0.3, c: "58,150,148" }
       ]) {
-        const cx = c.x * vw, cy = c.y * vh, r = c.r * Math.max(vw, vh) * 0.6;
+        const cx = c.x * S, cy = c.y * S, r = c.r * S * 0.5;
         const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
-        g.addColorStop(0, `rgba(${c.c},0.22)`);
-        g.addColorStop(0.4, `rgba(${c.c},0.09)`);
+        g.addColorStop(0, `rgba(${c.c},0.20)`);
+        g.addColorStop(0.4, `rgba(${c.c},0.08)`);
         g.addColorStop(1, "rgba(0,0,0,0)");
+        ctx.globalAlpha = 1;
         ctx.fillStyle = g;
         ctx.beginPath();
         ctx.arc(cx, cy, r, 0, TAU);
         ctx.fill();
       }
+      ctx.globalAlpha = 1;
     }
+    /**
+     * The sky, turning. The galaxy is a plate on a very slow spin; four layers
+     * of near stars slide across it at different rates as you pan, so the
+     * distance between you and it reads. Once in a while something falls.
+     */
     _drawSky(ctx, vw, vh, fade) {
       const plate = this._skyPlate(vw, vh);
-      ctx.fillStyle = "#04060c";
+      ctx.fillStyle = "#03040a";
       ctx.fillRect(0, 0, vw, vh);
-      const ox = clamp(-vw * 0.15 - this.cam.x * 0.04, -vw * 0.3, 0);
-      const oy = clamp(-vh * 0.15 - this.cam.y * 0.04, -vh * 0.3, 0);
-      ctx.drawImage(plate, Math.round(ox), Math.round(oy));
+      const S = plate.width;
+      ctx.save();
+      ctx.translate(vw * 0.8 - this.cam.x * 0.012, vh * 0.22 - this.cam.y * 0.012);
+      ctx.rotate(this.t * 45e-4);
+      ctx.globalAlpha = fade;
+      ctx.drawImage(plate, -S / 2, -S / 2);
+      ctx.restore();
       for (let layer = 0; layer < 4; layer++) {
         const n = 110 - layer * 24;
         const par = 0.02 + layer * 0.05;
@@ -13097,6 +13493,27 @@ body {
           }
         }
       }
+      const period = 11.5;
+      const ph = this.t % period / period;
+      if (ph < 0.1) {
+        const seed = Math.floor(this.t / period);
+        const r1 = (Math.sin(seed * 91.17) * 43758.5 % 1 + 1) % 1;
+        const r2 = (Math.sin(seed * 33.71) * 24634.1 % 1 + 1) % 1;
+        const k = ph / 0.1;
+        const x0 = r1 * vw, y0 = r2 * vh * 0.5;
+        const len = vw * 0.28;
+        const hx = x0 + len * k, hy = y0 + len * 0.42 * k;
+        ctx.globalAlpha = fade * Math.sin(k * Math.PI) * 0.9;
+        const g = ctx.createLinearGradient(hx - len * 0.22, hy - len * 0.09, hx, hy);
+        g.addColorStop(0, "rgba(255,255,255,0)");
+        g.addColorStop(1, "rgba(255,255,255,0.95)");
+        ctx.strokeStyle = g;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(hx - len * 0.22, hy - len * 0.09);
+        ctx.lineTo(hx, hy);
+        ctx.stroke();
+      }
       ctx.globalAlpha = fade;
     }
     // -- the animal -----------------------------------------------------------
@@ -13107,197 +13524,221 @@ body {
       };
     }
     /**
-     * The body you are standing in, drawn from the same numbers the crab in the
-     * desert is built from: its carapace shape, its leg count, its claws, its
-     * basin. It is a dark silhouette with a live rim, because everything that
-     * matters on this screen is inside it.
+     * The body you are standing in. Not a drawing of a crab: the crab. The same
+     * rig the animal in the desert is assembled from, posed standing and baked
+     * once, so the silhouette around the genome is the silhouette you walk
+     * around in - every leg joint, both claws, the eyestalks, the shell.
+     *
+     * The shape is filled dark and lit at the rim; the full-colour render sits
+     * inside it as a ghost, so you can see your own plating through yourself.
      */
+    _plates() {
+      const stage = this.game.crab.stage;
+      if (!this._pl || this._pl.stage !== stage) this._pl = crabPlates(stage, 3);
+      return this._pl;
+    }
+    /**
+     * Where the animal sits on screen. It is not laid out in tree units: it is
+     * fitted to the view, so that however far into the genome you have zoomed
+     * you are still looking at the whole of yourself. It drifts a little against
+     * the camera so it reads as a body you are inside rather than wallpaper.
+     */
+    _fit(vw, vh) {
+      const pl = this._plates();
+      const cap = 6 / pl.sc;
+      const k = Math.min(vw * 0.97 / pl.w, vh * 0.84 / pl.h, cap);
+      const breathe = 1 + Math.sin(this.t * 0.55) * 8e-3;
+      const kk = k * breathe;
+      const px = clamp(-this.cam.x * 0.055 * this.cam.z, -vw * 0.14, vw * 0.14);
+      const py = clamp(-this.cam.y * 0.055 * this.cam.z, -vh * 0.12, vh * 0.12);
+      const w = pl.w * kk, h = pl.h * kk;
+      const x = vw / 2 + px - w / 2;
+      const shellY = (pl.oy + pl.shell.y * pl.sc) * kk;
+      let y = vh * 0.47 + py - shellY;
+      if (h < vh - 26) y = clamp(y, 24, vh - h - 2);
+      else y = vh / 2 - h / 2;
+      const rw = pl.rimOx - pl.ox, rh = pl.rimOy - pl.oy;
+      return {
+        pl,
+        k: kk,
+        x,
+        y,
+        w,
+        h,
+        rx: x - rw * kk,
+        ry: y - rh * kk,
+        rw: pl.rim.width * kk,
+        rh: pl.rim.height * kk
+      };
+    }
+    /** A point on the shell's top surface, in screen pixels. */
+    _shellPt(a, b, vw, vh) {
+      const f = this._fit(vw, vh);
+      const p = f.pl.rig.shellSurface(a, b);
+      return { x: f.x + (f.pl.ox + p.x * f.pl.sc) * f.k, y: f.y + (f.pl.oy + p.y * f.pl.sc) * f.k };
+    }
     _drawBody(ctx, vw, vh, fade) {
-      const z = this.cam.z;
-      const m = this.game.crab.m;
-      const P = (x, y) => this._S(x, y, vw, vh);
-      const RX = 860, RY = 700;
-      const c = P(0, 0);
+      const f = this._fit(vw, vh);
+      const pl = f.pl;
+      const m = pl.m;
       const beat = Math.pow(1 - Math.abs(this.beat * 2 - 1), 3);
       ctx.save();
-      ctx.beginPath();
-      ctx.rect(0, 0, vw, vh);
-      ctx.ellipse(c.x, c.y, RX * z, RY * z, 0, 0, TAU, true);
-      ctx.clip("evenodd");
-      const legN = m.legN;
-      const span = m.reach / m.rx * RX * 0.36;
-      for (const side of [-1, 1]) {
-        for (let i = 0; i < legN; i++) {
-          const t = legN === 1 ? 0.5 : i / (legN - 1);
-          const th = (-0.7 + t * 1.4) * side;
-          const hx = Math.sin(th) * RX * 0.97, hy = Math.cos(th) * RY * -0.34 + RY * 0.1;
-          const wob = Math.sin(this.t * 0.8 + i * 1.3 + (side > 0 ? 0 : 2)) * 10;
-          const pts = [
-            [hx, hy],
-            [hx + side * span * 0.46, hy - span * 0.24 - t * 24 + wob],
-            [hx + side * span * 0.86, hy + span * 0.18 + wob * 0.6],
-            [hx + side * span * 1.06, hy + span * 0.74 + t * 46 + wob]
-          ];
-          this._limb(ctx, pts, m.legLen[0] / m.rx * RX * 0.3 * (1 - i * 0.09), z, P);
-        }
-        const K = m.clawLen[0] / m.rx * RX * 0.34;
-        const ax = side * RX * 0.54, ay = RY * 0.62;
-        const open = 0.16 + Math.sin(this.t * 0.7 + side) * 0.09;
-        const wx = ax + side * K * 2, wy = ay + K * 2;
-        this._limb(ctx, [[ax, ay], [ax + side * K * 1.1, ay + K * 0.4], [wx, wy]], K * 0.32, z, P);
-        const wrist = P(wx, wy);
-        for (const [ang, len, w] of [[0.28 + open, K * 1.7, K * 0.24], [1.06 - open, K * 1.3, K * 0.17]]) {
-          const tip = P(wx + side * Math.sin(ang) * len, wy + Math.cos(ang) * len);
-          const bend = P(wx + side * Math.sin(ang * 0.5) * len * 0.6, wy + Math.cos(ang * 0.5) * len * 0.55);
-          for (const [col, kind] of [["rgba(5,8,13,0.95)", "dark"], ["rgba(126,178,200,0.9)", "mid"], ["rgba(210,244,250,0.5)", "lit"]]) {
-            ctx.beginPath();
-            ctx.moveTo(wrist.x, wrist.y);
-            ctx.quadraticCurveTo(bend.x, bend.y, tip.x, tip.y);
-            ctx.strokeStyle = col;
-            ctx.lineWidth = kind === "dark" ? w * z + 4 : kind === "mid" ? w * z : Math.max(1, w * z * 0.3);
-            ctx.stroke();
-          }
-        }
-      }
-      ctx.restore();
+      ctx.imageSmoothingEnabled = false;
+      ctx.globalCompositeOperation = "lighter";
+      ctx.globalAlpha = fade * (0.2 + beat * 0.12);
+      ctx.shadowColor = "rgba(120,224,244,0.95)";
+      ctx.shadowBlur = 26;
+      ctx.drawImage(pl.rim, f.rx, f.ry, f.rw, f.rh);
+      ctx.shadowBlur = 0;
+      ctx.globalCompositeOperation = "source-over";
+      ctx.globalAlpha = fade * 0.96;
+      ctx.drawImage(pl.fill, f.x, f.y, f.w, f.h);
+      ctx.globalCompositeOperation = "lighter";
+      ctx.globalAlpha = fade * (0.3 + beat * 0.1);
+      ctx.drawImage(pl.ghost, f.x, f.y, f.w, f.h);
+      ctx.globalAlpha = fade * (0.1 + beat * 0.16);
+      ctx.drawImage(pl.glow, f.x, f.y, f.w, f.h);
+      const bandH = Math.max(16, vh * 0.2);
+      const bandY = (this.t * 0.13 % 1.5 - 0.25) * (vh + bandH);
       ctx.save();
       ctx.beginPath();
-      ctx.ellipse(c.x, c.y, RX * z, RY * z, 0, 0, TAU);
-      const g = ctx.createRadialGradient(c.x, c.y, 0, c.x, c.y, RX * z);
-      g.addColorStop(0, `rgba(${24 + beat * 20},${17 + beat * 9},${26 + beat * 14},0.92)`);
-      g.addColorStop(0.66, "rgba(13,10,16,0.95)");
-      g.addColorStop(1, "rgba(6,6,11,0.97)");
-      ctx.fillStyle = g;
-      ctx.fill();
+      ctx.rect(0, bandY, vw, bandH);
+      ctx.clip();
+      ctx.globalAlpha = fade * 0.22;
+      ctx.drawImage(pl.glow, f.x, f.y, f.w, f.h);
       ctx.restore();
-      const ring = (rx, ry, light, w, dark) => {
-        ctx.beginPath();
-        ctx.ellipse(c.x, c.y, rx * z, ry * z, 0, 0, TAU);
-        if (dark) {
-          ctx.strokeStyle = dark;
-          ctx.lineWidth = w + 4;
-          ctx.stroke();
-        }
-        ctx.strokeStyle = light;
-        ctx.lineWidth = w;
-        ctx.stroke();
-      };
-      ring(RX, RY, "rgba(150,208,220,0.72)", Math.max(1, 2.4 * z), "rgba(6,8,14,0.95)");
-      ring(RX * 0.93, RY * 0.92, "rgba(120,178,196,0.20)", Math.max(1, 1.2 * z));
-      const br = m.basin.r * RX * 0.9;
-      const bp = P(m.basin.a * RX, m.basin.b * RY);
+      ctx.globalCompositeOperation = "source-over";
+      ctx.globalAlpha = fade * (0.66 + beat * 0.24);
+      ctx.drawImage(pl.rim, f.rx, f.ry, f.rw, f.rh);
+      ctx.restore();
+      const b0 = this._shellPt(m.basin.a, m.basin.b, vw, vh);
+      const b1 = this._shellPt(m.basin.a + m.basin.r, m.basin.b, vw, vh);
+      const b2 = this._shellPt(m.basin.a, m.basin.b + m.basin.r, vw, vh);
+      const brx = Math.abs(b1.x - b0.x), bry = Math.max(2, Math.abs(b2.y - b0.y));
+      ctx.globalAlpha = fade * 0.55;
       ctx.beginPath();
-      ctx.ellipse(bp.x, bp.y, br * z, br * 0.7 * z, 0, 0, TAU);
-      ctx.strokeStyle = "rgba(120,178,196,0.26)";
-      ctx.lineWidth = Math.max(1, 1.2 * z);
+      ctx.ellipse(b0.x, b0.y, brx, bry, 0, 0, TAU);
+      ctx.strokeStyle = "rgba(140,208,224,0.34)";
+      ctx.lineWidth = 1;
       ctx.stroke();
       const pond = clamp01(this.game.garden.pond);
       if (pond > 0.02) {
-        ctx.globalAlpha = fade * (0.08 + pond * 0.2);
+        const q = Math.sqrt(pond);
+        ctx.globalAlpha = fade * (0.12 + pond * 0.26);
         ctx.fillStyle = "#5fc6d8";
         ctx.beginPath();
-        ctx.ellipse(bp.x, bp.y, br * z * Math.sqrt(pond), br * 0.7 * z * Math.sqrt(pond), 0, 0, TAU);
-        ctx.fill();
-        ctx.globalAlpha = fade;
-      }
-      for (const side of [-1, 1]) {
-        const e0 = P(side * RX * 0.13, RY * 0.82), e1 = P(side * RX * 0.22, RY * 1.16);
-        ctx.beginPath();
-        ctx.moveTo(e0.x, e0.y);
-        ctx.lineTo(e1.x, e1.y);
-        ctx.strokeStyle = "rgba(150,208,220,0.6)";
-        ctx.lineWidth = Math.max(1.5, 7 * z);
-        ctx.stroke();
-        ctx.fillStyle = "#0c0a10";
-        ctx.beginPath();
-        ctx.arc(e1.x, e1.y, Math.max(2.4, 15 * z), 0, TAU);
-        ctx.fill();
-        ctx.fillStyle = "rgba(215,245,255,0.9)";
-        ctx.beginPath();
-        ctx.arc(e1.x - 5 * z, e1.y - 5 * z, Math.max(1, 4.5 * z), 0, TAU);
+        ctx.ellipse(b0.x, b0.y, brx * q, bry * q, 0, 0, TAU);
         ctx.fill();
       }
+      const cx = f.x + pl.ox * f.k, cy = f.y + (pl.oy + pl.shell.y * pl.sc) * f.k;
+      const hrx = m.rx * pl.sc * f.k, hry = (m.ry + m.domeH * 0.7) * pl.sc * f.k;
       for (const mo of this.motes) {
         const yy = (mo.y - this.t * 0.01 * mo.s + 2) % 1;
         const xx = (mo.x + Math.sin(this.t * 0.26 * mo.s + mo.p) * 0.014 + 1) % 1;
-        const bx = lerp(-RX, RX, xx), by = lerp(-RY, RY, yy);
-        if ((bx / RX) ** 2 + (by / RY) ** 2 > 0.9) continue;
-        const sp = P(bx, by);
+        const dx = (xx - 0.5) * 2, dy = (yy - 0.5) * 2;
+        if (dx * dx + dy * dy > 0.86) continue;
+        const sx = cx + dx * hrx, sy = cy + dy * hry;
         const tw = 0.4 + 0.6 * (0.5 + 0.5 * Math.sin(this.t * 2.1 + mo.p)) + beat * 0.4;
-        ctx.globalAlpha = fade * 0.38 * tw * mo.s;
+        ctx.globalAlpha = fade * 0.42 * tw * mo.s;
         ctx.fillStyle = mo.r ? "#cd7a6c" : "#9fe8d4";
-        ctx.fillRect(Math.round(sp.x), Math.round(sp.y), 1, 1);
+        ctx.fillRect(Math.round(sx), Math.round(sy), 1, 1);
       }
       ctx.globalAlpha = fade;
     }
-    _limb(ctx, pts, w, z, P) {
-      ctx.lineCap = "round";
-      ctx.lineJoin = "round";
-      const trace = () => {
-        ctx.beginPath();
-        const s0 = P(pts[0][0], pts[0][1]);
-        ctx.moveTo(s0.x, s0.y);
-        for (let i = 1; i < pts.length - 1; i++) {
-          const a = P(pts[i][0], pts[i][1]);
-          const b = P(pts[i + 1][0], pts[i + 1][1]);
-          ctx.quadraticCurveTo(a.x, a.y, (a.x + b.x) / 2, (a.y + b.y) / 2);
-        }
-        const last2 = P(pts[pts.length - 1][0], pts[pts.length - 1][1]);
-        ctx.lineTo(last2.x, last2.y);
-      };
-      trace();
-      ctx.strokeStyle = "rgba(5,8,13,0.95)";
-      ctx.lineWidth = w * z + 5;
-      ctx.stroke();
-      trace();
-      ctx.strokeStyle = "rgba(104,150,172,0.85)";
-      ctx.lineWidth = w * z;
-      ctx.stroke();
-      trace();
-      ctx.strokeStyle = "rgba(206,244,250,0.5)";
-      ctx.lineWidth = Math.max(1, w * z * 0.32);
-      ctx.stroke();
-    }
     // -- the tree itself ------------------------------------------------------
     /**
-     * The six spokes, drawn as faint guides out to the horizon of each system
-     * with its name on it. This is the thing that makes a radial tree learnable:
-     * a direction always means the same system, whether or not you have grown it.
+     * The frame the whole thing hangs on: rings at each tier so depth is
+     * visible at a glance, six spokes so a direction always means the same
+     * system, and a name with a filled bar at the end of each so you can read
+     * how far you have taken it without counting beads.
      */
     _drawArms(ctx, vw, vh, fade) {
       const z = this.cam.z;
+      const O = this._S(0, 0, vw, vh);
+      const deepest = {};
+      for (const n of this.L.nodes) {
+        if (!n.arm || (this.grow[n.id] ?? 0) < 0.5) continue;
+        deepest[n.arm] = Math.max(deepest[n.arm] ?? -1, n.tier ?? 0);
+      }
+      const maxTier = Math.max(-1, ...Object.values(deepest));
+      for (let i = 0; i < R_TIER.length; i++) {
+        const r = R_TIER[i];
+        const on = i <= maxTier;
+        const near = i === maxTier + 1;
+        if (!on && !near) continue;
+        ctx.globalAlpha = fade * (on ? 0.16 : 0.07 + 0.04 * Math.sin(this.t * 1.6));
+        ctx.strokeStyle = on ? "rgba(190,232,226,0.9)" : "rgba(150,180,190,0.9)";
+        ctx.lineWidth = 1;
+        if (!on) ctx.setLineDash([3, 5]);
+        ctx.beginPath();
+        ctx.ellipse(O.x, O.y, r * z, r * 0.86 * z, 0, 0, TAU);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
       for (const arm of ARMS) {
         const lv = this.armLevel(arm.id);
         const d = armDir(arm.deg);
         const a = this._S(d.x * (R_GENE + 26), d.y * (R_GENE + 26), vw, vh);
         let reach = R_TIER[0] + 40;
-        for (const n of this.L.nodes) {
-          if (n.arm !== arm.id) continue;
-          if ((this.seen[n.id] ?? 0) < 0.4) continue;
-          reach = Math.max(reach, Math.hypot(n.x, n.y) + 70);
-        }
-        const b = this._S(d.x * reach, d.y * reach, vw, vh);
-        ctx.globalAlpha = fade * (0.1 + lv * 0.16);
-        ctx.strokeStyle = arm.colour;
-        ctx.lineWidth = Math.max(1, 10 * z);
-        ctx.beginPath();
-        ctx.moveTo(a.x, a.y);
-        ctx.lineTo(b.x, b.y);
-        ctx.stroke();
         let far = R_GENE + 40;
         for (const n of this.L.nodes) {
           if (n.arm !== arm.id) continue;
           if ((this.seen[n.id] ?? 0) < 0.4) continue;
-          far = Math.max(far, Math.hypot(n.x, n.y) + 84);
+          const dd = Math.hypot(n.x, n.y);
+          reach = Math.max(reach, dd + 70);
+          far = Math.max(far, dd + 18);
         }
+        const b = this._S(d.x * reach, d.y * reach, vw, vh);
+        ctx.lineCap = "round";
+        ctx.globalAlpha = fade * 0.3;
+        ctx.strokeStyle = "rgba(4,7,12,0.9)";
+        ctx.lineWidth = Math.max(2, 13 * z);
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(b.x, b.y);
+        ctx.stroke();
+        const gr = ctx.createLinearGradient(a.x, a.y, b.x, b.y);
+        gr.addColorStop(0, arm.colour);
+        gr.addColorStop(1, "rgba(255,255,255,0)");
+        ctx.globalAlpha = fade * (0.14 + lv * 0.26);
+        ctx.strokeStyle = gr;
+        ctx.lineWidth = Math.max(1, 9 * z);
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(b.x, b.y);
+        ctx.stroke();
         const px2 = -d.y, py2 = d.x;
-        const lp = this._S(d.x * far + px2 * 86, d.y * far + py2 * 86, vw, vh);
-        if (lp.x > 24 && lp.x < vw - 24 && lp.y > 26 && lp.y < vh - 18) {
-          ctx.globalAlpha = fade * (0.4 + lv * 0.5);
-          drawText(ctx, arm.name, lp.x, lp.y - 4, { color: arm.colour, align: "center" });
+        const lp = this._S(d.x * far + px2 * 124, d.y * far + py2 * 124, vw, vh);
+        if (lp.x > 30 && lp.x < vw - 30 && lp.y > 28 && lp.y < vh - 16) {
+          const nw = textWidth(arm.name);
+          ctx.globalAlpha = fade * 0.62;
+          ctx.fillStyle = "rgba(4,7,11,0.78)";
+          ctx.fillRect(Math.round(lp.x - nw / 2) - 4, Math.round(lp.y) - 10, nw + 8, 19);
+          ctx.globalAlpha = fade * (0.24 + lv * 0.3);
+          ctx.strokeStyle = arm.colour;
+          ctx.lineWidth = 1;
+          ctx.strokeRect(Math.round(lp.x - nw / 2) - 3.5, Math.round(lp.y) - 9.5, nw + 7, 18);
+          ctx.globalAlpha = fade * (0.62 + lv * 0.38);
+          drawText(ctx, arm.name, lp.x, lp.y - 7, { color: arm.colour, align: "center" });
+          const bw = 34, bx = Math.round(lp.x - bw / 2), by = Math.round(lp.y + 3);
           ctx.globalAlpha = fade * 0.32;
-          drawText(ctx, `${Math.round(lv * 100)}%`, lp.x, lp.y + 6, { color: arm.colour, align: "center" });
+          ctx.fillStyle = "rgba(8,12,16,0.9)";
+          ctx.fillRect(bx - 1, by - 1, bw + 2, 4);
+          ctx.fillStyle = "rgba(150,170,175,0.45)";
+          ctx.fillRect(bx, by, bw, 2);
+          ctx.globalAlpha = fade * (0.55 + lv * 0.45);
+          ctx.fillStyle = arm.colour;
+          ctx.fillRect(bx, by, Math.max(lv > 0 ? 1 : 0, Math.round(bw * lv)), 2);
         }
+      }
+      for (const sp of this.spores) {
+        const a = sp.a + this.t * sp.sp * 0.12;
+        const r = sp.r + Math.sin(this.t * 0.5 + sp.p) * sp.rise;
+        const p = this._S(Math.cos(a) * r, Math.sin(a) * r * 0.86, vw, vh);
+        if (p.x < 0 || p.x > vw || p.y < 0 || p.y > vh) continue;
+        ctx.globalAlpha = fade * (0.12 + 0.16 * (0.5 + 0.5 * Math.sin(this.t * 1.4 + sp.p)));
+        ctx.fillStyle = sp.c;
+        ctx.fillRect(Math.round(p.x), Math.round(p.y), 1, 1);
       }
       ctx.globalAlpha = fade;
     }
@@ -13312,9 +13753,10 @@ body {
       return { pa, pb, mx: mx + nx / l * bow, my: my + ny / l * bow };
     }
     /**
-     * The connections. A grown one is a bright cord with the arm's colour
-     * running through it; an ungrown one is a dashed lead showing where the next
-     * thing would attach, which is how you know a choice exists at all.
+     * The connections. A grown one is a cord: a dark bed, the arm's colour laid
+     * into it, a bright filament down the middle and something running out
+     * along it, always away from the seed. An ungrown one is a dashed lead with
+     * a chevron at the end, so an unbought choice still reads as a choice.
      */
     _drawLinks(ctx, vw, vh, fade) {
       const z = this.cam.z;
@@ -13327,49 +13769,64 @@ body {
         if (!path) continue;
         const { pa, pb, mx, my } = path;
         const colour = (ARM_BY_ID[ln.arm] || {}).colour || "#c9e08a";
-        const steps = 16;
+        const steps = 18;
         const pts = [];
-        for (let i = 0; i <= steps; i++) pts.push(curveAt(pa, pb, mx, my, i / steps));
+        for (let i = 0; i <= steps; i++) pts.push(curveAt(pa, pb, mx, my, i / steps * Math.max(0.06, g > 0.5 ? 1 : seen)));
         const trace = () => {
           ctx.beginPath();
           pts.forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y));
         };
-        const w = Math.max(1.4, ln.w * z * lerp(0.5, 1, g));
+        const w = Math.max(1.6, ln.w * z * lerp(0.55, 1, g));
         ctx.lineCap = "round";
-        ctx.globalAlpha = fade * lerp(0.45, 1, Math.max(g, seen * 0.7));
-        if (g > 0.5) {
+        ctx.lineJoin = "round";
+        if (g > 0.35) {
+          ctx.globalAlpha = fade * g;
           trace();
-          ctx.strokeStyle = "rgba(5,7,12,0.9)";
-          ctx.lineWidth = w + 4 * z;
+          ctx.strokeStyle = "rgba(4,6,11,0.92)";
+          ctx.lineWidth = w + 4 * z + 1.5;
           ctx.stroke();
           trace();
           ctx.strokeStyle = colour;
           ctx.lineWidth = w;
           ctx.stroke();
-          ctx.globalAlpha = fade * 0.5;
+          ctx.globalAlpha = fade * g * 0.55;
           trace();
-          ctx.strokeStyle = "rgba(255,255,255,0.8)";
-          ctx.lineWidth = Math.max(1, w * 0.28);
+          ctx.strokeStyle = "rgba(255,255,255,0.85)";
+          ctx.lineWidth = Math.max(1, w * 0.26);
           ctx.stroke();
-          const flow = (this.t * 0.4 + ln.w * 0.13) % 1;
-          const bead = curveAt(pa, pb, mx, my, flow);
-          ctx.globalAlpha = fade * 0.55;
-          const gg = ctx.createRadialGradient(bead.x, bead.y, 0, bead.x, bead.y, w * 2.6);
-          gg.addColorStop(0, "#ffffff");
-          gg.addColorStop(0.35, colour);
-          gg.addColorStop(1, "rgba(0,0,0,0)");
-          ctx.fillStyle = gg;
-          ctx.beginPath();
-          ctx.arc(bead.x, bead.y, w * 2.6, 0, TAU);
-          ctx.fill();
+          for (let k = 0; k < 2; k++) {
+            const flow = (this.t * 0.3 + ln.w * 0.13 + k * 0.5) % 1;
+            const bead = curveAt(pa, pb, mx, my, flow);
+            const rad = Math.max(2, w * 2.4);
+            ctx.globalAlpha = fade * g * (0.3 + 0.25 * Math.sin(flow * Math.PI));
+            const gg = ctx.createRadialGradient(bead.x, bead.y, 0, bead.x, bead.y, rad);
+            gg.addColorStop(0, "#ffffff");
+            gg.addColorStop(0.35, colour);
+            gg.addColorStop(1, "rgba(0,0,0,0)");
+            ctx.fillStyle = gg;
+            ctx.beginPath();
+            ctx.arc(bead.x, bead.y, rad, 0, TAU);
+            ctx.fill();
+          }
         } else {
-          ctx.setLineDash([4 * z, 4 * z]);
-          ctx.lineDashOffset = -this.t * 14 * z;
+          ctx.globalAlpha = fade * seen * (0.45 + 0.18 * Math.sin(this.t * 2.2 + pb.x * 0.01));
+          ctx.setLineDash([4 * z + 1, 4 * z + 2]);
+          ctx.lineDashOffset = -this.t * 16 * z;
           trace();
-          ctx.strokeStyle = "rgba(160,178,190,0.5)";
-          ctx.lineWidth = Math.max(1, w * 0.7);
+          ctx.strokeStyle = "rgba(176,196,206,0.75)";
+          ctx.lineWidth = Math.max(1, w * 0.65);
           ctx.stroke();
           ctx.setLineDash([]);
+          const p1 = pts[pts.length - 1], p0 = pts[pts.length - 3] || pts[0];
+          const an = Math.atan2(p1.y - p0.y, p1.x - p0.x);
+          const L = Math.max(3, 5 * z);
+          ctx.beginPath();
+          ctx.moveTo(p1.x - Math.cos(an - 0.5) * L, p1.y - Math.sin(an - 0.5) * L);
+          ctx.lineTo(p1.x, p1.y);
+          ctx.lineTo(p1.x - Math.cos(an + 0.5) * L, p1.y - Math.sin(an + 0.5) * L);
+          ctx.strokeStyle = "rgba(210,230,238,0.8)";
+          ctx.lineWidth = 1;
+          ctx.stroke();
         }
         ctx.globalAlpha = fade;
       }
@@ -13389,7 +13846,7 @@ body {
           if ((this.seen[n.id] ?? 0) < 0.4) continue;
           reach = Math.max(reach, Math.hypot(n.x, n.y));
         }
-        const p = this._S(d.x * (reach + 210), d.y * (reach + 210), vw, vh);
+        const p = this._S(d.x * (reach + ORGAN_GAP), d.y * (reach + ORGAN_GAP), vw, vh);
         if (p.x < -200 || p.x > vw + 200 || p.y < -200 || p.y > vh + 200) continue;
         const art = organArt(arm.organ, clamp(z * 1.4, 0.3, 2), lv);
         let sx = 1, sy = 1, glow = 0.08 + lv * 0.2;
@@ -13495,35 +13952,28 @@ body {
         if (hot) hover = { n, p };
         const pulse = ready ? 0.5 + Math.sin(this.t * 3) * 0.5 : 0;
         const arm = ARM_BY_ID[n.arm] || {};
-        ctx.globalAlpha = fade * seen * (on ? 0.34 : ready ? 0.2 + pulse * 0.32 : 0.16);
-        const gg = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, rr * 2.4);
+        const grown = this.grow[n.id] ?? 0;
+        ctx.globalAlpha = fade * seen * (on ? 0.4 : ready ? 0.2 + pulse * 0.34 : 0.14);
+        const gg = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, rr * 2.8);
         gg.addColorStop(0, on || ready ? n.color : "#7a8a90");
+        gg.addColorStop(0.45, on || ready ? n.color : "#5a6a70");
         gg.addColorStop(1, "rgba(0,0,0,0)");
         ctx.fillStyle = gg;
         ctx.beginPath();
-        ctx.arc(p.x, p.y, rr * 2.4, 0, TAU);
+        ctx.arc(p.x, p.y, rr * 2.8, 0, TAU);
+        ctx.fill();
+        ctx.globalAlpha = fade * seen * 0.85;
+        ctx.fillStyle = "rgba(5,8,12,0.85)";
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, rr + 2.5 * z + 1, 0, TAU);
         ctx.fill();
         ctx.globalAlpha = fade * seen;
-        const art = orbArt(n.color, rr * (on ? 1 : 0.88), on);
+        const art = orbArt(n.color, rr * (on ? 1 : 0.86), on);
         ctx.save();
         ctx.translate(p.x, p.y);
-        if (ready) ctx.scale(1 + pulse * 0.06, 1 + pulse * 0.06);
+        if (ready) ctx.scale(1 + pulse * 0.07, 1 + pulse * 0.07);
         ctx.drawImage(art.cv, -art.ox, -art.oy);
         ctx.restore();
-        if (n.big) {
-          ctx.strokeStyle = on ? n.color : "rgba(180,190,190,0.45)";
-          ctx.lineWidth = Math.max(1, 1.6 * z);
-          ctx.beginPath();
-          ctx.arc(p.x, p.y, rr + 5 * z, 0, TAU);
-          ctx.stroke();
-          if (on) {
-            ctx.globalAlpha = fade * 0.35;
-            ctx.beginPath();
-            ctx.arc(p.x, p.y, rr + 9 * z, 0, TAU);
-            ctx.stroke();
-            ctx.globalAlpha = fade * seen;
-          }
-        }
         const ico = n.data && n.data.icon;
         if (ico && rr > 6) {
           drawNodeIcon(
@@ -13531,36 +13981,102 @@ body {
             ico,
             p.x,
             p.y,
-            on ? "rgba(10,8,6,0.88)" : ready ? "rgba(244,238,222,0.9)" : "rgba(190,196,196,0.55)",
-            Math.max(1, Math.round(rr / 4.4))
+            on ? "rgba(10,13,10,0.86)" : ready ? "rgba(246,242,226,0.92)" : "rgba(176,186,190,0.55)",
+            Math.max(1, Math.round(rr / 5.8))
           );
         }
-        if (!on && z > 0.4) {
+        if (on) {
+          ctx.globalAlpha = fade * (0.55 + 0.2 * Math.sin(this.t * 1.5 + n.x * 0.01));
+          ctx.strokeStyle = n.color;
+          ctx.lineWidth = Math.max(1, 1.4 * z);
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, rr + 3.5 * z, 0, TAU);
+          ctx.stroke();
+          if (rr > 7) {
+            for (let k = 0; k < 3; k++) {
+              const a2 = this.t * 0.7 + k / 3 * TAU + n.x * 0.01;
+              const sx = p.x + Math.cos(a2) * (rr + 3.5 * z);
+              const sy = p.y + Math.sin(a2) * (rr + 3.5 * z);
+              ctx.globalAlpha = fade * 0.85;
+              ctx.fillStyle = "#f6fff0";
+              ctx.fillRect(Math.round(sx), Math.round(sy), 1, 1);
+            }
+          }
+        } else if (rr > 6) {
+          const c = Math.max(1, this.cost(n));
+          const k = clamp01(this.game.economy.nutrients / c);
+          ctx.globalAlpha = fade * seen * 0.3;
+          ctx.strokeStyle = "rgba(170,186,190,0.8)";
+          ctx.lineWidth = Math.max(1, 1.6 * z);
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, rr + 3.5 * z, 0, TAU);
+          ctx.stroke();
+          ctx.globalAlpha = fade * seen * (ready ? 0.95 : 0.7);
+          ctx.strokeStyle = ready ? "#d8f0a4" : "#e2b74a";
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, rr + 3.5 * z, -Math.PI / 2, -Math.PI / 2 + TAU * k);
+          ctx.stroke();
+        }
+        if (n.big) {
+          ctx.globalAlpha = fade * seen * (on ? 0.5 : 0.3);
+          ctx.strokeStyle = on ? n.color : "rgba(180,190,190,0.6)";
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, rr + 7.5 * z, 0, TAU);
+          ctx.stroke();
+          if (on) {
+            for (let k = 0; k < 4; k++) {
+              const a2 = -this.t * 0.35 + k / 4 * TAU;
+              const sx = p.x + Math.cos(a2) * (rr + 7.5 * z);
+              const sy = p.y + Math.sin(a2) * (rr + 7.5 * z);
+              ctx.globalAlpha = fade * 0.7;
+              ctx.fillStyle = n.color;
+              ctx.fillRect(Math.round(sx) - 1, Math.round(sy) - 1, 2, 2);
+            }
+          }
+        }
+        if (hot) {
+          ctx.globalAlpha = fade * (0.5 + 0.3 * Math.sin(this.t * 6));
+          ctx.strokeStyle = "#ffffff";
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, rr + 11 * z, 0, TAU);
+          ctx.stroke();
+        }
+        if (!on && z > 0.34) {
           const c = this.cost(n);
-          drawText(ctx, `${c}`, p.x, p.y + rr + 4, {
-            color: ready ? "#cfe89a" : costly ? "#e08c9c" : "rgba(200,206,206,0.6)",
+          const label = `${c}`;
+          const tw = textWidth(label);
+          ctx.globalAlpha = fade * seen * 0.8;
+          ctx.fillStyle = "rgba(6,9,12,0.8)";
+          ctx.fillRect(Math.round(p.x - tw / 2) - 2, Math.round(p.y + rr + 5.5 * z), tw + 4, 9);
+          ctx.globalAlpha = fade * seen;
+          drawText(ctx, label, p.x, p.y + rr + 6.5 * z, {
+            color: ready ? "#dff0a8" : costly ? "#e08c9c" : "rgba(200,206,206,0.7)",
             align: "center"
           });
         }
-        if (n.big && on && z > 0.5) {
+        if (n.big && (on || ready) && z > 0.45) {
           drawText(
             ctx,
             n.data.name,
             p.x,
-            p.y - rr - 12,
-            { color: arm.colour || n.color, align: "center", alpha: fade * 0.8 }
+            p.y - rr - 13 * z - 4,
+            { color: arm.colour || n.color, align: "center", alpha: fade * 0.85 }
           );
         }
-        if (on && this._hasMore(n) && z > 0.35) {
+        if (on && this._hasMore(n) && z > 0.3) {
           const d = armDir(arm.deg ?? 0);
-          const s2 = this._S(n.x + d.x * 46, n.y + d.y * 46, vw, vh);
-          ctx.globalAlpha = fade * (0.25 + 0.2 * Math.sin(this.t * 2 + n.x));
+          const s2 = this._S(n.x + d.x * 52, n.y + d.y * 52, vw, vh);
+          ctx.globalAlpha = fade * (0.22 + 0.2 * Math.sin(this.t * 2 + n.x));
           ctx.strokeStyle = n.color;
           ctx.lineWidth = Math.max(1, 2 * z);
+          ctx.setLineDash([3, 3]);
           ctx.beginPath();
           ctx.moveTo(p.x, p.y);
           ctx.lineTo(s2.x, s2.y);
           ctx.stroke();
+          ctx.setLineDash([]);
           ctx.globalAlpha = fade;
         }
         if (hot && i.clicked) {
@@ -13592,24 +14108,62 @@ body {
         ctx.arc(c.x, c.y, r * 0.6, 0, TAU);
         ctx.fill();
       }
+      for (const R of this.rings) {
+        const t = clamp01(R.t);
+        const p = this._S(R.x, R.y, vw, vh);
+        const rad = lerp(R.r0, R.r1, easeOutCubic(t)) * this.cam.z;
+        const a = 1 - t;
+        ctx.globalAlpha = a * a * 0.9;
+        ctx.strokeStyle = R.color;
+        ctx.lineWidth = Math.max(1, 3 * (1 - t) * this.cam.z);
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, rad, 0, TAU);
+        ctx.stroke();
+        ctx.globalAlpha = a * a * 0.4;
+        ctx.strokeStyle = "#ffffff";
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, rad * 0.72, 0, TAU);
+        ctx.stroke();
+        for (let k = 0; k < 10; k++) {
+          const an = k / 10 * TAU + R.seed;
+          const d = rad * (0.9 + 0.35 * ((k * 7 + R.seed * 3) % 1));
+          ctx.globalAlpha = a * 0.9;
+          ctx.fillStyle = k % 3 === 0 ? "#ffffff" : R.color;
+          ctx.fillRect(Math.round(p.x + Math.cos(an) * d), Math.round(p.y + Math.sin(an) * d * 0.9), 1, 1);
+        }
+        ctx.globalAlpha = 1;
+      }
     }
     // -- chrome ---------------------------------------------------------------
     _drawChrome(ctx, vw, vh, fade, hover) {
       const e = this.game.economy;
       const total = EVOLUTIONS.length + SKILLS.length;
       const open = e.evolutions.size + e.skills.size;
-      ctx.fillStyle = "rgba(6,8,12,0.72)";
+      ctx.fillStyle = "rgba(6,8,12,0.80)";
       ctx.fillRect(0, 0, vw, 20);
-      ctx.fillStyle = "rgba(150,208,220,0.20)";
+      ctx.fillStyle = "rgba(150,208,220,0.18)";
       ctx.fillRect(0, 20, vw, 1);
+      const done = clamp01(open / Math.max(1, total));
+      const grad = ctx.createLinearGradient(0, 0, vw * done, 0);
+      grad.addColorStop(0, "#5fc6d8");
+      grad.addColorStop(0.5, "#8cc468");
+      grad.addColorStop(1, "#e2d07a");
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 20, Math.round(vw * done), 1);
       drawText(ctx, "YOUR GENOME", 6, 3, { color: "#cfe8d8" });
-      drawText(
-        ctx,
-        `${Math.round(e.nutrients)} nutrients`,
-        vw / 2,
-        3,
-        { color: "#cfe89a", align: "center" }
-      );
+      const label = `${Math.round(e.nutrients)} nutrients`;
+      const lw = textWidth(label);
+      const bx = Math.round(vw / 2 - lw / 2) - 7, by = 8;
+      const pulse = 0.5 + 0.5 * Math.sin(this.t * 2.2);
+      ctx.fillStyle = "#cfe89a";
+      ctx.fillRect(bx - 1, by - 2, 3, 5);
+      ctx.fillRect(bx - 2, by - 1, 5, 3);
+      ctx.globalAlpha = fade * (0.3 + pulse * 0.4);
+      ctx.fillStyle = "#f4ffd0";
+      ctx.fillRect(bx - 1, by - 1, 2, 2);
+      ctx.globalAlpha = fade;
+      drawText(ctx, label, vw / 2, 3, { color: "#cfe89a", align: "center" });
       drawText(
         ctx,
         `${open}/${total} grown   ${e.genes.size}/${GENES.length} genes`,
@@ -13712,6 +14266,29 @@ body {
         cur = ln.from;
       }
       chain.forEach((ln, i) => this.pulses.push({ ln, t: -i * 0.45, dur: 0.5 }));
+      const n = this.L.by[id];
+      if (n) {
+        this.rings.push({
+          x: n.x,
+          y: n.y,
+          r0: n.r,
+          r1: n.r + 190,
+          dur: 0.9,
+          t: -chain.length * 0.4,
+          color: n.color,
+          seed: Math.random()
+        });
+        this.rings.push({
+          x: n.x,
+          y: n.y,
+          r0: n.r,
+          r1: n.r + 96,
+          dur: 0.6,
+          t: -chain.length * 0.4 - 0.1,
+          color: "#ffffff",
+          seed: Math.random()
+        });
+      }
       this.flash = 1;
     }
     _buy(n) {
@@ -14142,7 +14719,7 @@ body {
       const W = r.vw, H = r.vh;
       if (this.tree.diving || this.tree.dive > 0.01) {
         this.tree.draw(ctx, W, H);
-        if (this.tree.dive > 0.5) return;
+        if (this.tree.dive > 0.14) return;
       }
       this._hud(ctx, W, H);
       if (this.build > 5e-3) this._buildRail(ctx, W, H);

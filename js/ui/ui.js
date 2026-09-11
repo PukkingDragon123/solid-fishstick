@@ -402,7 +402,9 @@ export class UI {
 
     if (this.tree.diving || this.tree.dive > 0.01) {
       this.tree.draw(ctx, W, H);
-      if (this.tree.dive > 0.5) return;
+      // the world's chrome goes as soon as the dive takes hold, so nothing is
+      // floating over the top of you while you fall into yourself
+      if (this.tree.dive > 0.14) return;
     }
 
     this._hud(ctx, W, H);

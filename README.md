@@ -101,10 +101,11 @@ walking, because the only thing out here worth having is over the next dune.**
 There is no skill menu. There is the animal, and you can look into it.
 
 Press `G`, or tap the orb on your own back, and the camera does not stop at the
-shell — it **dives**. Through the rock, the chitin and the pearl, each layer
-rushing past and named as you pass it, the stars stretching into streaks, and
-out the other side into the cavity where the thing that decides what you become
-is sitting.
+shell — it **dives**. You rush up at yourself out of the dark, a speck growing
+into an animal filling the screen; then through the rock, the chitin and the
+pearl, each layer named as it passes, the stars stretching into streaks, and out
+the other side into the cavity where the thing that decides what you become is
+sitting.
 
 It is a skill tree, and it is built to the rules that make skill trees
 readable rather than impressive:
@@ -119,22 +120,37 @@ readable rather than impressive:
   one step past it, joined by a dashed lead, and a short stub where a chain
   continues. A wall of grey nodes you cannot buy teaches you nothing and makes
   the ones you can buy harder to find.
-- **State is readable without reading.** Owned is lit and filled; affordable
-  pulses; unaffordable shows its price in red. The price sits under every node
-  you do not own yet.
+- **State is readable without reading.** Owned is lit and filled, closed by a
+  ring with three lights running round it; affordable pulses; unaffordable
+  carries an arc showing how much of its price you have saved so far. Rings at
+  each tier and a filling bar beside every arm's name say how deep you are
+  without you counting beads.
 - **Every node carries a picture of what it does** — a drop, a moon, a saw, a
   spade, a crown — and exactly one effect that nothing else has. Words are for
   the hover card, which tells you what it is, what it costs, and precisely what
   is in the way if you cannot have it.
 - **Buying one is an event**: the bead lights, sap runs out from the seed along
-  every link it took to get there, and the organ at the end of that arm
+  every link it took to get there, two rings open out of the node with sparks
+  thrown off them, the screen flares, and the organ at the end of that arm
   visibly grows.
 
-Around the outside is the animal itself, drawn from the same numbers the crab
-in the desert is built from — carapace, legs, claws, eyestalks, and the basin
-on its back with however much water is actually in it. Round the seed is a ring
-of **genes**, which are the one thing you cannot buy: they light up only while
-something alive on your back is expressing them.
+Around the outside is the animal itself. Not a drawing of one: the crab. The
+genome screen takes the very rig the desert crab is assembled from, poses it
+standing and bakes it (`js/art/crabpose.js`) — the same carapace, the same eight
+legs solved through the same IK, both claws, the eyestalks — then fills the
+shape dark, lights its outline, and lays the full-colour render back inside it
+as an x-ray, so the silhouette you grow your genome inside is the silhouette you
+walk around in, joint for joint. It grows as you grow: a hatchling is a coin
+with legs here too, and one sprite pixel is never blown up past a fixed size, so
+evolving is visible on this screen as well as out in the sand. The basin on its
+back holds however much water is actually in it.
+
+Behind all of it is a galaxy, painted once from a bulge, two logarithmic arms
+scattered star by star with pink nurseries strung along them and dust lanes
+eating their inside edges, then turned very slowly while four layers of near
+stars slide across it. Round the seed is a ring of **genes**, which are the one
+thing you cannot buy: they light up only while something alive on your back is
+expressing them.
 
 ![Your genome](docs/shot-04-tree.png)
 
