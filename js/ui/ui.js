@@ -160,8 +160,9 @@ export class UI {
     if (this.tree.diving) return;
 
     this.build = damp(this.build, this.buildOn ? 1 : 0, 0.0009, dt);
+    // There is no button for this. You climb onto your own back by touching
+    // your own back, and you climb off it by stepping off.
     if (i.justPressed('Tab')) { i.consumeKey('Tab'); this.toggleBuild(); }
-    if (i.justPressed('b')) { i.consumeKey('b'); this.toggleBuild(); }
     if (i.justPressed('Escape')) {
       i.consumeKey('Escape');
       if (this.placing) { this.placing = null; this.say('Cancelled.'); }
@@ -171,7 +172,7 @@ export class UI {
     }
     // clicking the animal itself is how you get onto its back
     if (!this.buildOn && !this.drawerOpen && !this.placing && !this.driving
-      && this.game.state === 'play' && i.clicked && this._overCrab()) {
+      && this.game.state === 'play' && i.clicked && this._overCrab() && !this._overRipe()) {
       i.clicked = false;
       this.toggleBuild();
     }
@@ -215,6 +216,20 @@ export class UI {
       && g.input.sy > s.y - hh && g.input.sy < s.y + hh * 0.6;
   }
 
+  /** Over something ready to pick? Picking it beats climbing on top of it. */
+  _overRipe() {
+    const g = this.game;
+    const i = g.input;
+    for (const plot of g.garden.plots) {
+      const pl = plot.plant;
+      if (!pl || pl.stage < 3 || pl.ripe < 1) continue;
+      const w = g.garden.plotWorld(plot);
+      const s = g.cam.worldToScreen(w.x, w.y - 9);
+      if (Math.hypot(i.sx - s.x, i.sy - s.y) < 12) return true;
+    }
+    return false;
+  }
+
   /**
    * Build mode: the camera comes in on the shell and the seeds come out down
    * the side. Everything you can do to your own back happens here, on your
@@ -222,6 +237,7 @@ export class UI {
    */
   toggleBuild() {
     const g = this.game;
+    if (!this.buildOn && g.state !== 'play') return;
     this.buildOn = !this.buildOn;
     this.drawerOpen = false;
     this.placing = null;
@@ -230,7 +246,7 @@ export class UI {
       const want = clamp(g.renderer.vh * 0.42 / Math.max(18, g.crab.m.rx * 2.2), 2.2, 6);
       g.cam.targetZoom = clamp(want, g.cam.minZoom, g.cam.maxZoom);
       this.buildScroll = 0;
-      this.say('Your back. Put something in it.', 3);
+      this.say('You climb onto your own back. Esc to get down.', 4);
       g.audio?.play('uiBig');
     } else {
       if (this.savedZoom) g.cam.targetZoom = this.savedZoom;
@@ -260,10 +276,15 @@ export class UI {
   }
 
   _openTree() {
-    const r = this.game.renderer;
+    const g = this.game;
+    const r = g.renderer;
     this.drawerOpen = false;
     this.placing = null;
-    this.tree.open(r.vw - 17, 31, r.vw, r.vh);
+    this.buildOn = false;
+    // the dive starts from the animal itself, wherever it is on screen, so it
+    // reads as going into the crab rather than into a button
+    const s = g.cam.worldToScreen(g.crab.x, g.crab.y);
+    this.tree.open(clamp(s.x, 0, r.vw), clamp(s.y, 0, r.vh), r.vw, r.vh);
   }
 
   /**
@@ -578,7 +599,7 @@ export class UI {
       drawText(ctx, hint, W / 2, H - 30, { color: INK, align: 'center', outline: true, outlineColor: OUT });
     }
     if (!this.touchEnabled) {
-      drawText(ctx, 'A/D move  SPACE spring  R pick  TAB build  1 map  2 fleet  3 notes  X parasite  G inside',
+      drawText(ctx, 'A/D move   SPACE spring   R pick   E dig   X parasite   click yourself to build   G inside',
         W / 2, H - 10, { color: FAINT, align: 'center', outline: true, outlineColor: OUT });
     }
     if (this.selected) {
@@ -1100,6 +1121,7 @@ export class UI {
     }
 
     drawText(ctx, 'esc to climb down', inX, 2, { color: FAINT });
+    if (this._hit(inX, 0, inW, 9) && g.input.clicked) { g.input.clicked = false; this.toggleBuild(); }
     ctx.globalAlpha = 1;
   }
 
@@ -1552,9 +1574,8 @@ export class UI {
     };
     const bw = 44, bh = 19;
     add(W - bw * 2 - 10, H - bh - 6, bw, bh, this.game.garden.ripeCount ? 'PICK' : '-', 'r');
-    add(W - bw - 6, H - bh * 2 - 11, bw, bh, this.buildOn ? 'DOWN' : 'BUILD', 'Tab');
-    add(W - bw * 2 - 10, H - bh * 2 - 11, bw, bh, 'MODE', 'm');
-    add(W - bw - 6, H - bh * 3 - 16, bw, bh, this.game.actionHint() ? 'ACT' : '-', 'e');
+    add(W - bw - 6, H - bh * 2 - 11, bw, bh, 'MODE', 'm');
+    add(W - bw * 2 - 10, H - bh * 2 - 11, bw, bh, this.game.actionHint() ? 'ACT' : '-', 'e');
     const hint = this.game.actionHint();
     if (hint) {
       drawText(ctx, hint, W - bw - 12 - 30, H - bh * 2 - 22,

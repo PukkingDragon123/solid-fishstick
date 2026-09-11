@@ -191,7 +191,9 @@ export class Game {
     const play = this.state === 'play';
 
     let move = 0;
-    if (play && !this.ui.busy) {
+    // You cannot walk while you are stood on your own shell planting things.
+    // It is your shell; you are on it; the legs are not available.
+    if (play && !this.ui.busy && !this.ui.building) {
       const ax = i.axis();
       move = ax.x;
       // while you are riding one of your own, the keys are its keys
@@ -369,7 +371,7 @@ export class Game {
     this._pumpSfx = (this._pumpSfx || 0) - dt;
     if (this._pumpSfx <= 0) { this._pumpSfx = 0.42; this.audio.play('water'); }
     if (this.tutorial === 1 && e.water > 70) {
-      this.tutorial = 2; this.ui.say('Click yourself, or press TAB, to climb onto your own back and plant something.', 7);
+      this.tutorial = 2; this.ui.say('Click yourself to climb onto your own back and plant something.', 7);
     }
   }
 

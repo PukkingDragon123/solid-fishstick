@@ -43,13 +43,13 @@ npm run build     # -> dist/crabden.html + dist/crabden.body.html
 | scuttle | `A` / `D` or arrows | left thumbstick (drag anywhere in the lower-left) |
 | the spring | hold `Space` | hold the valve |
 | pick what is ripe | `R` | **PICK**, or tap the bead over a plant |
-| build on your own back | click yourself, or `Tab` | **BUILD** |
+| build on your own back | click yourself | tap yourself |
 | put a parasite on something | `X` | — |
 | put a relic in your basin | `K` | — |
 | tap out a word | hold/release `T` | — |
 | Vess: follow, get on, get off | `F` | — |
 | act — dig, win over, strike | `E` | **ACT** |
-| map / fleet / field notes | `1` / `2` / `3` | **SHOP** button, then a tab |
+| map / fleet / field notes | `1` / `2` / `3` | **SHOP**, then a tab |
 | inside you | `G` | tap the orb |
 | control mode | `M` | **MODE** |
 | zoom / pan | wheel, drag | pinch, drag |
@@ -96,51 +96,47 @@ walking, because the only thing out here worth having is over the next dune.**
    from juvenile to adult to ancient makes the shell bigger, the basin deeper,
    and the garden on your back larger in every sense.
 
-### The Tree of Life
+### Your genome
 
-There is no skill menu. There is an orb on your own back, and you can look into
-it — the screen is swallowed by the orb and you wake up inside your own genome.
+There is no skill menu. There is the animal, and you can look into it.
 
-The gene orb on your back is not a menu button. Looking into it takes you down
-through your own shell — rock, then chitin, then pearl, each layer rushing past
-and named as you pass it — and out the other side, where you get to see the
-whole of yourself at once: the carapace, eight legs, two claws and both
-eyestalks, drawn as a lit outline against a galaxy you have never been above
-ground long enough to look at.
+Press `G`, or tap the orb on your own back, and the camera does not stop at the
+shell — it **dives**. Through the rock, the chitin and the pearl, each layer
+rushing past and named as you pass it, the stars stretching into streaks, and
+out the other side into the cavity where the thing that decides what you become
+is sitting.
 
-The proportions come from the same numbers the crab in the desert is built
-from — how wide its carapace is, how many legs it has, how big it is for its
-stage — so it is recognisably the same animal, and it grows when you do.
+It is a skill tree, and it is built to the rules that make skill trees
+readable rather than impressive:
 
-Inside that outline is a seed with **five limbs** coming off it, one per
-system, each ending in the organ that does that job: **the Spring** (the
-bladder that holds your water), **the Gut**, **the Knot** (the ganglion that
-hears the desert and answers it), **the Closer** (the pennate muscle that
-shuts your claw), and **the Heart**. Book gills hang either side, still moving
-water that has not been there for a thousand years. Along the bottom, your
-genome is read out one codon per gene, lit where you are expressing it.
+- **Six arms, evenly spaced**, so a direction always means the same system and
+  you learn where things are by where they are: FORM straight up, then SPRING,
+  SHELL, BROOD, PINCER and LEGS around the clock.
+- **Growth runs outward from a seed**, so how far a thing is from the middle is
+  exactly how deep into that system you have gone. Each arm forks once and
+  comes back together at a keystone, which is drawn bigger and ringed.
+- **Nothing is drawn that you cannot reach.** You see what you own and what is
+  one step past it, joined by a dashed lead, and a short stub where a chain
+  continues. A wall of grey nodes you cannot buy teaches you nothing and makes
+  the ones you can buy harder to find.
+- **State is readable without reading.** Owned is lit and filled; affordable
+  pulses; unaffordable shows its price in red. The price sits under every node
+  you do not own yet.
+- **Every node carries a picture of what it does** — a drop, a moon, a saw, a
+  spade, a crown — and exactly one effect that nothing else has. Words are for
+  the hover card, which tells you what it is, what it costs, and precisely what
+  is in the way if you cannot have it.
+- **Buying one is an event**: the bead lights, sap runs out from the seed along
+  every link it took to get there, and the organ at the end of that arm
+  visibly grows.
 
-Each limb is a real chain: the first node is cheap and obvious, and nothing
-past it exists until you have it. Every node is a painted bead with its own
-pictogram stamped into it and exactly one effect that nothing else has —
-Serration ignores armour, Sand Skating flattens dunes, Brooding lets your fleet
-replace its own dead, Greening makes what spills off your shell soak in.
+Around the outside is the animal itself, drawn from the same numbers the crab
+in the desert is built from — carapace, legs, claws, eyestalks, and the basin
+on its back with however much water is actually in it. Round the seed is a ring
+of **genes**, which are the one thing you cannot buy: they light up only while
+something alive on your back is expressing them.
 
-So an upgrade is not a checkbox. Buying into a bough grows the organ that bough
-reaches: the heart gets bigger and beats harder, the bladder fills, the
-ganglion thickens and fires brighter. The organ on screen **is** the upgrade,
-and the tree is your nervous system reaching it. Evolutions run up the trunk
-toward the underside of your own shell, and the genes you express are the roots
-— dim nodules until something alive on your back expresses them, then lit.
-
-Nothing is laid out in advance and greyed out: a branch only exists once it has
-somewhere to go, and the camera frames whatever currently exists. Every node is
-a real painted bead — lit from inside when you own it, shut and matte when you
-do not — strung on bright lines you can follow at a glance, with something
-running along each one in the colour of the organ it feeds. Buy a node and a
-bead of sap runs all the way up from the roots into the new growth.
-
-![Inside you](docs/shot-04-tree.png)
+![Your genome](docs/shot-04-tree.png)
 
 ### Three ways to move
 
@@ -150,9 +146,11 @@ to send it. The last two unlock in the tree.
 
 ### Build mode
 
-There is no shop. **Click the animal** and the camera comes in on the shell,
-the seeds come out down the side, and you are up on your own back — which is
-where planting something on your own back ought to happen.
+There is no shop and there is no build button. **Click the animal** and the
+camera comes in on the shell, the seeds come out down the side, and you are up
+on your own back — which is where planting something on your own back ought to
+happen. You cannot walk while you are up there; it is your shell, you are
+standing on it, and the legs are not available.
 
 The rail shows what you can carry, what you are carrying, and a grid of seeds
 and structures. Pick one and the card at the bottom says what it costs, **what
@@ -444,7 +442,7 @@ js/
 | --- | --- |
 | ![Waking up](docs/shot-01-waking.png) | ![The first garden](docs/shot-02-first-garden.png) |
 | ![Build mode](docs/shot-05-drawer.png) | ![The map](docs/shot-06-notes.png) |
-| ![Inside you](docs/shot-04-tree.png) | ![Night](docs/shot-08-night.png) |
+| ![Your genome](docs/shot-04-tree.png) | ![Night](docs/shot-08-night.png) |
 
 ---
 
