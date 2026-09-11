@@ -41,62 +41,96 @@ export const GENE_BY_ID = Object.fromEntries(GENES.map((g) => [g.id, g]));
 
 // ---------------------------------------------------------------------------
 
+/**
+ * What you can grow into.
+ *
+ * Five limbs come off the seed, one per system, and each is a real chain: the
+ * first node is cheap and obvious, and nothing past it exists until you have
+ * it. `x` is how far along its limb a node sits and `y` is which fork of that
+ * limb, so a limb branches once and then comes back together at its last node.
+ *
+ * Every node does exactly one thing that nothing else does. If two nodes would
+ * have the same effect, one of them should not be here.
+ */
 export const SKILLS = [
-  // -- water ----------------------------------------------------------------
-  { id: 'deepwell', name: 'Deep Well', branch: 'water', cost: 12, x: 0, y: 0, req: [],
-    effect: { pumpGain: 3 }, desc: 'Each pump brings up more water.' },
-  { id: 'cistern', name: 'Cistern', branch: 'water', cost: 22, x: 1, y: -1, req: ['deepwell'],
-    effect: { waterMax: 90 }, desc: 'You can hold a great deal more before it spills.' },
-  { id: 'artesian', name: 'Artesian Pressure', branch: 'water', cost: 40, x: 2, y: -1, req: ['cistern'],
-    effect: { pumpGain: 5, pondGain: 0.04 }, desc: 'The spring runs on its own between pumps.' },
-  { id: 'condenser', name: 'Night Condenser', branch: 'water', cost: 34, x: 1, y: 1, req: ['deepwell'],
-    effect: { nightWater: 1.4 }, desc: 'The shell sweats water out of the cold night air.' },
-  { id: 'aquifer', name: 'Aquifer Tap', branch: 'water', cost: 70, x: 3, y: 0, req: ['artesian', 'condenser'],
-    effect: { pumpGain: 8, waterMax: 160 }, desc: 'You have found what is left of the water table.' },
+  // -- SPRING: the organ that makes water ----------------------------------
+  { id: 'deepwell', name: 'Deep Well', branch: 'water', icon: 'drop', cost: 12, x: 0, y: 0, req: [],
+    effect: { pumpGain: 3 }, desc: 'The duct opens wider. Every second on the valve brings up more.' },
+  { id: 'cistern', name: 'Cistern', branch: 'water', icon: 'tank', cost: 22, x: 1, y: -1, req: ['deepwell'],
+    effect: { waterMax: 90 }, desc: 'A second chamber behind the first. You can hold far more before it spills.' },
+  { id: 'condenser', name: 'Night Condenser', branch: 'water', icon: 'moon', cost: 34, x: 1, y: 1, req: ['deepwell'],
+    effect: { nightWater: 1.4 }, desc: 'The shell sweats. Cold night air goes in and water comes out of it.' },
+  { id: 'artesian', name: 'Artesian Pressure', branch: 'water', icon: 'jet', cost: 40, x: 2, y: -1, req: ['cistern'],
+    effect: { pumpGain: 5, pondGain: 0.04 }, desc: 'It runs on its own between pumps, and the basin fills while you walk.' },
+  { id: 'greening', name: 'Greening', branch: 'water', icon: 'sprout', cost: 66, x: 2, y: 1, req: ['condenser'],
+    effect: { green: 1 }, desc: 'What spills off your shell soaks in instead of evaporating. The ground behind you comes back.' },
+  { id: 'aquifer', name: 'Aquifer Tap', branch: 'water', icon: 'well', cost: 96, x: 3, y: 0, req: ['artesian', 'greening'],
+    effect: { pumpGain: 8, waterMax: 160, green: 1 }, desc: 'You have found what is left of the water table, and it knows you.' },
 
-  // -- garden ---------------------------------------------------------------
-  { id: 'terrace', name: 'Terracing', branch: 'garden', cost: 18, x: 0, y: 0, req: [],
-    effect: { plots: 1 }, desc: 'Cut a ledge into the shell. One more planting bed.' },
-  { id: 'mulch', name: 'Mulching', branch: 'garden', cost: 26, x: 1, y: -1, req: ['terrace'],
-    effect: { upkeep: -0.25 }, desc: 'Plants on your back drink a quarter less.' },
-  { id: 'grafting', name: 'Grafting', branch: 'garden', cost: 44, x: 2, y: -1, req: ['mulch'],
-    effect: { grow: 0.7 }, desc: 'Everything reaches maturity noticeably sooner.' },
-  { id: 'terrace2', name: 'Upper Terrace', branch: 'garden', cost: 48, x: 1, y: 1, req: ['terrace'],
-    effect: { plots: 2 }, desc: 'Two more beds, high on the crest.' },
-  { id: 'orchard', name: 'Orchard', branch: 'garden', cost: 86, x: 3, y: 0, req: ['grafting', 'terrace2'],
-    effect: { yield: 1.5, berryRate: 1.6 }, desc: 'Fruit sets heavily, and keeps setting.' },
+  // -- SHELL: what grows on your back ---------------------------------------
+  { id: 'terrace', name: 'Terracing', branch: 'garden', icon: 'step', cost: 18, x: 0, y: 0, req: [],
+    effect: { plots: 1 }, desc: 'Cut ledges into the rock. You can carry noticeably more without listing.' },
+  { id: 'mulch', name: 'Mulching', branch: 'garden', icon: 'leaf', cost: 26, x: 1, y: -1, req: ['terrace'],
+    effect: { upkeep: -0.25 }, desc: 'Everything that falls stays. Plants on your back drink a quarter less.' },
+  { id: 'terrace2', name: 'Upper Terrace', branch: 'garden', icon: 'step', cost: 48, x: 1, y: 1, req: ['terrace'],
+    effect: { plots: 2 }, desc: 'Beds high on the crest, where nothing shades anything else.' },
+  { id: 'grafting', name: 'Grafting', branch: 'garden', icon: 'graft', cost: 44, x: 2, y: -1, req: ['mulch'],
+    effect: { grow: 0.7 }, desc: 'Cut and bound. Everything reaches maturity a third sooner.' },
+  { id: 'quickfruit', name: 'Quickfruit', branch: 'garden', icon: 'fruit', cost: 58, x: 2, y: 1, req: ['terrace2'],
+    effect: { ripen: 0.72 }, desc: 'Your plants come ripe far more often, so there is always something to pick.' },
+  { id: 'orchard', name: 'Orchard', branch: 'garden', icon: 'tree', cost: 96, x: 3, y: 0, req: ['grafting', 'quickfruit'],
+    effect: { yield: 1.5, berryRate: 1.6 }, desc: 'A closed canopy on the back of a walking animal. It should not work.' },
 
-  // -- creatures ------------------------------------------------------------
-  { id: 'calling', name: 'Calling', branch: 'fleet', cost: 16, x: 0, y: 0, req: [],
-    effect: { attract: 1.25 }, desc: 'You have learned to be worth approaching.' },
-  { id: 'trust', name: 'Patience', branch: 'fleet', cost: 28, x: 1, y: -1, req: ['calling'],
-    effect: { trust: 1.6 }, desc: 'Wild things settle around you far quicker.' },
-  { id: 'command', name: 'Command', branch: 'fleet', cost: 46, x: 2, y: -1, req: ['trust'],
-    effect: { orders: true }, desc: 'Give your fleet standing orders: follow, guard, ride.' },
-  { id: 'roost', name: 'Roosting', branch: 'fleet', cost: 38, x: 1, y: 1, req: ['calling'],
-    effect: { fleetSlots: 2 }, desc: 'Room on the shell for two more residents.' },
-  { id: 'symbiosis', name: 'Symbiosis', branch: 'fleet', cost: 90, x: 3, y: 0, req: ['command', 'roost'],
-    effect: { fleetSlots: 3, yield: 1.3 }, desc: 'The animals work the garden without being asked.' },
+  // -- BROOD: everything that decides to live on you ------------------------
+  { id: 'calling', name: 'Calling', branch: 'fleet', icon: 'call', cost: 16, x: 0, y: 0, req: [],
+    effect: { attract: 1.25 }, desc: 'You have learned to be worth the walk across open sand.' },
+  { id: 'trust', name: 'Patience', branch: 'fleet', icon: 'hand', cost: 28, x: 1, y: -1, req: ['calling'],
+    effect: { trust: 1.6 }, desc: 'You have learned to stand still. Wild things settle much quicker.' },
+  { id: 'roost', name: 'Roosting', branch: 'fleet', icon: 'nest', cost: 38, x: 1, y: 1, req: ['calling'],
+    effect: { fleetSlots: 2 }, desc: 'Hollows in the rock, out of the sun. Room for two more residents.' },
+  { id: 'command', name: 'Command', branch: 'fleet', icon: 'point', cost: 46, x: 2, y: -1, req: ['trust'],
+    effect: { orders: true }, desc: 'They watch you now. Point, and something goes where you pointed.' },
+  { id: 'brooding', name: 'Brooding', branch: 'fleet', icon: 'egg', cost: 72, x: 2, y: 1, req: ['roost'],
+    effect: { breed: 1 }, desc: 'What lives on you breeds on you. Your fleet replaces its own dead.' },
+  { id: 'symbiosis', name: 'Symbiosis', branch: 'fleet', icon: 'link', cost: 104, x: 3, y: 0, req: ['command', 'brooding'],
+    effect: { fleetSlots: 3, yield: 1.3 }, desc: 'They work the garden without being asked, and it is not clear who decided.' },
 
-  // -- body -----------------------------------------------------------------
-  { id: 'stride', name: 'Long Stride', branch: 'body', cost: 14, x: 0, y: 0, req: [],
-    effect: { speed: 1.2 }, desc: 'Cover ground without spending more water.' },
-  { id: 'carapace', name: 'Thick Carapace', branch: 'body', cost: 30, x: 1, y: -1, req: ['stride'],
-    effect: { armour: 0.25, hp: 40 }, desc: 'A quarter of what hits you does nothing.' },
-  { id: 'pincer', name: 'Crushing Pincer', branch: 'body', cost: 42, x: 2, y: -1, req: ['carapace'],
-    effect: { dmg: 12 }, desc: 'The claw closes hard enough to matter.' },
-  { id: 'burrowing', name: 'Burrowing', branch: 'body', cost: 36, x: 1, y: 1, req: ['stride'],
-    effect: { dig: true }, desc: 'Dig into the sand. Storms and ambushes pass over you.' },
-  { id: 'ancient', name: 'Ancient Frame', branch: 'body', cost: 96, x: 3, y: 0, req: ['pincer', 'burrowing'],
-    effect: { hp: 120, armour: 0.2, speed: 1.15 }, desc: 'You remember being much larger than this.' },
+  // -- PINCER: the end of your arm ------------------------------------------
+  { id: 'pincer', name: 'Crushing Pincer', branch: 'claw', icon: 'claw', cost: 24, x: 0, y: 0, req: [],
+    effect: { dmg: 12 }, desc: 'The claw closes hard enough to matter to something with a shell.' },
+  { id: 'serrate', name: 'Serration', branch: 'claw', icon: 'saw', cost: 34, x: 1, y: -1, req: ['pincer'],
+    effect: { dmg: 10, armourPierce: 0.3 }, desc: 'A cutting edge along the inside. Armour stops helping.' },
+  { id: 'digger', name: 'Digging Claw', branch: 'claw', icon: 'spade', cost: 30, x: 1, y: 1, req: ['pincer'],
+    effect: { dig: true, fossil: 1 }, desc: 'Broad and flat. You can open the sand, and find what is under it.' },
+  { id: 'snapshock', name: 'Snapping Shock', branch: 'claw', icon: 'bolt', cost: 62, x: 2, y: -1, req: ['serrate'],
+    effect: { dmg: 20, stun: 1 }, desc: 'It shuts fast enough to leave a hole in the air. Whatever is in the way stops.' },
+  { id: 'sifter', name: 'Sifting Comb', branch: 'claw', icon: 'comb', cost: 54, x: 2, y: 1, req: ['digger'],
+    effect: { fossil: 2, berryRate: 1.15 }, desc: 'Comb the spoil instead of dropping it. Far more comes up whole.' },
+  { id: 'breaker', name: 'Wall Breaker', branch: 'claw', icon: 'hammer', cost: 100, x: 3, y: 0, req: ['snapshock', 'sifter'],
+    effect: { dmg: 26, breach: true }, desc: 'You can take a ruin apart. There is usually something inside worth the noise.' },
+
+  // -- LEGS: how you carry all of it ---------------------------------------
+  { id: 'stride', name: 'Long Stride', branch: 'legs', icon: 'leg', cost: 14, x: 0, y: 0, req: [],
+    effect: { speed: 1.2 }, desc: 'A longer step for the same water. You cover ground.' },
+  { id: 'carapace', name: 'Thick Carapace', branch: 'legs', icon: 'shield', cost: 30, x: 1, y: -1, req: ['stride'],
+    effect: { armour: 0.25, hp: 40 }, desc: 'Laminate under the rock. A quarter of what hits you does nothing at all.' },
+  { id: 'burrowing', name: 'Burrowing', branch: 'legs', icon: 'burrow', cost: 36, x: 1, y: 1, req: ['stride'],
+    effect: { dig: true }, desc: 'Fold the legs and go under. Storms and ambushes pass over the top of you.' },
+  { id: 'porter', name: 'Porter Frame', branch: 'legs', icon: 'load', cost: 56, x: 2, y: -1, req: ['carapace'],
+    effect: { plots: 3 }, desc: 'The legs take the weight instead of the shell. You can carry a great deal more.' },
+  { id: 'sandskate', name: 'Sand Skating', branch: 'legs', icon: 'skate', cost: 52, x: 2, y: 1, req: ['burrowing'],
+    effect: { speed: 1.3, slope: 1 }, desc: 'Wide feet, no sinking. Dunes stop being hills.' },
+  { id: 'ancient', name: 'Ancient Frame', branch: 'legs', icon: 'crown', cost: 112, x: 3, y: 0, req: ['porter', 'sandskate'],
+    effect: { hp: 120, armour: 0.2, speed: 1.15, plots: 2 }, desc: 'You remember being very much larger than this.' },
 ];
 
 export const SKILL_BY_ID = Object.fromEntries(SKILLS.map((s) => [s.id, s]));
 export const BRANCHES = [
   { id: 'water', name: 'Spring', color: '#5fc6d8' },
-  { id: 'garden', name: 'Garden', color: '#8cc468' },
-  { id: 'fleet', name: 'Fleet', color: '#e2b74a' },
-  { id: 'body', name: 'Body', color: '#c8925f' },
+  { id: 'garden', name: 'Shell', color: '#8cc468' },
+  { id: 'fleet', name: 'Brood', color: '#e2b74a' },
+  { id: 'claw', name: 'Pincer', color: '#d87a6a' },
+  { id: 'legs', name: 'Legs', color: '#c8925f' },
 ];
 
 // ---------------------------------------------------------------------------

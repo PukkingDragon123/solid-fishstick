@@ -312,6 +312,53 @@ function paintGanglion(S, lv) {
 }
 
 /**
+ * PINCER - the closer muscle. A crab's claw is one enormous pennate muscle
+ * with a tendon down the middle of it, and it is the strongest thing in the
+ * animal, so it is drawn as what it is rather than as a lump.
+ */
+function paintMuscle(S, lv) {
+  const w = Math.ceil(172 * S) + 12, h = Math.ceil(150 * S) + 12;
+  const p = new Painter(w, h);
+  const cx = w / 2, cy = h * 0.52;
+  const R = 40 * S * lerp(0.74, 1.12, lv);
+
+  // the apodeme: the flat tendon everything pulls on
+  p.capsule(cx - R * 1.30, cy + R * 0.10, cx + R * 1.10, cy - R * 0.06,
+    R * 0.10, R * 0.20, { mat: 'horn', dome: R * 0.14, tint: 0.10 });
+
+  // the fibres, running in at an angle from both sides - that is what pennate
+  // means, and it is why the thing looks like a feather
+  const n = 15;
+  for (let i = 0; i < n; i++) {
+    const t = (i + 0.5) / n;
+    const ax = lerp(cx - R * 1.16, cx + R * 0.98, t);
+    const ay = lerp(cy + R * 0.08, cy - R * 0.05, t);
+    const len = R * (0.42 + Math.sin(t * Math.PI) * 0.66);
+    for (const sgn of [-1, 1]) {
+      p.curve([
+        { x: ax, y: ay },
+        { x: ax - R * 0.26, y: ay + sgn * len * 0.62 },
+        { x: ax - R * 0.44, y: ay + sgn * len },
+      ], R * 0.09, R * 0.05,
+        { mat: 'organ', dome: R * 0.08, steps: 8, tint: -0.04 + Math.sin(t * 7) * 0.07 + sgn * 0.03 });
+    }
+  }
+  // the sheath over the whole belly of it
+  p.field(cx - R * 1.5, cy - R * 1.3, cx + R * 1.3, cy + R * 1.3, (x, y) => {
+    const a = (x - cx + R * 0.1) / (R * 1.30), b = (y - cy) / (R * 1.05);
+    const d = a * a + b * b;
+    if (d > 1 || d < 0.62) return null;
+    const k = (d - 0.62) / 0.38;
+    return { h: 1.6 + (1 - k) * 2, tint: -0.12 + (1 - k) * 0.20 };
+  }, { mat: 'organPale' });
+
+  p.grain('organ', { freq: 0.30 / S, amp: 0.16, seed: 47, oct: 2 });
+  p.speckle('organ', { density: 0.035, amp: 0.26, seed: 59 });
+  p.smoothHeight(1, 0.5);
+  return { cv: bake(p), ox: cx, oy: cy, r: R };
+}
+
+/**
  * The gills. A crab's are books of thin plates, but at this size a stack of
  * bars reads as a barcode, so each one is drawn as what it actually behaves
  * like: a plume with a rachis and a hundred fine barbs off it, still moving
@@ -418,9 +465,9 @@ function paintOrb(hex, R, on) {
   const c = w / 2;
   const mats = {
     orb: {
-      ramp: rampFrom(hex, on ? { lo: 0.16, hi: 1.7 } : { lo: 0.07, hi: 0.62 }),
-      diffuse: 0.8, rim: on ? 0.75 : 0.4, ao: 0.1,
-      spec: on ? 0.85 : 0.3, normalScale: 0.6, outline: '#0b0908',
+      ramp: rampFrom(hex, on ? { lo: 0.22, hi: 1.18 } : { lo: 0.08, hi: 0.50 }),
+      diffuse: 0.86, rim: on ? 0.55 : 0.3, ao: 0.12,
+      spec: on ? 0.45 : 0.2, normalScale: 0.6, outline: '#0b0908',
     },
   };
   p.ellipse(c, c, R, R, { mat: 'orb', dome: R * 1.05, tint: on ? 0.06 : -0.10 });
@@ -434,9 +481,8 @@ function paintOrb(hex, R, on) {
   }, { mat: 'orb', onlyMat: 'orb', addHeight: true });
   if (on) {
     // a live core showing through, and the hard specular of something wet
-    p.ellipse(c, c, R * 0.34, R * 0.34, { mat: 'orb', onlyMat: 'orb', dome: R * 0.3, tint: 0.34, emissive: 0.5 });
-    p.ellipse(c - R * 0.34, c - R * 0.36, Math.max(0.9, R * 0.16), Math.max(0.9, R * 0.13),
-      { mat: 'orb', onlyMat: 'orb', dome: R * 0.2, tint: 0.9 });
+    p.ellipse(c - R * 0.36, c - R * 0.38, Math.max(0.9, R * 0.15), Math.max(0.9, R * 0.12),
+      { mat: 'orb', onlyMat: 'orb', dome: R * 0.2, tint: 0.55 });
   } else {
     // shut: a seam down the middle and nothing behind it
     p.capsule(c, c - R * 0.82, c, c + R * 0.82, Math.max(0.8, R * 0.10), Math.max(0.8, R * 0.08),
@@ -477,6 +523,7 @@ export function organArt(name, S = 1, lv = 0) {
     case 'spring': v = paintSpring(S, q); break;
     case 'gut': v = paintGut(S, q); break;
     case 'ganglion': v = paintGanglion(S, q); break;
+    case 'muscle': v = paintMuscle(S, q); break;
     case 'gillL': v = paintGill(S, q, -1); break;
     case 'gillR': v = paintGill(S, q, 1); break;
     case 'seed': v = paintSeed(S, q); break;

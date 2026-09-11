@@ -15,7 +15,10 @@ import { biomeAt } from './world/biomes.js';
 import { World } from './world/landmarks.js';
 import { Crab } from './entities/crab.js';
 import { Archaeologist, Elder, POSE } from './entities/npc.js';
+import { frame, drawFrame } from './art/people.js';
 import { Morse } from './systems/talk.js';
+import { Green } from './systems/green.js';
+import { Digs, RELIC_BY_ID } from './systems/digs.js';
 import { Fx } from './systems/fx.js';
 import { Garden } from './systems/garden.js';
 import { Economy } from './systems/economy.js';
@@ -23,6 +26,7 @@ import { Wildlife } from './systems/wildlife.js';
 import { Encounters } from './systems/encounters.js';
 import { UI } from './ui/ui.js';
 import { FLORA_BY_ID } from './data/flora.js';
+import { buildPlant } from './art/floraart.js';
 import { OBSERVE_STEPS } from './data/fauna.js';
 import { VESS_LORE } from './data/lore.js';
 import { BUILD_BY_ID, GENE_BY_ID } from './data/progress.js';
@@ -73,6 +77,8 @@ export class Game {
     this.world = new World(this, this.seed);
     this.npc = new Archaeologist(this, 62);
     this.morse = new Morse(this);
+    this.green = new Green(this);
+    this.digs = new Digs(this, this.seed);
     this.ui = new UI(this);
 
     this.seeds = { dustmoss: 3, saltgrass: 2 };
@@ -205,6 +211,7 @@ export class Game {
       if (i.justPressed('r')) this.harvestAll();
       if (i.justPressed('f')) this.callVess();
       if (i.justPressed('x')) this.infest();
+      if (i.justPressed('k')) this.incubateBest();
       // T is the tap key: hold for a long tap, release for a short one
       this.morse.update(sdt, i.key('t'));
       if (i.justPressed('q')) this.attack();
@@ -223,6 +230,9 @@ export class Game {
     this.biome = biomeAt(this.crab.x);
     this.weather.update(sdt, this);
     this.terrain.update(sdt, this.weather.windSpeed);
+    this.green.update(sdt, this.weather);
+    this.green.tick(sdt);
+    this.digs.update(sdt);
 
     // garden drinks from the tank, and pays out nutrients and fruit
     const eco = this.economy;
@@ -475,8 +485,62 @@ export class Game {
     return true;
   }
 
+  /** Put the best thing in your pack into the water on your back. */
+  incubateBest() {
+    const have = Object.entries(this.relics || {}).filter(([, n]) => n > 0);
+    if (!have.length) { this.ui.say('Nothing in your pack. Dig something up first.'); return; }
+    if (this.garden.pond < 0.25) { this.ui.say('Your basin is dry. Nothing will develop in it.'); return; }
+    const [id] = have.sort((a, b) =>
+      (RELIC_BY_ID[b[0]]?.incubate || 0) - (RELIC_BY_ID[a[0]]?.incubate || 0))[0];
+    const res = this.digs.incubate(id);
+    if (!res.ok) { this.ui.say(res.msg); return; }
+    this.relics[id]--;
+    this.ui.say(res.msg, 5);
+    this.audio.play('grow');
+    this.npc.say('You are going to put a fossil in a puddle on your back and wait. '
+      + 'And it is going to work, is it? It is, isn\'t it.', 6);
+  }
+
+  /** Something that has been extinct for a thousand years walks off your shell. */
+  onHatched(relic) {
+    const c = this.crab;
+    const spot = c.shellWorldAB(0, 0.5);
+    const made = this.wildlife.spawn(relic.hatch, c.x + 20);
+    this.fx.spark(spot.x, spot.y, '#fae19f', 26, 64);
+    this.cam.shake(4);
+    this.audio.play('evolve');
+    if (made) {
+      made.tamed = true;
+      made.trust = 1;
+      made.hatched = true;
+      this.wildlife.fleet.push(made);
+      this.ui.say(`${made.def.name}. Out of the ${relic.kind}. It is alive.`, 7);
+      this.npc.say('It hatched. A thousand years in a rock and it hatched. '
+        + 'I am going to need a bigger notebook.', 8);
+      this.economy.markDirty();
+    }
+  }
+
   act() {
     const c = this.crab;
+    // something in the ground right under you comes first: it is the only
+    // thing here you can lose by walking past
+    const site = this.digs.reachable(c.x);
+    if (site) {
+      const res = this.digs.dig(site);
+      if (!res.ok) { this.ui.say(res.msg); return; }
+      this.relics = this.relics || {};
+      this.relics[res.relic.id] = (this.relics[res.relic.id] || 0) + 1;
+      this.terrain.deform(site.x, 5, 22);
+      this.fx.dust(site.x, this.terrain.surfaceY(site.x), 3);
+      this.fx.spark(site.x, this.terrain.surfaceY(site.x) - 6,
+        res.relic.kind === 'amber' ? '#eec66c' : '#c6bea7', 16, 40);
+      this.fx.popup(site.x, this.terrain.surfaceY(site.x) - 14, res.relic.name, '#dcd6c3');
+      this.audio.play('discover');
+      this.ui.say(`${res.relic.name}. Put it in your basin (K) and keep the water up.`, 6);
+      this.npc.say(res.relic.desc, 7);
+      return;
+    }
     if (this.garden.ripeCount) { this.harvestAll(); return; }
     const foe = this.wildlife.nearest(c.x, c.y, 44, (q) => q.hostile);
     if (foe) { this.attack(); return; }
@@ -613,7 +677,30 @@ export class Game {
     this.fx.spark(this.crab.x, this.crab.y, '#b6de8f', 22, 70);
   }
 
-  wetSand(x, amount) { this.terrain.deform(x, -amount * 0.04, 9); }
+  /** Water hitting the ground: it wets the sand, and it wakes the ground up. */
+  wetSand(x, amount) {
+    this.terrain.deform(x, -amount * 0.04, 9);
+    this.green?.water(x, amount * 0.0026, 34);
+  }
+
+  /** Something came up out of the sand behind you. Worth noticing. */
+  onGreened(x) {
+    if (Math.abs(x - this.crab.x) > 400) return;
+    this.fx.spark(x, this.terrain.surfaceY(x) - 3, '#8cc468', 7, 22);
+    if (Math.random() < 0.25) {
+      this.npc.say(['Something came up. In the open. Out of dead sand.',
+        'That is a plant. Nobody planted that.',
+        'The ground behind you is not the ground in front of you any more.',
+      ][Math.floor(Math.random() * 3)], 5);
+    }
+  }
+
+  /** A seed on your back has taken up enough water to start. */
+  onGerminate(plot, pl) {
+    const w = this.garden.plotWorld(plot);
+    this.fx.spark(w.x, w.y - 2, '#b6de8f', 9, 26);
+    this.audio.play('grow', { pitch: 1.2 });
+  }
 
   attraction(def) { return this.wildlife.attraction(def) * this.economy.stat('attract'); }
   nearestHostile(x, r) { return this.wildlife.nearestHostile(x, r); }
@@ -676,6 +763,57 @@ export class Game {
       this.ui.say(`${pl.def.name} is mature.`, 3.5);
     }
   }
+  /**
+   * Something died. It is not a failure state - it is what happens - and what
+   * it leaves behind goes into the ground for whoever comes next.
+   */
+  onDied(c, cause) {
+    const mine = this.wildlife.fleet.includes(c);
+    if (mine) {
+      const i = this.wildlife.fleet.indexOf(c);
+      if (i >= 0) this.wildlife.fleet.splice(i, 1);
+      if (this.ui.driving === c) this.ui.release();
+      this.economy.markDirty();
+    }
+    this.fx.dust(c.x, c.y + 4, 1.2);
+    if (cause === 'age') {
+      this.fx.drift(c.x, c.y - 4, '#c6bea7', 3);
+      if (mine) {
+        this.ui.say(`${c.name} has died of old age.`, 4.5);
+        this.npc.say(this._eulogy(c), 6);
+      }
+    } else if (mine) {
+      this.ui.say(`${c.name} is dead.`, 4);
+    }
+    // a body in the sand is a fossil in a thousand years, and the ground it
+    // lies in is richer tomorrow
+    this.green?.water(c.x, 0.05, 26);
+  }
+
+  _eulogy(c) {
+    const lines = [
+      `${c.def.name} is down. Write the date. That one lived its whole life on your back, which is a sentence I never expected to put in a report.`,
+      `It got old. Here. On you. In a place where nothing has got old for a thousand years.`,
+      `${c.def.name}, deceased. Natural causes. Do you understand how extraordinary "natural causes" is out here?`,
+    ];
+    return lines[Math.floor(Math.random() * lines.length)];
+  }
+
+  /** One of yours has young, because you grew somewhere for them to have them. */
+  onBred(c) {
+    if (this.wildlife.fleet.length >= this.economy.stat('fleetSlots') + 2) return;
+    const baby = this.wildlife.spawn(c.def.id, c.x + (Math.random() - 0.5) * 24);
+    if (!baby) return;
+    baby.tamed = true;
+    baby.trust = 1;
+    baby.age = 0;
+    baby.born = true;
+    this.wildlife.fleet.push(baby);
+    this.fx.spark(c.x, c.y - 6, '#ffe9a8', 12, 30);
+    this.ui.say(`${c.def.name} has bred on your shell.`, 4.5);
+    this.economy.markDirty();
+  }
+
   onFirstSighting(def) {
     if (!def.hostile) this.ui.say(`${def.name} - first sighting.`, 4);
   }
@@ -729,7 +867,8 @@ export class Game {
       taken: [...this.encounters.taken], tutorial: this.tutorial,
       world: this.world.toJSON(),
       research: this.research, mode: this.ui.mode, insc: this.readInscriptions,
-      morse: this.morse.toJSON(),
+      morse: this.morse.toJSON(), green: this.green.toJSON(),
+      digs: this.digs.toJSON(), relics: this.relics,
     });
   }
 
@@ -751,6 +890,9 @@ export class Game {
       this.research = d.research || {};
       this.readInscriptions = d.insc || 0;
       this.morse.fromJSON(d.morse);
+      this.green.fromJSON(d.green);
+      this.digs.fromJSON(d.digs);
+      this.relics = d.relics || {};
       if (d.mode) this.ui.mode = d.mode;
       this.economy.recomputeGenes();
       this.economy.markDirty();
@@ -779,6 +921,7 @@ export class Game {
     this.terrain.draw(ctx, cam);
     this.world.drawWater(ctx, cam);
     this.terrain.drawSand(ctx, cam);
+    this.green.drawGround(ctx, cam, this.terrain);
     this.world.drawScatter(ctx, cam, 'far');
     this.encounters.draw(ctx, cam);
     this.fx.draw(ctx, cam, 'far');
@@ -793,6 +936,8 @@ export class Game {
     if (this.state === 'play') this.ui.drawCrop(ctx, cam);
     this.fx.draw(ctx, cam, 'near');
     this.world.drawScatter(ctx, cam, 'near');
+    this._drawGreenPlants(ctx, cam);
+    this._drawDigs(ctx, cam);
     this.backdrop.drawForeground(ctx, cam, this.weather, this.terrain);
 
     // lights
@@ -838,11 +983,77 @@ export class Game {
    * A speech bubble with a tail, so it belongs to whoever is talking. `code`
    * draws it as the taps you are making rather than as words.
    */
+  /**
+   * What is showing above the sand: a corner of shale, a bead of amber with
+   * the sun behind it. Only the shallow ones show at all until you have a claw
+   * that can find the rest.
+   */
+  _drawDigs(ctx, cam) {
+    const power = this.economy.stat('fossil');
+    for (const site of this.digs.near(this.crab.x, 520)) {
+      if (site.deep > 0.55 && power < 2) continue;
+      const y = this.terrain.surfaceY(site.x);
+      const s = cam.worldToScreen(site.x, y);
+      const z = cam.zoom;
+      const amber = site.relic.kind === 'amber';
+      const r = (2.2 + (1 - site.deep) * 1.6) * z;
+      // the bit sticking out of the sand
+      ctx.fillStyle = amber ? '#a5691a' : '#6f6758';
+      ctx.beginPath();
+      ctx.ellipse(s.x, s.y - r * 0.3, r, r * 0.62, 0.3, Math.PI, TAU);
+      ctx.fill();
+      ctx.fillStyle = amber ? '#eec66c' : '#c6bea7';
+      ctx.beginPath();
+      ctx.ellipse(s.x - r * 0.2, s.y - r * 0.45, r * 0.55, r * 0.3, 0.3, Math.PI, TAU);
+      ctx.fill();
+      if (amber) {
+        // amber catches the light, which is how you spot it from a way off
+        const tw = 0.5 + 0.5 * Math.sin(this.time * 2.6 + site.ci);
+        ctx.globalAlpha = 0.25 + tw * 0.45;
+        const g = ctx.createRadialGradient(s.x, s.y - r * 0.5, 0, s.x, s.y - r * 0.5, r * 4);
+        g.addColorStop(0, '#fae19f');
+        g.addColorStop(1, 'rgba(238,198,108,0)');
+        ctx.fillStyle = g;
+        ctx.beginPath(); ctx.arc(s.x, s.y - r * 0.5, r * 4, 0, TAU); ctx.fill();
+        ctx.globalAlpha = 1;
+      }
+      if (Math.abs(site.x - this.crab.x) < 40) {
+        drawText(ctx, power ? 'E to dig' : 'you would need a digging claw',
+          s.x, s.y - 16 * z, { color: '#dcd6c3', align: 'center' });
+      }
+    }
+  }
+
+  /** What the desert has put up on its own, where you watered it. */
+  _drawGreenPlants(ctx, cam) {
+    const b = cam.bounds(40);
+    for (const [i, p] of this.green.plants) {
+      const x = i * 24;
+      if (x < b.x0 || x > b.x1) continue;
+      const def = FLORA_BY_ID[p.id];
+      if (!def) continue;
+      const y = this.terrain.surfaceY(x);
+      const s = cam.worldToScreen(x, y);
+      const art = buildPlant(def, p.stage, p.variant, p.size);
+      ctx.save();
+      ctx.translate(Math.round(s.x), Math.round(s.y));
+      ctx.scale(cam.zoom * (p.flip ? -1 : 1), cam.zoom);
+      ctx.rotate(Math.sin(this.time * 1.1 + i) * 0.03 * (this.weather.windSpeed + 0.3));
+      ctx.drawImage(art.cv, -art.ox, -art.oy);
+      ctx.restore();
+    }
+  }
+
   _drawSpeech(ctx, cam, who, code = false) {
     const s = cam.worldToScreen(who.x, who.y - 40);
-    const lines = wrapText(who.speech, 132);
-    const w = Math.max(...lines.map((l) => textWidth(l))) + 12;
-    const h = lines.length * LINE_H + 8;
+    // her face goes in the bubble: the sheet has eight close-ups and the whole
+    // point of a close-up is that you can see what she thinks of you
+    const port = !code && who.sheet && who.face !== undefined
+      ? frame(who.sheet, 'face', who.face) : null;
+    const pw = port ? Math.min(30, port.w) : 0;
+    const lines = wrapText(who.speech, 132 - (port ? pw + 4 : 0));
+    const w = Math.max(...lines.map((l) => textWidth(l))) + 12 + (port ? pw + 4 : 0);
+    const h = Math.max(lines.length * LINE_H + 8, port ? pw + 6 : 0);
     const x = clamp(Math.round(s.x - w / 2), 3, this.renderer.vw - w - 3);
     const y = clamp(Math.round(s.y - h), 3, this.renderer.vh - h - 12);
     const tailX = clamp(Math.round(s.x), x + 6, x + w - 6);
@@ -863,7 +1074,20 @@ export class Game {
     ctx.strokeStyle = code ? 'rgba(159,232,212,0.16)' : 'rgba(226,200,150,0.14)';
     ctx.strokeRect(x + 2.5, y + 2.5, w - 5, h - 5);
 
-    lines.forEach((l, i) => drawText(ctx, l, x + 6, y + 5 + i * LINE_H,
+    let tx = x + 6;
+    if (port) {
+      const scale = pw / port.w;
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(x + 3, y + 3, pw, Math.min(pw, h - 6));
+      ctx.clip();
+      drawFrame(ctx, who.sheet, 'face', who.face, x + 3 + pw / 2, y + 3 + pw / 2, false, scale);
+      ctx.restore();
+      ctx.strokeStyle = 'rgba(226,200,150,0.25)';
+      ctx.strokeRect(x + 2.5, y + 2.5, pw + 1, Math.min(pw, h - 6) + 1);
+      tx = x + 6 + pw + 2;
+    }
+    lines.forEach((l, i) => drawText(ctx, l, tx, y + 5 + i * LINE_H,
       { color: code ? '#9fe8d4' : '#f2e4c2' }));
     if (code) {
       drawText(ctx, this.morse.learned ? 'she is listening' : 'tapping',

@@ -45,6 +45,7 @@ npm run build     # -> dist/crabden.html + dist/crabden.body.html
 | pick what is ripe | `R` | **PICK**, or tap the bead over a plant |
 | build on your own back | click yourself, or `Tab` | **BUILD** |
 | put a parasite on something | `X` | — |
+| put a relic in your basin | `K` | — |
 | tap out a word | hold/release `T` | — |
 | Vess: follow, get on, get off | `F` | — |
 | act — dig, win over, strike | `E` | **ACT** |
@@ -72,11 +73,14 @@ walking, because the only thing out here worth having is over the next dune.**
    Water goes into the tank, then into the stone basin behind your crest, and
    when neither can take any more it comes over the lip and down your shell as
    a waterfall onto the sand you are standing on.
-2. **Plant.** Water buys seeds, and seeds go anywhere on your shell — there is
-   no slot count. What limits you is **balance**: everything you carry has a
-   weight, you can only carry so much, and it matters which side you put it on.
-   Overloaded, everything grows slower and you walk slower. Badly trimmed, you
-   walk with a list and whatever is stacked on the heavy side starts to suffer.
+2. **Plant.** Click yourself to climb onto your own back, then **drag a seed
+   out of the rail and drop it on a bed**. It goes in as a seed and does
+   nothing at all until it has taken up water — the ring round it fills as the
+   basin soaks it, and then it germinates. Seeds go anywhere on the shell;
+   there is no slot count. What limits you is **balance**: everything you carry
+   has a weight, you can only carry so much, and it matters which side you put
+   it on. Overloaded, everything grows slower and you walk slower. Badly
+   trimmed, you walk with a list and the heavy side starts to suffer.
 3. **Pick.** Nothing on your back pays out on its own. A mature plant **ripens**
    on its own clock — and several of them will not ripen at all unless a
    condition holds: at dusk, after dark, in daylight, in the shade of something
@@ -104,12 +108,23 @@ whole of yourself at once: the carapace, eight legs, two claws and both
 eyestalks, drawn as a lit outline against a galaxy you have never been above
 ground long enough to look at.
 
-Inside that outline is a seed, roots spread under it, branches running out to
-the four organs that do the work: **the Spring** (the bladder that holds your
-water), **the Gut**, **the Knot** (the ganglion that hears the desert and
-answers it), and **the Heart**. Book gills hang either side, still moving water
-that has not been there for a thousand years. Along the bottom, your genome is
-read out one codon per gene, lit where you are expressing it.
+The proportions come from the same numbers the crab in the desert is built
+from — how wide its carapace is, how many legs it has, how big it is for its
+stage — so it is recognisably the same animal, and it grows when you do.
+
+Inside that outline is a seed with **five limbs** coming off it, one per
+system, each ending in the organ that does that job: **the Spring** (the
+bladder that holds your water), **the Gut**, **the Knot** (the ganglion that
+hears the desert and answers it), **the Closer** (the pennate muscle that
+shuts your claw), and **the Heart**. Book gills hang either side, still moving
+water that has not been there for a thousand years. Along the bottom, your
+genome is read out one codon per gene, lit where you are expressing it.
+
+Each limb is a real chain: the first node is cheap and obvious, and nothing
+past it exists until you have it. Every node is a painted bead with its own
+pictogram stamped into it and exactly one effect that nothing else has —
+Serration ignores armour, Sand Skating flattens dunes, Brooding lets your fleet
+replace its own dead, Greening makes what spills off your shell soak in.
 
 So an upgrade is not a checkbox. Buying into a bough grows the organ that bough
 reaches: the heart gets bigger and beats harder, the bladder fills, the
@@ -163,6 +178,48 @@ Dr. Vess has opinions about this.
 
 > You just put one of your own children inside a lizard. I am writing that down
 > and then I am going to think about it for a long time.
+
+### Bringing it back
+
+The basin was a sea, and you were the reason it was a sea. So the most
+interesting thing you can do with water is not drink it — it is **spill it**.
+
+Water coming off your shell soaks into the ground and stays there. Keep a
+stretch wet long enough and things come up in it on their own, and stay up, and
+hold their own water after that. Walk far enough with the valve open and the
+strip behind you is a different colour from the strip in front of you. Vess
+notices.
+
+> That is a plant. Nobody planted that.
+
+An **oasis** is just this taken to its conclusion: ground that holds itself
+green without you, with reeds standing in the water, ferns and berry on the
+banks, and animals that only live where there is standing water.
+
+### What is under the sand
+
+Everything that ever lived here is still here, a metre down. Grow a **digging
+claw** and fossil and amber start showing above the sand — a corner of shale, a
+bead of amber catching the light from a long way off. Dig one up and it goes in
+your pack.
+
+Then put it in the pool on your own back (`K`) and keep the water up. Given
+long enough in standing water, a thousand-year-old thing in a rock **hatches**,
+and walks off your shell into a desert that has forgotten it.
+
+> You are going to put a fossil in a puddle on your back and wait. And it is
+> going to work, is it? It is, isn't it.
+
+### Living and dying
+
+Everything out here ages. Animals get old and die of it, and your own fleet
+turns over — which is the point of **Brooding**, which lets what lives on you
+breed on you and replace its own dead. When something of yours dies, Vess says
+something about it, and the ground it lies in is richer tomorrow.
+
+The clock in the corner is a real dial: the sun and the moon go round it, the
+lit half of the day is light and the dark half is dark, and it counts the days.
+Things come up out of the sand at night.
 
 ### The map
 
@@ -312,7 +369,10 @@ the spine, insects walk an alternating tripod, reptiles bask.
 
 ### Dr. Vess
 
-She is the one hand-drawn thing here. `tools/sheets.mjs` takes the sheets in
+She is the one hand-drawn thing here, and all of her is used now — the walk
+cycles, the ten working poses, the **eight facial close-ups** that go in her
+speech bubbles depending on what she is saying, and the **row of props** that
+gets scattered on the ground wherever she sets up to dig. `tools/sheets.mjs` takes the sheets in
 `assets/`, keys out the background, slices every animation row into frames,
 downsamples them and snaps the result to one median-cut palette — which is what
 lets a drawn character stand next to procedural art without either looking out

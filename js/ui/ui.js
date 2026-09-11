@@ -59,6 +59,7 @@ export class UI {
     this.buildScroll = 0;
     this.savedZoom = null;
     this.driving = null;         // a creature you have taken the reins of
+    this.drag = null;            // a seed being carried from the rail to a bed
     this.placing = null;         // { kind, id }
     this.ghostPlot = null;
     this.toast = null;
@@ -195,6 +196,7 @@ export class UI {
     // the ghost only makes sense when you are looking at your own back
     if (this.placing && !this.buildOn) this.placing = null;
     if (this.placing) this._updatePlacing();
+    this._updateDrag(dt);
     // fleet mode: click a creature, then click the ground to send it
     if (this.mode === 'creature' && !this.drawerOpen) this._updateCommand();
 
@@ -264,7 +266,60 @@ export class UI {
     this.tree.open(r.vw - 17, 31, r.vw, r.vh);
   }
 
+  /**
+   * Carrying a seed from the rail to a bed. Dropping it on a legal bed plants
+   * it; dropping it anywhere else puts it back, which is what a person expects
+   * from picking something up and letting go of it.
+   */
+  _updateDrag(dt) {
+    const d = this.drag;
+    if (!d) return;
+    const g = this.game;
+    d.t += dt;
+    if (!this.buildOn) { this.drag = null; return; }
+    if (g.input.down) {
+      // the bed under the pointer, if the thing will take there
+      this.placing = { kind: d.kind, id: d.id };
+      this._pickGhost();
+      return;
+    }
+    // let go
+    const plot = this.ghostPlot;
+    const overRail = g.input.sx < this.railW(g.renderer.vw) + 6;
+    this.drag = null;
+    if (!plot || overRail || d.t < 0.05) { this.placing = null; this.ghostPlot = null; return; }
+    const res = d.kind === 'flora' ? g.tryPlant(d.id, plot.i) : g.tryBuild(d.id, plot.i);
+    this.say(res.msg || res);
+    if (res.ok !== false) {
+      const wp = g.garden.plotWorld(plot);
+      g.fx.spark(wp.x, wp.y, d.kind === 'flora' ? '#8cc468' : '#e2b74a', 14, 34);
+      g.fx.dust(wp.x, wp.y, 1.4);
+      g.cam.shake(1.2);
+      g.audio?.play('grow');
+    } else g.audio?.play('deny');
+    this.placing = null;
+    this.ghostPlot = null;
+  }
+
+  /** Which bed the thing being carried would land in. */
+  _pickGhost() {
+    const g = this.game;
+    const w = g.cam.screenToWorld(g.input.sx, g.input.sy);
+    const wantWet = this.placing.kind === 'flora' && FLORA_BY_ID[this.placing.id]?.needsPond;
+    let best = null, bd = 1e9;
+    for (const p of g.garden.plots) {
+      if (this.placing.kind === 'build' && (p.wet || p.plant || p.build)) continue;
+      if (this.placing.kind === 'flora' && (p.plant || p.build || !!p.wet !== !!wantWet)) continue;
+      const wp = g.garden.plotWorld(p);
+      const dd = (wp.x - w.x) ** 2 + (wp.y - w.y) ** 2;
+      if (dd < bd) { bd = dd; best = p; }
+    }
+    // you have to actually be over the animal, not merely nearest to a bed
+    this.ghostPlot = bd < (60 * 60) ? best : null;
+  }
+
   _updatePlacing() {
+    if (this.drag) return;          // the drag drives the ghost itself
     const g = this.game;
     const w = g.cam.screenToWorld(g.input.sx, g.input.sy);
     const wantWet = this.placing.kind === 'flora' && FLORA_BY_ID[this.placing.id]?.needsPond;
@@ -342,7 +397,26 @@ export class UI {
       lines.forEach((l, i) => drawText(ctx, l, W / 2, y + i * LINE_H,
         { color: INK, align: 'center', outline: true, outlineColor: OUT }));
     }
-    if (this.hover) this._tooltip(ctx, W, H);
+    if (this.drag) this._drawCarried(ctx, W, H);
+    if (this.hover && !this.drag) this._tooltip(ctx, W, H);
+  }
+
+  /** The thing in your claw while you are carrying it to a bed. */
+  _drawCarried(ctx, W, H) {
+    const g = this.game;
+    const d = this.drag;
+    const i = g.input;
+    const def = d.kind === 'flora' ? FLORA_BY_ID[d.id] : BUILD_BY_ID[d.id];
+    if (!def) return;
+    const art = d.kind === 'flora'
+      ? buildPlant(def, 0, 0, Math.min(1.0, 20 / Math.max(10, def.h)))
+      : buildStructure(def, 0.5);
+    const bob = Math.sin(this.t * 9) * 1.2;
+    ctx.globalAlpha = 0.9;
+    ctx.drawImage(art.cv, Math.round(i.sx - art.ox), Math.round(i.sy - art.oy + bob));
+    ctx.globalAlpha = 1;
+    drawText(ctx, this.ghostPlot ? 'let go to plant' : 'over a bed', i.sx, i.sy + 6,
+      { color: this.ghostPlot ? '#b6de8f' : FAINT, align: 'center', outline: true, outlineColor: OUT });
   }
 
   // -- HUD ------------------------------------------------------------------
@@ -397,13 +471,14 @@ export class UI {
       { color: INK, align: 'center', outline: true, outlineColor: OUT });
     if (this._hit(fx, 16, 26, 22)) this.hover = { title: 'Fruit', body: 'What your mature plants set. Animals will come a long way for it.' };
 
-    // place, time, weather, and how much of the basin you have actually stood in
-    const label = `${g.biome.name}   ${g.weather.label()}   ${String(Math.floor(g.weather.hour)).padStart(2, '0')}:00`;
+    // place, weather, and a clock you can actually read at a glance
+    const label = `${g.biome.name}   ${g.weather.label()}`;
     drawText(ctx, label, W - 6, 5, { color: DIM, align: 'right', outline: true, outlineColor: OUT });
+    this._clock(ctx, W - 15, 25);
     this._compass(ctx, W, H);
 
     // the gene orb: the way into the tree
-    const ox = W - 32, oy = 16;
+    const ox = W - 32, oy = 48;
     const ready = this._treeReady();
     drawOrb(ctx, ox, oy, this.t, ready ? 0.5 + Math.sin(this.t * 3) * 0.5 : 0);
     drawText(ctx, `${e.genes.size}`, ox + 15, oy + 32,
@@ -418,7 +493,7 @@ export class UI {
     if (fleet.length) {
       for (let i = 0; i < Math.min(9, fleet.length); i++) {
         const c = fleet[i];
-        const cx = W - 8 - (i + 1) * 8, cy = 46;
+        const cx = W - 8 - (i + 1) * 8, cy = 80;
         ctx.fillStyle = c === this.selected ? '#ffe9a8'
           : c.onShell ? 'rgba(140,196,104,0.95)' : 'rgba(226,183,74,0.9)';
         ctx.fillRect(cx, cy, 6, 6);
@@ -609,11 +684,65 @@ export class UI {
     }
   }
 
+  /**
+   * The clock. A dial with the sun and the moon actually going round it, the
+   * lit part of the day drawn light and the dark part dark, so you can see how
+   * long you have before the things that hunt at night come out.
+   */
+  _clock(ctx, cx, cy) {
+    const g = this.game;
+    const w = g.weather;
+    const R = 9;
+    const hour = w.hour;
+    const day = Math.floor(w.day ?? 1);
+
+    // the face: day on top, night under
+    ctx.save();
+    ctx.beginPath(); ctx.arc(cx, cy, R, 0, TAU); ctx.closePath();
+    ctx.clip();
+    ctx.fillStyle = 'rgba(120,158,196,0.55)';
+    ctx.fillRect(cx - R, cy - R, R * 2, R);
+    ctx.fillStyle = 'rgba(26,28,54,0.78)';
+    ctx.fillRect(cx - R, cy, R * 2, R);
+    ctx.restore();
+    ctx.strokeStyle = 'rgba(214,186,138,0.6)';
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.arc(cx, cy, R, 0, TAU); ctx.stroke();
+    ctx.fillStyle = 'rgba(214,186,138,0.35)';
+    ctx.fillRect(cx - R, Math.round(cy), R * 2, 1);
+
+    // the sun goes round once a day; the moon is always opposite it
+    const a = ((hour - 6) / 24) * TAU;
+    const sx = cx + Math.cos(a) * (R - 2.6), sy = cy + Math.sin(a) * (R - 2.6);
+    const mx = cx - Math.cos(a) * (R - 2.6), my = cy - Math.sin(a) * (R - 2.6);
+    ctx.fillStyle = 'rgba(190,190,210,0.85)';
+    ctx.beginPath(); ctx.arc(mx, my, 1.8, 0, TAU); ctx.fill();
+    ctx.fillStyle = '#ffe9a8';
+    ctx.beginPath(); ctx.arc(sx, sy, 2.4, 0, TAU); ctx.fill();
+    ctx.fillStyle = 'rgba(255,246,196,0.35)';
+    ctx.beginPath(); ctx.arc(sx, sy, 4.2, 0, TAU); ctx.fill();
+
+    drawText(ctx, `DAY ${day}`, cx - R - 4, cy - 8,
+      { color: INK, align: 'right', outline: true, outlineColor: OUT });
+    drawText(ctx, `${String(Math.floor(hour)).padStart(2, '0')}:${String(Math.floor((hour % 1) * 60)).padStart(2, '0')}`,
+      cx - R - 4, cy + 1, { color: DIM, align: 'right', outline: true, outlineColor: OUT });
+
+    if (this._hit(cx - R - 44, cy - R, R * 2 + 44, R * 2)) {
+      const toNight = hour < 20 ? 20 - hour : 24 - hour + 20;
+      this.hover = {
+        title: `Day ${day}`,
+        body: hour >= 20 || hour < 5
+          ? 'Night. Things come up out of the sand at night.'
+          : `${toNight.toFixed(1)} hours of light left.`,
+      };
+    }
+  }
+
   /** A mark at the edge of the screen for the next place you have not been. */
   _compass(ctx, W, H) {
     const g = this.game;
     const lm = g.world.nextUnfound(g.crab.x);
-    drawText(ctx, `${g.world.found.size} places found`, W - 6, 14,
+    drawText(ctx, `${g.world.found.size} places found`, W - 6, 38,
       { color: FAINT, align: 'right', outline: true, outlineColor: OUT });
     if (!lm) return;
     const d = lm.x - g.crab.x;
@@ -1026,6 +1155,12 @@ export class UI {
       }
       if (hot) {
         this.pickHover = f.id;
+        // press and drag lifts the seed straight out of its slot
+        if (!locked && g.input.down && !this.drag && !g.input.clicked) {
+          this.drag = { kind: 'flora', id: f.id, t: 0 };
+          this.pick = f.id;
+          g.audio?.play('ui');
+        }
         if (g.input.clicked) {
           g.input.clicked = false;
           this.pick = f.id;
@@ -1056,10 +1191,16 @@ export class UI {
       ctx.drawImage(art.cv, Math.round(cxi + cell / 2 - art.ox), Math.round(cy + cell - 4 - art.oy));
       ctx.restore();
       if (built) drawText(ctx, '*', cxi + cell - 5, cy + 2, { color: '#b6de8f', align: 'right' });
-      if (hot && g.input.clicked) {
-        g.input.clicked = false;
-        this.pick = b.id;
-        g.audio?.play('ui');
+      if (hot) {
+        if (ok && g.input.down && !this.drag && !g.input.clicked) {
+          this.drag = { kind: 'build', id: b.id, t: 0 };
+          this.pick = b.id;
+        }
+        if (g.input.clicked) {
+          g.input.clicked = false;
+          this.pick = b.id;
+          g.audio?.play('ui');
+        }
       }
     });
     this.scroll = clamp(this.scroll, 0, Math.max(0, rows * (cell + gap) - h));

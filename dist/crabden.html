@@ -3800,31 +3800,87 @@ body {
   }
   function paintRuin(lm) {
     const r = mulberry32(lm.seed);
-    const W = Math.round(lm.size * 1.1), H = Math.round(60 + r() * 50);
+    const W = Math.round(lm.size * 1.5), H = Math.round(76 + r() * 54);
     const p = new Painter(W, H);
     const base = H - 2;
-    const cols = 3 + Math.floor(r() * 4);
-    for (let i = 0; i < cols; i++) {
-      const t = i / (cols - 1 || 1);
-      const x = 8 + t * (W - 16);
-      const h = (0.34 + r() * 0.62) * (H - 12);
-      const w = 5 + r() * 7;
-      p.poly([
-        { x: x - w, y: base },
-        { x: x - w * 0.82, y: base - h },
-        { x: x + w * 0.78, y: base - h * (0.72 + r() * 0.3) },
-        { x: x + w, y: base }
-      ], { mat: "rock", dome: w * 0.9, feather: 3, tint: (t - 0.5) * 0.08 });
-      if (r() < 0.5) {
-        p.rect(x - w * 1.3, base - h - 3, w * 2.6, 3.4, { mat: "rock", dome: 2.4, tint: 0.08 });
-      }
+    const course = 4.2 + r() * 1.6;
+    const wall = (x0, x1, top, tint = 0) => {
+      const w = x1 - x0;
+      p.field(x0, top - 3, x1, base + 1, (x, y) => {
+        const u = (x - x0) / Math.max(1, w);
+        const ragged = top + Math.sin(u * 9 + lm.seed) * 3 + Math.sin(u * 23) * 1.6 + (r() < 0 ? 0 : 0);
+        if (y < ragged) return null;
+        const row = Math.floor((base - y) / course);
+        const off = row & 1 ? course * 0.9 : 0;
+        const bx = (x - x0 + off) % (course * 2.2);
+        const joint = bx < 0.9 || (base - y) % course < 0.9;
+        return {
+          h: joint ? 1.2 : 3.4 + Math.sin(row * 2.1 + bx) * 0.6,
+          tint: (joint ? -0.3 : 0.04 + Math.sin(row * 3.7 + bx * 0.9) * 0.06) + tint
+        };
+      }, { mat: "rock" });
+    };
+    const gx = 6 + r() * (W * 0.22);
+    const gw = W * (0.26 + r() * 0.14);
+    const gh = H * (0.6 + r() * 0.26);
+    wall(gx, gx + gw, base - gh);
+    for (let i = 0; i < 2; i++) {
+      const sgn = i ? 1 : -1;
+      p.capsule(
+        gx + gw / 2,
+        base - gh - 8,
+        gx + gw / 2 + sgn * gw * 0.5,
+        base - gh + 4,
+        2.6,
+        1.8,
+        { mat: "rock", dome: 2.2, tint: 0.08 }
+      );
     }
-    p.rect(4, base - 4, W - 8, 5, { mat: "rock", dome: 3, tint: 0.06 });
-    p.grain("rock", { freq: 0.22, amp: 0.26, seed: 3, height: 0.7 });
-    p.speckle("rock", { density: 0.03, amp: 0.3, seed: 7 });
-    for (let i = 0; i < 10; i++) {
-      p.rect(10 + i * (W - 24) / 10, base - 3, 3, 1.2, { mat: "rock", mask: true, tint: -0.4, dome: -1 });
+    const wy = base - gh * 0.55;
+    p.rect(
+      gx + gw * 0.34,
+      wy,
+      gw * 0.3,
+      gh * 0.24,
+      { mat: "rock", mask: true, dome: -3, tint: -0.62 }
+    );
+    p.rect(gx + gw * 0.28, wy - 3, gw * 0.42, 3, { mat: "rock", dome: 2.4, tint: 0.14 });
+    const fx = gx + gw + 2 + r() * 8;
+    const fw = W - fx - 8 - r() * 20;
+    wall(fx, fx + fw, base - H * (0.24 + r() * 0.18), -0.04);
+    const dx = fx + fw * (0.2 + r() * 0.5);
+    p.rect(
+      dx,
+      base - H * 0.28,
+      9 + r() * 5,
+      H * 0.28,
+      { mat: "rock", mask: true, dome: -4, tint: -0.66 }
+    );
+    const sx = fx + fw * 0.1;
+    wall(sx, sx + fw * 0.5, base - course * (1 + Math.floor(r() * 2)), -0.1);
+    for (let i = 0; i < 4 + Math.floor(r() * 5); i++) {
+      const bx = 6 + r() * (W - 16);
+      const bw = 4 + r() * 7, bh = 3 + r() * 3;
+      p.rect(bx, base - bh + 1, bw, bh, { mat: "rock", dome: 2.2, tint: -0.06 + r() * 0.16 });
     }
+    p.grain("rock", { freq: 0.2, amp: 0.24, seed: 3, height: 0.7 });
+    p.speckle("rock", { density: 0.035, amp: 0.3, seed: 7 });
+    for (let i = 0; i < 8; i++) {
+      p.rect(
+        gx + 3 + i * (gw - 6) / 8,
+        base - gh * 0.82,
+        2.4,
+        1.3,
+        { mat: "rock", mask: true, tint: -0.44, dome: -1 }
+      );
+    }
+    p.field(0, base - 12, W, base + 2, (x, y) => {
+      const u = x / W;
+      const top = base - 10 * Math.pow(Math.max(0, 1 - Math.abs(u - 0.18) * 2.6), 1.5);
+      if (y < top) return null;
+      return { h: 2, tint: 0.04 };
+    }, { mat: "sand" });
+    p.grain("sand", { freq: 0.3, amp: 0.14, seed: 31 });
     return { cv: p.resolve(MATERIALS, { ambient: 0.42, outline: 1, outlineColor: "#191309" }), w: W, h: H };
   }
   function paintBones(lm) {
@@ -5634,9 +5690,25 @@ body {
       this.keepAway = opts.keepAway !== false;
       this.scale = opts.scale ?? 0.37;
     }
-    say(text, secs = 4.5) {
+    /**
+     * `mood` picks which of the close-up faces goes in the bubble. The sheet has
+     * eight of them and until now nothing used a single one.
+     */
+    say(text, secs = 4.5, mood = null) {
       this.speech = text;
       this.speechT = secs;
+      this.face = mood !== null ? mood : this._moodFor(text);
+    }
+    /** Work out which face a line wants from the line itself. */
+    _moodFor(text) {
+      const t = String(text);
+      if (/[!?]{2}|NOT A ROCK|TAPPING/.test(t)) return 2;
+      if (/\?/.test(t)) return 5;
+      if (/water|Water|spring|oasis|green|came up/.test(t)) return 3;
+      if (/no |No |not |cannot|idiot|too much/.test(t)) return 4;
+      if (/thousand|eleven years|notes|writing/.test(t)) return 6;
+      if (/^\.\.\./.test(t)) return 7;
+      return Math.abs(t.length * 7) % 3;
     }
     setPose(p) {
       if (this.pose !== p) {
@@ -5726,6 +5798,8 @@ body {
       this.rideT = 0;
       this.climb = 0;
       this.chatT = 6;
+      this.face = 0;
+      this.camp = null;
     }
     /** Riding means she is on the shell, so she has to be put somewhere on it. */
     get riding() {
@@ -5809,12 +5883,34 @@ body {
         this.setPose(pose);
         this.idleT = hold * (0.7 + Math.random() * 0.7);
         if (pose === POSE.WANDER) this.moveTo = this.x + (Math.random() - 0.5) * 90;
-        if (pose === POSE.DIG) this.game.fx?.dust(this.x + this.facing * 6, this.y, 1.2);
+        if (pose === POSE.DIG) {
+          this.game.fx?.dust(this.x + this.facing * 6, this.y, 1.2);
+          this._setUpCamp();
+        }
         if (pose === POSE.SURVEY) this.facing = Math.random() < 0.5 ? -1 : 1;
       }
       if (this.pose === POSE.DIG && Math.random() < dt * 2.2) {
         this.game.fx?.dust(this.x + this.facing * 6, this.y, 0.8);
       }
+    }
+    /** Drop her kit around wherever she has decided to work. */
+    _setUpCamp() {
+      if (this.camp && Math.abs(this.camp.x - this.x) < 70) return;
+      const n = frameCount("vess", "prop");
+      if (!n) {
+        this.camp = { x: this.x, items: [] };
+        return;
+      }
+      const items = [];
+      const count = 2 + Math.floor(Math.random() * 3);
+      const used = /* @__PURE__ */ new Set();
+      for (let i = 0; i < count; i++) {
+        let k = Math.floor(Math.random() * n);
+        for (let g = 0; g < 4 && used.has(k); g++) k = Math.floor(Math.random() * n);
+        used.add(k);
+        items.push({ i: k, dx: (Math.random() - 0.5) * 46, flip: Math.random() < 0.5 });
+      }
+      this.camp = { x: this.x, items };
     }
     /** She talks. Constantly. That is most of what she is for. */
     _chatter(dt) {
@@ -5843,6 +5939,15 @@ body {
       this.say(lines[Math.floor(Math.random() * lines.length)], 4.5);
     }
     draw(ctx, cam) {
+      if (this.camp && this.camp.items.length && !this.riding) {
+        const z = cam.zoom;
+        for (const it of this.camp.items) {
+          const x = this.camp.x + it.dx;
+          const s = cam.worldToScreen(x, this.game.terrain.surfaceY(x));
+          if (s.x < -30 || s.x > this.game.renderer.vw + 30) continue;
+          drawFrame(ctx, "vess", "prop", it.i, s.x, s.y, it.flip, z * this.scale * 0.8);
+        }
+      }
       super.draw(ctx, cam);
     }
   };
@@ -6000,6 +6105,285 @@ body {
         this.learned = !!d.learned;
         this.taps = d.taps || 0;
       }
+    }
+  };
+
+  // js/systems/green.js
+  var CELL2 = 24;
+  var SEEDABLE = 0.55;
+  var Green = class {
+    constructor(game2) {
+      this.game = game2;
+      this.life = /* @__PURE__ */ new Map();
+      this.plants = /* @__PURE__ */ new Map();
+      this.t = 0;
+      this.total = 0;
+    }
+    // -- the map --------------------------------------------------------------
+    at(x) {
+      return this.life.get(Math.round(x / CELL2)) || 0;
+    }
+    /** Water landing on the ground. `amount` is roughly litres of consequence. */
+    water(x, amount, radius = 40) {
+      const gain = amount * (this.game.economy ? 1 + this.game.economy.stat("green") : 1);
+      const i0 = Math.round((x - radius) / CELL2), i1 = Math.round((x + radius) / CELL2);
+      for (let i = i0; i <= i1; i++) {
+        const k = 1 - clamp01(Math.abs(i * CELL2 - x) / radius);
+        if (k <= 0) continue;
+        const cur = this.life.get(i) || 0;
+        const next = clamp01(cur + gain * k * k);
+        if (cur < 1 && next >= 1) this.total++;
+        this.life.set(i, next);
+      }
+    }
+    update(dt, weather) {
+      this.t += dt;
+      this._soakOases(dt);
+      const heat = weather ? 0.5 + weather.heat * 0.7 : 1;
+      const night = weather && (weather.hour > 20 || weather.hour < 5) ? 0.35 : 1;
+      const rate = 55e-4 * heat * night;
+      const cx = this.game.crab.x;
+      const keep = 3200;
+      for (const [i, v] of this.life) {
+        const x = i * CELL2;
+        if (Math.abs(x - cx) > keep) {
+          this.life.delete(i);
+          this.plants.delete(i);
+          continue;
+        }
+        const held = this.plants.has(i) ? 0.25 : 1;
+        const nv = Math.max(0, v - rate * dt * 60 * held * (1 - v * 0.45));
+        if (nv <= 1e-3) {
+          this.life.delete(i);
+          this.plants.delete(i);
+          continue;
+        }
+        this.life.set(i, nv);
+        if (nv > SEEDABLE && !this.plants.has(i) && Math.random() < dt * 0.09) this._seed(i);
+      }
+    }
+    /**
+     * An oasis is not a wet patch, it is a place. Standing water holds the
+     * ground around it green on its own, for ever, without you - which is what
+     * makes walking into one feel like arriving somewhere.
+     */
+    _soakOases(dt) {
+      const g = this.game;
+      for (const lm of landmarksNear(g.world.seed, g.crab.x, 900)) {
+        if (lm.kind !== "oasis") continue;
+        const i0 = Math.round((lm.x - lm.size) / CELL2), i1 = Math.round((lm.x + lm.size) / CELL2);
+        for (let i = i0; i <= i1; i++) {
+          const k = 1 - clamp01(Math.abs(i * CELL2 - lm.x) / lm.size);
+          if (k <= 0.05) continue;
+          const floor = clamp01(Math.pow(k, 0.7) * 1.15);
+          const cur = this.life.get(i) || 0;
+          if (cur < floor) this.life.set(i, Math.min(floor, cur + dt * 0.6));
+          if (floor > SEEDABLE && !this.plants.has(i) && Math.random() < dt * 0.5) this._seed(i);
+        }
+      }
+    }
+    /** Something takes root here. What takes root depends on how wet it is. */
+    _seed(i) {
+      const v = this.life.get(i) || 0;
+      const r = mulberry32(hashStr("green" + i))();
+      const pool = v > 0.92 ? ["pipereed", "ribbonkelp", "bluefern", "emberberry", "ghostpalm"] : v > 0.78 ? ["bluefern", "saltgrass", "emberberry", "dustmoss"] : v > 0.6 ? ["saltgrass", "dustmoss", "dustmoss"] : ["dustmoss", "dustmoss", "saltgrass"];
+      const id = pool[Math.floor(r * pool.length)];
+      if (!FLORA_BY_ID[id]) return;
+      this.plants.set(i, {
+        id,
+        stage: 1,
+        variant: Math.floor(r * 3),
+        size: (v > 0.9 ? 0.34 : 0.26) + r * 0.3,
+        flip: r < 0.5,
+        t: 0
+      });
+      this.game.onGreened?.(i * CELL2);
+    }
+    /** Things that came up on their own keep growing while the ground holds. */
+    tick(dt) {
+      for (const [i, p] of this.plants) {
+        const v = this.life.get(i) || 0;
+        p.t += dt;
+        if (v > SEEDABLE && p.stage < 3 && p.t > 26) {
+          p.t = 0;
+          p.stage++;
+        }
+        if (v < 0.22 && p.stage > 1 && Math.random() < dt * 0.02) p.stage--;
+      }
+    }
+    // -- drawing --------------------------------------------------------------
+    /**
+     * The ground itself, tinted where it is alive. Drawn under the scatter so
+     * grass comes up out of colour rather than sitting on top of it.
+     */
+    drawGround(ctx, cam, terrain) {
+      const b = cam.bounds(60);
+      const i0 = Math.round(b.x0 / CELL2), i1 = Math.round(b.x1 / CELL2);
+      for (let i = i0; i <= i1; i++) {
+        const v = this.life.get(i);
+        if (!v) continue;
+        const x = i * CELL2;
+        const s = cam.worldToScreen(x, terrain.surfaceY(x));
+        const w = CELL2 * cam.zoom + 1;
+        const h = (2.5 + v * 4.5) * cam.zoom;
+        ctx.globalAlpha = clamp01(0.25 + v * 0.55);
+        ctx.fillStyle = "#4a3118";
+        ctx.fillRect(Math.round(s.x - w / 2), Math.round(s.y), Math.ceil(w), Math.ceil(h));
+        if (v > 0.3) {
+          const k = clamp01((v - 0.3) / 0.7);
+          ctx.globalAlpha = 0.35 + k * 0.55;
+          ctx.fillStyle = v > 0.78 ? "#4f8f3e" : "#54702f";
+          ctx.fillRect(
+            Math.round(s.x - w / 2),
+            Math.round(s.y - 1 * cam.zoom),
+            Math.ceil(w),
+            Math.ceil((1.5 + k * 3.5) * cam.zoom)
+          );
+          ctx.globalAlpha = 0.45 + k * 0.4;
+          for (let q = 0; q < 5; q++) {
+            const bx = s.x - w / 2 + (q + 0.5) * (w / 5);
+            const bh = (2 + (i * 7 + q * 3) % 5) * k * cam.zoom;
+            ctx.fillRect(Math.round(bx), Math.round(s.y - bh), 1, Math.ceil(bh));
+          }
+        }
+      }
+      ctx.globalAlpha = 1;
+    }
+    toJSON() {
+      const out = [];
+      for (const [i, v] of this.life) if (v > 0.3) out.push([i, +v.toFixed(2)]);
+      return { life: out.slice(0, 3e3), total: this.total };
+    }
+    fromJSON(d) {
+      if (!d) return;
+      this.life = new Map((d.life || []).map(([i, v]) => [i, v]));
+      this.total = d.total || 0;
+    }
+  };
+
+  // js/systems/digs.js
+  var CELL3 = 300;
+  var RELICS = [
+    {
+      id: "trilobite",
+      name: "Trilobite Plate",
+      kind: "fossil",
+      incubate: 70,
+      hatch: "copperscarab",
+      desc: "A segmented back the size of your palm, pressed flat into shale. Whatever it was, something very like it is still walking around out here."
+    },
+    {
+      id: "ammonite",
+      name: "Coiled Shell",
+      kind: "fossil",
+      incubate: 90,
+      hatch: "bonecentipede",
+      desc: "A spiral with chambers in it. It floated. There is nothing left in this basin for a thing like this to float in."
+    },
+    {
+      id: "amberfly",
+      name: "Amber, with something in it",
+      kind: "amber",
+      incubate: 60,
+      hatch: "glasswing",
+      desc: "Resin from a tree that has not existed for a thousand years, with a wing still folded inside it."
+    },
+    {
+      id: "amberegg",
+      name: "Amber, with an egg in it",
+      kind: "amber",
+      incubate: 120,
+      hatch: "duneskink",
+      desc: "Not resin. Not entirely. Something laid this and then sealed it, and it has been waiting in the dark about as long as you have."
+    },
+    {
+      id: "vertebra",
+      name: "Vertebra",
+      kind: "fossil",
+      incubate: 140,
+      hatch: "ridgeback",
+      desc: "One bone out of a spine, and the spine was longer than you are."
+    }
+  ];
+  var RELIC_BY_ID = Object.fromEntries(RELICS.map((r) => [r.id, r]));
+  var Digs = class {
+    constructor(game2, seed) {
+      this.game = game2;
+      this.seed = String(seed);
+      this.taken = /* @__PURE__ */ new Set();
+      this.brood = [];
+    }
+    /** The site in this cell, or null. Same answer for ever. */
+    siteAt(ci) {
+      const r = mulberry32((hashStr(this.seed + "dig") ^ ci * 2246822519) >>> 0);
+      if (r() > 0.34) return null;
+      const relic = RELICS[Math.floor(r() * RELICS.length)];
+      const x = ci * CELL3 + CELL3 * (0.15 + r() * 0.7);
+      return { id: "dig" + ci, ci, x, relic, deep: 0.3 + r() * 0.7 };
+    }
+    near(x, radius = 260) {
+      const out = [];
+      for (let ci = Math.floor((x - radius) / CELL3); ci <= Math.floor((x + radius) / CELL3); ci++) {
+        const s = this.siteAt(ci);
+        if (s && !this.taken.has(s.id) && Math.abs(s.x - x) <= radius) out.push(s);
+      }
+      return out;
+    }
+    /** The one you could dig up right now, if any. */
+    reachable(x) {
+      const list = this.near(x, 40);
+      if (!list.length) return null;
+      return list.sort((a, b) => Math.abs(a.x - x) - Math.abs(b.x - x))[0];
+    }
+    /**
+     * Open the ground and take what is in it. A broad claw finds more: without
+     * one you can only reach the shallow sites at all.
+     */
+    dig(site) {
+      const e = this.game.economy;
+      const power = e.stat("fossil");
+      if (!power) return { ok: false, msg: "You would need a claw made for digging." };
+      if (site.deep > 0.55 && power < 2) return { ok: false, msg: "It is deeper than you can reach." };
+      this.taken.add(site.id);
+      return { ok: true, relic: site.relic };
+    }
+    // -- incubation -----------------------------------------------------------
+    /** Put a relic in the wet of your own basin and wait. */
+    incubate(relicId) {
+      const relic = RELIC_BY_ID[relicId];
+      if (!relic) return { ok: false, msg: "Nothing like that in your pack." };
+      if (this.brood.length >= 3) return { ok: false, msg: "Three at once is all the basin holds." };
+      this.brood.push({ id: relicId, t: 0, a: (Math.random() - 0.5) * 0.7, b: -0.3 });
+      return { ok: true, msg: `${relic.name} is in the water. Keep the basin full.` };
+    }
+    update(dt) {
+      const pond = this.game.garden.pond;
+      for (let i = this.brood.length - 1; i >= 0; i--) {
+        const b = this.brood[i];
+        const relic = RELIC_BY_ID[b.id];
+        if (!relic) {
+          this.brood.splice(i, 1);
+          continue;
+        }
+        if (pond < 0.25) continue;
+        b.t += dt * (0.5 + pond);
+        if (b.t >= relic.incubate) {
+          this.brood.splice(i, 1);
+          this.game.onHatched?.(relic);
+        }
+      }
+    }
+    progress(b) {
+      const relic = RELIC_BY_ID[b.id];
+      return relic ? clamp01(b.t / relic.incubate) : 0;
+    }
+    toJSON() {
+      return { taken: [...this.taken], brood: this.brood };
+    }
+    fromJSON(d) {
+      if (!d) return;
+      this.taken = new Set(d.taken || []);
+      this.brood = d.brood || [];
     }
   };
 
@@ -6655,6 +7039,7 @@ body {
         age: 0,
         born: this.t,
         ripe: 0,
+        soaked: 0,
         variant: (plot.i * 7 + plotIndex) % 3
       };
       return plot.plant;
@@ -6687,6 +7072,10 @@ body {
       return this.needMet(def3) ? "" : NEEDS_TEXT[def3.needs] || "";
     }
     /** Everything ready to pick right now. */
+    /** Seeds sitting on your back waiting for water. */
+    get dryCount() {
+      return this.plots.reduce((n, p) => n + (p.plant && p.plant.soaked < 1 ? 1 : 0), 0);
+    }
     get ripeCount() {
       return this.plots.reduce((n, p) => n + (p.plant && p.plant.ripe >= 1 ? 1 : 0), 0);
     }
@@ -6739,6 +7128,13 @@ body {
         const pl = plot.plant;
         if (!pl) continue;
         pl.age += dt;
+        if (pl.soaked < 1) {
+          const wet = this.pond > 0.06 ? 0.9 : 0;
+          const spray = this.spring > 0.1 ? 0.7 : 0;
+          pl.soaked = clamp01(pl.soaked + (wet + spray) * dt * 0.55);
+          if (pl.soaked >= 1) this.game.onGerminate?.(plot, pl);
+          continue;
+        }
         const want = pl.def.upkeep * dt;
         const got = Math.min(want, Math.max(0, supply - drank));
         drank += got;
@@ -6758,7 +7154,7 @@ body {
         } else {
           cover += 1;
           if (pl.ripe < 1 && this.needMet(pl.def)) {
-            const rate = (0.55 + pl.health * 0.45) * (0.8 + this.pond * 0.35) * (1 - over * 0.5);
+            const rate = (0.55 + pl.health * 0.45) * (0.8 + this.pond * 0.35) * (1 - over * 0.5) / Math.max(0.3, this.game.economy ? this.game.economy.stat("ripen") : 1);
             pl.ripe = clamp01(pl.ripe + dt / pl.def.ripen * rate);
             if (pl.ripe >= 1 && !pl.rang) {
               pl.rang = true;
@@ -6841,7 +7237,21 @@ body {
         ctx.save();
         ctx.translate(sp.x, sp.y + 1);
         ctx.rotate(tilt + sway);
-        if (plot.plant) {
+        if (plot.plant && plot.plant.soaked < 1) {
+          const pl = plot.plant;
+          const r = 1.6 + crab.m.rx * 0.02;
+          ctx.fillStyle = "#5e4d27";
+          ctx.beginPath();
+          ctx.ellipse(0, -r * 0.5, r * 0.7, r, 0, 0, TAU);
+          ctx.fill();
+          ctx.fillStyle = "#957e42";
+          ctx.fillRect(-Math.round(r * 0.2), Math.round(-r * 1.1), 1, Math.round(r * 1.1));
+          ctx.strokeStyle = pl.soaked > 0 ? "#5fc6d8" : "rgba(150,130,90,0.5)";
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.arc(0, -r * 0.5, r * 1.9, -Math.PI / 2, -Math.PI / 2 + TAU * Math.max(0.04, pl.soaked));
+          ctx.stroke();
+        } else if (plot.plant) {
           const pl = plot.plant;
           const wilt = 1 - pl.thirst * 0.22;
           const art = buildPlant(
@@ -7036,237 +7446,379 @@ body {
   ];
   var GENE_BY_ID = Object.fromEntries(GENES.map((g) => [g.id, g]));
   var SKILLS = [
-    // -- water ----------------------------------------------------------------
+    // -- SPRING: the organ that makes water ----------------------------------
     {
       id: "deepwell",
       name: "Deep Well",
       branch: "water",
+      icon: "drop",
       cost: 12,
       x: 0,
       y: 0,
       req: [],
       effect: { pumpGain: 3 },
-      desc: "Each pump brings up more water."
+      desc: "The duct opens wider. Every second on the valve brings up more."
     },
     {
       id: "cistern",
       name: "Cistern",
       branch: "water",
+      icon: "tank",
       cost: 22,
       x: 1,
       y: -1,
       req: ["deepwell"],
       effect: { waterMax: 90 },
-      desc: "You can hold a great deal more before it spills."
-    },
-    {
-      id: "artesian",
-      name: "Artesian Pressure",
-      branch: "water",
-      cost: 40,
-      x: 2,
-      y: -1,
-      req: ["cistern"],
-      effect: { pumpGain: 5, pondGain: 0.04 },
-      desc: "The spring runs on its own between pumps."
+      desc: "A second chamber behind the first. You can hold far more before it spills."
     },
     {
       id: "condenser",
       name: "Night Condenser",
       branch: "water",
+      icon: "moon",
       cost: 34,
       x: 1,
       y: 1,
       req: ["deepwell"],
       effect: { nightWater: 1.4 },
-      desc: "The shell sweats water out of the cold night air."
+      desc: "The shell sweats. Cold night air goes in and water comes out of it."
+    },
+    {
+      id: "artesian",
+      name: "Artesian Pressure",
+      branch: "water",
+      icon: "jet",
+      cost: 40,
+      x: 2,
+      y: -1,
+      req: ["cistern"],
+      effect: { pumpGain: 5, pondGain: 0.04 },
+      desc: "It runs on its own between pumps, and the basin fills while you walk."
+    },
+    {
+      id: "greening",
+      name: "Greening",
+      branch: "water",
+      icon: "sprout",
+      cost: 66,
+      x: 2,
+      y: 1,
+      req: ["condenser"],
+      effect: { green: 1 },
+      desc: "What spills off your shell soaks in instead of evaporating. The ground behind you comes back."
     },
     {
       id: "aquifer",
       name: "Aquifer Tap",
       branch: "water",
-      cost: 70,
+      icon: "well",
+      cost: 96,
       x: 3,
       y: 0,
-      req: ["artesian", "condenser"],
-      effect: { pumpGain: 8, waterMax: 160 },
-      desc: "You have found what is left of the water table."
+      req: ["artesian", "greening"],
+      effect: { pumpGain: 8, waterMax: 160, green: 1 },
+      desc: "You have found what is left of the water table, and it knows you."
     },
-    // -- garden ---------------------------------------------------------------
+    // -- SHELL: what grows on your back ---------------------------------------
     {
       id: "terrace",
       name: "Terracing",
       branch: "garden",
+      icon: "step",
       cost: 18,
       x: 0,
       y: 0,
       req: [],
       effect: { plots: 1 },
-      desc: "Cut a ledge into the shell. One more planting bed."
+      desc: "Cut ledges into the rock. You can carry noticeably more without listing."
     },
     {
       id: "mulch",
       name: "Mulching",
       branch: "garden",
+      icon: "leaf",
       cost: 26,
       x: 1,
       y: -1,
       req: ["terrace"],
       effect: { upkeep: -0.25 },
-      desc: "Plants on your back drink a quarter less."
-    },
-    {
-      id: "grafting",
-      name: "Grafting",
-      branch: "garden",
-      cost: 44,
-      x: 2,
-      y: -1,
-      req: ["mulch"],
-      effect: { grow: 0.7 },
-      desc: "Everything reaches maturity noticeably sooner."
+      desc: "Everything that falls stays. Plants on your back drink a quarter less."
     },
     {
       id: "terrace2",
       name: "Upper Terrace",
       branch: "garden",
+      icon: "step",
       cost: 48,
       x: 1,
       y: 1,
       req: ["terrace"],
       effect: { plots: 2 },
-      desc: "Two more beds, high on the crest."
+      desc: "Beds high on the crest, where nothing shades anything else."
+    },
+    {
+      id: "grafting",
+      name: "Grafting",
+      branch: "garden",
+      icon: "graft",
+      cost: 44,
+      x: 2,
+      y: -1,
+      req: ["mulch"],
+      effect: { grow: 0.7 },
+      desc: "Cut and bound. Everything reaches maturity a third sooner."
+    },
+    {
+      id: "quickfruit",
+      name: "Quickfruit",
+      branch: "garden",
+      icon: "fruit",
+      cost: 58,
+      x: 2,
+      y: 1,
+      req: ["terrace2"],
+      effect: { ripen: 0.72 },
+      desc: "Your plants come ripe far more often, so there is always something to pick."
     },
     {
       id: "orchard",
       name: "Orchard",
       branch: "garden",
-      cost: 86,
+      icon: "tree",
+      cost: 96,
       x: 3,
       y: 0,
-      req: ["grafting", "terrace2"],
+      req: ["grafting", "quickfruit"],
       effect: { yield: 1.5, berryRate: 1.6 },
-      desc: "Fruit sets heavily, and keeps setting."
+      desc: "A closed canopy on the back of a walking animal. It should not work."
     },
-    // -- creatures ------------------------------------------------------------
+    // -- BROOD: everything that decides to live on you ------------------------
     {
       id: "calling",
       name: "Calling",
       branch: "fleet",
+      icon: "call",
       cost: 16,
       x: 0,
       y: 0,
       req: [],
       effect: { attract: 1.25 },
-      desc: "You have learned to be worth approaching."
+      desc: "You have learned to be worth the walk across open sand."
     },
     {
       id: "trust",
       name: "Patience",
       branch: "fleet",
+      icon: "hand",
       cost: 28,
       x: 1,
       y: -1,
       req: ["calling"],
       effect: { trust: 1.6 },
-      desc: "Wild things settle around you far quicker."
-    },
-    {
-      id: "command",
-      name: "Command",
-      branch: "fleet",
-      cost: 46,
-      x: 2,
-      y: -1,
-      req: ["trust"],
-      effect: { orders: true },
-      desc: "Give your fleet standing orders: follow, guard, ride."
+      desc: "You have learned to stand still. Wild things settle much quicker."
     },
     {
       id: "roost",
       name: "Roosting",
       branch: "fleet",
+      icon: "nest",
       cost: 38,
       x: 1,
       y: 1,
       req: ["calling"],
       effect: { fleetSlots: 2 },
-      desc: "Room on the shell for two more residents."
+      desc: "Hollows in the rock, out of the sun. Room for two more residents."
+    },
+    {
+      id: "command",
+      name: "Command",
+      branch: "fleet",
+      icon: "point",
+      cost: 46,
+      x: 2,
+      y: -1,
+      req: ["trust"],
+      effect: { orders: true },
+      desc: "They watch you now. Point, and something goes where you pointed."
+    },
+    {
+      id: "brooding",
+      name: "Brooding",
+      branch: "fleet",
+      icon: "egg",
+      cost: 72,
+      x: 2,
+      y: 1,
+      req: ["roost"],
+      effect: { breed: 1 },
+      desc: "What lives on you breeds on you. Your fleet replaces its own dead."
     },
     {
       id: "symbiosis",
       name: "Symbiosis",
       branch: "fleet",
-      cost: 90,
+      icon: "link",
+      cost: 104,
       x: 3,
       y: 0,
-      req: ["command", "roost"],
+      req: ["command", "brooding"],
       effect: { fleetSlots: 3, yield: 1.3 },
-      desc: "The animals work the garden without being asked."
+      desc: "They work the garden without being asked, and it is not clear who decided."
     },
-    // -- body -----------------------------------------------------------------
+    // -- PINCER: the end of your arm ------------------------------------------
+    {
+      id: "pincer",
+      name: "Crushing Pincer",
+      branch: "claw",
+      icon: "claw",
+      cost: 24,
+      x: 0,
+      y: 0,
+      req: [],
+      effect: { dmg: 12 },
+      desc: "The claw closes hard enough to matter to something with a shell."
+    },
+    {
+      id: "serrate",
+      name: "Serration",
+      branch: "claw",
+      icon: "saw",
+      cost: 34,
+      x: 1,
+      y: -1,
+      req: ["pincer"],
+      effect: { dmg: 10, armourPierce: 0.3 },
+      desc: "A cutting edge along the inside. Armour stops helping."
+    },
+    {
+      id: "digger",
+      name: "Digging Claw",
+      branch: "claw",
+      icon: "spade",
+      cost: 30,
+      x: 1,
+      y: 1,
+      req: ["pincer"],
+      effect: { dig: true, fossil: 1 },
+      desc: "Broad and flat. You can open the sand, and find what is under it."
+    },
+    {
+      id: "snapshock",
+      name: "Snapping Shock",
+      branch: "claw",
+      icon: "bolt",
+      cost: 62,
+      x: 2,
+      y: -1,
+      req: ["serrate"],
+      effect: { dmg: 20, stun: 1 },
+      desc: "It shuts fast enough to leave a hole in the air. Whatever is in the way stops."
+    },
+    {
+      id: "sifter",
+      name: "Sifting Comb",
+      branch: "claw",
+      icon: "comb",
+      cost: 54,
+      x: 2,
+      y: 1,
+      req: ["digger"],
+      effect: { fossil: 2, berryRate: 1.15 },
+      desc: "Comb the spoil instead of dropping it. Far more comes up whole."
+    },
+    {
+      id: "breaker",
+      name: "Wall Breaker",
+      branch: "claw",
+      icon: "hammer",
+      cost: 100,
+      x: 3,
+      y: 0,
+      req: ["snapshock", "sifter"],
+      effect: { dmg: 26, breach: true },
+      desc: "You can take a ruin apart. There is usually something inside worth the noise."
+    },
+    // -- LEGS: how you carry all of it ---------------------------------------
     {
       id: "stride",
       name: "Long Stride",
-      branch: "body",
+      branch: "legs",
+      icon: "leg",
       cost: 14,
       x: 0,
       y: 0,
       req: [],
       effect: { speed: 1.2 },
-      desc: "Cover ground without spending more water."
+      desc: "A longer step for the same water. You cover ground."
     },
     {
       id: "carapace",
       name: "Thick Carapace",
-      branch: "body",
+      branch: "legs",
+      icon: "shield",
       cost: 30,
       x: 1,
       y: -1,
       req: ["stride"],
       effect: { armour: 0.25, hp: 40 },
-      desc: "A quarter of what hits you does nothing."
-    },
-    {
-      id: "pincer",
-      name: "Crushing Pincer",
-      branch: "body",
-      cost: 42,
-      x: 2,
-      y: -1,
-      req: ["carapace"],
-      effect: { dmg: 12 },
-      desc: "The claw closes hard enough to matter."
+      desc: "Laminate under the rock. A quarter of what hits you does nothing at all."
     },
     {
       id: "burrowing",
       name: "Burrowing",
-      branch: "body",
+      branch: "legs",
+      icon: "burrow",
       cost: 36,
       x: 1,
       y: 1,
       req: ["stride"],
       effect: { dig: true },
-      desc: "Dig into the sand. Storms and ambushes pass over you."
+      desc: "Fold the legs and go under. Storms and ambushes pass over the top of you."
+    },
+    {
+      id: "porter",
+      name: "Porter Frame",
+      branch: "legs",
+      icon: "load",
+      cost: 56,
+      x: 2,
+      y: -1,
+      req: ["carapace"],
+      effect: { plots: 3 },
+      desc: "The legs take the weight instead of the shell. You can carry a great deal more."
+    },
+    {
+      id: "sandskate",
+      name: "Sand Skating",
+      branch: "legs",
+      icon: "skate",
+      cost: 52,
+      x: 2,
+      y: 1,
+      req: ["burrowing"],
+      effect: { speed: 1.3, slope: 1 },
+      desc: "Wide feet, no sinking. Dunes stop being hills."
     },
     {
       id: "ancient",
       name: "Ancient Frame",
-      branch: "body",
-      cost: 96,
+      branch: "legs",
+      icon: "crown",
+      cost: 112,
       x: 3,
       y: 0,
-      req: ["pincer", "burrowing"],
-      effect: { hp: 120, armour: 0.2, speed: 1.15 },
-      desc: "You remember being much larger than this."
+      req: ["porter", "sandskate"],
+      effect: { hp: 120, armour: 0.2, speed: 1.15, plots: 2 },
+      desc: "You remember being very much larger than this."
     }
   ];
   var SKILL_BY_ID = Object.fromEntries(SKILLS.map((s) => [s.id, s]));
   var BRANCHES = [
     { id: "water", name: "Spring", color: "#5fc6d8" },
-    { id: "garden", name: "Garden", color: "#8cc468" },
-    { id: "fleet", name: "Fleet", color: "#e2b74a" },
-    { id: "body", name: "Body", color: "#c8925f" }
+    { id: "garden", name: "Shell", color: "#8cc468" },
+    { id: "fleet", name: "Brood", color: "#e2b74a" },
+    { id: "claw", name: "Pincer", color: "#d87a6a" },
+    { id: "legs", name: "Legs", color: "#c8925f" }
   ];
   var EVOLUTIONS = [
     {
@@ -7431,6 +7983,7 @@ body {
     yield: 1,
     berryRate: 1,
     // `plots` is carrying capacity now
+    ripen: 1,
     attract: 1,
     trust: 1,
     fleetSlots: 3,
@@ -7441,7 +7994,15 @@ body {
     dmg: 18,
     dig: false,
     light: 0,
-    warn: 0
+    warn: 0,
+    // newer systems: reviving the ground, digging things up, breeding, fighting
+    green: 0,
+    fossil: 0,
+    breed: 0,
+    armourPierce: 0,
+    stun: 0,
+    slope: 0,
+    breach: false
   };
   var Economy = class {
     constructor(game2) {
@@ -7486,7 +8047,7 @@ body {
         if (!e) return;
         for (const [k, v] of Object.entries(e)) {
           if (typeof v === "boolean") s[k] = s[k] || v;
-          else if (k === "grow" || k === "yield" || k === "attract" || k === "trust" || k === "speed" || k === "berryRate") s[k] *= v;
+          else if (k === "grow" || k === "yield" || k === "attract" || k === "trust" || k === "speed" || k === "berryRate" || k === "ripen") s[k] *= v;
           else s[k] += v;
         }
       };
@@ -8781,6 +9342,9 @@ body {
       this.commanded = null;
       this.puppet = false;
       this.driveX = 0;
+      this.age = Math.random() * (def3.hp * 3);
+      this.lifespan = (def3.hp * 9 + 240) * (0.75 + Math.random() * 0.5);
+      this.breedT = 40 + Math.random() * 60;
       this.bob = 0;
       this.gait = Math.random() * TAU;
       this.sway = 0;
@@ -8839,7 +9403,12 @@ body {
       }
     }
     // -------------------------------------------------------------------------
+    /** How far through its life it is. Old animals move and look tired. */
+    get aged() {
+      return clamp01(this.age / this.lifespan);
+    }
     update(dt) {
+      if (this.alive) this._live(dt);
       if (!this.alive) {
         this.moodT += dt;
         return;
@@ -8906,6 +9475,24 @@ body {
         this.observed += dt;
         this.game.onObserved?.(this, dt);
       }
+    }
+    /** Getting older, and sometimes getting on with it. */
+    _live(dt) {
+      this.age += dt;
+      const old = this.aged;
+      if (old >= 1) {
+        this.hp = 0;
+        this.moodT = 0;
+        this.game.onDied?.(this, "age");
+        return;
+      }
+      if (!this.tamed || !this.game.economy) return;
+      if (this.game.economy.stat("breed") <= 0) return;
+      if (old < 0.15 || old > 0.8) return;
+      this.breedT -= dt * (this.onShell ? 1.4 : 0.6);
+      if (this.breedT > 0) return;
+      this.breedT = 90 + Math.random() * 90;
+      this.game.onBred?.(this);
     }
     _think(dt, crab) {
       if (this.puppet && Math.abs(this.driveX) > 0.05) {
@@ -10706,7 +11293,7 @@ body {
   ];
 
   // js/systems/encounters.js
-  var CELL2 = 340;
+  var CELL4 = 340;
   var KINDS2 = [
     { id: "relic", name: "Buried Relic", w: 0.2, verb: "Excavate" },
     { id: "wildpatch", name: "Wild Patch", w: 0.22, verb: "Harvest" },
@@ -10745,7 +11332,7 @@ body {
           break;
         }
       }
-      const x = ci * CELL2 + CELL2 * (0.25 + r() * 0.5);
+      const x = ci * CELL4 + CELL4 * (0.25 + r() * 0.5);
       const biome = biomeAt(x);
       const poi = {
         id: `${ci}`,
@@ -10763,9 +11350,9 @@ body {
       this.cells.set(key2, poi);
       return poi;
     }
-    near(x, radius = CELL2) {
+    near(x, radius = CELL4) {
       const out = [];
-      const c0 = Math.floor((x - radius) / CELL2), c1 = Math.floor((x + radius) / CELL2);
+      const c0 = Math.floor((x - radius) / CELL4), c1 = Math.floor((x + radius) / CELL4);
       for (let ci = c0; ci <= c1; ci++) {
         const p = this.cell(ci);
         if (p && Math.abs(p.x - x) <= radius) out.push(p);
@@ -10877,7 +11464,7 @@ body {
     draw(ctx, cam) {
       const t = this.game.terrain;
       const z = cam.zoom;
-      for (const p of this.near(cam.rx, cam.vw / z + CELL2)) {
+      for (const p of this.near(cam.rx, cam.vw / z + CELL4)) {
         const taken = this.isTaken(p);
         const art = this._sprite(p);
         if (!art) continue;
@@ -11433,6 +12020,56 @@ body {
     ctx.drawImage(c, x - 2, y + h - T - 2);
     ctx.drawImage(c, x + w - T - 2, y + h - T - 2);
   }
+  var NODE = {
+    // spring
+    drop: "...1.../..111../.11111./1111111/1111111/1111111/.11111./..111../...1...",
+    tank: "1111111/1.....1/1.111.1/1.111.1/1.111.1/1.....1/1111111/.11111./..111..",
+    moon: "..111../.11..1./11....1/11...../11...../11....1/.11..1./..111../.......",
+    jet: "...1.../...1.../..111../..111../.11111./.11111./11...11/1.....1/.......",
+    sprout: "....11./...11../1.11.../11111../..1..../..1..../..1..../.11111./.......",
+    well: "1111111/1.....1/1.111.1/1.1.1.1/1.111.1/1.....1/.11111./..111../...1...",
+    // shell
+    step: ".....11/.....11/....111/...1111/..11111/.111111/1111111/1111111/.......",
+    leaf: ".....11/....111/...1111/..11.11/.11..11/11...11/11..11./.1111../.......",
+    graft: "11...11/.11.11./..111../...1.../..111../.11.11./11...11/......./.......",
+    fruit: "...1.../..11.../.11111./111.111/11...11/11...11/.11.11./..111../.......",
+    tree: "..111../.11111./1111111/.11111./..111../...1.../...1.../..111../.......",
+    // brood
+    call: "..1..../.11..11/.11.1.1/.111..1/.111..1/.11.1.1/.11..11/..1..../.......",
+    hand: ".1.1.1./1111111/1111111/1111111/1111111/.111111/..1111./...11../.......",
+    nest: "......./1111111/11...11/1.111.1/1.....1/.11111./..111../......./.......",
+    point: "...11../...11../11.11../1.111../1.1111./.11111./..1111./...111./.......",
+    egg: "...11../..1111./.111111/1111111/1111111/.111111/..1111./...11../.......",
+    link: ".11..../1..1.11/1..111./.11...1/11...11/1.111../.11..1./.....11/.......",
+    // pincer
+    claw: "11...11/.11.11./..111../.11111./11...11/1.....1/11...11/.11.11./..111..",
+    saw: "1.1.1.1/11111.1/.11111./..111../.11111./11111.1/1.1.1.1/......./.......",
+    spade: "...1.../...1.../..111../.11111./1111111/1111111/.11111./..111../.......",
+    bolt: "....11./...11../..11.../.11111./..111../.11..../11...../1....../.......",
+    comb: "1111111/1111111/1.1.1.1/1.1.1.1/1.1.1.1/1.1.1.1/1.1.1.1/......./.......",
+    hammer: ".111111/.111111/...11../...11../...11../...11../...11../..1111./.......",
+    // legs
+    leg: "11...../.11..../..11.../..11.../...11../...111./....111/...1111/.......",
+    shield: "1111111/1111111/1111111/.11111./.11111./..111../..111../...1.../.......",
+    burrow: "1111111/1.....1/1.....1/.1...1./..1.1../...1.../..111../.11111./.......",
+    load: "1111111/11...11/1111111/11...11/1111111/..111../..111../.11111./.......",
+    skate: "..11.../.1111../11111../1111111/.111111/..11111/1111111/......./.......",
+    crown: "1.....1/11...11/11.1.11/1111111/1111111/.11111./.11111./1111111/......."
+  };
+  function drawNodeIcon(ctx, name, cx, cy, color, scale = 1) {
+    const rows = NODE[name];
+    if (!rows) return;
+    const lines = rows.split("/");
+    const w = Math.max(...lines.map((l) => l.length));
+    const s = Math.max(1, Math.round(scale));
+    const x0 = Math.round(cx - w * s / 2), y0 = Math.round(cy - lines.length * s / 2);
+    ctx.fillStyle = color;
+    for (let y = 0; y < lines.length; y++) {
+      for (let x = 0; x < lines[y].length; x++) {
+        if (lines[y][x] === "1") ctx.fillRect(x0 + x * s, y0 + y * s, s, s);
+      }
+    }
+  }
   var GLYPHS = {
     // . transparent, 1 dark, 2 mid, 3 light, 4 accent
     drop: "....11....../...1221...../..122211..../.12222211.../.12222211.../1222222221../1222222331./1222222331./1222222221./.12222221.../..122221..../....1111....",
@@ -11749,6 +12386,51 @@ body {
     p.smoothHeight(1, 0.5);
     return { cv: bake(p), ox: cx, oy: cy, r: R };
   }
+  function paintMuscle(S, lv) {
+    const w = Math.ceil(172 * S) + 12, h = Math.ceil(150 * S) + 12;
+    const p = new Painter(w, h);
+    const cx = w / 2, cy = h * 0.52;
+    const R = 40 * S * lerp(0.74, 1.12, lv);
+    p.capsule(
+      cx - R * 1.3,
+      cy + R * 0.1,
+      cx + R * 1.1,
+      cy - R * 0.06,
+      R * 0.1,
+      R * 0.2,
+      { mat: "horn", dome: R * 0.14, tint: 0.1 }
+    );
+    const n = 15;
+    for (let i = 0; i < n; i++) {
+      const t = (i + 0.5) / n;
+      const ax = lerp(cx - R * 1.16, cx + R * 0.98, t);
+      const ay = lerp(cy + R * 0.08, cy - R * 0.05, t);
+      const len = R * (0.42 + Math.sin(t * Math.PI) * 0.66);
+      for (const sgn of [-1, 1]) {
+        p.curve(
+          [
+            { x: ax, y: ay },
+            { x: ax - R * 0.26, y: ay + sgn * len * 0.62 },
+            { x: ax - R * 0.44, y: ay + sgn * len }
+          ],
+          R * 0.09,
+          R * 0.05,
+          { mat: "organ", dome: R * 0.08, steps: 8, tint: -0.04 + Math.sin(t * 7) * 0.07 + sgn * 0.03 }
+        );
+      }
+    }
+    p.field(cx - R * 1.5, cy - R * 1.3, cx + R * 1.3, cy + R * 1.3, (x, y) => {
+      const a = (x - cx + R * 0.1) / (R * 1.3), b = (y - cy) / (R * 1.05);
+      const d = a * a + b * b;
+      if (d > 1 || d < 0.62) return null;
+      const k = (d - 0.62) / 0.38;
+      return { h: 1.6 + (1 - k) * 2, tint: -0.12 + (1 - k) * 0.2 };
+    }, { mat: "organPale" });
+    p.grain("organ", { freq: 0.3 / S, amp: 0.16, seed: 47, oct: 2 });
+    p.speckle("organ", { density: 0.035, amp: 0.26, seed: 59 });
+    p.smoothHeight(1, 0.5);
+    return { cv: bake(p), ox: cx, oy: cy, r: R };
+  }
   function paintGill(S, lv, flip = 1) {
     const w = Math.ceil(150 * S) + 10, h = Math.ceil(210 * S) + 10;
     const p = new Painter(w, h);
@@ -11852,11 +12534,11 @@ body {
     const c = w / 2;
     const mats = {
       orb: {
-        ramp: rampFrom(hex, on ? { lo: 0.16, hi: 1.7 } : { lo: 0.07, hi: 0.62 }),
-        diffuse: 0.8,
-        rim: on ? 0.75 : 0.4,
-        ao: 0.1,
-        spec: on ? 0.85 : 0.3,
+        ramp: rampFrom(hex, on ? { lo: 0.22, hi: 1.18 } : { lo: 0.08, hi: 0.5 }),
+        diffuse: 0.86,
+        rim: on ? 0.55 : 0.3,
+        ao: 0.12,
+        spec: on ? 0.45 : 0.2,
         normalScale: 0.6,
         outline: "#0b0908"
       }
@@ -11870,13 +12552,12 @@ body {
       return { h: (band + merid) * R * 0.1, tint: (band * 0.14 + merid * 0.1) * (on ? 1 : 0.4) };
     }, { mat: "orb", onlyMat: "orb", addHeight: true });
     if (on) {
-      p.ellipse(c, c, R * 0.34, R * 0.34, { mat: "orb", onlyMat: "orb", dome: R * 0.3, tint: 0.34, emissive: 0.5 });
       p.ellipse(
-        c - R * 0.34,
         c - R * 0.36,
-        Math.max(0.9, R * 0.16),
-        Math.max(0.9, R * 0.13),
-        { mat: "orb", onlyMat: "orb", dome: R * 0.2, tint: 0.9 }
+        c - R * 0.38,
+        Math.max(0.9, R * 0.15),
+        Math.max(0.9, R * 0.12),
+        { mat: "orb", onlyMat: "orb", dome: R * 0.2, tint: 0.55 }
       );
     } else {
       p.capsule(
@@ -11927,6 +12608,9 @@ body {
       case "ganglion":
         v = paintGanglion(S, q);
         break;
+      case "muscle":
+        v = paintMuscle(S, q);
+        break;
       case "gillL":
         v = paintGill(S, q, -1);
         break;
@@ -11945,13 +12629,20 @@ body {
 
   // js/ui/tree.js
   var ORGANS = {
-    water: { organ: "spring", x: -246, y: -118, name: "The Spring", colour: "#5fc6d8" },
-    garden: { organ: "gut", x: -238, y: 148, name: "The Gut", colour: "#8cc468" },
-    fleet: { organ: "ganglion", x: 238, y: 146, name: "The Knot", colour: "#e2b74a" },
-    body: { organ: "heart", x: 246, y: -122, name: "The Heart", colour: "#c8925f" }
+    water: { organ: "spring", a: -142, d: 320, name: "The Spring", colour: "#5fc6d8" },
+    garden: { organ: "gut", a: -80, d: 320, name: "The Gut", colour: "#8cc468" },
+    fleet: { organ: "ganglion", a: 180, d: 300, name: "The Knot", colour: "#e2b74a" },
+    claw: { organ: "muscle", a: 80, d: 320, name: "The Closer", colour: "#d87a6a" },
+    legs: { organ: "heart", a: 142, d: 320, name: "The Heart", colour: "#c8925f" }
   };
-  var CARA = { cx: 0, cy: -30, rx: 430, ry: 300 };
-  var GILL_X = 344;
+  for (const k of Object.keys(ORGANS)) {
+    const o = ORGANS[k];
+    const th = (o.a - 90) * Math.PI / 180;
+    o.x = Math.cos(th) * o.d;
+    o.y = Math.sin(th) * o.d * 0.72;
+  }
+  var CARA = { cx: 0, cy: -20, rx: 530, ry: 352 };
+  var GILL_X = 440;
   var TRUNK_BASE = -96;
   var TRUNK_STEP = 36;
   function layout() {
@@ -11966,7 +12657,7 @@ body {
         tier: i,
         x: (i % 2 ? 1 : -1) * 11,
         y: TRUNK_BASE - i * TRUNK_STEP,
-        r: 11,
+        r: 13,
         color: "#c9e08a"
       });
       links.push({
@@ -11983,8 +12674,8 @@ body {
       const px = -dy, py = dx;
       const list = SKILLS.filter((s) => s.branch === br.id);
       for (const s of list) {
-        const along = dist * (0.38 + s.x * 0.225);
-        const off = s.y * 42 * (0.55 + s.x * 0.22);
+        const along = dist * (0.3 + s.x * 0.245);
+        const off = s.y * 52 * (0.6 + s.x * 0.3);
         nodes.push({
           id: "skill:" + s.id,
           kind: "skill",
@@ -11993,7 +12684,7 @@ body {
           tier: s.x,
           x: dx * along + px * off,
           y: dy * along + py * off,
-          r: 8,
+          r: 11,
           color: br.color
         });
         if (!s.req.length) links.push({ from: "__root", to: "skill:" + s.id, w: 11, branch: br.id });
@@ -12005,13 +12696,13 @@ body {
     GENES.forEach((g, i) => {
       const t = (i + 0.5) / GENES.length;
       const a = Math.PI * (0.1 + t * 0.8);
-      const d = 62 + i % 4 * 22;
+      const d = 44 + i % 4 * 15;
       nodes.push({
         id: "gene:" + g.id,
         kind: "gene",
         data: g,
-        x: -Math.cos(a) * d * 1.15,
-        y: Math.sin(a) * d * 0.5 + 60,
+        x: -Math.cos(a) * d * 1.7,
+        y: Math.sin(a) * d * 0.34 + 40,
         r: 5,
         color: "#7fe0c8"
       });
@@ -12111,7 +12802,7 @@ body {
     }
     // -------------------------------------------------------------------------
     _frame(vw, vh, snap = false) {
-      let x0 = -560, x1 = 560, y0 = -380, y1 = 340;
+      let x0 = -680, x1 = 680, y0 = -440, y1 = 400;
       for (const n of this.L.nodes) {
         if (n.kind === "gene" && (this.grow[n.id] ?? 0) < 0.5) continue;
         const a = Math.max(this.grow[n.id] ?? 0, (this.seen[n.id] ?? 0) * 0.9);
@@ -12309,55 +13000,116 @@ body {
      * have been under a shell for a thousand years. It is drawn as one: a slow
      * galaxy, parallaxed against the camera so the animal sits in front of it.
      */
+    /**
+     * The sky, baked once per viewport size. None of it moves except by
+     * parallax, and gradients are expensive, so it is painted into its own
+     * canvas and blitted with an offset rather than rebuilt every frame.
+     */
+    _galaxyPlate(vw, vh) {
+      const w = Math.ceil(vw * 1.24), h = Math.ceil(vh * 1.24);
+      if (this._plate && this._plate.width === w && this._plate.height === h) return this._plate;
+      const cv = document.createElement("canvas");
+      cv.width = w;
+      cv.height = h;
+      const ctx = cv.getContext("2d");
+      ctx.imageSmoothingEnabled = false;
+      this._paintGalaxy(ctx, w, h);
+      this._plate = cv;
+      return cv;
+    }
     _drawGalaxy(ctx, vw, vh, fade) {
-      const px = -this.cam.x * 0.05, py = -this.cam.y * 0.05;
-      ctx.fillStyle = "#05060c";
+      const plate = this._galaxyPlate(vw, vh);
+      const ox = -vw * 0.12 - this.cam.x * 0.05;
+      const oy = -vh * 0.12 - this.cam.y * 0.05;
+      ctx.fillStyle = "#05060e";
       ctx.fillRect(0, 0, vw, vh);
+      ctx.drawImage(plate, Math.round(clamp(ox, -vw * 0.24, 0)), Math.round(clamp(oy, -vh * 0.24, 0)));
+      this._drawStars(ctx, vw, vh, fade);
+    }
+    _paintGalaxy(ctx, vw, vh) {
+      const px = 0, py = 0;
+      const deep = ctx.createLinearGradient(0, 0, vw * 0.3, vh);
+      deep.addColorStop(0, "#070610");
+      deep.addColorStop(0.5, "#0a0714");
+      deep.addColorStop(1, "#05060e");
+      ctx.fillStyle = deep;
+      ctx.fillRect(0, 0, vw, vh);
+      ctx.save();
+      ctx.translate(vw * 0.62 + px, vh * 0.34 + py);
+      ctx.rotate(-0.42);
+      const R = Math.max(vw, vh);
+      for (const [h, a2, c] of [[0.44, 0.11, "150,170,235"], [0.24, 0.13, "210,215,250"], [0.11, 0.15, "255,250,240"]]) {
+        ctx.save();
+        ctx.scale(1, h / 0.9);
+        const g = ctx.createRadialGradient(0, 0, 0, 0, 0, R * 0.9);
+        g.addColorStop(0, `rgba(${c},${a2})`);
+        g.addColorStop(0.45, `rgba(${c},${a2 * 0.7})`);
+        g.addColorStop(1, `rgba(${c},0)`);
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(0, 0, R * 0.9, 0, TAU);
+        ctx.fill();
+        ctx.restore();
+      }
+      const core = ctx.createRadialGradient(0, 0, 0, 0, 0, R * 0.34);
+      core.addColorStop(0, "rgba(255,246,220,0.34)");
+      core.addColorStop(0.25, "rgba(255,214,150,0.20)");
+      core.addColorStop(0.7, "rgba(180,140,200,0.07)");
+      core.addColorStop(1, "rgba(0,0,0,0)");
+      ctx.fillStyle = core;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, R * 0.34, R * 0.16, 0, 0, TAU);
+      ctx.fill();
+      for (let i = 0; i < 4; i++) {
+        const yy = (i - 1.5) * R * 0.055;
+        ctx.fillStyle = `rgba(6,4,10,${0.07 + i % 2 * 0.05})`;
+        ctx.beginPath();
+        ctx.moveTo(-R * 1.5, yy);
+        ctx.quadraticCurveTo(0, yy + R * 0.05 * (i % 2 ? 1 : -1), R * 1.5, yy + R * 0.02);
+        ctx.lineTo(R * 1.5, yy + R * 0.04);
+        ctx.quadraticCurveTo(0, yy + R * 0.05 * (i % 2 ? 1 : -1) + R * 0.04, -R * 1.5, yy + R * 0.04);
+        ctx.closePath();
+        ctx.fill();
+      }
+      ctx.restore();
       const clouds = [
-        { x: 0.22, y: 0.3, r: 0.62, c: "90,60,150" },
-        { x: 0.74, y: 0.24, r: 0.52, c: "40,90,160" },
-        { x: 0.52, y: 0.72, r: 0.7, c: "150,60,110" },
-        { x: 0.12, y: 0.8, r: 0.44, c: "40,120,140" },
-        { x: 0.88, y: 0.66, r: 0.48, c: "110,70,170" }
+        { x: 0.18, y: 0.68, r: 0.52, c: "120,60,170" },
+        { x: 0.8, y: 0.74, r: 0.44, c: "30,110,160" },
+        { x: 0.4, y: 0.16, r: 0.4, c: "180,70,110" },
+        { x: 0.92, y: 0.3, r: 0.34, c: "60,150,150" }
       ];
       for (const c of clouds) {
-        const cx = c.x * vw + px * 0.6, cy = c.y * vh + py * 0.6;
-        const r = c.r * Math.max(vw, vh) * (0.55 + Math.sin(this.t * 0.16 + c.x * 9) * 0.03);
+        const cx = c.x * vw + px * 1.6, cy = c.y * vh + py * 1.6;
+        const r = c.r * Math.max(vw, vh) * (0.55 + Math.sin(this.t * 0.14 + c.x * 9) * 0.04);
         const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
-        g.addColorStop(0, `rgba(${c.c},0.26)`);
-        g.addColorStop(0.45, `rgba(${c.c},0.11)`);
+        g.addColorStop(0, `rgba(${c.c},0.22)`);
+        g.addColorStop(0.4, `rgba(${c.c},0.10)`);
         g.addColorStop(1, "rgba(0,0,0,0)");
         ctx.fillStyle = g;
         ctx.beginPath();
         ctx.arc(cx, cy, r, 0, TAU);
         ctx.fill();
       }
-      ctx.save();
-      ctx.translate(vw / 2 + px, vh * 0.46 + py);
-      ctx.rotate(-0.3);
-      const bg = ctx.createLinearGradient(0, -vh * 0.3, 0, vh * 0.3);
-      bg.addColorStop(0, "rgba(90,110,190,0)");
-      bg.addColorStop(0.5, "rgba(150,160,220,0.11)");
-      bg.addColorStop(1, "rgba(90,110,190,0)");
-      ctx.fillStyle = bg;
-      ctx.fillRect(-vw, -vh * 0.3, vw * 2, vh * 0.6);
-      ctx.restore();
-      for (let layer = 0; layer < 3; layer++) {
-        const n = 90 - layer * 22;
-        const par = 0.03 + layer * 0.05;
+    }
+    /** The stars do move, so they stay per-frame. */
+    _drawStars(ctx, vw, vh, fade) {
+      for (let layer = 0; layer < 4; layer++) {
+        const n = 120 - layer * 26;
+        const par = 0.02 + layer * 0.045;
         for (let i = 0; i < n; i++) {
           const h1 = Math.sin(i * 12.9898 + layer * 3.7) * 43758.5453;
           const h2 = Math.sin(i * 78.233 + layer * 1.3) * 43758.5453;
           const sx = (((h1 - Math.floor(h1)) * vw - this.cam.x * par) % vw + vw) % vw;
           const sy = (((h2 - Math.floor(h2)) * vh - this.cam.y * par) % vh + vh) % vh;
-          const tw = 0.45 + 0.55 * Math.sin(this.t * (0.6 + layer * 0.5) + i);
-          ctx.globalAlpha = fade * (0.2 + layer * 0.22) * tw;
-          ctx.fillStyle = i % 7 === 0 ? "#ffd9a8" : i % 5 === 0 ? "#a8c8ff" : "#ffffff";
-          ctx.fillRect(Math.round(sx), Math.round(sy), 1, 1);
-          if (layer === 2 && i % 11 === 0) {
-            ctx.globalAlpha = fade * 0.18 * tw;
-            ctx.fillRect(Math.round(sx) - 1, Math.round(sy), 3, 1);
-            ctx.fillRect(Math.round(sx), Math.round(sy) - 1, 1, 3);
+          const tw = 0.4 + 0.6 * Math.sin(this.t * (0.5 + layer * 0.4) + i * 1.7);
+          const X = Math.round(sx), Y = Math.round(sy);
+          ctx.globalAlpha = fade * (0.16 + layer * 0.2) * (0.5 + tw * 0.5);
+          ctx.fillStyle = i % 9 === 0 ? "#ffd0a0" : i % 5 === 0 ? "#a8c8ff" : "#f4f6ff";
+          ctx.fillRect(X, Y, 1, 1);
+          if (layer === 3 && i % 6 === 0) {
+            ctx.globalAlpha = fade * 0.22 * (0.4 + tw * 0.6);
+            ctx.fillRect(X - 2, Y, 5, 1);
+            ctx.fillRect(X, Y - 2, 1, 5);
           }
         }
       }
@@ -12371,15 +13123,23 @@ body {
       };
     }
     /**
-     * You, from above and through: the carapace, eight legs, two claws, the
-     * eyestalks. Drawn as a lit outline over a dark body, which is the honest
-     * way to show an animal you are standing inside.
+     * You, seen from above and through.
+     *
+     * The proportions are taken from the same metrics the crab in the desert is
+     * built from - the width of the carapace, how many legs it has, where the
+     * claws sit, how big it is for its stage - so this is recognisably the same
+     * animal and it grows when you do. Drawn as a lit outline over a dark body,
+     * which is the honest way to show something you are standing inside.
      */
     _drawAnimal(ctx, vw, vh, fade) {
       const z = this.cam.z;
       const P = (x, y) => this._S(x, y, vw, vh);
       const lw = Math.max(1, 1.6 * z);
       const beat = Math.pow(1 - Math.abs(this.beat * 2 - 1), 3);
+      const m = this.game.crab.m;
+      const c0 = P(CARA.cx, CARA.cy);
+      const K = CARA.rx / m.rx;
+      const legN = m.legN;
       const limb = (pts, w) => {
         ctx.lineCap = "round";
         ctx.lineJoin = "round";
@@ -12408,60 +13168,56 @@ body {
         ctx.lineWidth = Math.max(1, w * z * 0.34);
         ctx.stroke();
       };
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(0, 0, vw, vh);
+      ctx.ellipse(c0.x, c0.y, CARA.rx * z * 0.985, CARA.ry * z * 0.985, 0, 0, TAU, true);
+      ctx.clip("evenodd");
       for (const side of [-1, 1]) {
-        for (let i = 0; i < 4; i++) {
-          const t = i / 3;
-          const th = (-0.62 + t * 1.3) * side;
+        for (let i = 0; i < legN; i++) {
+          const t = legN === 1 ? 0.5 : i / (legN - 1);
+          const spread = lerp(0.4, 0.96, t);
+          const th = (-0.66 + t * 1.34) * side;
           const hx = Math.sin(th) * CARA.rx * 0.96;
           const hy = CARA.cy + Math.cos(th) * CARA.ry * -0.3 + 30;
-          const out = side * (150 + t * 40);
+          const span = m.reach / m.rx * CARA.rx * 0.42 * (0.74 + spread * 0.42);
           const wob = Math.sin(this.t * 0.9 + i * 1.3 + (side > 0 ? 0 : 2)) * 8;
           limb([
             [hx, hy],
-            [hx + out * 0.75, hy - 34 - t * 26 + wob],
-            // knee, up and out
-            [hx + out * 1.75, hy + 40 + wob * 0.6],
-            [hx + out * 2.15, hy + 210 + t * 60 + wob]
-            // the foot
-          ], 24 - i * 2.4);
+            [hx + side * span * 0.44, hy - span * 0.22 - t * 22 + wob],
+            [hx + side * span * 0.82, hy + span * 0.16 + wob * 0.6],
+            [hx + side * span * 1.02, hy + span * 0.7 + t * 40 + wob]
+          ], m.legLen[0] / m.rx * CARA.rx * 0.34 * (1 - i * 0.09));
         }
+        const K2 = m.clawLen[0] / m.rx * CARA.rx * 0.42;
         const ax = side * CARA.rx * 0.52, ay = CARA.cy + CARA.ry * 0.62;
         const open = 0.16 + Math.sin(this.t * 0.8 + side) * 0.1;
-        const wx = ax + side * 210, wy = ay + 210;
-        limb([[ax, ay], [ax + side * 120, ay + 40], [wx, wy]], 32);
+        const wx = ax + side * K2 * 2.2, wy = ay + K2 * 2.2;
+        limb([[ax, ay], [ax + side * K2 * 1.2, ay + K2 * 0.4], [wx, wy]], K2 * 0.34);
         const wrist = P(wx, wy);
-        for (const [ang, len, w] of [[0.3 + open, 165, 22], [1.05 - open, 130, 16]]) {
+        for (const [ang, len, w] of [[0.3 + open, K2 * 1.7, K2 * 0.24], [1.05 - open, K2 * 1.35, K2 * 0.17]]) {
           const tipx = wx + side * Math.sin(ang) * len, tipy = wy + Math.cos(ang) * len;
           const bendx = wx + side * Math.sin(ang * 0.5) * len * 0.6, bendy = wy + Math.cos(ang * 0.5) * len * 0.55;
           const bend = P(bendx, bendy), tip = P(tipx, tipy);
-          ctx.beginPath();
-          ctx.moveTo(wrist.x, wrist.y);
-          ctx.quadraticCurveTo(bend.x, bend.y, tip.x, tip.y);
-          ctx.strokeStyle = "rgba(6,9,14,0.95)";
-          ctx.lineWidth = w * z + lw * 2;
-          ctx.stroke();
-          ctx.beginPath();
-          ctx.moveTo(wrist.x, wrist.y);
-          ctx.quadraticCurveTo(bend.x, bend.y, tip.x, tip.y);
-          ctx.strokeStyle = "rgba(126,178,200,0.9)";
-          ctx.lineWidth = w * z;
-          ctx.stroke();
-          ctx.beginPath();
-          ctx.moveTo(wrist.x, wrist.y);
-          ctx.quadraticCurveTo(bend.x, bend.y, tip.x, tip.y);
-          ctx.strokeStyle = "rgba(206,240,248,0.45)";
-          ctx.lineWidth = Math.max(1, w * z * 0.3);
-          ctx.stroke();
+          for (const [col, mul] of [["rgba(6,9,14,0.95)", 1], ["rgba(126,178,200,0.9)", 0], ["rgba(206,240,248,0.45)", -1]]) {
+            ctx.beginPath();
+            ctx.moveTo(wrist.x, wrist.y);
+            ctx.quadraticCurveTo(bend.x, bend.y, tip.x, tip.y);
+            ctx.strokeStyle = col;
+            ctx.lineWidth = mul > 0 ? w * z + lw * 2 : mul === 0 ? w * z : Math.max(1, w * z * 0.3);
+            ctx.stroke();
+          }
         }
       }
-      const c = P(CARA.cx, CARA.cy);
+      ctx.restore();
+      const c = c0;
       ctx.save();
       ctx.beginPath();
       ctx.ellipse(c.x, c.y, CARA.rx * z, CARA.ry * z, 0, 0, TAU);
       const bg2 = ctx.createRadialGradient(c.x, c.y, 0, c.x, c.y, CARA.rx * z);
-      bg2.addColorStop(0, `rgba(${28 + beat * 22},${20 + beat * 10},${30 + beat * 16},0.90)`);
-      bg2.addColorStop(0.7, "rgba(16,12,18,0.93)");
-      bg2.addColorStop(1, "rgba(8,8,14,0.96)");
+      bg2.addColorStop(0, `rgba(${26 + beat * 22},${19 + beat * 10},${28 + beat * 16},0.90)`);
+      bg2.addColorStop(0.7, "rgba(14,11,17,0.94)");
+      bg2.addColorStop(1, "rgba(7,7,13,0.97)");
       ctx.fillStyle = bg2;
       ctx.fill();
       ctx.restore();
@@ -12479,12 +13235,22 @@ body {
       };
       ring(CARA.rx, CARA.ry, "rgba(8,10,16,0.95)", "rgba(150,208,220,0.70)", Math.max(1, 2.2 * z));
       ring(CARA.rx * 0.9, CARA.ry * 0.88, "none", "rgba(120,178,196,0.22)", Math.max(1, 1.2 * z));
-      const bx = P(0, CARA.cy - 90);
+      const br = m.basin.r * CARA.rx;
+      const bx = P(m.basin.a * CARA.rx, CARA.cy + m.basin.b * CARA.ry);
       ctx.beginPath();
-      ctx.ellipse(bx.x, bx.y, 150 * z, 96 * z, 0, 0, TAU);
-      ctx.strokeStyle = "rgba(120,178,196,0.26)";
+      ctx.ellipse(bx.x, bx.y, br * z, br * 0.72 * z, 0, 0, TAU);
+      ctx.strokeStyle = "rgba(120,178,196,0.30)";
       ctx.lineWidth = Math.max(1, 1.2 * z);
       ctx.stroke();
+      const pond = clamp01(this.game.garden.pond);
+      if (pond > 0.02) {
+        ctx.globalAlpha = fade * (0.1 + pond * 0.22);
+        ctx.fillStyle = "#5fc6d8";
+        ctx.beginPath();
+        ctx.ellipse(bx.x, bx.y, br * z * Math.sqrt(pond), br * 0.72 * z * Math.sqrt(pond), 0, 0, TAU);
+        ctx.fill();
+        ctx.globalAlpha = fade;
+      }
       for (let i = -2; i <= 2; i++) {
         const yy = CARA.cy + i * CARA.ry * 0.32;
         const half = CARA.rx * Math.sqrt(Math.max(0, 1 - Math.pow((yy - CARA.cy) / CARA.ry, 2)));
@@ -12497,8 +13263,9 @@ body {
         ctx.stroke();
       }
       for (const side of [-1, 1]) {
-        const e0 = P(side * 74, CARA.cy + CARA.ry * 0.8);
-        const e1 = P(side * 104, CARA.cy + CARA.ry * 1.22);
+        const ex = side * CARA.rx * 0.14;
+        const e0 = P(ex, CARA.cy + CARA.ry * 0.8);
+        const e1 = P(ex * 1.9, CARA.cy + CARA.ry * 1.22);
         ctx.beginPath();
         ctx.moveTo(e0.x, e0.y);
         ctx.lineTo(e1.x, e1.y);
@@ -12519,15 +13286,15 @@ body {
         ctx.arc(e1.x - 4 * z, e1.y - 4 * z, Math.max(1, 4 * z), 0, TAU);
         ctx.fill();
       }
-      for (const m of this.motes) {
-        const yy = (m.y - this.t * 0.01 * m.s + 2) % 1;
-        const xx = (m.x + Math.sin(this.t * 0.26 * m.s + m.p) * 0.014 + 1) % 1;
+      for (const mo of this.motes) {
+        const yy = (mo.y - this.t * 0.01 * mo.s + 2) % 1;
+        const xx = (mo.x + Math.sin(this.t * 0.26 * mo.s + mo.p) * 0.014 + 1) % 1;
         const bxp = lerp(-CARA.rx, CARA.rx, xx), byp = CARA.cy + lerp(-CARA.ry, CARA.ry, yy);
         if ((bxp / CARA.rx) ** 2 + ((byp - CARA.cy) / CARA.ry) ** 2 > 0.92) continue;
         const sp = P(bxp, byp);
-        const tw = 0.4 + 0.6 * (0.5 + 0.5 * Math.sin(this.t * 2.1 + m.p)) + beat * 0.4;
-        ctx.globalAlpha = fade * 0.4 * tw * m.s;
-        ctx.fillStyle = m.r ? "#cd7a6c" : "#9fe8d4";
+        const tw = 0.4 + 0.6 * (0.5 + 0.5 * Math.sin(this.t * 2.1 + mo.p)) + beat * 0.4;
+        ctx.globalAlpha = fade * 0.4 * tw * mo.s;
+        ctx.fillStyle = mo.r ? "#cd7a6c" : "#9fe8d4";
         ctx.fillRect(Math.round(sp.x), Math.round(sp.y), 1, 1);
       }
       ctx.globalAlpha = fade;
@@ -12729,7 +13496,7 @@ body {
         ctx.globalAlpha = fade * seen * dim * (on ? 0.3 : ready ? 0.14 + pulse * 0.24 : 0.06);
         ctx.fillStyle = n.color;
         ctx.beginPath();
-        ctx.arc(p.x, p.y, r * (2 + pulse * 0.5), 0, TAU);
+        ctx.arc(p.x, p.y, r * (1.45 + pulse * 0.35), 0, TAU);
         ctx.fill();
         ctx.globalAlpha = fade * seen * dim;
         if (n.kind === "root") {
@@ -12747,6 +13514,17 @@ body {
           if (!on && ready) ctx.rotate(Math.sin(this.t * 0.9 + n.x * 0.03) * 0.1);
           ctx.drawImage(art.cv, -art.ox, -art.oy);
           ctx.restore();
+          const ico = n.data && n.data.icon;
+          if (ico && r > 6) {
+            drawNodeIcon(
+              ctx,
+              ico,
+              p.x,
+              p.y,
+              on ? "rgba(10,8,6,0.86)" : ready ? "rgba(240,232,214,0.80)" : "rgba(196,192,186,0.34)",
+              Math.max(1, Math.round(r / 4.6))
+            );
+          }
           if (hot) {
             ctx.strokeStyle = "rgba(246,240,220,0.9)";
             ctx.lineWidth = 1;
@@ -12938,6 +13716,7 @@ body {
       this.buildScroll = 0;
       this.savedZoom = null;
       this.driving = null;
+      this.drag = null;
       this.placing = null;
       this.ghostPlot = null;
       this.toast = null;
@@ -13090,6 +13869,7 @@ body {
       }
       if (this.placing && !this.buildOn) this.placing = null;
       if (this.placing) this._updatePlacing();
+      this._updateDrag(dt);
       if (this.mode === "creature" && !this.drawerOpen) this._updateCommand();
       const b = this.game.economy.nutrients;
       this.bloomShown = damp(this.bloomShown, b, 0.05, dt);
@@ -13153,7 +13933,65 @@ body {
       this.placing = null;
       this.tree.open(r.vw - 17, 31, r.vw, r.vh);
     }
+    /**
+     * Carrying a seed from the rail to a bed. Dropping it on a legal bed plants
+     * it; dropping it anywhere else puts it back, which is what a person expects
+     * from picking something up and letting go of it.
+     */
+    _updateDrag(dt) {
+      const d = this.drag;
+      if (!d) return;
+      const g = this.game;
+      d.t += dt;
+      if (!this.buildOn) {
+        this.drag = null;
+        return;
+      }
+      if (g.input.down) {
+        this.placing = { kind: d.kind, id: d.id };
+        this._pickGhost();
+        return;
+      }
+      const plot = this.ghostPlot;
+      const overRail = g.input.sx < this.railW(g.renderer.vw) + 6;
+      this.drag = null;
+      if (!plot || overRail || d.t < 0.05) {
+        this.placing = null;
+        this.ghostPlot = null;
+        return;
+      }
+      const res = d.kind === "flora" ? g.tryPlant(d.id, plot.i) : g.tryBuild(d.id, plot.i);
+      this.say(res.msg || res);
+      if (res.ok !== false) {
+        const wp = g.garden.plotWorld(plot);
+        g.fx.spark(wp.x, wp.y, d.kind === "flora" ? "#8cc468" : "#e2b74a", 14, 34);
+        g.fx.dust(wp.x, wp.y, 1.4);
+        g.cam.shake(1.2);
+        g.audio?.play("grow");
+      } else g.audio?.play("deny");
+      this.placing = null;
+      this.ghostPlot = null;
+    }
+    /** Which bed the thing being carried would land in. */
+    _pickGhost() {
+      const g = this.game;
+      const w = g.cam.screenToWorld(g.input.sx, g.input.sy);
+      const wantWet = this.placing.kind === "flora" && FLORA_BY_ID[this.placing.id]?.needsPond;
+      let best = null, bd = 1e9;
+      for (const p of g.garden.plots) {
+        if (this.placing.kind === "build" && (p.wet || p.plant || p.build)) continue;
+        if (this.placing.kind === "flora" && (p.plant || p.build || !!p.wet !== !!wantWet)) continue;
+        const wp = g.garden.plotWorld(p);
+        const dd = (wp.x - w.x) ** 2 + (wp.y - w.y) ** 2;
+        if (dd < bd) {
+          bd = dd;
+          best = p;
+        }
+      }
+      this.ghostPlot = bd < 60 * 60 ? best : null;
+    }
     _updatePlacing() {
+      if (this.drag) return;
       const g = this.game;
       const w = g.cam.screenToWorld(g.input.sx, g.input.sy);
       const wantWet = this.placing.kind === "flora" && FLORA_BY_ID[this.placing.id]?.needsPond;
@@ -13237,7 +14075,28 @@ body {
           { color: INK, align: "center", outline: true, outlineColor: OUT }
         ));
       }
-      if (this.hover) this._tooltip(ctx, W, H);
+      if (this.drag) this._drawCarried(ctx, W, H);
+      if (this.hover && !this.drag) this._tooltip(ctx, W, H);
+    }
+    /** The thing in your claw while you are carrying it to a bed. */
+    _drawCarried(ctx, W, H) {
+      const g = this.game;
+      const d = this.drag;
+      const i = g.input;
+      const def3 = d.kind === "flora" ? FLORA_BY_ID[d.id] : BUILD_BY_ID[d.id];
+      if (!def3) return;
+      const art = d.kind === "flora" ? buildPlant(def3, 0, 0, Math.min(1, 20 / Math.max(10, def3.h))) : buildStructure(def3, 0.5);
+      const bob = Math.sin(this.t * 9) * 1.2;
+      ctx.globalAlpha = 0.9;
+      ctx.drawImage(art.cv, Math.round(i.sx - art.ox), Math.round(i.sy - art.oy + bob));
+      ctx.globalAlpha = 1;
+      drawText(
+        ctx,
+        this.ghostPlot ? "let go to plant" : "over a bed",
+        i.sx,
+        i.sy + 6,
+        { color: this.ghostPlot ? "#b6de8f" : FAINT, align: "center", outline: true, outlineColor: OUT }
+      );
     }
     // -- HUD ------------------------------------------------------------------
     _hud(ctx, W, H) {
@@ -13298,10 +14157,11 @@ body {
         { color: INK, align: "center", outline: true, outlineColor: OUT }
       );
       if (this._hit(fx, 16, 26, 22)) this.hover = { title: "Fruit", body: "What your mature plants set. Animals will come a long way for it." };
-      const label = `${g.biome.name}   ${g.weather.label()}   ${String(Math.floor(g.weather.hour)).padStart(2, "0")}:00`;
+      const label = `${g.biome.name}   ${g.weather.label()}`;
       drawText(ctx, label, W - 6, 5, { color: DIM, align: "right", outline: true, outlineColor: OUT });
+      this._clock(ctx, W - 15, 25);
       this._compass(ctx, W, H);
-      const ox = W - 32, oy = 16;
+      const ox = W - 32, oy = 48;
       const ready = this._treeReady();
       drawOrb(ctx, ox, oy, this.t, ready ? 0.5 + Math.sin(this.t * 3) * 0.5 : 0);
       drawText(
@@ -13322,7 +14182,7 @@ body {
       if (fleet.length) {
         for (let i = 0; i < Math.min(9, fleet.length); i++) {
           const c = fleet[i];
-          const cx = W - 8 - (i + 1) * 8, cy = 46;
+          const cx = W - 8 - (i + 1) * 8, cy = 80;
           ctx.fillStyle = c === this.selected ? "#ffe9a8" : c.onShell ? "rgba(140,196,104,0.95)" : "rgba(226,183,74,0.9)";
           ctx.fillRect(cx, cy, 6, 6);
           ctx.strokeStyle = OUT;
@@ -13523,6 +14383,71 @@ body {
         this.hover = { title: "The spring", body: "Hold to run it. It fills the tank, then the basin, then it goes over the side." };
       }
     }
+    /**
+     * The clock. A dial with the sun and the moon actually going round it, the
+     * lit part of the day drawn light and the dark part dark, so you can see how
+     * long you have before the things that hunt at night come out.
+     */
+    _clock(ctx, cx, cy) {
+      const g = this.game;
+      const w = g.weather;
+      const R = 9;
+      const hour = w.hour;
+      const day = Math.floor(w.day ?? 1);
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(cx, cy, R, 0, TAU);
+      ctx.closePath();
+      ctx.clip();
+      ctx.fillStyle = "rgba(120,158,196,0.55)";
+      ctx.fillRect(cx - R, cy - R, R * 2, R);
+      ctx.fillStyle = "rgba(26,28,54,0.78)";
+      ctx.fillRect(cx - R, cy, R * 2, R);
+      ctx.restore();
+      ctx.strokeStyle = "rgba(214,186,138,0.6)";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.arc(cx, cy, R, 0, TAU);
+      ctx.stroke();
+      ctx.fillStyle = "rgba(214,186,138,0.35)";
+      ctx.fillRect(cx - R, Math.round(cy), R * 2, 1);
+      const a = (hour - 6) / 24 * TAU;
+      const sx = cx + Math.cos(a) * (R - 2.6), sy = cy + Math.sin(a) * (R - 2.6);
+      const mx = cx - Math.cos(a) * (R - 2.6), my = cy - Math.sin(a) * (R - 2.6);
+      ctx.fillStyle = "rgba(190,190,210,0.85)";
+      ctx.beginPath();
+      ctx.arc(mx, my, 1.8, 0, TAU);
+      ctx.fill();
+      ctx.fillStyle = "#ffe9a8";
+      ctx.beginPath();
+      ctx.arc(sx, sy, 2.4, 0, TAU);
+      ctx.fill();
+      ctx.fillStyle = "rgba(255,246,196,0.35)";
+      ctx.beginPath();
+      ctx.arc(sx, sy, 4.2, 0, TAU);
+      ctx.fill();
+      drawText(
+        ctx,
+        `DAY ${day}`,
+        cx - R - 4,
+        cy - 8,
+        { color: INK, align: "right", outline: true, outlineColor: OUT }
+      );
+      drawText(
+        ctx,
+        `${String(Math.floor(hour)).padStart(2, "0")}:${String(Math.floor(hour % 1 * 60)).padStart(2, "0")}`,
+        cx - R - 4,
+        cy + 1,
+        { color: DIM, align: "right", outline: true, outlineColor: OUT }
+      );
+      if (this._hit(cx - R - 44, cy - R, R * 2 + 44, R * 2)) {
+        const toNight = hour < 20 ? 20 - hour : 24 - hour + 20;
+        this.hover = {
+          title: `Day ${day}`,
+          body: hour >= 20 || hour < 5 ? "Night. Things come up out of the sand at night." : `${toNight.toFixed(1)} hours of light left.`
+        };
+      }
+    }
     /** A mark at the edge of the screen for the next place you have not been. */
     _compass(ctx, W, H) {
       const g = this.game;
@@ -13531,7 +14456,7 @@ body {
         ctx,
         `${g.world.found.size} places found`,
         W - 6,
-        14,
+        38,
         { color: FAINT, align: "right", outline: true, outlineColor: OUT }
       );
       if (!lm) return;
@@ -13958,6 +14883,11 @@ body {
         }
         if (hot) {
           this.pickHover = f.id;
+          if (!locked && g.input.down && !this.drag && !g.input.clicked) {
+            this.drag = { kind: "flora", id: f.id, t: 0 };
+            this.pick = f.id;
+            g.audio?.play("ui");
+          }
           if (g.input.clicked) {
             g.input.clicked = false;
             this.pick = f.id;
@@ -13989,10 +14919,16 @@ body {
         ctx.drawImage(art.cv, Math.round(cxi + cell / 2 - art.ox), Math.round(cy + cell - 4 - art.oy));
         ctx.restore();
         if (built) drawText(ctx, "*", cxi + cell - 5, cy + 2, { color: "#b6de8f", align: "right" });
-        if (hot && g.input.clicked) {
-          g.input.clicked = false;
-          this.pick = b.id;
-          g.audio?.play("ui");
+        if (hot) {
+          if (ok && g.input.down && !this.drag && !g.input.clicked) {
+            this.drag = { kind: "build", id: b.id, t: 0 };
+            this.pick = b.id;
+          }
+          if (g.input.clicked) {
+            g.input.clicked = false;
+            this.pick = b.id;
+            g.audio?.play("ui");
+          }
         }
       });
       this.scroll = clamp(this.scroll, 0, Math.max(0, rows * (cell + gap) - h));
@@ -14451,6 +15387,8 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
       this.world = new World(this, this.seed);
       this.npc = new Archaeologist(this, 62);
       this.morse = new Morse(this);
+      this.green = new Green(this);
+      this.digs = new Digs(this, this.seed);
       this.ui = new UI(this);
       this.seeds = { dustmoss: 3, saltgrass: 2 };
       this.research = {};
@@ -14637,6 +15575,7 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
         if (i.justPressed("r")) this.harvestAll();
         if (i.justPressed("f")) this.callVess();
         if (i.justPressed("x")) this.infest();
+        if (i.justPressed("k")) this.incubateBest();
         this.morse.update(sdt, i.key("t"));
         if (i.justPressed("q")) this.attack();
       }
@@ -14653,6 +15592,9 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
       this.biome = biomeAt(this.crab.x);
       this.weather.update(sdt, this);
       this.terrain.update(sdt, this.weather.windSpeed);
+      this.green.update(sdt, this.weather);
+      this.green.tick(sdt);
+      this.digs.update(sdt);
       const eco = this.economy;
       const up = 1 + eco.stat("upkeep");
       const g = this.garden.update(sdt, eco.water / Math.max(1e-3, up), this.weather);
@@ -14917,8 +15859,72 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
       this.economy.markDirty();
       return true;
     }
+    /** Put the best thing in your pack into the water on your back. */
+    incubateBest() {
+      const have = Object.entries(this.relics || {}).filter(([, n]) => n > 0);
+      if (!have.length) {
+        this.ui.say("Nothing in your pack. Dig something up first.");
+        return;
+      }
+      if (this.garden.pond < 0.25) {
+        this.ui.say("Your basin is dry. Nothing will develop in it.");
+        return;
+      }
+      const [id] = have.sort((a, b) => (RELIC_BY_ID[b[0]]?.incubate || 0) - (RELIC_BY_ID[a[0]]?.incubate || 0))[0];
+      const res = this.digs.incubate(id);
+      if (!res.ok) {
+        this.ui.say(res.msg);
+        return;
+      }
+      this.relics[id]--;
+      this.ui.say(res.msg, 5);
+      this.audio.play("grow");
+      this.npc.say("You are going to put a fossil in a puddle on your back and wait. And it is going to work, is it? It is, isn't it.", 6);
+    }
+    /** Something that has been extinct for a thousand years walks off your shell. */
+    onHatched(relic) {
+      const c = this.crab;
+      const spot = c.shellWorldAB(0, 0.5);
+      const made = this.wildlife.spawn(relic.hatch, c.x + 20);
+      this.fx.spark(spot.x, spot.y, "#fae19f", 26, 64);
+      this.cam.shake(4);
+      this.audio.play("evolve");
+      if (made) {
+        made.tamed = true;
+        made.trust = 1;
+        made.hatched = true;
+        this.wildlife.fleet.push(made);
+        this.ui.say(`${made.def.name}. Out of the ${relic.kind}. It is alive.`, 7);
+        this.npc.say("It hatched. A thousand years in a rock and it hatched. I am going to need a bigger notebook.", 8);
+        this.economy.markDirty();
+      }
+    }
     act() {
       const c = this.crab;
+      const site = this.digs.reachable(c.x);
+      if (site) {
+        const res = this.digs.dig(site);
+        if (!res.ok) {
+          this.ui.say(res.msg);
+          return;
+        }
+        this.relics = this.relics || {};
+        this.relics[res.relic.id] = (this.relics[res.relic.id] || 0) + 1;
+        this.terrain.deform(site.x, 5, 22);
+        this.fx.dust(site.x, this.terrain.surfaceY(site.x), 3);
+        this.fx.spark(
+          site.x,
+          this.terrain.surfaceY(site.x) - 6,
+          res.relic.kind === "amber" ? "#eec66c" : "#c6bea7",
+          16,
+          40
+        );
+        this.fx.popup(site.x, this.terrain.surfaceY(site.x) - 14, res.relic.name, "#dcd6c3");
+        this.audio.play("discover");
+        this.ui.say(`${res.relic.name}. Put it in your basin (K) and keep the water up.`, 6);
+        this.npc.say(res.relic.desc, 7);
+        return;
+      }
       if (this.garden.ripeCount) {
         this.harvestAll();
         return;
@@ -15053,8 +16059,28 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
       this.fx.dust(this.crab.x, this.crab.y, 6);
       this.fx.spark(this.crab.x, this.crab.y, "#b6de8f", 22, 70);
     }
+    /** Water hitting the ground: it wets the sand, and it wakes the ground up. */
     wetSand(x, amount) {
       this.terrain.deform(x, -amount * 0.04, 9);
+      this.green?.water(x, amount * 26e-4, 34);
+    }
+    /** Something came up out of the sand behind you. Worth noticing. */
+    onGreened(x) {
+      if (Math.abs(x - this.crab.x) > 400) return;
+      this.fx.spark(x, this.terrain.surfaceY(x) - 3, "#8cc468", 7, 22);
+      if (Math.random() < 0.25) {
+        this.npc.say([
+          "Something came up. In the open. Out of dead sand.",
+          "That is a plant. Nobody planted that.",
+          "The ground behind you is not the ground in front of you any more."
+        ][Math.floor(Math.random() * 3)], 5);
+      }
+    }
+    /** A seed on your back has taken up enough water to start. */
+    onGerminate(plot, pl) {
+      const w = this.garden.plotWorld(plot);
+      this.fx.spark(w.x, w.y - 2, "#b6de8f", 9, 26);
+      this.audio.play("grow", { pitch: 1.2 });
     }
     attraction(def3) {
       return this.wildlife.attraction(def3) * this.economy.stat("attract");
@@ -15128,6 +16154,52 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
         this.ui.say(`${pl.def.name} is mature.`, 3.5);
       }
     }
+    /**
+     * Something died. It is not a failure state - it is what happens - and what
+     * it leaves behind goes into the ground for whoever comes next.
+     */
+    onDied(c, cause) {
+      const mine = this.wildlife.fleet.includes(c);
+      if (mine) {
+        const i = this.wildlife.fleet.indexOf(c);
+        if (i >= 0) this.wildlife.fleet.splice(i, 1);
+        if (this.ui.driving === c) this.ui.release();
+        this.economy.markDirty();
+      }
+      this.fx.dust(c.x, c.y + 4, 1.2);
+      if (cause === "age") {
+        this.fx.drift(c.x, c.y - 4, "#c6bea7", 3);
+        if (mine) {
+          this.ui.say(`${c.name} has died of old age.`, 4.5);
+          this.npc.say(this._eulogy(c), 6);
+        }
+      } else if (mine) {
+        this.ui.say(`${c.name} is dead.`, 4);
+      }
+      this.green?.water(c.x, 0.05, 26);
+    }
+    _eulogy(c) {
+      const lines = [
+        `${c.def.name} is down. Write the date. That one lived its whole life on your back, which is a sentence I never expected to put in a report.`,
+        `It got old. Here. On you. In a place where nothing has got old for a thousand years.`,
+        `${c.def.name}, deceased. Natural causes. Do you understand how extraordinary "natural causes" is out here?`
+      ];
+      return lines[Math.floor(Math.random() * lines.length)];
+    }
+    /** One of yours has young, because you grew somewhere for them to have them. */
+    onBred(c) {
+      if (this.wildlife.fleet.length >= this.economy.stat("fleetSlots") + 2) return;
+      const baby = this.wildlife.spawn(c.def.id, c.x + (Math.random() - 0.5) * 24);
+      if (!baby) return;
+      baby.tamed = true;
+      baby.trust = 1;
+      baby.age = 0;
+      baby.born = true;
+      this.wildlife.fleet.push(baby);
+      this.fx.spark(c.x, c.y - 6, "#ffe9a8", 12, 30);
+      this.ui.say(`${c.def.name} has bred on your shell.`, 4.5);
+      this.economy.markDirty();
+    }
     onFirstSighting(def3) {
       if (!def3.hostile) this.ui.say(`${def3.name} - first sighting.`, 4);
     }
@@ -15190,7 +16262,10 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
         research: this.research,
         mode: this.ui.mode,
         insc: this.readInscriptions,
-        morse: this.morse.toJSON()
+        morse: this.morse.toJSON(),
+        green: this.green.toJSON(),
+        digs: this.digs.toJSON(),
+        relics: this.relics
       });
     }
     load(d) {
@@ -15211,6 +16286,9 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
         this.research = d.research || {};
         this.readInscriptions = d.insc || 0;
         this.morse.fromJSON(d.morse);
+        this.green.fromJSON(d.green);
+        this.digs.fromJSON(d.digs);
+        this.relics = d.relics || {};
         if (d.mode) this.ui.mode = d.mode;
         this.economy.recomputeGenes();
         this.economy.markDirty();
@@ -15236,6 +16314,7 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
       this.terrain.draw(ctx, cam);
       this.world.drawWater(ctx, cam);
       this.terrain.drawSand(ctx, cam);
+      this.green.drawGround(ctx, cam, this.terrain);
       this.world.drawScatter(ctx, cam, "far");
       this.encounters.draw(ctx, cam);
       this.fx.draw(ctx, cam, "far");
@@ -15248,6 +16327,8 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
       if (this.state === "play") this.ui.drawCrop(ctx, cam);
       this.fx.draw(ctx, cam, "near");
       this.world.drawScatter(ctx, cam, "near");
+      this._drawGreenPlants(ctx, cam);
+      this._drawDigs(ctx, cam);
       this.backdrop.drawForeground(ctx, cam, this.weather, this.terrain);
       r.beginLights(this.weather);
       const lightPow = this.economy.stat("light");
@@ -15293,11 +16374,77 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
      * A speech bubble with a tail, so it belongs to whoever is talking. `code`
      * draws it as the taps you are making rather than as words.
      */
+    /**
+     * What is showing above the sand: a corner of shale, a bead of amber with
+     * the sun behind it. Only the shallow ones show at all until you have a claw
+     * that can find the rest.
+     */
+    _drawDigs(ctx, cam) {
+      const power = this.economy.stat("fossil");
+      for (const site of this.digs.near(this.crab.x, 520)) {
+        if (site.deep > 0.55 && power < 2) continue;
+        const y = this.terrain.surfaceY(site.x);
+        const s = cam.worldToScreen(site.x, y);
+        const z = cam.zoom;
+        const amber = site.relic.kind === "amber";
+        const r = (2.2 + (1 - site.deep) * 1.6) * z;
+        ctx.fillStyle = amber ? "#a5691a" : "#6f6758";
+        ctx.beginPath();
+        ctx.ellipse(s.x, s.y - r * 0.3, r, r * 0.62, 0.3, Math.PI, TAU);
+        ctx.fill();
+        ctx.fillStyle = amber ? "#eec66c" : "#c6bea7";
+        ctx.beginPath();
+        ctx.ellipse(s.x - r * 0.2, s.y - r * 0.45, r * 0.55, r * 0.3, 0.3, Math.PI, TAU);
+        ctx.fill();
+        if (amber) {
+          const tw = 0.5 + 0.5 * Math.sin(this.time * 2.6 + site.ci);
+          ctx.globalAlpha = 0.25 + tw * 0.45;
+          const g = ctx.createRadialGradient(s.x, s.y - r * 0.5, 0, s.x, s.y - r * 0.5, r * 4);
+          g.addColorStop(0, "#fae19f");
+          g.addColorStop(1, "rgba(238,198,108,0)");
+          ctx.fillStyle = g;
+          ctx.beginPath();
+          ctx.arc(s.x, s.y - r * 0.5, r * 4, 0, TAU);
+          ctx.fill();
+          ctx.globalAlpha = 1;
+        }
+        if (Math.abs(site.x - this.crab.x) < 40) {
+          drawText(
+            ctx,
+            power ? "E to dig" : "you would need a digging claw",
+            s.x,
+            s.y - 16 * z,
+            { color: "#dcd6c3", align: "center" }
+          );
+        }
+      }
+    }
+    /** What the desert has put up on its own, where you watered it. */
+    _drawGreenPlants(ctx, cam) {
+      const b = cam.bounds(40);
+      for (const [i, p] of this.green.plants) {
+        const x = i * 24;
+        if (x < b.x0 || x > b.x1) continue;
+        const def3 = FLORA_BY_ID[p.id];
+        if (!def3) continue;
+        const y = this.terrain.surfaceY(x);
+        const s = cam.worldToScreen(x, y);
+        const art = buildPlant(def3, p.stage, p.variant, p.size);
+        ctx.save();
+        ctx.translate(Math.round(s.x), Math.round(s.y));
+        ctx.scale(cam.zoom * (p.flip ? -1 : 1), cam.zoom);
+        ctx.rotate(Math.sin(this.time * 1.1 + i) * 0.03 * (this.weather.windSpeed + 0.3));
+        ctx.drawImage(art.cv, -art.ox, -art.oy);
+        ctx.restore();
+      }
+    }
     _drawSpeech(ctx, cam, who, code = false) {
       const s = cam.worldToScreen(who.x, who.y - 40);
-      const lines = wrapText(who.speech, 132);
-      const w = Math.max(...lines.map((l) => textWidth(l))) + 12;
-      const h = lines.length * LINE_H + 8;
+      const port = !code && who.sheet && who.face !== void 0 ? frame(who.sheet, "face", who.face) : null;
+      const pw = port ? Math.min(30, port.w) : 0;
+      const lines = wrapText(who.speech, 132 - (port ? pw + 4 : 0));
+      const w = Math.max(...lines.map((l) => textWidth(l))) + 12 + (port ? pw + 4 : 0);
+      const h = Math.max(lines.length * LINE_H + 8, port ? pw + 6 : 0);
       const x = clamp(Math.round(s.x - w / 2), 3, this.renderer.vw - w - 3);
       const y = clamp(Math.round(s.y - h), 3, this.renderer.vh - h - 12);
       const tailX = clamp(Math.round(s.x), x + 6, x + w - 6);
@@ -15313,10 +16460,23 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
       ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
       ctx.strokeStyle = code ? "rgba(159,232,212,0.16)" : "rgba(226,200,150,0.14)";
       ctx.strokeRect(x + 2.5, y + 2.5, w - 5, h - 5);
+      let tx = x + 6;
+      if (port) {
+        const scale = pw / port.w;
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(x + 3, y + 3, pw, Math.min(pw, h - 6));
+        ctx.clip();
+        drawFrame(ctx, who.sheet, "face", who.face, x + 3 + pw / 2, y + 3 + pw / 2, false, scale);
+        ctx.restore();
+        ctx.strokeStyle = "rgba(226,200,150,0.25)";
+        ctx.strokeRect(x + 2.5, y + 2.5, pw + 1, Math.min(pw, h - 6) + 1);
+        tx = x + 6 + pw + 2;
+      }
       lines.forEach((l, i) => drawText(
         ctx,
         l,
-        x + 6,
+        tx,
         y + 5 + i * LINE_H,
         { color: code ? "#9fe8d4" : "#f2e4c2" }
       ));

@@ -6,7 +6,7 @@
 // state machine on top of an atlas.
 
 import { clamp, clamp01, lerp, damp, TAU } from '../lib/math.js';
-import { drawFrame, frameCount, PEOPLE } from '../art/people.js';
+import { drawFrame, frame, frameCount, PEOPLE } from '../art/people.js';
 
 export const POSE = {
   IDLE: 'idle', IDLE_FRONT: 'idleFront', IDLE_BACK: 'idleBack',
@@ -66,7 +66,27 @@ export class Person {
     this.scale = opts.scale ?? 0.37;
   }
 
-  say(text, secs = 4.5) { this.speech = text; this.speechT = secs; }
+  /**
+   * `mood` picks which of the close-up faces goes in the bubble. The sheet has
+   * eight of them and until now nothing used a single one.
+   */
+  say(text, secs = 4.5, mood = null) {
+    this.speech = text;
+    this.speechT = secs;
+    this.face = mood !== null ? mood : this._moodFor(text);
+  }
+
+  /** Work out which face a line wants from the line itself. */
+  _moodFor(text) {
+    const t = String(text);
+    if (/[!?]{2}|NOT A ROCK|TAPPING/.test(t)) return 2;       // alarmed
+    if (/\?/.test(t)) return 5;                               // questioning
+    if (/water|Water|spring|oasis|green|came up/.test(t)) return 3;   // delighted
+    if (/no |No |not |cannot|idiot|too much/.test(t)) return 4;
+    if (/thousand|eleven years|notes|writing/.test(t)) return 6;
+    if (/^\.\.\./.test(t)) return 7;
+    return (Math.abs(t.length * 7) % 3);
+  }
   setPose(p) { if (this.pose !== p) { this.pose = p; this.animT = 0; } this.poseT = 0; }
 
   update(dt) {
@@ -153,6 +173,11 @@ export class Archaeologist extends Person {
     this.rideT = 0;
     this.climb = 0;               // 0 on the ground, 1 fully aboard
     this.chatT = 6;
+    this.face = 0;
+    // her kit, left lying wherever she last set up. The sheet has a whole row
+    // of it - hat, pack, scroll, canteen, marker, lens, pick, spoil, skull -
+    // and a dig site with none of it on the ground looks like nobody's.
+    this.camp = null;
   }
 
   /** Riding means she is on the shell, so she has to be put somewhere on it. */
@@ -237,12 +262,32 @@ export class Archaeologist extends Person {
       this.setPose(pose);
       this.idleT = hold * (0.7 + Math.random() * 0.7);
       if (pose === POSE.WANDER) this.moveTo = this.x + (Math.random() - 0.5) * 90;
-      if (pose === POSE.DIG) this.game.fx?.dust(this.x + this.facing * 6, this.y, 1.2);
+      if (pose === POSE.DIG) {
+        this.game.fx?.dust(this.x + this.facing * 6, this.y, 1.2);
+        this._setUpCamp();
+      }
       if (pose === POSE.SURVEY) this.facing = Math.random() < 0.5 ? -1 : 1;
     }
     if (this.pose === POSE.DIG && Math.random() < dt * 2.2) {
       this.game.fx?.dust(this.x + this.facing * 6, this.y, 0.8);
     }
+  }
+
+  /** Drop her kit around wherever she has decided to work. */
+  _setUpCamp() {
+    if (this.camp && Math.abs(this.camp.x - this.x) < 70) return;
+    const n = frameCount('vess', 'prop');
+    if (!n) { this.camp = { x: this.x, items: [] }; return; }
+    const items = [];
+    const count = 2 + Math.floor(Math.random() * 3);
+    const used = new Set();
+    for (let i = 0; i < count; i++) {
+      let k = Math.floor(Math.random() * n);
+      for (let g = 0; g < 4 && used.has(k); g++) k = Math.floor(Math.random() * n);
+      used.add(k);
+      items.push({ i: k, dx: (Math.random() - 0.5) * 46, flip: Math.random() < 0.5 });
+    }
+    this.camp = { x: this.x, items };
   }
 
   /** She talks. Constantly. That is most of what she is for. */
@@ -268,7 +313,16 @@ export class Archaeologist extends Person {
   }
 
   draw(ctx, cam) {
-    // riding: drawn on top of the shell, so the crab's own draw has finished
+    // her kit goes down first, because she is standing over it
+    if (this.camp && this.camp.items.length && !this.riding) {
+      const z = cam.zoom;
+      for (const it of this.camp.items) {
+        const x = this.camp.x + it.dx;
+        const s = cam.worldToScreen(x, this.game.terrain.surfaceY(x));
+        if (s.x < -30 || s.x > this.game.renderer.vw + 30) continue;
+        drawFrame(ctx, 'vess', 'prop', it.i, s.x, s.y, it.flip, z * this.scale * 0.8);
+      }
+    }
     super.draw(ctx, cam);
   }
 }

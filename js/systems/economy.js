@@ -13,8 +13,10 @@ import { FLORA_BY_ID } from '../data/flora.js';
 const BASE = {
   pumpGain: 6, waterMax: 200, pondGain: 0, nightWater: 0,
   plots: 0, upkeep: 0, grow: 1, yield: 1, berryRate: 1,   // `plots` is carrying capacity now
-  attract: 1, trust: 1, fleetSlots: 3, orders: false,
+  ripen: 1, attract: 1, trust: 1, fleetSlots: 3, orders: false,
   speed: 1, armour: 0, hp: 0, dmg: 18, dig: false, light: 0, warn: 0,
+  // newer systems: reviving the ground, digging things up, breeding, fighting
+  green: 0, fossil: 0, breed: 0, armourPierce: 0, stun: 0, slope: 0, breach: false,
 };
 
 export class Economy {
@@ -61,7 +63,7 @@ export class Economy {
       for (const [k, v] of Object.entries(e)) {
         if (typeof v === 'boolean') s[k] = s[k] || v;
         else if (k === 'grow' || k === 'yield' || k === 'attract' || k === 'trust'
-          || k === 'speed' || k === 'berryRate') s[k] *= v;
+          || k === 'speed' || k === 'berryRate' || k === 'ripen') s[k] *= v;
         else s[k] += v;
       }
     };

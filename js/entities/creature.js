@@ -48,6 +48,12 @@ export class Creature {
     this.commanded = null;
     this.puppet = false;        // something of yours is riding its nerves
     this.driveX = 0;            // and this is you, steering it
+    // Everything here is alive, which means everything here is dying. A short
+    // life on purpose: the point is that your fleet turns over, breeds, and
+    // leaves things behind for you to dig up later.
+    this.age = Math.random() * (def.hp * 3);
+    this.lifespan = (def.hp * 9 + 240) * (0.75 + Math.random() * 0.5);
+    this.breedT = 40 + Math.random() * 60;
 
     this.bob = 0;
     this.gait = Math.random() * TAU;
@@ -99,7 +105,11 @@ export class Creature {
 
   // -------------------------------------------------------------------------
 
+  /** How far through its life it is. Old animals move and look tired. */
+  get aged() { return clamp01(this.age / this.lifespan); }
+
   update(dt) {
+    if (this.alive) this._live(dt);
     if (!this.alive) { this.moodT += dt; return; }
     const t = this.game.terrain;
     const crab = this.game.crab;
@@ -167,6 +177,26 @@ export class Creature {
       this.observed += dt;
       this.game.onObserved?.(this, dt);
     }
+  }
+
+  /** Getting older, and sometimes getting on with it. */
+  _live(dt) {
+    this.age += dt;
+    const old = this.aged;
+    if (old >= 1) {
+      this.hp = 0;
+      this.moodT = 0;
+      this.game.onDied?.(this, 'age');
+      return;
+    }
+    // breeding, if you have grown the thing that lets your fleet do that
+    if (!this.tamed || !this.game.economy) return;
+    if (this.game.economy.stat('breed') <= 0) return;
+    if (old < 0.15 || old > 0.8) return;
+    this.breedT -= dt * (this.onShell ? 1.4 : 0.6);
+    if (this.breedT > 0) return;
+    this.breedT = 90 + Math.random() * 90;
+    this.game.onBred?.(this);
   }
 
   _think(dt, crab) {

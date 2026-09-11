@@ -147,32 +147,91 @@ export function scatterAt(seed, terrain, x0, x1) {
 // ---------------------------------------------------------------------------
 // landmark props
 
+/**
+ * A ruin. Not a row of columns - people did not live in rows of columns. They
+ * lived in buildings, and what is left of a building is a gable end with the
+ * roof gone, a doorway with no door, courses of block where a wall used to run,
+ * and a window somebody looked out of at a sea that is not there any more.
+ */
 function paintRuin(lm) {
   const r = mulberry32(lm.seed);
-  const W = Math.round(lm.size * 1.1), H = Math.round(60 + r() * 50);
+  const W = Math.round(lm.size * 1.5), H = Math.round(76 + r() * 54);
   const p = new Painter(W, H);
   const base = H - 2;
-  const cols = 3 + Math.floor(r() * 4);
-  for (let i = 0; i < cols; i++) {
-    const t = i / (cols - 1 || 1);
-    const x = 8 + t * (W - 16);
-    const h = (0.34 + r() * 0.62) * (H - 12);
-    const w = 5 + r() * 7;
-    p.poly([
-      { x: x - w, y: base }, { x: x - w * 0.82, y: base - h },
-      { x: x + w * 0.78, y: base - h * (0.72 + r() * 0.3) }, { x: x + w, y: base },
-    ], { mat: 'rock', dome: w * 0.9, feather: 3, tint: (t - 0.5) * 0.08 });
-    if (r() < 0.5) {
-      p.rect(x - w * 1.3, base - h - 3, w * 2.6, 3.4, { mat: 'rock', dome: 2.4, tint: 0.08 });
-    }
+  const course = 4.2 + r() * 1.6;         // one course of masonry
+
+  /** A wall, built in courses, broken off at a ragged top. */
+  const wall = (x0, x1, top, tint = 0) => {
+    const w = x1 - x0;
+    p.field(x0, top - 3, x1, base + 1, (x, y) => {
+      const u = (x - x0) / Math.max(1, w);
+      // the top of a wall that has fallen is not level
+      const ragged = top + Math.sin(u * 9 + lm.seed) * 3 + Math.sin(u * 23) * 1.6
+        + (r() < 0 ? 0 : 0);
+      if (y < ragged) return null;
+      const row = Math.floor((base - y) / course);
+      const off = (row & 1) ? course * 0.9 : 0;
+      const bx = ((x - x0 + off) % (course * 2.2));
+      const joint = bx < 0.9 || ((base - y) % course) < 0.9;
+      return {
+        h: joint ? 1.2 : 3.4 + Math.sin(row * 2.1 + bx) * 0.6,
+        tint: (joint ? -0.30 : 0.04 + Math.sin(row * 3.7 + bx * 0.9) * 0.06) + tint,
+      };
+    }, { mat: 'rock' });
+  };
+
+  // the gable end: the tallest thing left standing
+  const gx = 6 + r() * (W * 0.22);
+  const gw = W * (0.26 + r() * 0.14);
+  const gh = H * (0.60 + r() * 0.26);
+  wall(gx, gx + gw, base - gh);
+  // the pitch of the roof it used to have, still readable in the stone
+  for (let i = 0; i < 2; i++) {
+    const sgn = i ? 1 : -1;
+    p.capsule(gx + gw / 2, base - gh - 8, gx + gw / 2 + sgn * gw * 0.5, base - gh + 4,
+      2.6, 1.8, { mat: 'rock', dome: 2.2, tint: 0.08 });
   }
-  p.rect(4, base - 4, W - 8, 5, { mat: 'rock', dome: 3, tint: 0.06 });
-  p.grain('rock', { freq: 0.22, amp: 0.26, seed: 3, height: 0.7 });
-  p.speckle('rock', { density: 0.03, amp: 0.3, seed: 7 });
-  // an inscription band nobody can read any more
-  for (let i = 0; i < 10; i++) {
-    p.rect(10 + i * (W - 24) / 10, base - 3, 3, 1.2, { mat: 'rock', mask: true, tint: -0.4, dome: -1 });
+  // a window, and the lintel over it
+  const wy = base - gh * 0.55;
+  p.rect(gx + gw * 0.34, wy, gw * 0.3, gh * 0.24,
+    { mat: 'rock', mask: true, dome: -3, tint: -0.62 });
+  p.rect(gx + gw * 0.28, wy - 3, gw * 0.42, 3, { mat: 'rock', dome: 2.4, tint: 0.14 });
+
+  // the run of the front wall, lower, with a doorway in it
+  const fx = gx + gw + 2 + r() * 8;
+  const fw = W - fx - 8 - r() * 20;
+  wall(fx, fx + fw, base - H * (0.24 + r() * 0.18), -0.04);
+  const dx = fx + fw * (0.2 + r() * 0.5);
+  p.rect(dx, base - H * 0.28, 9 + r() * 5, H * 0.28,
+    { mat: 'rock', mask: true, dome: -4, tint: -0.66 });
+
+  // a second, further wall, mostly gone: one or two courses in the sand
+  const sx = fx + fw * 0.1;
+  wall(sx, sx + fw * 0.5, base - course * (1 + Math.floor(r() * 2)), -0.10);
+
+  // fallen block lying where it landed
+  for (let i = 0; i < 4 + Math.floor(r() * 5); i++) {
+    const bx = 6 + r() * (W - 16);
+    const bw = 4 + r() * 7, bh = 3 + r() * 3;
+    p.rect(bx, base - bh + 1, bw, bh, { mat: 'rock', dome: 2.2, tint: -0.06 + r() * 0.16 });
   }
+
+  p.grain('rock', { freq: 0.20, amp: 0.24, seed: 3, height: 0.7 });
+  p.speckle('rock', { density: 0.035, amp: 0.30, seed: 7 });
+
+  // an inscription band nobody can read any more, cut into the gable
+  for (let i = 0; i < 8; i++) {
+    p.rect(gx + 3 + i * (gw - 6) / 8, base - gh * 0.82, 2.4, 1.3,
+      { mat: 'rock', mask: true, tint: -0.44, dome: -1 });
+  }
+  // sand banked against the windward side
+  p.field(0, base - 12, W, base + 2, (x, y) => {
+    const u = x / W;
+    const top = base - 10 * Math.pow(Math.max(0, 1 - Math.abs(u - 0.18) * 2.6), 1.5);
+    if (y < top) return null;
+    return { h: 2, tint: 0.04 };
+  }, { mat: 'sand' });
+  p.grain('sand', { freq: 0.3, amp: 0.14, seed: 31 });
   return { cv: p.resolve(MATERIALS, { ambient: 0.42, outline: 1, outlineColor: '#191309' }), w: W, h: H };
 }
 

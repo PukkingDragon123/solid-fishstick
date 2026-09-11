@@ -15,21 +15,31 @@
 
 import { clamp, clamp01, lerp, damp, TAU, easeOutCubic, easeInOutCubic } from '../lib/math.js';
 import { drawText, textWidth, wrapText, LINE_H } from '../lib/font.js';
+import { drawNodeIcon } from './icons.js';
 import { SKILLS, SKILL_BY_ID, BRANCHES, EVOLUTIONS, GENES, GENE_BY_ID } from '../data/progress.js';
 import { organArt, orbArt } from '../art/anatomy.js';
 
 // where each organ hangs in the body cavity, in body-space units
+// Five systems, five directions off the seed. Each one ends in the organ that
+// does the job, so the shape of the animal is the shape of the menu.
 const ORGANS = {
-  water:  { organ: 'spring',   x: -246, y: -118, name: 'The Spring', colour: '#5fc6d8' },
-  garden: { organ: 'gut',      x: -238, y:  148, name: 'The Gut',    colour: '#8cc468' },
-  fleet:  { organ: 'ganglion', x:  238, y:  146, name: 'The Knot',   colour: '#e2b74a' },
-  body:   { organ: 'heart',    x:  246, y: -122, name: 'The Heart',  colour: '#c8925f' },
+  water:  { organ: 'spring',   a: -142, d: 320, name: 'The Spring', colour: '#5fc6d8' },
+  garden: { organ: 'gut',      a: -80,  d: 320, name: 'The Gut',    colour: '#8cc468' },
+  fleet:  { organ: 'ganglion', a: 180,  d: 300, name: 'The Knot',   colour: '#e2b74a' },
+  claw:   { organ: 'muscle',   a: 80,   d: 320, name: 'The Closer', colour: '#d87a6a' },
+  legs:   { organ: 'heart',    a: 142,  d: 320, name: 'The Heart',  colour: '#c8925f' },
 };
+for (const k of Object.keys(ORGANS)) {
+  const o = ORGANS[k];
+  const th = (o.a - 90) * Math.PI / 180;      // 0 is straight up
+  o.x = Math.cos(th) * o.d;
+  o.y = Math.sin(th) * o.d * 0.72;
+}
 
 // The animal, seen from above and through, in body-space units. Everything
 // inside is arranged to fit under this carapace.
-const CARA = { cx: 0, cy: -30, rx: 430, ry: 300 };
-const GILL_X = 344;
+const CARA = { cx: 0, cy: -20, rx: 530, ry: 352 };
+const GILL_X = 440;
 
 const TRUNK_BASE = -96;      // first evolution, above the seed
 const TRUNK_STEP = 36;       // the last one all but touches the shell
@@ -47,7 +57,7 @@ function layout() {
       id: 'evo:' + e.id, kind: 'evo', data: e, tier: i,
       x: (i % 2 ? 1 : -1) * 11,
       y: TRUNK_BASE - i * TRUNK_STEP,
-      r: 11, color: '#c9e08a',
+      r: 13, color: '#c9e08a',
     });
     links.push({
       from: i === 0 ? '__root' : 'evo:' + EVOLUTIONS[i - 1].id, to: 'evo:' + e.id,
@@ -64,12 +74,13 @@ function layout() {
     const list = SKILLS.filter((s) => s.branch === br.id);
 
     for (const s of list) {
-      const along = dist * (0.38 + s.x * 0.225);
-      const off = s.y * 42 * (0.55 + s.x * 0.22);
+      // spread along the limb, and fork wider the further out you get
+      const along = dist * (0.30 + s.x * 0.245);
+      const off = s.y * 52 * (0.60 + s.x * 0.30);
       nodes.push({
         id: 'skill:' + s.id, kind: 'skill', data: s, branch: br.id, tier: s.x,
         x: dx * along + px * off, y: dy * along + py * off,
-        r: 8, color: br.color,
+        r: 11, color: br.color,
       });
       if (!s.req.length) links.push({ from: '__root', to: 'skill:' + s.id, w: 11, branch: br.id });
       else for (const r of s.req) {
@@ -82,10 +93,10 @@ function layout() {
   GENES.forEach((g, i) => {
     const t = (i + 0.5) / GENES.length;
     const a = Math.PI * (0.10 + t * 0.80);
-    const d = 62 + (i % 4) * 22;
+    const d = 44 + (i % 4) * 15;
     nodes.push({
       id: 'gene:' + g.id, kind: 'gene', data: g,
-      x: -Math.cos(a) * d * 1.15, y: Math.sin(a) * d * 0.50 + 60,
+      x: -Math.cos(a) * d * 1.7, y: Math.sin(a) * d * 0.34 + 40,
       r: 5, color: '#7fe0c8',
     });
     links.push({ from: '__root', to: 'gene:' + g.id, w: 6.5, root: true });
@@ -188,7 +199,7 @@ export class TreeScreen {
   // -------------------------------------------------------------------------
 
   _frame(vw, vh, snap = false) {
-    let x0 = -560, x1 = 560, y0 = -380, y1 = 340;
+    let x0 = -680, x1 = 680, y0 = -440, y1 = 400;
     for (const n of this.L.nodes) {
       if (n.kind === 'gene' && (this.grow[n.id] ?? 0) < 0.5) continue;
       const a = Math.max(this.grow[n.id] ?? 0, (this.seen[n.id] ?? 0) * 0.9);
@@ -382,58 +393,125 @@ export class TreeScreen {
    * have been under a shell for a thousand years. It is drawn as one: a slow
    * galaxy, parallaxed against the camera so the animal sits in front of it.
    */
+  /**
+   * The sky, baked once per viewport size. None of it moves except by
+   * parallax, and gradients are expensive, so it is painted into its own
+   * canvas and blitted with an offset rather than rebuilt every frame.
+   */
+  _galaxyPlate(vw, vh) {
+    const w = Math.ceil(vw * 1.24), h = Math.ceil(vh * 1.24);
+    if (this._plate && this._plate.width === w && this._plate.height === h) return this._plate;
+    const cv = document.createElement('canvas');
+    cv.width = w; cv.height = h;
+    const ctx = cv.getContext('2d');
+    ctx.imageSmoothingEnabled = false;
+    this._paintGalaxy(ctx, w, h);
+    this._plate = cv;
+    return cv;
+  }
+
   _drawGalaxy(ctx, vw, vh, fade) {
-    const px = -this.cam.x * 0.05, py = -this.cam.y * 0.05;
-    ctx.fillStyle = '#05060c';
+    const plate = this._galaxyPlate(vw, vh);
+    const ox = -vw * 0.12 - this.cam.x * 0.05;
+    const oy = -vh * 0.12 - this.cam.y * 0.05;
+    ctx.fillStyle = '#05060e';
+    ctx.fillRect(0, 0, vw, vh);
+    ctx.drawImage(plate, Math.round(clamp(ox, -vw * 0.24, 0)), Math.round(clamp(oy, -vh * 0.24, 0)));
+    this._drawStars(ctx, vw, vh, fade);
+  }
+
+  _paintGalaxy(ctx, vw, vh) {
+    const px = 0, py = 0;
+    // deep space is not black; it is very dark blue with a gradient in it
+    const deep = ctx.createLinearGradient(0, 0, vw * 0.3, vh);
+    deep.addColorStop(0, '#070610');
+    deep.addColorStop(0.5, '#0a0714');
+    deep.addColorStop(1, '#05060e');
+    ctx.fillStyle = deep;
     ctx.fillRect(0, 0, vw, vh);
 
-    // the arm of the galaxy: soft coloured clouds lying across the sky
+    // the galaxy itself: an arm lying across the sky at an angle, built from
+    // a bright core, a broad band of light, dust lanes cutting it, and
+    // coloured nebulae hanging off it
+    ctx.save();
+    ctx.translate(vw * 0.62 + px, vh * 0.34 + py);
+    ctx.rotate(-0.42);
+    const R = Math.max(vw, vh);
+
+    // the band, as a lens of light rather than a bar: an ellipse of glow,
+    // squashed flat, so it fades off at both ends the way an arm does
+    for (const [h, a2, c] of [[0.44, 0.11, '150,170,235'], [0.24, 0.13, '210,215,250'], [0.11, 0.15, '255,250,240']]) {
+      ctx.save();
+      ctx.scale(1, h / 0.9);
+      const g = ctx.createRadialGradient(0, 0, 0, 0, 0, R * 0.9);
+      g.addColorStop(0, `rgba(${c},${a2})`);
+      g.addColorStop(0.45, `rgba(${c},${a2 * 0.7})`);
+      g.addColorStop(1, `rgba(${c},0)`);
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(0, 0, R * 0.9, 0, TAU); ctx.fill();
+      ctx.restore();
+    }
+    // the core
+    const core = ctx.createRadialGradient(0, 0, 0, 0, 0, R * 0.34);
+    core.addColorStop(0, 'rgba(255,246,220,0.34)');
+    core.addColorStop(0.25, 'rgba(255,214,150,0.20)');
+    core.addColorStop(0.7, 'rgba(180,140,200,0.07)');
+    core.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = core;
+    ctx.beginPath(); ctx.ellipse(0, 0, R * 0.34, R * 0.16, 0, 0, TAU); ctx.fill();
+    // dust lanes: the dark stuff is what makes it read as a galaxy
+    for (let i = 0; i < 4; i++) {
+      const yy = (i - 1.5) * R * 0.055;
+      ctx.fillStyle = `rgba(6,4,10,${0.07 + (i % 2) * 0.05})`;
+      ctx.beginPath();
+      ctx.moveTo(-R * 1.5, yy);
+      ctx.quadraticCurveTo(0, yy + R * 0.05 * (i % 2 ? 1 : -1), R * 1.5, yy + R * 0.02);
+      ctx.lineTo(R * 1.5, yy + R * 0.040);
+      ctx.quadraticCurveTo(0, yy + R * 0.05 * (i % 2 ? 1 : -1) + R * 0.040, -R * 1.5, yy + R * 0.040);
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.restore();
+
+    // nebulae, hanging off the arm and drifting
     const clouds = [
-      { x: 0.22, y: 0.30, r: 0.62, c: '90,60,150' },
-      { x: 0.74, y: 0.24, r: 0.52, c: '40,90,160' },
-      { x: 0.52, y: 0.72, r: 0.70, c: '150,60,110' },
-      { x: 0.12, y: 0.80, r: 0.44, c: '40,120,140' },
-      { x: 0.88, y: 0.66, r: 0.48, c: '110,70,170' },
+      { x: 0.18, y: 0.68, r: 0.52, c: '120,60,170' },
+      { x: 0.80, y: 0.74, r: 0.44, c: '30,110,160' },
+      { x: 0.40, y: 0.16, r: 0.40, c: '180,70,110' },
+      { x: 0.92, y: 0.30, r: 0.34, c: '60,150,150' },
     ];
     for (const c of clouds) {
-      const cx = c.x * vw + px * 0.6, cy = c.y * vh + py * 0.6;
-      const r = c.r * Math.max(vw, vh) * (0.55 + Math.sin(this.t * 0.16 + c.x * 9) * 0.03);
+      const cx = c.x * vw + px * 1.6, cy = c.y * vh + py * 1.6;
+      const r = c.r * Math.max(vw, vh) * (0.55 + Math.sin(this.t * 0.14 + c.x * 9) * 0.04);
       const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
-      g.addColorStop(0, `rgba(${c.c},0.26)`);
-      g.addColorStop(0.45, `rgba(${c.c},0.11)`);
+      g.addColorStop(0, `rgba(${c.c},0.22)`);
+      g.addColorStop(0.4, `rgba(${c.c},0.10)`);
       g.addColorStop(1, 'rgba(0,0,0,0)');
       ctx.fillStyle = g;
       ctx.beginPath(); ctx.arc(cx, cy, r, 0, TAU); ctx.fill();
     }
-    // the band of the arm itself, dense with unresolved stars
-    ctx.save();
-    ctx.translate(vw / 2 + px, vh * 0.46 + py);
-    ctx.rotate(-0.30);
-    const bg = ctx.createLinearGradient(0, -vh * 0.30, 0, vh * 0.30);
-    bg.addColorStop(0, 'rgba(90,110,190,0)');
-    bg.addColorStop(0.5, 'rgba(150,160,220,0.11)');
-    bg.addColorStop(1, 'rgba(90,110,190,0)');
-    ctx.fillStyle = bg;
-    ctx.fillRect(-vw, -vh * 0.30, vw * 2, vh * 0.60);
-    ctx.restore();
 
-    // stars, in three parallax layers so the sky has depth
-    for (let layer = 0; layer < 3; layer++) {
-      const n = 90 - layer * 22;
-      const par = 0.03 + layer * 0.05;
+  }
+
+  /** The stars do move, so they stay per-frame. */
+  _drawStars(ctx, vw, vh, fade) {
+    for (let layer = 0; layer < 4; layer++) {
+      const n = 120 - layer * 26;
+      const par = 0.02 + layer * 0.045;
       for (let i = 0; i < n; i++) {
         const h1 = Math.sin(i * 12.9898 + layer * 3.7) * 43758.5453;
         const h2 = Math.sin(i * 78.233 + layer * 1.3) * 43758.5453;
         const sx = (((h1 - Math.floor(h1)) * vw - this.cam.x * par) % vw + vw) % vw;
         const sy = (((h2 - Math.floor(h2)) * vh - this.cam.y * par) % vh + vh) % vh;
-        const tw = 0.45 + 0.55 * Math.sin(this.t * (0.6 + layer * 0.5) + i);
-        ctx.globalAlpha = fade * (0.20 + layer * 0.22) * tw;
-        ctx.fillStyle = i % 7 === 0 ? '#ffd9a8' : i % 5 === 0 ? '#a8c8ff' : '#ffffff';
-        ctx.fillRect(Math.round(sx), Math.round(sy), 1, 1);
-        if (layer === 2 && i % 11 === 0) {
-          ctx.globalAlpha = fade * 0.18 * tw;
-          ctx.fillRect(Math.round(sx) - 1, Math.round(sy), 3, 1);
-          ctx.fillRect(Math.round(sx), Math.round(sy) - 1, 1, 3);
+        const tw = 0.4 + 0.6 * Math.sin(this.t * (0.5 + layer * 0.4) + i * 1.7);
+        const X = Math.round(sx), Y = Math.round(sy);
+        ctx.globalAlpha = fade * (0.16 + layer * 0.20) * (0.5 + tw * 0.5);
+        ctx.fillStyle = i % 9 === 0 ? '#ffd0a0' : i % 5 === 0 ? '#a8c8ff' : '#f4f6ff';
+        ctx.fillRect(X, Y, 1, 1);
+        if (layer === 3 && i % 6 === 0) {
+          ctx.globalAlpha = fade * 0.22 * (0.4 + tw * 0.6);
+          ctx.fillRect(X - 2, Y, 5, 1);
+          ctx.fillRect(X, Y - 2, 1, 5);
         }
       }
     }
@@ -449,18 +527,26 @@ export class TreeScreen {
   }
 
   /**
-   * You, from above and through: the carapace, eight legs, two claws, the
-   * eyestalks. Drawn as a lit outline over a dark body, which is the honest
-   * way to show an animal you are standing inside.
+   * You, seen from above and through.
+   *
+   * The proportions are taken from the same metrics the crab in the desert is
+   * built from - the width of the carapace, how many legs it has, where the
+   * claws sit, how big it is for its stage - so this is recognisably the same
+   * animal and it grows when you do. Drawn as a lit outline over a dark body,
+   * which is the honest way to show something you are standing inside.
    */
   _drawAnimal(ctx, vw, vh, fade) {
     const z = this.cam.z;
     const P = (x, y) => this._S(x, y, vw, vh);
     const lw = Math.max(1, 1.6 * z);
     const beat = Math.pow(1 - Math.abs(this.beat * 2 - 1), 3);
+    const m = this.game.crab.m;
+    const c0 = P(CARA.cx, CARA.cy);
+    // the world crab measured in shell half-widths, so the shape scales but
+    // the screen framing does not wander as the animal grows
+    const K = CARA.rx / m.rx;
+    const legN = m.legN;
 
-    // a limb is a smooth chain, not a polyline: a crab's leg bends, it does
-    // not kink, and at this size a corner reads as a mistake
     const limb = (pts, w) => {
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
@@ -490,63 +576,67 @@ export class TreeScreen {
       ctx.stroke();
     };
 
+    // Everything hanging off the animal is drawn only outside the carapace:
+    // inside is where the organs live, and a leg bone crossing the gut would
+    // be both wrong and unreadable.
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(0, 0, vw, vh);
+    ctx.ellipse(c0.x, c0.y, CARA.rx * z * 0.985, CARA.ry * z * 0.985, 0, 0, TAU, true);
+    ctx.clip('evenodd');
+
     for (const side of [-1, 1]) {
-      // four legs a side, each leaving the rim, lifting to a knee and coming
-      // back down outside it - which is the shape of a crab from above
-      for (let i = 0; i < 4; i++) {
-        const t = i / 3;
-        const th = (-0.62 + t * 1.30) * side;             // where it leaves the rim
+      // one leg per socket the real animal has, leaving the rim where its
+      // socket sits, lifting to a knee and coming back down outside
+      for (let i = 0; i < legN; i++) {
+        const t = legN === 1 ? 0.5 : i / (legN - 1);
+        const spread = lerp(0.40, 0.96, t);
+        const th = (-0.66 + t * 1.34) * side;
         const hx = Math.sin(th) * CARA.rx * 0.96;
         const hy = CARA.cy + Math.cos(th) * CARA.ry * -0.30 + 30;
-        const out = side * (150 + t * 40);
+        // the true reach, foreshortened so the whole animal fits the frame
+        const span = (m.reach / m.rx) * CARA.rx * 0.42 * (0.74 + spread * 0.42);
         const wob = Math.sin(this.t * 0.9 + i * 1.3 + (side > 0 ? 0 : 2)) * 8;
         limb([
           [hx, hy],
-          [hx + out * 0.75, hy - 34 - t * 26 + wob],       // knee, up and out
-          [hx + out * 1.75, hy + 40 + wob * 0.6],
-          [hx + out * 2.15, hy + 210 + t * 60 + wob],      // the foot
-        ], 24 - i * 2.4);
+          [hx + side * span * 0.44, hy - span * 0.22 - t * 22 + wob],
+          [hx + side * span * 0.82, hy + span * 0.16 + wob * 0.6],
+          [hx + side * span * 1.02, hy + span * 0.70 + t * 40 + wob],
+        ], (m.legLen[0] / m.rx) * CARA.rx * 0.34 * (1 - i * 0.09));
       }
-      // the claw: an arm out in front, then a pincer that actually opens
+      // the claws, as big as the real ones are for this stage
+      const K2 = (m.clawLen[0] / m.rx) * CARA.rx * 0.42;
       const ax = side * CARA.rx * 0.52, ay = CARA.cy + CARA.ry * 0.62;
       const open = 0.16 + Math.sin(this.t * 0.8 + side) * 0.10;
-      const wx = ax + side * 210, wy = ay + 210;
-      limb([[ax, ay], [ax + side * 120, ay + 40], [wx, wy]], 32);
+      const wx = ax + side * K2 * 2.2, wy = ay + K2 * 2.2;
+      limb([[ax, ay], [ax + side * K2 * 1.2, ay + K2 * 0.4], [wx, wy]], K2 * 0.34);
       const wrist = P(wx, wy);
-      for (const [ang, len, w] of [[0.30 + open, 165, 22], [1.05 - open, 130, 16]]) {
+      for (const [ang, len, w] of [[0.30 + open, K2 * 1.7, K2 * 0.24], [1.05 - open, K2 * 1.35, K2 * 0.17]]) {
         const tipx = wx + side * Math.sin(ang) * len, tipy = wy + Math.cos(ang) * len;
         const bendx = wx + side * Math.sin(ang * 0.5) * len * 0.6, bendy = wy + Math.cos(ang * 0.5) * len * 0.55;
         const bend = P(bendx, bendy), tip = P(tipx, tipy);
-        ctx.beginPath();
-        ctx.moveTo(wrist.x, wrist.y);
-        ctx.quadraticCurveTo(bend.x, bend.y, tip.x, tip.y);
-        ctx.strokeStyle = 'rgba(6,9,14,0.95)';
-        ctx.lineWidth = w * z + lw * 2;
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.moveTo(wrist.x, wrist.y);
-        ctx.quadraticCurveTo(bend.x, bend.y, tip.x, tip.y);
-        ctx.strokeStyle = 'rgba(126,178,200,0.9)';
-        ctx.lineWidth = w * z;
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.moveTo(wrist.x, wrist.y);
-        ctx.quadraticCurveTo(bend.x, bend.y, tip.x, tip.y);
-        ctx.strokeStyle = 'rgba(206,240,248,0.45)';
-        ctx.lineWidth = Math.max(1, w * z * 0.30);
-        ctx.stroke();
+        for (const [col, mul] of [['rgba(6,9,14,0.95)', 1], ['rgba(126,178,200,0.9)', 0], ['rgba(206,240,248,0.45)', -1]]) {
+          ctx.beginPath();
+          ctx.moveTo(wrist.x, wrist.y);
+          ctx.quadraticCurveTo(bend.x, bend.y, tip.x, tip.y);
+          ctx.strokeStyle = col;
+          ctx.lineWidth = mul > 0 ? w * z + lw * 2 : mul === 0 ? w * z : Math.max(1, w * z * 0.30);
+          ctx.stroke();
+        }
       }
     }
 
+    ctx.restore();
+
     // -- the carapace --------------------------------------------------------
-    const c = P(CARA.cx, CARA.cy);
+    const c = c0;
     ctx.save();
     ctx.beginPath();
     ctx.ellipse(c.x, c.y, CARA.rx * z, CARA.ry * z, 0, 0, TAU);
     const bg2 = ctx.createRadialGradient(c.x, c.y, 0, c.x, c.y, CARA.rx * z);
-    bg2.addColorStop(0, `rgba(${28 + beat * 22},${20 + beat * 10},${30 + beat * 16},0.90)`);
-    bg2.addColorStop(0.7, 'rgba(16,12,18,0.93)');
-    bg2.addColorStop(1, 'rgba(8,8,14,0.96)');
+    bg2.addColorStop(0, `rgba(${26 + beat * 22},${19 + beat * 10},${28 + beat * 16},0.90)`);
+    bg2.addColorStop(0.7, 'rgba(14,11,17,0.94)');
+    bg2.addColorStop(1, 'rgba(7,7,13,0.97)');
     ctx.fillStyle = bg2;
     ctx.fill();
     ctx.restore();
@@ -560,13 +650,24 @@ export class TreeScreen {
     ring(CARA.rx, CARA.ry, 'rgba(8,10,16,0.95)', 'rgba(150,208,220,0.70)', Math.max(1, 2.2 * z));
     ring(CARA.rx * 0.90, CARA.ry * 0.88, 'none', 'rgba(120,178,196,0.22)', Math.max(1, 1.2 * z));
 
-    // the basin on your back, seen through the shell
-    const bx = P(0, CARA.cy - 90);
+    // the basin on your back, at the size and place it actually is
+    const br = m.basin.r * CARA.rx;
+    const bx = P(m.basin.a * CARA.rx, CARA.cy + m.basin.b * CARA.ry);
     ctx.beginPath();
-    ctx.ellipse(bx.x, bx.y, 150 * z, 96 * z, 0, 0, TAU);
-    ctx.strokeStyle = 'rgba(120,178,196,0.26)';
+    ctx.ellipse(bx.x, bx.y, br * z, br * 0.72 * z, 0, 0, TAU);
+    ctx.strokeStyle = 'rgba(120,178,196,0.30)';
     ctx.lineWidth = Math.max(1, 1.2 * z);
     ctx.stroke();
+    // and how much water is in it right now
+    const pond = clamp01(this.game.garden.pond);
+    if (pond > 0.02) {
+      ctx.globalAlpha = fade * (0.10 + pond * 0.22);
+      ctx.fillStyle = '#5fc6d8';
+      ctx.beginPath();
+      ctx.ellipse(bx.x, bx.y, br * z * Math.sqrt(pond), br * 0.72 * z * Math.sqrt(pond), 0, 0, TAU);
+      ctx.fill();
+      ctx.globalAlpha = fade;
+    }
 
     // segment lines running across the carapace, the way a shell is built
     for (let i = -2; i <= 2; i++) {
@@ -580,10 +681,11 @@ export class TreeScreen {
       ctx.stroke();
     }
 
-    // the eyestalks, at the front, which is the bottom of this view
+    // the eyestalks, where the real ones are, at the front of the animal
     for (const side of [-1, 1]) {
-      const e0 = P(side * 74, CARA.cy + CARA.ry * 0.80);
-      const e1 = P(side * 104, CARA.cy + CARA.ry * 1.22);
+      const ex = side * CARA.rx * 0.14;
+      const e0 = P(ex, CARA.cy + CARA.ry * 0.80);
+      const e1 = P(ex * 1.9, CARA.cy + CARA.ry * 1.22);
       ctx.beginPath();
       ctx.moveTo(e0.x, e0.y); ctx.lineTo(e1.x, e1.y);
       ctx.strokeStyle = 'rgba(150,208,220,0.6)';
@@ -599,15 +701,15 @@ export class TreeScreen {
     }
 
     // haemolymph drifting through the body cavity
-    for (const m of this.motes) {
-      const yy = (m.y - this.t * 0.010 * m.s + 2) % 1;
-      const xx = (m.x + Math.sin(this.t * 0.26 * m.s + m.p) * 0.014 + 1) % 1;
+    for (const mo of this.motes) {
+      const yy = (mo.y - this.t * 0.010 * mo.s + 2) % 1;
+      const xx = (mo.x + Math.sin(this.t * 0.26 * mo.s + mo.p) * 0.014 + 1) % 1;
       const bxp = lerp(-CARA.rx, CARA.rx, xx), byp = CARA.cy + lerp(-CARA.ry, CARA.ry, yy);
       if ((bxp / CARA.rx) ** 2 + ((byp - CARA.cy) / CARA.ry) ** 2 > 0.92) continue;
       const sp = P(bxp, byp);
-      const tw = 0.4 + 0.6 * (0.5 + 0.5 * Math.sin(this.t * 2.1 + m.p)) + beat * 0.4;
-      ctx.globalAlpha = fade * 0.40 * tw * m.s;
-      ctx.fillStyle = m.r ? '#cd7a6c' : '#9fe8d4';
+      const tw = 0.4 + 0.6 * (0.5 + 0.5 * Math.sin(this.t * 2.1 + mo.p)) + beat * 0.4;
+      ctx.globalAlpha = fade * 0.40 * tw * mo.s;
+      ctx.fillStyle = mo.r ? '#cd7a6c' : '#9fe8d4';
       ctx.fillRect(Math.round(sp.x), Math.round(sp.y), 1, 1);
     }
     ctx.globalAlpha = fade;
@@ -821,7 +923,7 @@ export class TreeScreen {
 
       ctx.globalAlpha = fade * seen * dim * (on ? 0.30 : ready ? 0.14 + pulse * 0.24 : 0.06);
       ctx.fillStyle = n.color;
-      ctx.beginPath(); ctx.arc(p.x, p.y, r * (2.0 + pulse * 0.5), 0, TAU); ctx.fill();
+      ctx.beginPath(); ctx.arc(p.x, p.y, r * (1.45 + pulse * 0.35), 0, TAU); ctx.fill();
 
       ctx.globalAlpha = fade * seen * dim;
       if (n.kind === 'root') {
@@ -841,6 +943,13 @@ export class TreeScreen {
         if (!on && ready) ctx.rotate(Math.sin(this.t * 0.9 + n.x * 0.03) * 0.10);
         ctx.drawImage(art.cv, -art.ox, -art.oy);
         ctx.restore();
+        // what the node does, stamped into the bead
+        const ico = n.data && n.data.icon;
+        if (ico && r > 6) {
+          drawNodeIcon(ctx, ico, p.x, p.y, on ? 'rgba(10,8,6,0.86)' : ready
+            ? 'rgba(240,232,214,0.80)' : 'rgba(196,192,186,0.34)',
+            Math.max(1, Math.round(r / 4.6)));
+        }
         if (hot) {
           ctx.strokeStyle = 'rgba(246,240,220,0.9)';
           ctx.lineWidth = 1;

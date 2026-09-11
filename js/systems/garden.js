@@ -122,9 +122,12 @@ export class Garden {
     if (!plot || plot.plant || plot.build || !def) return null;
     if (def.needsPond && !(plot.wet && this.pond > 0.35)) return null;
     if (plot.wet && !def.needsPond) return null;
+    // a seed goes in as a seed. It does nothing at all until it is watered,
+    // which is what the spring in your back is for.
     plot.plant = {
       id: floraId, def, stage: 0, growth: 0, health: 1, thirst: 0,
-      age: 0, born: this.t, ripe: 0, variant: (plot.i * 7 + plotIndex) % 3,
+      age: 0, born: this.t, ripe: 0, soaked: 0,
+      variant: (plot.i * 7 + plotIndex) % 3,
     };
     return plot.plant;
   }
@@ -154,6 +157,11 @@ export class Garden {
   }
 
   /** Everything ready to pick right now. */
+  /** Seeds sitting on your back waiting for water. */
+  get dryCount() {
+    return this.plots.reduce((n, p) => n + (p.plant && p.plant.soaked < 1 ? 1 : 0), 0);
+  }
+
   get ripeCount() {
     return this.plots.reduce((n, p) => n + (p.plant && p.plant.ripe >= 1 ? 1 : 0), 0);
   }
@@ -214,6 +222,15 @@ export class Garden {
       const pl = plot.plant;
       if (!pl) continue;
       pl.age += dt;
+      // a dry seed just sits there. Water on the shell soaks it, and once it
+      // has taken up enough it germinates and starts growing properly.
+      if (pl.soaked < 1) {
+        const wet = this.pond > 0.06 ? 0.9 : 0;
+        const spray = this.spring > 0.1 ? 0.7 : 0;
+        pl.soaked = clamp01(pl.soaked + (wet + spray) * dt * 0.55);
+        if (pl.soaked >= 1) this.game.onGerminate?.(plot, pl);
+        continue;
+      }
       const want = pl.def.upkeep * dt;
       const got = Math.min(want, Math.max(0, supply - drank));
       drank += got;
@@ -238,7 +255,8 @@ export class Garden {
         // arrive when you pick it, and only once its condition is met.
         cover += 1;
         if (pl.ripe < 1 && this.needMet(pl.def)) {
-          const rate = (0.55 + pl.health * 0.45) * (0.8 + this.pond * 0.35) * (1 - over * 0.5);
+          const rate = (0.55 + pl.health * 0.45) * (0.8 + this.pond * 0.35) * (1 - over * 0.5)
+            / Math.max(0.3, this.game.economy ? this.game.economy.stat('ripen') : 1);
           pl.ripe = clamp01(pl.ripe + (dt / pl.def.ripen) * rate);
           if (pl.ripe >= 1 && !pl.rang) { pl.rang = true; this.game.onRipe?.(plot, pl); }
         }
@@ -327,7 +345,20 @@ export class Garden {
       ctx.save();
       ctx.translate(sp.x, sp.y + 1);
       ctx.rotate(tilt + sway);
-      if (plot.plant) {
+      if (plot.plant && plot.plant.soaked < 1) {
+        // a seed: a husk sitting in the bed, with how wet it is around it
+        const pl = plot.plant;
+        const r = 1.6 + crab.m.rx * 0.02;
+        ctx.fillStyle = '#5e4d27';
+        ctx.beginPath(); ctx.ellipse(0, -r * 0.5, r * 0.7, r, 0, 0, TAU); ctx.fill();
+        ctx.fillStyle = '#957e42';
+        ctx.fillRect(-Math.round(r * 0.2), Math.round(-r * 1.1), 1, Math.round(r * 1.1));
+        ctx.strokeStyle = pl.soaked > 0 ? '#5fc6d8' : 'rgba(150,130,90,0.5)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.arc(0, -r * 0.5, r * 1.9, -Math.PI / 2, -Math.PI / 2 + TAU * Math.max(0.04, pl.soaked));
+        ctx.stroke();
+      } else if (plot.plant) {
         const pl = plot.plant;
         const wilt = 1 - pl.thirst * 0.22;
         const art = buildPlant(pl.def, pl.stage, pl.variant,
