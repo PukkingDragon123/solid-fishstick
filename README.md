@@ -43,10 +43,12 @@ npm run build     # -> dist/crabden.html + dist/crabden.body.html
 | scuttle | `A` / `D` or arrows | left thumbstick (drag anywhere in the lower-left) |
 | the spring | hold `Space` | hold the valve |
 | pick what is ripe | `R` | **PICK**, or tap the bead over a plant |
+| build on your own back | click yourself, or `Tab` | **BUILD** |
+| put a parasite on something | `X` | — |
 | tap out a word | hold/release `T` | — |
 | Vess: follow, get on, get off | `F` | — |
 | act — dig, win over, strike | `E` | **ACT** |
-| the shop | `Tab`, or `1`–`5` for a tab | **SHOP** |
+| map / fleet / field notes | `1` / `2` / `3` | **SHOP** button, then a tab |
 | inside you | `G` | tap the orb |
 | control mode | `M` | **MODE** |
 | zoom / pan | wheel, drag | pinch, drag |
@@ -97,14 +99,17 @@ it — the screen is swallowed by the orb and you wake up inside your own genome
 
 The gene orb on your back is not a menu button. Looking into it takes you down
 through your own shell — rock, then chitin, then pearl, each layer rushing past
-and named as you pass it — and into the body cavity underneath. That is where
-the tree actually lives.
+and named as you pass it — and out the other side, where you get to see the
+whole of yourself at once: the carapace, eight legs, two claws and both
+eyestalks, drawn as a lit outline against a galaxy you have never been above
+ground long enough to look at.
 
-It is a seed sitting in the middle of you, roots spread under it, branches
-running out to the four organs that do the work: **the Spring** (the bladder
-that holds your water), **the Gut**, **the Knot** (the ganglion that hears the
-desert and answers it), and **the Heart**. Book gills hang either side, still
-moving water that has not been there for a thousand years.
+Inside that outline is a seed, roots spread under it, branches running out to
+the four organs that do the work: **the Spring** (the bladder that holds your
+water), **the Gut**, **the Knot** (the ganglion that hears the desert and
+answers it), and **the Heart**. Book gills hang either side, still moving water
+that has not been there for a thousand years. Along the bottom, your genome is
+read out one codon per gene, lit where you are expressing it.
 
 So an upgrade is not a checkbox. Buying into a bough grows the organ that bough
 reaches: the heart gets bigger and beats harder, the bladder fills, the
@@ -114,8 +119,11 @@ toward the underside of your own shell, and the genes you express are the roots
 — dim nodules until something alive on your back expresses them, then lit.
 
 Nothing is laid out in advance and greyed out: a branch only exists once it has
-somewhere to go, and the camera frames whatever currently exists. Buy a node and
-a bright bead of sap runs all the way up from the roots into the new growth.
+somewhere to go, and the camera frames whatever currently exists. Every node is
+a real painted bead — lit from inside when you own it, shut and matte when you
+do not — strung on bright lines you can follow at a glance, with something
+running along each one in the colour of the organ it feeds. Buy a node and a
+bead of sap runs all the way up from the roots into the new growth.
 
 ![Inside you](docs/shot-04-tree.png)
 
@@ -125,20 +133,36 @@ a bright bead of sap runs all the way up from the roots into the new growth.
 the next dune, and you watch. **FLEET** — click one of your own and click where
 to send it. The last two unlock in the tree.
 
-### The shop
+### Build mode
 
-Everything you can put on your back lives in one framed popup — battens lashed
-at the corners with a hide stretched behind them, the way Vess would have made
-it. Seeds and structures are a grid of slots you can see at a glance; picking
-one fills the pane beside it with what it is, what it costs, **what it pays and
-how often**, what condition it needs before it will ripen at all, what it weighs
-on your shell, what it does to you, and what it will bring out of the desert.
+There is no shop. **Click the animal** and the camera comes in on the shell,
+the seeds come out down the side, and you are up on your own back — which is
+where planting something on your own back ought to happen.
 
-Placing anything puts you in a placement mode: every legal bed on the shell
-pulses, a ghost of the thing follows the nearest one, and a bracket marks where
-it will land.
+The rail shows what you can carry, what you are carrying, and a grid of seeds
+and structures. Pick one and the card at the bottom says what it costs, **what
+it pays and how often**, what condition it needs before it will ripen, and what
+it weighs. Press place, and every legal bed on the shell pulses, a ghost
+follows the nearest one, and a bracket marks where it lands.
 
-![The shop](docs/shot-05-drawer.png)
+![Build mode](docs/shot-05-drawer.png)
+
+### Your fleet, and the parasites
+
+Everything living on you has a card in the **FLEET** panel: what it is, what it
+does, how far off it has wandered. Click one and the camera goes to it and the
+movement keys become *its* movement keys, until you let go.
+
+Some of them did not volunteer. A **mindcap** fruits parasites instead of food —
+things that are almost animals, which hatch looking for a nervous system and
+find yours already occupied. Press `X` next to a wild animal and one goes in.
+What it takes over, you steer, and a hostile thing stops being hostile the
+moment one of your children is in its nerves.
+
+Dr. Vess has opinions about this.
+
+> You just put one of your own children inside a lizard. I am writing that down
+> and then I am going to think about it for a long time.
 
 ### The map
 
@@ -147,6 +171,8 @@ the real terrain profile under a band of the country you are crossing, distance
 ticks in metres from where you woke, and every landmark within reach — oases,
 human ruins, bonefields, wind-cut spires, and the occasional hull sitting
 kilometres from any sea. Somewhere you have not stood is a `?`.
+
+![The map](docs/shot-06-notes.png)
 
 ---
 
@@ -182,7 +208,10 @@ she works them out. Real behaviour: the skink dives into a dune rather than
 running across it, the pebbler's spines comb dew into its own mouth, the digger
 wasp restarts its entire sequence if you move the prey a few centimetres.
 
-![Field notes](docs/shot-06-notes.png)
+And they are **her** notes, in her notebook, in her hands. If she is not with
+you, the field-notes tab tells you how far away she is and which way. That is
+the point of keeping her: `F` calls her over, and once you are big enough to
+take her weight she rides the near rim of your shell and writes while you walk.
 
 Hostiles do not bother a bare rock. Once you are carrying something worth
 taking they start arriving, faster at night: dune scorpions in pairs, a bone
@@ -354,7 +383,7 @@ js/
 | | |
 | --- | --- |
 | ![Waking up](docs/shot-01-waking.png) | ![The first garden](docs/shot-02-first-garden.png) |
-| ![The drawer](docs/shot-05-drawer.png) | ![Field notes](docs/shot-06-notes.png) |
+| ![Build mode](docs/shot-05-drawer.png) | ![The map](docs/shot-06-notes.png) |
 | ![Inside you](docs/shot-04-tree.png) | ![Night](docs/shot-08-night.png) |
 
 ---

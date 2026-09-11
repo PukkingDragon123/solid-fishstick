@@ -96,6 +96,11 @@ export class Game {
   autoZoom() { return clamp(this.renderer.vw / 300, 1.15, 2.3); }
 
   get currentBiome() { return this.biome; }
+
+  /** Close enough to read over her shoulder, or she is riding you. */
+  get vessClose() {
+    return this.npc.riding || Math.abs(this.npc.x - this.crab.x) < 120;
+  }
   get water() { return this.economy.water; }
   get nutrients() { return this.economy.nutrients; }
   get berries() { return this.economy.berries; }
@@ -183,6 +188,12 @@ export class Game {
     if (play && !this.ui.busy) {
       const ax = i.axis();
       move = ax.x;
+      // while you are riding one of your own, the keys are its keys
+      if (this.ui.driving) {
+        const d = this.ui.driving;
+        if (!d.alive) this.ui.release();
+        else { d.driveX = move; move = 0; }
+      }
       if (this.ui.mode === 'auto' && Math.abs(move) < 0.05) move = this._autoWalk(sdt);
       // the spring is held open, not tapped: the longer you hold it the harder
       // it runs, and it spills over the lip when the basin cannot take any more
@@ -193,6 +204,7 @@ export class Game {
       if (i.justPressed('e')) this.act();
       if (i.justPressed('r')) this.harvestAll();
       if (i.justPressed('f')) this.callVess();
+      if (i.justPressed('x')) this.infest();
       // T is the tap key: hold for a long tap, release for a short one
       this.morse.update(sdt, i.key('t'));
       if (i.justPressed('q')) this.attack();
@@ -347,7 +359,7 @@ export class Game {
     this._pumpSfx = (this._pumpSfx || 0) - dt;
     if (this._pumpSfx <= 0) { this._pumpSfx = 0.42; this.audio.play('water'); }
     if (this.tutorial === 1 && e.water > 70) {
-      this.tutorial = 2; this.ui.say('Open the shop (TAB) and put something on your back.', 6);
+      this.tutorial = 2; this.ui.say('Click yourself, or press TAB, to climb onto your own back and plant something.', 7);
     }
   }
 
@@ -397,9 +409,14 @@ export class Game {
     const res = this.garden.harvest(plot);
     if (!res.ok) { if (!quiet) this.ui.say(res.msg); return 0; }
     this.economy.nutrients += res.amount;
+    if (res.parasite) {
+      this.economy.parasites += res.parasite;
+      if (!quiet) this.ui.say('A parasite. Put it on something and see through its eyes. (X)', 6);
+    }
     const w = this.garden.plotWorld(plot);
-    this.fx.popup(w.x, w.y - 8, `+${res.amount}`, '#cfe89a');
-    this.fx.spark(w.x, w.y - 3, '#e2f0a8', 14, 44);
+    this.fx.popup(w.x, w.y - 8, res.parasite ? `+${res.parasite} parasite` : `+${res.amount}`,
+      res.parasite ? '#d79ae8' : '#cfe89a');
+    this.fx.spark(w.x, w.y - 3, res.parasite ? '#c98ade' : '#e2f0a8', 14, 44);
     this.audio.play('pickup', { pitch: 0.9 + Math.random() * 0.3 });
     this.cam.shake(1.2);
     if (!quiet) this.ui.say(res.msg, 2.4);
@@ -427,6 +444,35 @@ export class Game {
     }
     if (npc.mode === 'follow') { npc.board(); return; }
     npc.follow();
+  }
+
+  /**
+   * Put a parasite on something. It is one of yours - it grew on your back and
+   * it still remembers being part of you - so what it takes over, you steer.
+   */
+  infest() {
+    const c = this.crab;
+    if (this.economy.parasites <= 0) {
+      this.ui.say('You have no parasites. Grow a mindcap and pick it.');
+      return false;
+    }
+    const target = this.wildlife.nearest(c.x, c.y, 90, (q) => q.alive && !q.puppet && !q.tamed);
+    if (!target) { this.ui.say('Nothing close enough to put it on.'); return false; }
+    this.economy.parasites--;
+    target.puppet = true;
+    target.tamed = true;
+    target.trust = 1;
+    target.mood = 'follow';
+    this.wildlife.fleet.push(target);
+    this.fx.spark(target.x, target.y - 8, '#c98ade', 22, 60);
+    this.fx.popup(target.x, target.y - 16, 'taken', '#d79ae8');
+    this.audio.play('evolve');
+    this.cam.shake(3);
+    this.ui.say(`${target.def.name} is yours. Open FLEET and drive it.`, 5);
+    this.npc.say('You just put one of your own children inside a lizard. '
+      + 'I am writing that down and then I am going to think about it for a long time.', 7);
+    this.economy.markDirty();
+    return true;
   }
 
   act() {

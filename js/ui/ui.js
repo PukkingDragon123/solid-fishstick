@@ -23,12 +23,18 @@ const DIM = 'rgba(240,226,192,0.66)';
 const FAINT = 'rgba(240,226,192,0.36)';
 const OUT = 'rgba(12,8,5,0.72)';
 
+// The popup is for things you read. Anything you *do* to your own shell now
+// happens on the shell itself, in build mode.
 const TABS = [
-  { id: 'flora', icon: 'flora', name: 'SEED', sub: 'what will grow on your back' },
-  { id: 'fauna', icon: 'fauna', name: 'LIFE', sub: 'you cannot buy an animal, only be worth the walk' },
-  { id: 'build', icon: 'build', name: 'BUILD', sub: 'permanent, and visible from a dune away' },
   { id: 'map', icon: 'map', name: 'MAP', sub: 'the basin, and what is left standing in it' },
-  { id: 'codex', icon: 'codex', name: 'FIELD', sub: "what Vess has managed to write down" },
+  { id: 'fleet', icon: 'fauna', name: 'FLEET', sub: 'what lives on you, and where it is' },
+  { id: 'codex', icon: 'codex', name: 'FIELD', sub: "Dr. Vess's notes - you have to be with her to read them" },
+];
+
+// and build mode has its own two, down the side
+const BUILD_TABS = [
+  { id: 'flora', icon: 'flora', name: 'SEED' },
+  { id: 'build', icon: 'build', name: 'BUILD' },
 ];
 
 export const MODES = [
@@ -47,6 +53,12 @@ export class UI {
     this.scroll = 0;
     this.pick = null;            // the item shown in the detail pane
     this.mapX = null;            // where the map is looking, world x
+    this.build = 0;              // 0..1 how far into build mode
+    this.buildOn = false;
+    this.buildTab = 'flora';
+    this.buildScroll = 0;
+    this.savedZoom = null;
+    this.driving = null;         // a creature you have taken the reins of
     this.placing = null;         // { kind, id }
     this.ghostPlot = null;
     this.toast = null;
@@ -117,6 +129,9 @@ export class UI {
 
   get busy() { return this.tree.diving || this.drawerOpen; }
 
+  /** True while the camera is pulled in on the shell to plant things. */
+  get building() { return this.buildOn; }
+
   modeUnlocked(id) {
     const m = MODES.find((x) => x.id === id);
     if (!m || !m.skill) return true;
@@ -143,15 +158,25 @@ export class UI {
     const inTree = this.tree.update(dt, this.game.renderer.vw, this.game.renderer.vh);
     if (this.tree.diving) return;
 
-    if (i.justPressed('Tab')) { i.consumeKey('Tab'); this.drawerOpen = !this.drawerOpen; }
+    this.build = damp(this.build, this.buildOn ? 1 : 0, 0.0009, dt);
+    if (i.justPressed('Tab')) { i.consumeKey('Tab'); this.toggleBuild(); }
+    if (i.justPressed('b')) { i.consumeKey('b'); this.toggleBuild(); }
     if (i.justPressed('Escape')) {
       i.consumeKey('Escape');
       if (this.placing) { this.placing = null; this.say('Cancelled.'); }
       else if (this.drawerOpen) this.drawerOpen = false;
+      else if (this.buildOn) this.toggleBuild();
+      else if (this.driving) this.release();
+    }
+    // clicking the animal itself is how you get onto its back
+    if (!this.buildOn && !this.drawerOpen && !this.placing && !this.driving
+      && this.game.state === 'play' && i.clicked && this._overCrab()) {
+      i.clicked = false;
+      this.toggleBuild();
     }
     if (i.justPressed('g')) { i.consumeKey('g'); this._openTree(); }
     if (i.justPressed('m')) { i.consumeKey('m'); this.cycleMode(); }
-    const keys = ['1', '2', '3', '4', '5'];
+    const keys = ['1', '2', '3'];
     keys.forEach((k, n) => {
       if (i.justPressed(k)) {
         i.consumeKey(k);
@@ -161,14 +186,75 @@ export class UI {
       }
     });
     if (this.drawerOpen && i.wheel) this.scroll = Math.max(0, this.scroll + i.wheel * 22);
+    if (this.buildOn && !this.drawerOpen && i.wheel && i.sx < 120) {
+      this.buildScroll = Math.max(0, this.buildScroll + i.wheel * 22);
+      i.wheel = 0;
+    }
 
     // placement follows the pointer over the shell
+    // the ghost only makes sense when you are looking at your own back
+    if (this.placing && !this.buildOn) this.placing = null;
     if (this.placing) this._updatePlacing();
     // fleet mode: click a creature, then click the ground to send it
     if (this.mode === 'creature' && !this.drawerOpen) this._updateCommand();
 
     const b = this.game.economy.nutrients;
     this.bloomShown = damp(this.bloomShown, b, 0.05, dt);
+  }
+
+  /** Is the pointer over the animal? Generously, because it is a big animal. */
+  _overCrab() {
+    const g = this.game;
+    const c = g.crab;
+    const s = g.cam.worldToScreen(c.x, c.y);
+    const hw = c.m.rx * 1.15 * g.cam.zoom;
+    const hh = (c.m.rx * 1.1 + c.standH) * g.cam.zoom;
+    return g.input.sx > s.x - hw && g.input.sx < s.x + hw
+      && g.input.sy > s.y - hh && g.input.sy < s.y + hh * 0.6;
+  }
+
+  /**
+   * Build mode: the camera comes in on the shell and the seeds come out down
+   * the side. Everything you can do to your own back happens here, on your
+   * own back, rather than in a shop.
+   */
+  toggleBuild() {
+    const g = this.game;
+    this.buildOn = !this.buildOn;
+    this.drawerOpen = false;
+    this.placing = null;
+    if (this.buildOn) {
+      this.savedZoom = g.cam.targetZoom;
+      const want = clamp(g.renderer.vh * 0.42 / Math.max(18, g.crab.m.rx * 2.2), 2.2, 6);
+      g.cam.targetZoom = clamp(want, g.cam.minZoom, g.cam.maxZoom);
+      this.buildScroll = 0;
+      this.say('Your back. Put something in it.', 3);
+      g.audio?.play('uiBig');
+    } else {
+      if (this.savedZoom) g.cam.targetZoom = this.savedZoom;
+      this.savedZoom = null;
+      g.audio?.play('ui');
+    }
+  }
+
+  /** Take the reins of one of your own. */
+  drive(c) {
+    this.driving = c;
+    this.drawerOpen = false;
+    this.savedZoom = this.savedZoom ?? this.game.cam.targetZoom;
+    this.game.cam.followEntity(c, false);
+    this.game.cam.targetZoom = clamp(3.2, this.game.cam.minZoom, this.game.cam.maxZoom);
+    this.say(`${c.name}. A/D to move it, Esc to let go.`, 5);
+    this.game.audio?.play('uiBig');
+  }
+
+  release() {
+    if (!this.driving) return;
+    this.say(`${this.driving.name} is its own again.`, 3);
+    this.driving.commanded = null;
+    this.driving = null;
+    this.game.cam.followEntity(this.game.crab, false);
+    if (this.savedZoom) { this.game.cam.targetZoom = this.savedZoom; this.savedZoom = null; }
   }
 
   _openTree() {
@@ -244,6 +330,7 @@ export class UI {
     }
 
     this._hud(ctx, W, H);
+    if (this.build > 0.005) this._buildRail(ctx, W, H);
     if (this.placing) this._placingHud(ctx, W, H);
     if (this.drawer > 0.005) this._panel(ctx, W, H);
     else if (this.touchEnabled) this._touchControls(ctx, W, H);
@@ -264,22 +351,43 @@ export class UI {
     const g = this.game;
     const e = g.economy;
     const maxW = e.stat('waterMax');
+    // the build rail owns the left edge while it is out, so the readouts move
+    // over rather than sitting underneath it and stealing its taps
+    const L = this.buildOn ? this.railW(W) + 6 : 5;
 
     // water: a moulted shell with the water actually in it
-    const sh = drawShell(ctx, 5, 4, e.water / maxW, this.t);
-    drawText(ctx, `${Math.round(e.water)}`, 5 + sh.w / 2, 4 + sh.h - 1,
+    const sh = drawShell(ctx, L, 4, e.water / maxW, this.t);
+    drawText(ctx, `${Math.round(e.water)}`, L + sh.w / 2, 4 + sh.h - 1,
       { color: INK, align: 'center', outline: true, outlineColor: OUT });
-    if (this._hit(5, 4, sh.w, sh.h)) this.hover = { title: 'Spring', body: `${Math.round(e.water)} of ${Math.round(maxW)} water. Space to pump more up.` };
+    if (this._hit(L, 4, sh.w, sh.h)) this.hover = { title: 'Spring', body: `${Math.round(e.water)} of ${Math.round(maxW)} water. Hold space to run it.` };
 
     // nutrients: a flower that blooms as you bank them and sheds when you spend
     const stage = clamp(Math.round(Math.pow(clamp01(this.bloomShown / 260), 0.62) * 8), 0, 8);
     const sway = Math.sin(this.t * 1.1) * 0.04 + (g.weather ? g.weather.windSpeed * 0.02 : 0);
-    const bx = 5 + sh.w + 2;
+    const bx = L + sh.w + 2;
     drawBloom(ctx, bx, 2, stage, sway);
     drawText(ctx, `${Math.round(e.nutrients)}`, bx + 17, 4 + sh.h - 1,
       { color: INK, align: 'center', outline: true, outlineColor: OUT });
     if (this._hit(bx, 2, 34, 40)) {
       this.hover = { title: 'Growth', body: `${Math.round(e.nutrients)} nutrients. The flower opens as you bank them and drops a leaf when you spend.` };
+    }
+
+    // parasites, when you have any: a thing you keep, not a thing you spend
+    if (e.parasites > 0) {
+      const px2 = L + 1, py2 = 78;
+      const pulse = 0.7 + Math.sin(this.t * 2.2) * 0.3;
+      ctx.globalAlpha = pulse;
+      drawGlyph(ctx, 'seed', px2, py2, { color: '#c98ade' });
+      ctx.globalAlpha = 1;
+      drawText(ctx, `${e.parasites}   X`, px2 + 15, py2 + 3,
+        { color: '#d79ae8', outline: true, outlineColor: OUT });
+      if (this._hit(px2, py2, 60, 12)) {
+        this.hover = {
+          title: 'Parasites',
+          body: 'Fruited by a mindcap. Get close to an animal and press X to put one on it. '
+            + 'What it takes over, you steer.',
+        };
+      }
     }
 
     // fruit
@@ -320,10 +428,12 @@ export class UI {
       }
     }
 
-    // the shell's balance: what you are carrying and how evenly
+    // the shell's balance: what you are carrying and how evenly. The rail
+    // already shows this while you are up there, so it is not drawn twice.
     const gd = g.garden;
     const load = gd.load, cap = gd.capacity, trim = gd.trim;
-    const bx0 = 6, by0 = 50;
+    const bx0 = L + 1, by0 = 50;
+    if (!this.buildOn) {
     drawGlyph(ctx, 'scale', bx0, by0 - 1, {
       color: gd.overload > 0 ? '#e08c9c' : gd.listed ? '#e2b74a' : '#d6ba8a',
     });
@@ -346,6 +456,8 @@ export class UI {
           + (gd.overload > 0 ? 'Overloaded: everything grows slower and you walk slower.\n' : '')
           + (gd.listed ? `Listing ${trim > 0 ? 'right' : 'left'}. Whatever is stacked on the heavy side is suffering.` : 'Evenly loaded.'),
       };
+    }
+
     }
 
     // how many are ready to pick
@@ -379,6 +491,7 @@ export class UI {
 
     // mode + prompts
     const modeDef = MODES.find((m) => m.id === this.mode);
+    if (this.buildOn) return;
     drawText(ctx, modeDef.name, 6, H - 20, { color: FAINT, outline: true, outlineColor: OUT });
     if (this._hit(4, H - 22, 34, 10)) {
       this.hover = { title: modeDef.name, body: modeDef.desc + '   (M to switch)' };
@@ -390,7 +503,7 @@ export class UI {
       drawText(ctx, hint, W / 2, H - 30, { color: INK, align: 'center', outline: true, outlineColor: OUT });
     }
     if (!this.touchEnabled) {
-      drawText(ctx, 'A/D scuttle  SPACE spring  R pick  T tap  E act  F Vess  TAB shop  G inside',
+      drawText(ctx, 'A/D move  SPACE spring  R pick  TAB build  1 map  2 fleet  3 notes  X parasite  G inside',
         W / 2, H - 10, { color: FAINT, align: 'center', outline: true, outlineColor: OUT });
     }
     if (this.selected) {
@@ -417,8 +530,73 @@ export class UI {
     if (!i.down) this._valveDown = false;
     this.valveHeld = this._valveDown;
 
+    // water: the valve throws it, it arcs, it lands, it runs off the button
+    this.spray = this.spray || [];
+    if (hold > 0.05) {
+      const n = 2 + Math.floor(hold * 5);
+      for (let k = 0; k < n; k++) {
+        if (Math.random() > hold * 0.9) continue;
+        const a = -Math.PI * (0.30 + Math.random() * 0.40);
+        const sp = (26 + Math.random() * 54) * (0.5 + hold);
+        this.spray.push({
+          x: x + size / 2 + (Math.random() - 0.5) * 8,
+          y: y + size / 2,
+          vx: Math.cos(a) * sp * (Math.random() < 0.5 ? -1 : 1) * 0.7,
+          vy: Math.sin(a) * sp,
+          life: 0.55 + Math.random() * 0.55, t: 0,
+          r: Math.random() < 0.42 ? 3 : 2,
+        });
+      }
+    }
+    for (let k = this.spray.length - 1; k >= 0; k--) {
+      const d = this.spray[k];
+      d.t += 1 / 60;
+      if (d.t > d.life) { this.spray.splice(k, 1); continue; }
+      d.vy += 260 / 60;
+      d.x += d.vx / 60;
+      d.y += d.vy / 60;
+      const a = clamp01(1 - d.t / d.life);
+      ctx.globalAlpha = 0.40 + a * 0.60;
+      ctx.fillStyle = d.r > 2 ? '#c9f2fa' : '#5fc6d8';
+      ctx.fillRect(Math.round(d.x), Math.round(d.y), d.r, d.r + 1);
+      // a short tail, so a droplet reads as moving rather than as a speck
+      ctx.globalAlpha *= 0.45;
+      ctx.fillRect(Math.round(d.x - d.vx / 90), Math.round(d.y - d.vy / 90), Math.max(1, d.r - 1), Math.max(1, d.r - 1));
+    }
+    if (this.spray.length > 240) this.spray.splice(0, this.spray.length - 240);
+
     ctx.globalAlpha = hot || hold > 0 ? 1 : 0.72;
     drawValve(ctx, x, y, hold, this.t);
+    // the jet: a bright arc leaving the throat of the valve
+    if (hold > 0.05) {
+      ctx.globalAlpha = 0.35 + hold * 0.45;
+      ctx.strokeStyle = '#9de3ee';
+      ctx.lineWidth = Math.max(1, 2 * hold);
+      for (const dir of [-1, 1]) {
+        ctx.beginPath();
+        const jx = x + size / 2, jy = y + size / 2;
+        ctx.moveTo(jx, jy);
+        ctx.quadraticCurveTo(jx + dir * 16 * hold, jy - 26 * hold,
+          jx + dir * 30 * hold, jy - 6 * hold + Math.sin(this.t * 12) * 2);
+        ctx.stroke();
+      }
+    }
+    // and it runs down the face of the valve while it is open
+    if (hold > 0.1) {
+      for (let k = 0; k < 5; k++) {
+        const ph = (this.t * (1.4 + k * 0.3) + k * 0.7) % 1;
+        ctx.globalAlpha = hold * (1 - ph) * 0.7;
+        ctx.fillStyle = '#9de3ee';
+        ctx.fillRect(Math.round(x + 6 + k * 6), Math.round(y + size * 0.55 + ph * size * 0.5), 1, 2 + k % 2);
+      }
+      // a puddle under it, spreading while you hold
+      ctx.globalAlpha = Math.min(0.5, hold * 0.5);
+      ctx.fillStyle = '#2b7f92';
+      const pw = size * (0.4 + hold * 0.7);
+      ctx.beginPath();
+      ctx.ellipse(x + size / 2, y + size + 3, pw, 2.5, 0, 0, TAU);
+      ctx.fill();
+    }
     ctx.globalAlpha = 1;
     const e = g.economy;
     const full = e.water >= e.stat('waterMax') - 0.5;
@@ -671,7 +849,7 @@ export class UI {
     }
 
     const bodyY = inY + 26, bodyH = inH - 26;
-    const tab = TABS.find((t) => t.id === this.tab);
+    const tab = TABS.find((t) => t.id === this.tab) || TABS[0];
     if (this.tab === 'codex' || this.tab === 'map') {
       drawText(ctx, tab.sub, inX, bodyY - 4, { color: FAINT });
       ctx.save();
@@ -683,22 +861,116 @@ export class UI {
       return;
     }
 
-    // -- grid on the left, detail on the right ------------------------------
-    const gw = Math.round(inW * 0.52);
-    const dx = inX + gw + 8, dw = inW - gw - 8;
+    drawText(ctx, tab.sub, inX, bodyY - 4, { color: FAINT });
     ctx.save();
-    ctx.beginPath(); ctx.rect(inX - 2, bodyY - 2, gw + 4, bodyH + 4); ctx.clip();
-    if (this.tab === 'flora') this._floraGrid(ctx, inX, bodyY, gw, bodyH);
-    if (this.tab === 'fauna') this._faunaTab(ctx, inX, bodyY, gw, bodyH);
-    if (this.tab === 'build') this._buildGrid(ctx, inX, bodyY, gw, bodyH);
+    ctx.beginPath(); ctx.rect(inX, bodyY + 6, inW, bodyH - 6); ctx.clip();
+    this._fleetTab(ctx, inX, bodyY + 6, inW, bodyH - 6);
+    ctx.restore();
+    ctx.globalAlpha = 1;
+  }
+
+  /** How wide the build rail is, which several other things need to know. */
+  railW(W) { return Math.min(126, Math.max(96, Math.round(W * 0.26))); }
+
+  /**
+   * Build mode's side rail: what you can put on your back, down the left,
+   * where it does not cover the animal you are putting it on.
+   */
+  _buildRail(ctx, W, H) {
+    const g = this.game;
+    const k = easeOutCubic(this.build);
+    const rw = this.railW(W);
+    const x = Math.round(-rw * (1 - k));
+    const y = 0;
+
+    ctx.globalAlpha = k;
+    drawPanel(ctx, x - 12, y - 12, rw + 12, H + 24);
+
+    const inX = x + 8, inW = rw - 18;
+    let ry = 6;
+    // the two things you can do to a shell
+    const tw = Math.floor(inW / BUILD_TABS.length);
+    BUILD_TABS.forEach((t, i) => {
+      const tx = inX + i * tw;
+      const on = this.buildTab === t.id;
+      const hot = this._hit(tx, ry, tw - 1, 18);
+      ctx.fillStyle = on ? 'rgba(104,80,48,0.95)' : hot ? 'rgba(70,54,34,0.9)' : 'rgba(30,22,14,0.7)';
+      ctx.fillRect(tx, ry, tw - 1, 18);
+      if (on) { ctx.fillStyle = '#d6ba8a'; ctx.fillRect(tx, ry + 17, tw - 1, 1); }
+      ctx.globalAlpha = k * (on ? 1 : 0.6);
+      drawTab(ctx, t.icon, tx + 2, ry + 1);
+      drawText(ctx, t.name, tx + 20, ry + 6, { color: on ? INK : DIM });
+      ctx.globalAlpha = k;
+      if (hot && g.input.clicked) {
+        g.input.clicked = false;
+        this.buildTab = t.id; this.buildScroll = 0; this.pick = null;
+        g.audio?.play('ui');
+      }
+    });
+    ry += 22;
+
+    // what you are carrying, since that is the constraint that matters here
+    const gd = g.garden;
+    drawGauge(ctx, inX, ry, inW, 4, gd.load / Math.max(1, gd.capacity),
+      gd.overload > 0 ? '#c8425c' : '#8cc468');
+    drawText(ctx, `${gd.load.toFixed(1)}/${gd.capacity.toFixed(0)} carried`, inX, ry + 7, { color: FAINT });
+    ry += 18;
+
+    // the grid, scrolled
+    const gridTop = ry;
+    const gridH = H - gridTop - 74;
+    ctx.save();
+    ctx.beginPath(); ctx.rect(inX - 2, gridTop - 2, inW + 4, gridH + 4); ctx.clip();
+    const saved = this.scroll;
+    this.scroll = this.buildScroll;
+    if (this.buildTab === 'flora') this._floraGrid(ctx, inX, gridTop, inW, gridH);
+    else this._buildGrid(ctx, inX, gridTop, inW, gridH);
+    this.buildScroll = this.scroll;
+    this.scroll = saved;
     ctx.restore();
 
-    ctx.fillStyle = 'rgba(214,186,138,0.18)';
-    ctx.fillRect(dx - 5, bodyY, 1, bodyH);
-    ctx.save();
-    ctx.beginPath(); ctx.rect(dx - 2, bodyY - 2, dw + 4, bodyH + 4); ctx.clip();
-    this._detail(ctx, dx, bodyY, dw, bodyH);
-    ctx.restore();
+    // a short card for whatever is selected, and the button that commits it
+    const def = this.buildTab === 'build' ? BUILD_BY_ID[this.pick] : FLORA_BY_ID[this.pick];
+    const cy = H - 70;
+    ctx.fillStyle = 'rgba(16,11,7,0.8)';
+    ctx.fillRect(inX, cy, inW, 46);
+    if (!def) {
+      wrapText('Pick something. Then pick a bed on your own shell.', inW - 4)
+        .forEach((l, i) => drawText(ctx, l, inX + 2, cy + 3 + i * LINE_H, { color: FAINT }));
+    } else {
+      const isB = this.buildTab === 'build';
+      const unlock = isB ? { ok: true } : g.unlockOf(def);
+      const afford = isB ? g.economy.canBuild(def.id) : g.economy.water >= def.cost;
+      drawText(ctx, ellipsize(def.name, inW - 4), inX + 2, cy + 2, { color: unlock.ok ? INK : FAINT });
+      if (!unlock.ok) {
+        wrapText(unlock.why, inW - 4).slice(0, 3).forEach((l, i) =>
+          drawText(ctx, l, inX + 2, cy + 12 + i * LINE_H, { color: '#e2b74a' }));
+      } else {
+        drawText(ctx, isB ? `${def.cost}w ${def.nut}n` : `${def.cost} water`, inX + 2, cy + 12,
+          { color: afford ? '#5fc6d8' : '#e08c9c' });
+        if (!isB) {
+          drawText(ctx, `+${def.pay} every ${Math.round(def.ripen)}s`, inX + 2, cy + 21, { color: '#8cc468' });
+          const need = def.needs ? (NEEDS_TEXT[def.needs] || '') : `weighs ${def.mass.toFixed(1)}`;
+          drawText(ctx, ellipsize(need, inW - 4), inX + 2, cy + 30, { color: FAINT });
+        }
+        const bh = 14, by = H - 20;
+        const hot = this._hit(inX, by, inW, bh);
+        ctx.fillStyle = !afford ? 'rgba(60,38,34,0.9)' : hot ? '#8cc468' : 'rgba(74,110,52,0.95)';
+        ctx.fillRect(inX, by, inW, bh);
+        ctx.strokeStyle = afford ? 'rgba(242,228,194,0.6)' : 'rgba(200,66,92,0.5)';
+        ctx.strokeRect(inX + 0.5, by + 0.5, inW - 1, bh - 1);
+        drawText(ctx, afford ? 'PLACE IT' : 'NOT ENOUGH', inX + inW / 2, by + 4,
+          { color: afford ? '#12200c' : '#e08c9c', align: 'center' });
+        if (hot && afford && g.input.clicked) {
+          g.input.clicked = false;
+          this.placing = { kind: this.buildTab === 'build' ? 'build' : 'flora', id: def.id };
+          this.say('Now pick a bed.');
+          g.audio?.play('uiBig');
+        }
+      }
+    }
+
+    drawText(ctx, 'esc to climb down', inX, 2, { color: FAINT });
     ctx.globalAlpha = 1;
   }
 
@@ -724,7 +996,7 @@ export class UI {
 
   _floraGrid(ctx, x, y, w, h) {
     const g = this.game;
-    const cols = 4, cell = Math.floor((w - 3) / cols), gap = 3;
+    const cols = w < 150 ? 3 : 4, cell = Math.floor((w - 3) / cols), gap = 3;
     const rows = Math.ceil(FLORA.length / cols);
     FLORA.forEach((f, i) => {
       const cxi = x + (i % cols) * (cell + gap * 0);
@@ -766,7 +1038,7 @@ export class UI {
 
   _buildGrid(ctx, x, y, w, h) {
     const g = this.game;
-    const cols = 4, cell = Math.floor((w - 3) / cols), gap = 3;
+    const cols = w < 150 ? 3 : 4, cell = Math.floor((w - 3) / cols), gap = 3;
     const rows = Math.ceil(BUILDINGS.length / cols);
     BUILDINGS.forEach((b, i) => {
       const cxi = x + (i % cols) * cell;
@@ -797,80 +1069,52 @@ export class UI {
    * The detail pane. This is where a plant stops being an icon: what it is,
    * what it does to you, how often you can pick it and what it wants first.
    */
-  _detail(ctx, x, y, w, h) {
+  /**
+   * Your fleet: everything that has decided to live on you. Each one is a card
+   * you can point the camera at and then drive yourself, which is the only way
+   * to get a jerboa to go somewhere specific.
+   */
+  _fleetTab(ctx, x, y, w, h) {
     const g = this.game;
-    const id = this.pick;
-    const isBuild = this.tab === 'build';
-    const def = isBuild ? BUILD_BY_ID[id] : FLORA_BY_ID[id];
-    if (!def) {
-      drawText(ctx, this.tab === 'fauna' ? 'WHAT MIGHT COME' : 'PICK ONE', x, y, { color: DIM });
-      wrapText(TABS.find((t) => t.id === this.tab).sub, w).forEach((l, i) =>
-        drawText(ctx, l, x, y + 12 + i * LINE_H, { color: FAINT }));
+    const fleet = g.wildlife.fleet.slice();
+    const held = g.wildlife.list.filter((c) => c.puppet);
+    const all = fleet.concat(held.filter((c) => !fleet.includes(c)));
+    if (!all.length) {
+      wrapText('Nothing lives on you yet. Grow something worth the walk, then get close and offer it fruit and water.', w - 4)
+        .forEach((l, i) => drawText(ctx, l, x, y + 6 + i * LINE_H, { color: FAINT }));
       return;
     }
-    const unlock = isBuild ? { ok: true, why: '' } : g.unlockOf(def);
-    let ry = y;
+    const ch = 34, gap = 3;
+    let row = 0;
+    for (const c of all) {
+      const by = y + row * (ch + gap) - this.scroll;
+      row++;
+      if (by > y + h || by + ch < y) continue;
+      const on = this.driving === c;
+      const puppet = !!c.puppet;
+      const hot = this._hit(x, by, w, ch);
+      ctx.fillStyle = on ? 'rgba(104,80,48,0.95)' : hot ? 'rgba(80,62,38,0.95)' : 'rgba(44,34,22,0.9)';
+      ctx.fillRect(x, by, w, ch);
+      ctx.fillStyle = puppet ? '#b46ad0' : c.onShell ? '#8cc468' : '#e2b74a';
+      ctx.fillRect(x, by, 2, ch);
 
-    // a big portrait of the thing, grown, at the top of the pane
-    const art = isBuild ? buildStructure(def, 0.62) : buildPlant(def, 3, 0, 0.62);
-    ctx.save();
-    ctx.globalAlpha = unlock.ok ? 1 : 0.28;
-    ctx.drawImage(art.cv, Math.round(x + w - art.cv.width - 2), Math.round(ry));
-    ctx.restore();
-
-    drawText(ctx, unlock.ok ? def.name : 'Not yet', x, ry, { color: INK });
-    ry += 11;
-    if (!unlock.ok) {
-      wrapText(unlock.why, w - 4).forEach((l) => { drawText(ctx, l, x, ry, { color: '#e2b74a' }); ry += LINE_H; });
-      return;
-    }
-
-    const cost = isBuild ? `${def.cost} water + ${def.nut} nutrients` : `${def.cost} water`;
-    const afford = isBuild ? g.economy.canBuild(def.id) : g.economy.water >= def.cost;
-    drawText(ctx, cost, x, ry, { color: afford ? '#5fc6d8' : '#e08c9c' }); ry += 11;
-
-    wrapText(def.desc, w - 4).forEach((l) => { drawText(ctx, l, x, ry, { color: DIM }); ry += LINE_H; });
-    ry += 4;
-
-    if (!isBuild) {
-      // the harvest line, which is the thing you actually came to read
-      drawText(ctx, 'PICKS', x, ry, { color: '#8cc468' }); ry += 10;
-      drawText(ctx, `+${def.pay} nutrients every ${Math.round(def.ripen)}s`, x, ry, { color: INK }); ry += LINE_H;
-      const need = def.needs ? (NEEDS_TEXT[def.needs] || '') : '';
-      if (need) { drawText(ctx, need, x, ry, { color: '#e2b74a' }); ry += LINE_H; }
-      drawText(ctx, `weighs ${def.mass.toFixed(1)} on your shell`, x, ry, { color: FAINT }); ry += LINE_H;
-      if (def.needsPond) { drawText(ctx, 'needs a pool bed', x, ry, { color: '#5fc6d8' }); ry += LINE_H; }
-      ry += 3;
-      drawText(ctx, 'DOES', x, ry, { color: '#8cc468' }); ry += 10;
-      wrapText(def.boonText || g.floraEffect(def), w - 4).forEach((l) => {
-        drawText(ctx, l, x, ry, { color: DIM }); ry += LINE_H;
-      });
-      const brings = (def.attracts || []).map((a) => FAUNA_BY_ID[a]?.name || a).join(', ');
-      if (brings) {
-        ry += 3;
-        drawText(ctx, 'BRINGS', x, ry, { color: '#e2b74a' }); ry += 10;
-        wrapText(brings, w - 4).forEach((l) => { drawText(ctx, l, x, ry, { color: DIM }); ry += LINE_H; });
+      drawText(ctx, ellipsize(c.name, w - 60), x + 6, by + 3, { color: INK });
+      drawText(ctx, puppet ? 'RIDDEN' : c.onShell ? 'aboard' : 'out there', x + w - 4, by + 3,
+        { color: puppet ? '#d79ae8' : c.onShell ? '#b6de8f' : DIM, align: 'right' });
+      drawText(ctx, ellipsize(c.def.ability || c.def.role || '', w - 8), x + 6, by + 13, { color: FAINT });
+      const d = Math.round(Math.abs(c.x - g.crab.x) / 10);
+      drawText(ctx, `${d}m away`, x + 6, by + 23, { color: FAINT });
+      drawText(ctx, on ? 'DRIVING' : 'click to drive', x + w - 4, by + 23,
+        { color: on ? '#ffe9a8' : FAINT, align: 'right' });
+      if (hot) {
+        this.hover = { title: c.name, body: c.def.desc };
+        if (g.input.clicked) {
+          g.input.clicked = false;
+          if (on) this.release(); else this.drive(c);
+        }
       }
-    } else {
-      wrapText(def.desc2 || '', w - 4).forEach((l) => { drawText(ctx, l, x, ry, { color: DIM }); ry += LINE_H; });
     }
-
-    // the button
-    const bw = w - 4, bh = 16, by = y + h - bh;
-    const hot = this._hit(x, by, bw, bh);
-    ctx.fillStyle = !afford ? 'rgba(60,38,34,0.9)' : hot ? '#8cc468' : 'rgba(74,110,52,0.95)';
-    ctx.fillRect(x, by, bw, bh);
-    ctx.strokeStyle = afford ? 'rgba(242,228,194,0.6)' : 'rgba(200,66,92,0.5)';
-    ctx.strokeRect(x + 0.5, by + 0.5, bw - 1, bh - 1);
-    drawText(ctx, afford ? 'PLACE ON YOUR BACK' : 'NOT ENOUGH', x + bw / 2, by + 5,
-      { color: afford ? '#12200c' : '#e08c9c', align: 'center' });
-    if (hot && afford && g.input.clicked) {
-      g.input.clicked = false;
-      this.placing = { kind: isBuild ? 'build' : 'flora', id: def.id };
-      this.drawerOpen = false;
-      this.say(`Choose a bed for the ${def.name.toLowerCase()}.`);
-      g.audio?.play('uiBig');
-    }
+    this.scroll = clamp(this.scroll, 0, Math.max(0, row * (ch + gap) - h));
   }
 
   /**
@@ -1017,6 +1261,17 @@ export class UI {
 
   _codexTab(ctx, x, y, w, h) {
     const g = this.game;
+    // They are her notes, in her notebook, in her hands. You have to be with
+    // her to read them, which is the whole reason to keep her around.
+    if (!g.vessClose) {
+      const d = Math.round(Math.abs(g.npc.x - g.crab.x) / 10);
+      drawText(ctx, 'HER NOTEBOOK IS NOT HERE', x, y + 6, { color: '#e2b74a' });
+      wrapText(`The field notes are Dr. Vess's, and she is carrying them. Get to her - she is ${d}m ${g.npc.x > g.crab.x ? 'east' : 'west'} - and read over her shoulder.`, w - 4)
+        .forEach((l, i) => drawText(ctx, l, x, y + 20 + i * LINE_H, { color: DIM }));
+      wrapText('F calls her over. She will follow you, and ride on you once you are big enough to carry her.', w - 4)
+        .forEach((l, i) => drawText(ctx, l, x, y + 62 + i * LINE_H, { color: FAINT }));
+      return;
+    }
     if (this.codexPick) return this._codexEntry(ctx, x, y, w, h);
     drawText(ctx, "VESS'S FIELD NOTES", x, y, { color: DIM });
     drawText(ctx, 'watch a thing for long enough and she writes it down', x, y + 9, { color: FAINT });
@@ -1124,8 +1379,10 @@ export class UI {
 
   _touchControls(ctx, W, H) {
     const R = 26;
-    const sx = 6, sy = H - 2 * R - 8;
-    this.stickZone = { x: 0, y: H - 2 * R - 16, w: 2 * R + 22, h: 2 * R + 16 };
+    // in build mode the rail owns the left edge, so the stick steps aside
+    const off = this.buildOn ? this.railW(W) + 4 : 0;
+    const sx = 6 + off, sy = H - 2 * R - 8;
+    this.stickZone = { x: off, y: H - 2 * R - 16, w: 2 * R + 22, h: 2 * R + 16 };
     const cx = this.stick ? this.stick.ox : sx + R;
     const cy = this.stick ? this.stick.oy : sy + R;
     ctx.globalAlpha = this.stick ? 0.5 : 0.26;
@@ -1154,7 +1411,7 @@ export class UI {
     };
     const bw = 44, bh = 19;
     add(W - bw * 2 - 10, H - bh - 6, bw, bh, this.game.garden.ripeCount ? 'PICK' : '-', 'r');
-    add(W - bw - 6, H - bh * 2 - 11, bw, bh, 'SHOP', 'Tab');
+    add(W - bw - 6, H - bh * 2 - 11, bw, bh, this.buildOn ? 'DOWN' : 'BUILD', 'Tab');
     add(W - bw * 2 - 10, H - bh * 2 - 11, bw, bh, 'MODE', 'm');
     add(W - bw - 6, H - bh * 3 - 16, bw, bh, this.game.actionHint() ? 'ACT' : '-', 'e');
     const hint = this.game.actionHint();

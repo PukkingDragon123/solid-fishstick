@@ -389,9 +389,78 @@ function paintSeed(S, lv) {
   return { cv: bake(p), ox: cx, oy: cy, r: R };
 }
 
+const cache = new Map();
+
+// ---------------------------------------------------------------------------
+// the nodes
+//
+// A node is a bead of live tissue with a gene in it, so it is painted as one:
+// a real sphere with a ramp, a rim and a specular, not a filled circle. Owned
+// ones are lit from inside; the rest are closed and matte.
+
+/** Build an eight-step ramp from one colour, dark end first. */
+function rampFrom(hex, { lo = 0.10, hi = 1.55 } = {}) {
+  const n = parseInt(hex.slice(1), 16);
+  const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+  const out = [];
+  for (let i = 0; i < 8; i++) {
+    const k = lerp(lo, hi, i / 7);
+    const mix = (c) => Math.round(Math.min(255, Math.max(0, c * k + (k > 1 ? (k - 1) * 150 : 0))));
+    out.push('#' + ((1 << 24) | (mix(r) << 16) | (mix(g) << 8) | mix(b)).toString(16).slice(1));
+  }
+  return out;
+}
+
+function paintOrb(hex, R, on) {
+  const pad = 3;
+  const w = Math.ceil(R * 2) + pad * 2, h = w;
+  const p = new Painter(w, h);
+  const c = w / 2;
+  const mats = {
+    orb: {
+      ramp: rampFrom(hex, on ? { lo: 0.16, hi: 1.7 } : { lo: 0.07, hi: 0.62 }),
+      diffuse: 0.8, rim: on ? 0.75 : 0.4, ao: 0.1,
+      spec: on ? 0.85 : 0.3, normalScale: 0.6, outline: '#0b0908',
+    },
+  };
+  p.ellipse(c, c, R, R, { mat: 'orb', dome: R * 1.05, tint: on ? 0.06 : -0.10 });
+  // the meridian: a band round the middle so it reads as a body, not a dot
+  p.field(0, 0, w, h, (x, y) => {
+    const a = (x - c) / R, b = (y - c) / R;
+    if (a * a + b * b > 1) return null;
+    const band = Math.abs(b) < 0.16 ? 1 - Math.abs(b) / 0.16 : 0;
+    const merid = Math.abs(a) < 0.10 ? 1 - Math.abs(a) / 0.10 : 0;
+    return { h: (band + merid) * R * 0.10, tint: (band * 0.14 + merid * 0.10) * (on ? 1 : 0.4) };
+  }, { mat: 'orb', onlyMat: 'orb', addHeight: true });
+  if (on) {
+    // a live core showing through, and the hard specular of something wet
+    p.ellipse(c, c, R * 0.34, R * 0.34, { mat: 'orb', onlyMat: 'orb', dome: R * 0.3, tint: 0.34, emissive: 0.5 });
+    p.ellipse(c - R * 0.34, c - R * 0.36, Math.max(0.9, R * 0.16), Math.max(0.9, R * 0.13),
+      { mat: 'orb', onlyMat: 'orb', dome: R * 0.2, tint: 0.9 });
+  } else {
+    // shut: a seam down the middle and nothing behind it
+    p.capsule(c, c - R * 0.82, c, c + R * 0.82, Math.max(0.8, R * 0.10), Math.max(0.8, R * 0.08),
+      { mat: 'orb', onlyMat: 'orb', dome: -R * 0.3, tint: -0.34 });
+  }
+  p.grain('orb', { freq: 0.7 / Math.max(0.4, R / 8), amp: on ? 0.10 : 0.16, seed: 7 });
+  p.smoothHeight(1, 0.4);
+  return {
+    cv: p.resolve(mats, { ...LIGHT, ambient: on ? 0.5 : 0.34, outline: 1, outlineColor: '#0b0908' }),
+    ox: c, oy: c, r: R,
+  };
+}
+
+/** A node bead. Radii are quantised so panning never re-bakes one. */
+export function orbArt(hex, r, on) {
+  const R = Math.max(2, Math.round(r * 2) / 2);
+  const k = `orb:${hex}:${R}:${on ? 1 : 0}`;
+  let v = cache.get(k);
+  if (!v) { v = paintOrb(hex, R, on); cache.set(k, v); }
+  return v;
+}
+
 // ---------------------------------------------------------------------------
 
-const cache = new Map();
 const key = (n, S, lv) => `${n}:${S.toFixed(2)}:${Math.round(lv * 4)}`;
 
 /**

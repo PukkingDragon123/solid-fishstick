@@ -119,6 +119,16 @@ export const FLORA = [
     unlock: { genes: ['shade', 'mycelium'] },
   },
   {
+    id: 'mindcap', name: 'Mindcap', arch: 'fungus', tier: 3,
+    w: 26, h: 26, mat: 'petalWhite', stemMat: 'woodPale', capMat: 'petalPink', seed: 211,
+    cost: 240, upkeep: 0.20, yield: 0.0, grow: 150,
+    gene: 'mycelium', attracts: ['ironbacktick', 'duneskink'],
+    desc: 'It fruits things that are almost animals. They hatch looking for a nervous system, '
+      + 'and yours is already taken.',
+    boon: { trust: 1.15 }, boonText: 'Fruits parasites instead of food. They ride other animals for you.',
+    unlock: { genes: ['mycelium', 'shade'], nutrients: 140 },
+  },
+  {
     id: 'heartbloom', name: 'Heartbloom', arch: 'flower', tier: 4,
     w: 26, h: 40, mat: 'petalPink', stemMat: 'leaf', coreMat: 'glow', petals: 11, headR: 5.0,
     stems: 1, seed: 149,
@@ -162,6 +172,7 @@ const HARVEST = {
   pipereed:   { ripen: 32, pay: 22, mass: 1.7, needs: 'pond' },
   ironwood:   { ripen: 68, pay: 58, mass: 4.2 },
   ghostpalm:  { ripen: 60, pay: 52, mass: 3.8, needs: 'night' },
+  mindcap:    { ripen: 64, pay: 0, mass: 2.4, needs: 'shade', parasite: 1 },
   heartbloom: { ripen: 78, pay: 96, mass: 3.0, needs: 'fleet' },
   worldvine:  { ripen: 92, pay: 130, mass: 5.0 },
 };

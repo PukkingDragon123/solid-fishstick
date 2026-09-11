@@ -345,14 +345,79 @@ async function slice({ b64, sheet }) {
       }
     }
     // faces anchor at their centre; bodies anchor on the band's ground line
-    const ax = c.isFace ? Math.round(tw / 2) : Math.round(sw * K / 2) - tx0;
-    const ay = c.isFace ? Math.round(th / 2) : Math.round((c.band.y1 - f.y0 + 1) * K) - ty0;
-    return { name: c.name, i: c.i, w: tw, h: th, ax, ay, rgba: trimmed };
+    let ax = c.isFace ? Math.round(tw / 2) : Math.round(sw * K / 2) - tx0;
+    let ay = c.isFace ? Math.round(th / 2) : Math.round((c.band.y1 - f.y0 + 1) * K) - ty0;
+
+    // -- the outline ------------------------------------------------------
+    // Every other thing in this game is drawn by a painter that puts a hard
+    // dark line around its silhouette. A downsampled photograph of a drawing
+    // has no such line, and without one she sits in front of the desert
+    // instead of in it. So one gets added here, `outline` pixels thick, plus
+    // a darkened rim just inside it so the edge has some weight.
+    const OW = sheet.outline | 0;
+    if (!OW) return { name: c.name, i: c.i, w: tw, h: th, ax, ay, rgba: trimmed };
+
+    const pw = tw + OW * 2, ph = th + OW * 2;
+    const out = new Uint8ClampedArray(pw * ph * 4);
+    for (let y = 0; y < th; y++) {
+      for (let x = 0; x < tw; x++) {
+        const si = (y * tw + x) * 4, oi = ((y + OW) * pw + (x + OW)) * 4;
+        out[oi] = trimmed[si]; out[oi + 1] = trimmed[si + 1];
+        out[oi + 2] = trimmed[si + 2]; out[oi + 3] = trimmed[si + 3];
+      }
+    }
+    // darken the pixels that sit on the silhouette
+    const rim = sheet.rim ?? 0;
+    if (rim) {
+      const edge = [];
+      for (let y = 0; y < ph; y++) {
+        for (let x = 0; x < pw; x++) {
+          const i = (y * pw + x) * 4;
+          if (!out[i + 3]) continue;
+          let open = false;
+          for (let dy = -1; dy <= 1 && !open; dy++) {
+            for (let dx = -1; dx <= 1; dx++) {
+              const nx = x + dx, ny = y + dy;
+              if (nx < 0 || ny < 0 || nx >= pw || ny >= ph || !out[(ny * pw + nx) * 4 + 3]) { open = true; break; }
+            }
+          }
+          if (open) edge.push(i);
+        }
+      }
+      for (const i of edge) {
+        out[i] *= rim; out[i + 1] *= rim; out[i + 2] *= rim;
+      }
+    }
+    // then grow the line outward from whatever is now opaque
+    for (let pass = 0; pass < OW; pass++) {
+      const add = [];
+      for (let y = 0; y < ph; y++) {
+        for (let x = 0; x < pw; x++) {
+          const i = (y * pw + x) * 4;
+          if (out[i + 3]) continue;
+          let touch = false;
+          for (let dy = -1; dy <= 1 && !touch; dy++) {
+            for (let dx = -1; dx <= 1; dx++) {
+              if (Math.abs(dx) + Math.abs(dy) === 2 && pass === 0) continue;  // rounder corners
+              const nx = x + dx, ny = y + dy;
+              if (nx < 0 || ny < 0 || nx >= pw || ny >= ph) continue;
+              if (out[(ny * pw + nx) * 4 + 3]) { touch = true; break; }
+            }
+          }
+          if (touch) add.push(i);
+        }
+      }
+      for (const i of add) {
+        out[i] = 18; out[i + 1] = 12; out[i + 2] = 8; out[i + 3] = 255;
+      }
+    }
+    ax += OW; ay += OW;
+    return { name: c.name, i: c.i, w: pw, h: ph, ax, ay, rgba: out };
   });
 
   // -- shelf pack -----------------------------------------------------------
   const order = shrunk.slice().sort((a, b) => b.h - a.h);
-  const AW = 256;
+  const AW = 512;
   let cx = 1, cy = 1, rowH = 0;
   for (const s of order) {
     if (cx + s.w + 1 > AW) { cx = 1; cy += rowH + 1; rowH = 0; }

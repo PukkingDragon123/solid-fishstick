@@ -23,6 +23,7 @@ export class Economy {
     this.water = 60;
     this.nutrients = 0;
     this.berries = 0;
+    this.parasites = 0;
     this.skills = new Set();
     this.evolutions = new Set();
     this.genes = new Set();
@@ -189,6 +190,7 @@ export class Economy {
   toJSON() {
     return {
       water: this.water, nutrients: this.nutrients, berries: this.berries,
+      parasites: this.parasites,
       skills: [...this.skills], evolutions: [...this.evolutions],
     };
   }
@@ -198,6 +200,7 @@ export class Economy {
     this.water = d.water ?? 60;
     this.nutrients = d.nutrients ?? 0;
     this.berries = d.berries ?? 0;
+    this.parasites = d.parasites ?? 0;
     this.skills = new Set(d.skills || []);
     this.evolutions = new Set(d.evolutions || []);
     this.markDirty();

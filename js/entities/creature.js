@@ -46,6 +46,8 @@ export class Creature {
     this.shellU = 0.5;
     this.observed = 0;
     this.commanded = null;
+    this.puppet = false;        // something of yours is riding its nerves
+    this.driveX = 0;            // and this is you, steering it
 
     this.bob = 0;
     this.gait = Math.random() * TAU;
@@ -81,7 +83,8 @@ export class Creature {
   }
 
   get flies() { return !!this.def.flies; }
-  get hostile() { return !!this.def.hostile; }
+  // a parasite of yours in its nerves stops it being anybody's enemy
+  get hostile() { return !!this.def.hostile && !this.puppet; }
   get alive() { return this.hp > 0; }
   get name() { return this.def.name; }
 
@@ -167,6 +170,12 @@ export class Creature {
   }
 
   _think(dt, crab) {
+    // being driven overrides everything: the animal has no say in it
+    if (this.puppet && Math.abs(this.driveX) > 0.05) {
+      this.mood = MOOD.FOLLOW;
+      this.moveTo = this.x + this.driveX * 120;
+      return;
+    }
     if (this.commanded) {
       this.moveTo = this.commanded.x;
       this.mood = MOOD.FOLLOW;

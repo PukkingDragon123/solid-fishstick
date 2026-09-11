@@ -171,9 +171,13 @@ export class Garden {
     }
     const mul = this.game.economy ? this.game.economy.stat('yield') : 1;
     const amount = Math.round(pl.def.pay * mul * (0.55 + pl.health * 0.45));
+    const parasite = pl.def.parasite || 0;
     pl.ripe = 0;
     pl.picked = (pl.picked || 0) + 1;
-    return { ok: true, amount, msg: `+${amount} nutrients` };
+    return {
+      ok: true, amount, parasite,
+      msg: parasite ? `+${parasite} parasite` : `+${amount} nutrients`,
+    };
   }
 
   uproot(plotIndex) {

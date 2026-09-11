@@ -16,23 +16,23 @@
 import { clamp, clamp01, lerp, damp, TAU, easeOutCubic, easeInOutCubic } from '../lib/math.js';
 import { drawText, textWidth, wrapText, LINE_H } from '../lib/font.js';
 import { SKILLS, SKILL_BY_ID, BRANCHES, EVOLUTIONS, GENES, GENE_BY_ID } from '../data/progress.js';
-import { organArt, cavityArt } from '../art/anatomy.js';
+import { organArt, orbArt } from '../art/anatomy.js';
 
 // where each organ hangs in the body cavity, in body-space units
 const ORGANS = {
-  water:  { organ: 'spring',   x: -252, y: -156, name: 'The Spring', colour: '#5fc6d8' },
-  garden: { organ: 'gut',      x: -258, y:  158, name: 'The Gut',    colour: '#8cc468' },
-  fleet:  { organ: 'ganglion', x:  258, y:  150, name: 'The Knot',   colour: '#e2b74a' },
-  body:   { organ: 'heart',    x:  248, y: -164, name: 'The Heart',  colour: '#c8925f' },
+  water:  { organ: 'spring',   x: -246, y: -118, name: 'The Spring', colour: '#5fc6d8' },
+  garden: { organ: 'gut',      x: -238, y:  148, name: 'The Gut',    colour: '#8cc468' },
+  fleet:  { organ: 'ganglion', x:  238, y:  146, name: 'The Knot',   colour: '#e2b74a' },
+  body:   { organ: 'heart',    x:  246, y: -122, name: 'The Heart',  colour: '#c8925f' },
 };
 
-// the cavity itself, in body-space units
-const VAULT_Y = 60;          // where the shell's arch springs from
-const FLOOR_Y = 250;         // and where the floor of you is
-const GILL_X = 372;
+// The animal, seen from above and through, in body-space units. Everything
+// inside is arranged to fit under this carapace.
+const CARA = { cx: 0, cy: -30, rx: 430, ry: 300 };
+const GILL_X = 344;
 
 const TRUNK_BASE = -96;      // first evolution, above the seed
-const TRUNK_STEP = 62;       // the last one all but touches the shell
+const TRUNK_STEP = 36;       // the last one all but touches the shell
 
 /** Lay the whole animal out once. Positions never move; visibility does. */
 function layout() {
@@ -82,10 +82,10 @@ function layout() {
   GENES.forEach((g, i) => {
     const t = (i + 0.5) / GENES.length;
     const a = Math.PI * (0.10 + t * 0.80);
-    const d = 58 + (i % 4) * 26;
+    const d = 62 + (i % 4) * 22;
     nodes.push({
       id: 'gene:' + g.id, kind: 'gene', data: g,
-      x: -Math.cos(a) * d * 1.3, y: Math.sin(a) * d * 0.72 + 74,
+      x: -Math.cos(a) * d * 1.15, y: Math.sin(a) * d * 0.50 + 60,
       r: 5, color: '#7fe0c8',
     });
     links.push({ from: '__root', to: 'gene:' + g.id, w: 6.5, root: true });
@@ -188,7 +188,7 @@ export class TreeScreen {
   // -------------------------------------------------------------------------
 
   _frame(vw, vh, snap = false) {
-    let x0 = -300, x1 = 300, y0 = -250, y1 = 250;
+    let x0 = -560, x1 = 560, y0 = -380, y1 = 340;
     for (const n of this.L.nodes) {
       if (n.kind === 'gene' && (this.grow[n.id] ?? 0) < 0.5) continue;
       const a = Math.max(this.grow[n.id] ?? 0, (this.seen[n.id] ?? 0) * 0.9);
@@ -205,7 +205,7 @@ export class TreeScreen {
       y0 = Math.min(y0, o.y - 88); y1 = Math.max(y1, o.y + 88);
     }
     const w = Math.max(150, x1 - x0), h = Math.max(150, y1 - y0);
-    const z = clamp(Math.min((vw - 46) / w, (vh - 80) / h), 0.24, 0.98);
+    const z = clamp(Math.min((vw - 30) / w, (vh - 96) / h), 0.20, 0.98);
     this.target.x = (x0 + x1) / 2;
     this.target.y = (y0 + y1) / 2;
     this.target.z = z;
@@ -315,7 +315,8 @@ export class TreeScreen {
     ctx.save();
     ctx.globalAlpha = fade;
 
-    this._drawCavity(ctx, vw, vh, fade);
+    this._drawGalaxy(ctx, vw, vh, fade);
+    this._drawAnimal(ctx, vw, vh, fade);
     this._drawOrgans(ctx, vw, vh, fade, false);
     this._drawBranches(ctx, vw, vh, fade);
     this._drawOrgans(ctx, vw, vh, fade, true);
@@ -333,6 +334,7 @@ export class TreeScreen {
     ctx.fillStyle = vg;
     ctx.fillRect(0, 0, vw, vh);
 
+    this._drawSequence(ctx, vw, vh, fade);
     this._drawChrome(ctx, vw, vh, fade, hover);
 
     ctx.restore();
@@ -375,61 +377,287 @@ export class TreeScreen {
     ctx.globalAlpha = 1;
   }
 
-  /** The shell overhead, the muscle wall behind, the haemolymph between. */
-  _drawCavity(ctx, vw, vh, fade) {
-    const g = ctx.createRadialGradient(vw / 2, vh * 0.48, 8, vw / 2, vh * 0.48, Math.max(vw, vh) * 0.8);
-    const f = this.flash;
-    g.addColorStop(0, `rgb(${30 + f * 40},${22 + f * 34},${28 + f * 26})`);
-    g.addColorStop(0.48, '#180e12');
-    g.addColorStop(1, '#080508');
-    ctx.fillStyle = g;
+  /**
+   * Outside you there is nothing but the sky you have never seen, because you
+   * have been under a shell for a thousand years. It is drawn as one: a slow
+   * galaxy, parallaxed against the camera so the animal sits in front of it.
+   */
+  _drawGalaxy(ctx, vw, vh, fade) {
+    const px = -this.cam.x * 0.05, py = -this.cam.y * 0.05;
+    ctx.fillStyle = '#05060c';
     ctx.fillRect(0, 0, vw, vh);
 
-    // the cavity is baked in body units, so it pans and zooms with everything
-    const art = cavityArt(this.cam.z);
-    const k = this.cam.z / art.S;
+    // the arm of the galaxy: soft coloured clouds lying across the sky
+    const clouds = [
+      { x: 0.22, y: 0.30, r: 0.62, c: '90,60,150' },
+      { x: 0.74, y: 0.24, r: 0.52, c: '40,90,160' },
+      { x: 0.52, y: 0.72, r: 0.70, c: '150,60,110' },
+      { x: 0.12, y: 0.80, r: 0.44, c: '40,120,140' },
+      { x: 0.88, y: 0.66, r: 0.48, c: '110,70,170' },
+    ];
+    for (const c of clouds) {
+      const cx = c.x * vw + px * 0.6, cy = c.y * vh + py * 0.6;
+      const r = c.r * Math.max(vw, vh) * (0.55 + Math.sin(this.t * 0.16 + c.x * 9) * 0.03);
+      const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
+      g.addColorStop(0, `rgba(${c.c},0.26)`);
+      g.addColorStop(0.45, `rgba(${c.c},0.11)`);
+      g.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(cx, cy, r, 0, TAU); ctx.fill();
+    }
+    // the band of the arm itself, dense with unresolved stars
     ctx.save();
-    const o = this._toScreen({ x: 0, y: 0 }, vw, vh);
-    ctx.translate(o.x, o.y);
-    ctx.scale(k, k);
-    ctx.globalAlpha = fade * 0.85;
-    ctx.drawImage(art.wall.cv, -art.wall.ox, -art.wall.oy - 60 * art.S);
-    ctx.globalAlpha = fade * 0.95;
-    ctx.drawImage(art.vault.cv, -art.vault.ox, -art.vault.oy + VAULT_Y * art.S);
+    ctx.translate(vw / 2 + px, vh * 0.46 + py);
+    ctx.rotate(-0.30);
+    const bg = ctx.createLinearGradient(0, -vh * 0.30, 0, vh * 0.30);
+    bg.addColorStop(0, 'rgba(90,110,190,0)');
+    bg.addColorStop(0.5, 'rgba(150,160,220,0.11)');
+    bg.addColorStop(1, 'rgba(90,110,190,0)');
+    ctx.fillStyle = bg;
+    ctx.fillRect(-vw, -vh * 0.30, vw * 2, vh * 0.60);
     ctx.restore();
-    ctx.globalAlpha = fade;
 
-    // haemolymph: cells drifting through you, and the pulse the heart sends
+    // stars, in three parallax layers so the sky has depth
+    for (let layer = 0; layer < 3; layer++) {
+      const n = 90 - layer * 22;
+      const par = 0.03 + layer * 0.05;
+      for (let i = 0; i < n; i++) {
+        const h1 = Math.sin(i * 12.9898 + layer * 3.7) * 43758.5453;
+        const h2 = Math.sin(i * 78.233 + layer * 1.3) * 43758.5453;
+        const sx = (((h1 - Math.floor(h1)) * vw - this.cam.x * par) % vw + vw) % vw;
+        const sy = (((h2 - Math.floor(h2)) * vh - this.cam.y * par) % vh + vh) % vh;
+        const tw = 0.45 + 0.55 * Math.sin(this.t * (0.6 + layer * 0.5) + i);
+        ctx.globalAlpha = fade * (0.20 + layer * 0.22) * tw;
+        ctx.fillStyle = i % 7 === 0 ? '#ffd9a8' : i % 5 === 0 ? '#a8c8ff' : '#ffffff';
+        ctx.fillRect(Math.round(sx), Math.round(sy), 1, 1);
+        if (layer === 2 && i % 11 === 0) {
+          ctx.globalAlpha = fade * 0.18 * tw;
+          ctx.fillRect(Math.round(sx) - 1, Math.round(sy), 3, 1);
+          ctx.fillRect(Math.round(sx), Math.round(sy) - 1, 1, 3);
+        }
+      }
+    }
+    ctx.globalAlpha = fade;
+  }
+
+  /** Body space to screen, for the outline paths. */
+  _S(x, y, vw, vh) {
+    return {
+      x: vw / 2 + (x - this.cam.x) * this.cam.z,
+      y: vh / 2 + (y - this.cam.y) * this.cam.z,
+    };
+  }
+
+  /**
+   * You, from above and through: the carapace, eight legs, two claws, the
+   * eyestalks. Drawn as a lit outline over a dark body, which is the honest
+   * way to show an animal you are standing inside.
+   */
+  _drawAnimal(ctx, vw, vh, fade) {
+    const z = this.cam.z;
+    const P = (x, y) => this._S(x, y, vw, vh);
+    const lw = Math.max(1, 1.6 * z);
     const beat = Math.pow(1 - Math.abs(this.beat * 2 - 1), 3);
+
+    // a limb is a smooth chain, not a polyline: a crab's leg bends, it does
+    // not kink, and at this size a corner reads as a mistake
+    const limb = (pts, w) => {
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      const trace = () => {
+        ctx.beginPath();
+        const s0 = P(pts[0][0], pts[0][1]);
+        ctx.moveTo(s0.x, s0.y);
+        for (let i = 1; i < pts.length - 1; i++) {
+          const a2 = P(pts[i][0], pts[i][1]);
+          const b2 = P(pts[i + 1][0], pts[i + 1][1]);
+          ctx.quadraticCurveTo(a2.x, a2.y, (a2.x + b2.x) / 2, (a2.y + b2.y) / 2);
+        }
+        const last = P(pts[pts.length - 1][0], pts[pts.length - 1][1]);
+        ctx.lineTo(last.x, last.y);
+      };
+      trace();
+      ctx.strokeStyle = 'rgba(6,9,14,0.95)';
+      ctx.lineWidth = w * z + lw * 2.4;
+      ctx.stroke();
+      trace();
+      ctx.strokeStyle = 'rgba(104,150,172,0.85)';
+      ctx.lineWidth = w * z;
+      ctx.stroke();
+      trace();
+      ctx.strokeStyle = 'rgba(198,238,246,0.50)';
+      ctx.lineWidth = Math.max(1, w * z * 0.34);
+      ctx.stroke();
+    };
+
+    for (const side of [-1, 1]) {
+      // four legs a side, each leaving the rim, lifting to a knee and coming
+      // back down outside it - which is the shape of a crab from above
+      for (let i = 0; i < 4; i++) {
+        const t = i / 3;
+        const th = (-0.62 + t * 1.30) * side;             // where it leaves the rim
+        const hx = Math.sin(th) * CARA.rx * 0.96;
+        const hy = CARA.cy + Math.cos(th) * CARA.ry * -0.30 + 30;
+        const out = side * (150 + t * 40);
+        const wob = Math.sin(this.t * 0.9 + i * 1.3 + (side > 0 ? 0 : 2)) * 8;
+        limb([
+          [hx, hy],
+          [hx + out * 0.75, hy - 34 - t * 26 + wob],       // knee, up and out
+          [hx + out * 1.75, hy + 40 + wob * 0.6],
+          [hx + out * 2.15, hy + 210 + t * 60 + wob],      // the foot
+        ], 24 - i * 2.4);
+      }
+      // the claw: an arm out in front, then a pincer that actually opens
+      const ax = side * CARA.rx * 0.52, ay = CARA.cy + CARA.ry * 0.62;
+      const open = 0.16 + Math.sin(this.t * 0.8 + side) * 0.10;
+      const wx = ax + side * 210, wy = ay + 210;
+      limb([[ax, ay], [ax + side * 120, ay + 40], [wx, wy]], 32);
+      const wrist = P(wx, wy);
+      for (const [ang, len, w] of [[0.30 + open, 165, 22], [1.05 - open, 130, 16]]) {
+        const tipx = wx + side * Math.sin(ang) * len, tipy = wy + Math.cos(ang) * len;
+        const bendx = wx + side * Math.sin(ang * 0.5) * len * 0.6, bendy = wy + Math.cos(ang * 0.5) * len * 0.55;
+        const bend = P(bendx, bendy), tip = P(tipx, tipy);
+        ctx.beginPath();
+        ctx.moveTo(wrist.x, wrist.y);
+        ctx.quadraticCurveTo(bend.x, bend.y, tip.x, tip.y);
+        ctx.strokeStyle = 'rgba(6,9,14,0.95)';
+        ctx.lineWidth = w * z + lw * 2;
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(wrist.x, wrist.y);
+        ctx.quadraticCurveTo(bend.x, bend.y, tip.x, tip.y);
+        ctx.strokeStyle = 'rgba(126,178,200,0.9)';
+        ctx.lineWidth = w * z;
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(wrist.x, wrist.y);
+        ctx.quadraticCurveTo(bend.x, bend.y, tip.x, tip.y);
+        ctx.strokeStyle = 'rgba(206,240,248,0.45)';
+        ctx.lineWidth = Math.max(1, w * z * 0.30);
+        ctx.stroke();
+      }
+    }
+
+    // -- the carapace --------------------------------------------------------
+    const c = P(CARA.cx, CARA.cy);
+    ctx.save();
+    ctx.beginPath();
+    ctx.ellipse(c.x, c.y, CARA.rx * z, CARA.ry * z, 0, 0, TAU);
+    const bg2 = ctx.createRadialGradient(c.x, c.y, 0, c.x, c.y, CARA.rx * z);
+    bg2.addColorStop(0, `rgba(${28 + beat * 22},${20 + beat * 10},${30 + beat * 16},0.90)`);
+    bg2.addColorStop(0.7, 'rgba(16,12,18,0.93)');
+    bg2.addColorStop(1, 'rgba(8,8,14,0.96)');
+    ctx.fillStyle = bg2;
+    ctx.fill();
+    ctx.restore();
+
+    const ring = (rx, ry, dark, light, w) => {
+      ctx.beginPath();
+      ctx.ellipse(c.x, c.y, rx * z, ry * z, 0, 0, TAU);
+      if (dark !== 'none') { ctx.strokeStyle = dark; ctx.lineWidth = w + lw * 2; ctx.stroke(); }
+      ctx.strokeStyle = light; ctx.lineWidth = w; ctx.stroke();
+    };
+    ring(CARA.rx, CARA.ry, 'rgba(8,10,16,0.95)', 'rgba(150,208,220,0.70)', Math.max(1, 2.2 * z));
+    ring(CARA.rx * 0.90, CARA.ry * 0.88, 'none', 'rgba(120,178,196,0.22)', Math.max(1, 1.2 * z));
+
+    // the basin on your back, seen through the shell
+    const bx = P(0, CARA.cy - 90);
+    ctx.beginPath();
+    ctx.ellipse(bx.x, bx.y, 150 * z, 96 * z, 0, 0, TAU);
+    ctx.strokeStyle = 'rgba(120,178,196,0.26)';
+    ctx.lineWidth = Math.max(1, 1.2 * z);
+    ctx.stroke();
+
+    // segment lines running across the carapace, the way a shell is built
+    for (let i = -2; i <= 2; i++) {
+      const yy = CARA.cy + i * CARA.ry * 0.32;
+      const half = CARA.rx * Math.sqrt(Math.max(0, 1 - Math.pow((yy - CARA.cy) / CARA.ry, 2)));
+      const p0 = P(-half * 0.94, yy), p1 = P(half * 0.94, yy);
+      ctx.beginPath();
+      ctx.moveTo(p0.x, p0.y); ctx.lineTo(p1.x, p1.y);
+      ctx.strokeStyle = 'rgba(110,164,182,0.13)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
+
+    // the eyestalks, at the front, which is the bottom of this view
+    for (const side of [-1, 1]) {
+      const e0 = P(side * 74, CARA.cy + CARA.ry * 0.80);
+      const e1 = P(side * 104, CARA.cy + CARA.ry * 1.22);
+      ctx.beginPath();
+      ctx.moveTo(e0.x, e0.y); ctx.lineTo(e1.x, e1.y);
+      ctx.strokeStyle = 'rgba(150,208,220,0.6)';
+      ctx.lineWidth = Math.max(1.5, 6 * z);
+      ctx.stroke();
+      ctx.fillStyle = '#0d0b10';
+      ctx.beginPath(); ctx.arc(e1.x, e1.y, Math.max(2.4, 13 * z), 0, TAU); ctx.fill();
+      ctx.strokeStyle = 'rgba(150,208,220,0.5)';
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.arc(e1.x, e1.y, Math.max(2.4, 13 * z), 0, TAU); ctx.stroke();
+      ctx.fillStyle = 'rgba(215,245,255,0.9)';
+      ctx.beginPath(); ctx.arc(e1.x - 4 * z, e1.y - 4 * z, Math.max(1, 4 * z), 0, TAU); ctx.fill();
+    }
+
+    // haemolymph drifting through the body cavity
     for (const m of this.motes) {
-      const y = (m.y - this.t * 0.010 * m.s + 2) % 1;
-      const x = (m.x + Math.sin(this.t * 0.26 * m.s + m.p) * 0.014 + 1) % 1;
-      const px = Math.round(x * vw), py = Math.round(y * vh);
+      const yy = (m.y - this.t * 0.010 * m.s + 2) % 1;
+      const xx = (m.x + Math.sin(this.t * 0.26 * m.s + m.p) * 0.014 + 1) % 1;
+      const bxp = lerp(-CARA.rx, CARA.rx, xx), byp = CARA.cy + lerp(-CARA.ry, CARA.ry, yy);
+      if ((bxp / CARA.rx) ** 2 + ((byp - CARA.cy) / CARA.ry) ** 2 > 0.92) continue;
+      const sp = P(bxp, byp);
       const tw = 0.4 + 0.6 * (0.5 + 0.5 * Math.sin(this.t * 2.1 + m.p)) + beat * 0.4;
-      ctx.globalAlpha = fade * 0.38 * tw * m.s;
+      ctx.globalAlpha = fade * 0.40 * tw * m.s;
       ctx.fillStyle = m.r ? '#cd7a6c' : '#9fe8d4';
-      ctx.fillRect(px, py, 1, 1);
+      ctx.fillRect(Math.round(sp.x), Math.round(sp.y), 1, 1);
     }
     ctx.globalAlpha = fade;
   }
 
   /**
-   * The organs. `front` splits them either side of the branches, so a bough
-   * runs behind the gill stacks but in front of the wall.
+   * The genome, read out along the bottom of the screen: one codon per gene,
+   * lit where you are expressing it.
+   */
+  _drawSequence(ctx, vw, vh, fade) {
+    const e = this.game.economy;
+    const n = GENES.length;
+    const w = Math.min(vw - 40, n * 9);
+    const x0 = (vw - w) / 2, y0 = vh - 26;
+    const cw = w / n;
+    for (let i = 0; i < n; i++) {
+      const g = GENES[i];
+      const on = e.genes.has(g.id);
+      const x = x0 + i * cw;
+      const pulse = on ? 0.6 + 0.4 * Math.sin(this.t * 2.4 - i * 0.4) : 0;
+      ctx.globalAlpha = fade * (on ? 0.55 + pulse * 0.45 : 0.22);
+      ctx.fillStyle = on ? '#7fe0c8' : '#3c4a48';
+      ctx.fillRect(Math.round(x), Math.round(y0), Math.max(1, Math.round(cw - 2)), 5);
+      ctx.fillStyle = on ? '#c9fff0' : '#2b3634';
+      ctx.fillRect(Math.round(x), Math.round(y0), Math.max(1, Math.round(cw - 2)), 1);
+    }
+    ctx.globalAlpha = fade * 0.55;
+    drawText(ctx, `GENOME  ${e.genes.size}/${n} EXPRESSED`, vw / 2, y0 - 10,
+      { color: '#7fe0c8', align: 'center' });
+    ctx.globalAlpha = fade;
+  }
+
+  /**
+   * The organs. `front` splits them either side of the connections, so a nerve
+   * runs behind the gill stacks but in front of the body wall.
    */
   _drawOrgans(ctx, vw, vh, fade, front) {
     const z = this.cam.z;
     const beat = Math.pow(1 - Math.abs(this.beat * 2 - 1), 3);
 
     if (!front) {
-      // the gills hang either side, always there, always working
+      // the gills sit against the inside of the shell, either side, always
+      // there and always working
       const lv = clamp01(this.organLevel('water') * 0.5 + this.organLevel('body') * 0.5);
       for (const side of [-1, 1]) {
-        const p = this._toScreen({ x: side * GILL_X, y: -20 }, vw, vh);
-        if (p.x < -140 || p.x > vw + 140) continue;
+        const p = this._toScreen({ x: side * GILL_X, y: CARA.cy + 10 }, vw, vh);
+        if (p.x < -160 || p.x > vw + 160) continue;
         const art = organArt(side < 0 ? 'gillL' : 'gillR', z, lv);
         const br = 0.5 + 0.5 * Math.sin(this.t * 0.9 + side);
-        ctx.globalAlpha = fade * (0.42 + lv * 0.34);
+        ctx.globalAlpha = fade * (0.40 + lv * 0.36);
         ctx.save();
         ctx.translate(p.x, p.y);
         ctx.scale(1, 1 + br * 0.035);
@@ -444,7 +672,7 @@ export class TreeScreen {
       const o = ORGANS[br.id];
       const lv = this.organLevel(br.id);
       const p = this._toScreen(o, vw, vh);
-      if (p.x < -160 || p.x > vw + 160 || p.y < -160 || p.y > vh + 160) continue;
+      if (p.x < -180 || p.x > vw + 180 || p.y < -180 || p.y > vh + 180) continue;
       const art = organArt(o.organ, z, lv);
 
       // each organ moves the way that organ moves
@@ -465,7 +693,6 @@ export class TreeScreen {
         sx = sy = 1 + fire * 0.03;
       }
 
-      // an organ you have not started on is barely there
       const vis = 0.34 + lv * 0.66;
       if (glow > 0.01) {
         ctx.globalAlpha = fade * glow * 0.5;
@@ -482,7 +709,7 @@ export class TreeScreen {
       ctx.drawImage(art.cv, -art.ox, -art.oy);
       ctx.restore();
 
-      if (z > 0.5) {
+      if (z > 0.45) {
         drawText(ctx, o.name.toUpperCase(), p.x, p.y + art.cv.height * 0.5 + 4, {
           color: o.colour, align: 'center', alpha: fade * (0.35 + lv * 0.45),
         });
@@ -502,11 +729,13 @@ export class TreeScreen {
   }
 
   /**
-   * The tree itself, which inside a body is nerve and vessel rather than wood:
-   * a grown branch is a live cord with something running through it, and an
-   * ungrown one is the stub it has not pushed past yet.
+   * The connections. Inside a body these are nerve and vessel rather than
+   * wood, and what matters is that you can see at a glance what leads to what,
+   * so each one is a clean bright line with a dark line under it - and a bead
+   * of something running along it, in the colour of the organ it feeds.
    */
   _drawBranches(ctx, vw, vh, fade) {
+    const z = this.cam.z;
     for (const ln of this.L.links) {
       const child = this.L.by[ln.to];
       const seen = this.seen[child.id] ?? 0;
@@ -516,56 +745,54 @@ export class TreeScreen {
       if (!path) continue;
       const { pa, pb, mx, my } = path;
 
-      const reach = Math.max((ln.root ? 0.85 : 0.55) * seen, g);
-      const w0 = ln.w * this.cam.z * lerp(0.40, 1, g);
-      const w1 = w0 * (ln.root ? 0.28 : 0.44);
-      const steps = 16;
-      const left = [], right = [], mid = [];
+      const reach = Math.max((ln.root ? 0.9 : 0.62) * seen, g);
+      const steps = 18;
+      const pts = [];
       for (let i = 0; i <= steps; i++) {
-        const t = (i / steps) * reach;
-        const p1 = curveAt(pa, pb, mx, my, t);
-        const p2 = curveAt(pa, pb, mx, my, Math.min(1, t + 0.02));
-        let nx = -(p2.y - p1.y), ny = p2.x - p1.x;
-        const l = Math.hypot(nx, ny) || 1;
-        nx /= l; ny /= l;
-        const w = lerp(w0, w1, t / Math.max(0.001, reach)) * 0.5;
-        left.push({ x: p1.x + nx * w, y: p1.y + ny * w });
-        right.push({ x: p1.x - nx * w, y: p1.y - ny * w });
-        mid.push(p1);
+        pts.push(curveAt(pa, pb, mx, my, (i / steps) * reach));
+      }
+      const trace = () => {
+        ctx.beginPath();
+        pts.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)));
+      };
+
+      const colour = ln.branch ? (BRANCHES.find((b) => b.id === ln.branch)?.color || '#8cc468')
+        : ln.root ? '#7fe0c8' : '#c9e08a';
+      const wide = Math.max(1.4, (ln.trunk ? 4.2 : ln.root ? 2.2 : 2.8) * z * lerp(0.55, 1, g));
+
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      // a dark line under everything, so a connection reads over any organ
+      ctx.globalAlpha = fade * lerp(0.5, 1, Math.max(g, seen * 0.7));
+      trace();
+      ctx.strokeStyle = 'rgba(6,8,12,0.9)';
+      ctx.lineWidth = wide + Math.max(1.6, 2.4 * z);
+      ctx.stroke();
+      // the line itself
+      trace();
+      ctx.strokeStyle = g > 0.4 ? colour : 'rgba(150,168,178,0.42)';
+      ctx.lineWidth = wide;
+      ctx.stroke();
+      // and a bright core down the middle of a grown one
+      if (g > 0.4) {
+        ctx.globalAlpha = fade * 0.55;
+        trace();
+        ctx.strokeStyle = 'rgba(255,255,255,0.75)';
+        ctx.lineWidth = Math.max(1, wide * 0.30);
+        ctx.stroke();
       }
 
-      const colour = ln.branch ? (BRANCHES.find((b) => b.id === ln.branch)?.color || '#8cc468') : null;
-      ctx.globalAlpha = fade * lerp(0.42, 1, Math.max(g, seen * 0.6)) * (ln.root && g < 0.5 ? 0.5 : 1);
-      ctx.beginPath();
-      ctx.moveTo(left[0].x, left[0].y);
-      for (const p of left) ctx.lineTo(p.x, p.y);
-      for (let i = right.length - 1; i >= 0; i--) ctx.lineTo(right[i].x, right[i].y);
-      ctx.closePath();
-      ctx.fillStyle = ln.root
-        ? (g > 0.5 ? '#3f7a68' : '#2c4a44')
-        : (g > 0.5 ? '#4a2f34' : '#33272a');
-      ctx.fill();
-
-      if (g > 0.05) {
-        // the lit face of the cord
-        ctx.beginPath();
-        ctx.moveTo(left[0].x, left[0].y);
-        for (const p of left) ctx.lineTo(p.x, p.y);
-        for (let i = left.length - 1; i >= 0; i--) {
-          ctx.lineTo(lerp(left[i].x, right[i].x, 0.38), lerp(left[i].y, right[i].y, 0.38));
-        }
-        ctx.closePath();
-        ctx.fillStyle = ln.root ? 'rgba(150,232,206,0.40)' : 'rgba(206,152,132,0.42)';
-        ctx.fill();
-
-        // and what is running through it, in the colour of the organ it feeds
-        const flow = (this.t * 0.5 + ln.w * 0.3) % 1;
-        ctx.globalAlpha = fade * (0.20 + 0.26 * Math.sin(flow * TAU) ** 2) * g;
-        ctx.strokeStyle = colour || (ln.root ? '#9fe8d4' : '#a8e878');
-        ctx.lineWidth = Math.max(1, w1 * 0.9);
-        ctx.beginPath();
-        mid.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)));
-        ctx.stroke();
+      // something running along it, always in the same direction: outward
+      if (g > 0.5) {
+        const flow = ((this.t * 0.42 + ln.w * 0.11) % 1) * reach;
+        const bead = curveAt(pa, pb, mx, my, flow);
+        ctx.globalAlpha = fade * (0.45 + 0.35 * Math.sin(this.t * 3 + ln.w));
+        const gg = ctx.createRadialGradient(bead.x, bead.y, 0, bead.x, bead.y, wide * 2.4);
+        gg.addColorStop(0, '#ffffff');
+        gg.addColorStop(0.4, colour);
+        gg.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = gg;
+        ctx.beginPath(); ctx.arc(bead.x, bead.y, wide * 2.4, 0, TAU); ctx.fill();
       }
       ctx.globalAlpha = fade;
     }
@@ -600,40 +827,25 @@ export class TreeScreen {
       if (n.kind === 'root') {
         // the seed itself, which is a painted thing rather than a dot
         const art = organArt('seed', this.cam.z, clamp01(this.game.economy.genes.size / 8));
-        const b = 1 + Math.sin(this.t * 1.6) * 0.04;
+        const b2 = 1 + Math.sin(this.t * 1.6) * 0.04;
         ctx.save();
         ctx.translate(p.x, p.y);
-        ctx.scale(b, b);
+        ctx.scale(b2, b2);
         ctx.drawImage(art.cv, -art.ox, -art.oy);
         ctx.restore();
-      } else if (on) {
-        ctx.fillStyle = n.color;
-        ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, TAU); ctx.fill();
-        ctx.strokeStyle = 'rgba(255,255,255,0.6)';
-        ctx.lineWidth = Math.max(1, 1.4 * this.cam.z);
-        ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, TAU); ctx.stroke();
-        ctx.fillStyle = 'rgba(255,255,255,0.85)';
-        ctx.beginPath();
-        ctx.arc(p.x - r * 0.30, p.y - r * 0.32, Math.max(1, r * 0.24), 0, TAU);
-        ctx.fill();
       } else {
-        // an ungrown node is a bud on the cord, still shut
-        const rot = -0.5 + Math.sin(this.t * 0.9 + n.x * 0.03) * 0.10;
+        // a real bead: lit from inside when you own it, shut when you do not
+        const art = orbArt(n.color, r * (on ? 1 : 0.88), on);
         ctx.save();
         ctx.translate(p.x, p.y);
-        ctx.rotate(rot);
-        ctx.fillStyle = ready ? '#4a3540' : '#2a2029';
-        ctx.beginPath();
-        ctx.ellipse(0, 0, r * 0.78, r * 1.10, 0, 0, TAU);
-        ctx.fill();
-        ctx.strokeStyle = hot ? '#f4e6e0' : ready ? 'rgba(230,200,190,0.75)' : 'rgba(170,150,150,0.35)';
-        ctx.lineWidth = Math.max(1, 1.2 * this.cam.z);
-        ctx.stroke();
-        ctx.strokeStyle = ready ? `rgba(255,225,215,${0.35 + pulse * 0.5})` : 'rgba(190,170,170,0.22)';
-        ctx.beginPath();
-        ctx.moveTo(0, -r * 0.95); ctx.lineTo(0, r * 0.85);
-        ctx.stroke();
+        if (!on && ready) ctx.rotate(Math.sin(this.t * 0.9 + n.x * 0.03) * 0.10);
+        ctx.drawImage(art.cv, -art.ox, -art.oy);
         ctx.restore();
+        if (hot) {
+          ctx.strokeStyle = 'rgba(246,240,220,0.9)';
+          ctx.lineWidth = 1;
+          ctx.beginPath(); ctx.arc(p.x, p.y, art.r + 2.5, 0, TAU); ctx.stroke();
+        }
       }
 
       if (n.kind === 'evo' && this.cam.z > 0.58) {

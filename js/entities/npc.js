@@ -9,14 +9,18 @@ import { clamp, clamp01, lerp, damp, TAU } from '../lib/math.js';
 import { drawFrame, frameCount, PEOPLE } from '../art/people.js';
 
 export const POSE = {
-  IDLE: 'idle', WALK: 'walk', CROUCH: 'crouch', DIG: 'dig',
+  IDLE: 'idle', IDLE_FRONT: 'idleFront', IDLE_BACK: 'idleBack',
+  WALK: 'walk', CROUCH: 'crouch', DIG: 'dig',
   WRITE: 'write', POINT: 'point', DRINK: 'drink', WAVE: 'wave',
   SIT: 'sit', TALK: 'talk', WANDER: 'wander', TIRED: 'tired',
+  SURVEY: 'survey', MEASURE: 'measure', REST: 'rest',
 };
 
 // pose -> [atlas animation, frames per second, loop]
 const ANIM = {
   idle: ['idleSide', 3.5, true],
+  idleFront: ['idleFront', 3, true],
+  idleBack: ['idleBack', 2.6, true],
   walk: ['walkRight', 10, true],
   crouch: ['interact', 3, false],
   dig: ['interact', 6, true],
@@ -28,6 +32,9 @@ const ANIM = {
   talk: ['talk', 5.5, true],
   wander: ['wander', 3, true],
   tired: ['tired', 2, true],
+  survey: ['idleBack', 2.2, true],
+  measure: ['command', 3.4, true],
+  rest: ['tired', 1.8, true],
 };
 
 export class Person {
@@ -50,11 +57,13 @@ export class Person {
     this.speed = opts.speed ?? 44;
     this.name = opts.name || 'Someone';
     this.keepAway = opts.keepAway !== false;
-    // The atlas is drawn at twice the world size the character occupies, so
-    // she is the same height in the basin as before but made of twice as many
-    // pixels - which is the difference between reading as a person and reading
-    // as a smear.
-    this.scale = opts.scale ?? 0.5;
+    // The atlas is rendered far larger than the space she occupies in the
+    // basin and drawn back down, so she is the same height as everything else
+    // but made of nearly three times as many pixels - which is the difference
+    // between reading as a person and reading as a smear. The dark line the
+    // extractor puts round her comes down with it, so she has the same hard
+    // silhouette as everything the painter makes.
+    this.scale = opts.scale ?? 0.37;
   }
 
   say(text, secs = 4.5) { this.speech = text; this.speechT = secs; }
@@ -214,21 +223,25 @@ export class Archaeologist extends Person {
     this._chatter(dt);
 
     if (this.mode === 'follow') return;
-    // she does not stand still: she wanders, crouches at things, writes
-    if (this.pose === POSE.IDLE || this.pose === POSE.WANDER) {
-      this.idleT -= dt;
-      if (this.idleT <= 0) {
-        this.idleT = 3 + Math.random() * 6;
-        const roll = Math.random();
-        this.setPose(roll < 0.34 ? POSE.WANDER : roll < 0.6 ? POSE.SIT
-          : roll < 0.8 ? POSE.DIG : POSE.IDLE);
-        if (this.pose === POSE.DIG) {
-          this.game.fx?.dust(this.x + this.facing * 6, this.y, 1.2);
-        }
-      }
-    } else if (this.pose !== POSE.WALK && this.poseT > 4.5) {
-      this.setPose(POSE.IDLE);
-      this.idleT = 2 + Math.random() * 4;
+    // She never just stands there. A rota of things an archaeologist alone in
+    // a basin actually does, each one running for as long as it is worth.
+    this.idleT -= dt;
+    if (this.idleT <= 0 && this.pose !== POSE.WALK) {
+      const work = [
+        [POSE.DIG, 5.5], [POSE.WRITE, 6.5], [POSE.SURVEY, 4.5],
+        [POSE.MEASURE, 4.0], [POSE.SIT, 6.0], [POSE.WANDER, 5.0],
+        [POSE.CROUCH, 3.5], [POSE.IDLE, 3.0], [POSE.REST, 5.5],
+        [POSE.IDLE_FRONT, 3.0],
+      ];
+      const [pose, hold] = work[Math.floor(Math.random() * work.length)];
+      this.setPose(pose);
+      this.idleT = hold * (0.7 + Math.random() * 0.7);
+      if (pose === POSE.WANDER) this.moveTo = this.x + (Math.random() - 0.5) * 90;
+      if (pose === POSE.DIG) this.game.fx?.dust(this.x + this.facing * 6, this.y, 1.2);
+      if (pose === POSE.SURVEY) this.facing = Math.random() < 0.5 ? -1 : 1;
+    }
+    if (this.pose === POSE.DIG && Math.random() < dt * 2.2) {
+      this.game.fx?.dust(this.x + this.facing * 6, this.y, 0.8);
     }
   }
 
@@ -263,6 +276,6 @@ export class Archaeologist extends Person {
 /** The Elder: he has been walking this basin far longer than Vess has. */
 export class Elder extends Person {
   constructor(game, x) {
-    super(game, 'elder', x, { name: 'The Walker', speed: 30, scale: 0.52 });
+    super(game, 'elder', x, { name: 'The Walker', speed: 30, scale: 0.36 });
   }
 }
