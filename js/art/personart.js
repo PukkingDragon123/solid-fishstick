@@ -760,8 +760,11 @@ export function buildPerson(kind = 'vess', K = 1) {
     bag: { x: -T.W * 0.50, y: -T.H * 0.38 },
     tube: { x: -T.W * 0.10, y: -T.H * 0.06 },
   };
-  // hip height above the ground when standing: both leg bones, a touch bent
-  rig.standH = (rig.leg.near.upper.len + rig.leg.near.lower.len) * 0.93;
+  // Hip height above the ground when standing. Both leg bones nearly straight,
+  // PLUS the ankle's height above the sole - the leg solves to the ankle, not
+  // to the ground, and leaving that out is what made her walk in a permanent
+  // half-crouch.
+  rig.standH = (rig.leg.near.upper.len + rig.leg.near.lower.len) * 0.955 + 1.9 * K;
   cache.set(key, rig);
   return rig;
 }

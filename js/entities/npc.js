@@ -56,6 +56,10 @@ const POSES = {
 
 const CAMP_ITEMS = ['bedroll', 'canteen', 'lantern', 'peg', 'skull', 'spoil', 'pick', 'brush'];
 
+/** How long a pivot takes, and how narrow she gets halfway through it. */
+const TURN_SECS = 0.26;
+const TURN_MIN = 0.58;
+
 export class Person {
   constructor(game, kind, x, opts = {}) {
     this.game = game;
@@ -66,6 +70,8 @@ export class Person {
     this.vx = 0;
     this.facing = -1;
     this.faceT = -1;
+    this.turnFrom = -1;          // the facing she is pivoting away from
+    this.turnT = 1;              // 0..1 through the pivot; 1 means settled
     this.pose = POSE.IDLE;
     this.poseT = 0;
     this.animT = 0;
@@ -150,14 +156,43 @@ export class Person {
     }
     this.vx = damp(this.vx, want * this.speed, 0.0004, dt);
     this.x += this.vx * dt;
-    if (Math.abs(this.vx) > 5) this.facing = Math.sign(this.vx);
-    this.faceT = damp(this.faceT, this.facing, 0.0008, dt);
+    if (Math.abs(this.vx) > 5) this.setFacing(Math.sign(this.vx));
+    this._turn(dt);
     this.y = damp(this.y, t.surfaceY(this.x), 0.0004, dt);
 
     this._settle(dt);
     this._air(dt, t);
     this._walkFeet(dt, t);
 
+  }
+
+  /**
+   * Turning round. She does not flip: she pivots. The facing runs on its own
+   * short clock rather than on a damp, so every turn takes the same time and
+   * ends cleanly, and the body only ever narrows to a bit over half width -
+   * enough to read as turning through, never so thin it looks like a card
+   * being flipped over.
+   */
+  setFacing(f) {
+    if (f === this.facing) return;
+    this.turnFrom = this.faceT;
+    this.facing = f;
+    this.turnT = 0;
+  }
+
+  _turn(dt) {
+    if (this.turnT >= 1) { this.faceT = this.facing; return; }
+    this.turnT = Math.min(1, this.turnT + dt / TURN_SECS);
+    const k = this.turnT;
+    // ease in and out, so the pivot starts and finishes without a corner
+    const e = k * k * (3 - 2 * k);
+    this.faceT = lerp(this.turnFrom, this.facing, e);
+    // a scuff of dust halfway through, which is where the weight goes over
+    if (!this.turnPuffed && k > 0.5) {
+      this.turnPuffed = true;
+      this.game.fx?.dust(this.x, this.y, 0.5);
+    }
+    if (k >= 1) this.turnPuffed = false;
   }
 
   /** Ease the body towards whatever the current pose asks for. */
@@ -234,7 +269,10 @@ export class Person {
    */
   _walkFeet(dt, terr) {
     const K = this.rig.K;
-    const stride = 13 * K;
+    // The distance between the two feet at the moment one lands and the other
+    // lifts. A full cycle covers twice this, which is why the phase below
+    // advances against `stride * 2`.
+    const stride = 9 * K;
     const spd = Math.abs(this.vx);
     const moving = spd > 5;
     const tuck = 1 - this.b.crouch * 0.62;
@@ -263,7 +301,7 @@ export class Person {
 
       if (!moving) {
         // standing: one foot a little ahead of the other, both on the ground
-        const tx = this.x + (i === 0 ? 1 : -1) * stride * 0.22 * tuck;
+        const tx = this.x + (i === 0 ? 1 : -1) * stride * 0.26 * tuck * (this.facing || 1);
         f.x = damp(f.x, tx, 0.002, dt);
         f.y = damp(f.y, terr.surfaceY(f.x), 0.0006, dt);
         f.plant = f.x;
@@ -273,10 +311,16 @@ export class Person {
       }
 
       if (swinging && !f.sw) {
-        // the swing starts here: remember where the foot was and pick where
-        // it is going, once, so the arc is smooth all the way through
+        // The swing starts here: remember where the foot was and pick where it
+        // is going, once, so the arc is smooth all the way through.
+        //
+        // The target is a stride and a half ahead of where the hip is NOW,
+        // because the hip travels a whole stride while the foot is in the air.
+        // Aim any shorter and the foot lands behind the hip and then drags
+        // further back all through the stance - which is a person walking
+        // backwards, whichever way they are facing.
         f.from = f.x;
-        f.to = this.x + dir * stride * 0.62 * tuck + this.vx * 0.09;
+        f.to = this.x + dir * stride * 1.5 * tuck + this.vx * 0.05;
         f.sw = true;
       } else if (!swinging && f.sw) {
         f.sw = false;
@@ -313,7 +357,10 @@ export class Person {
     const z = cam.zoom;
     const P = POSES[this.pose] || POSES.idle;
     const dir = this.faceT >= 0 ? 1 : -1;
-    const flat = Math.abs(this.faceT);                 // 0 edge-on, 1 full profile
+    // How much of her width is facing us. It bottoms out well short of zero:
+    // a person turning round is briefly narrow, not briefly a sheet of paper.
+    const t = Math.abs(this.faceT);
+    const flat = TURN_MIN + (1 - TURN_MIN) * (t * t * (3 - 2 * t));
 
     const sa = this.game.weather ? this.game.weather.shadowAlpha : 0.35;
     if (sa > 0.02) {
@@ -350,7 +397,9 @@ export class Person {
     ctx.translate(Math.round(s.x * 2) / 2, Math.round(s.y * 2) / 2);
     ctx.scale(z, z);
     // turning is a squash, not a mirror: she pivots on the spot
-    ctx.scale(dir * Math.max(0.22, flat), 1);
+    ctx.scale(dir * flat, 1);
+    // and she rises onto the ball of her foot as she comes through the turn
+    if (flat < 0.995) ctx.translate(0, -(1 - flat) * 2.2 * rig.K);
     // and a jump squashes on the way out and stretches at the top
     if (Math.abs(this.squash) > 0.005) {
       ctx.scale(1 - this.squash * 0.5, 1 + this.squash);
@@ -414,7 +463,11 @@ export class Person {
   _arm(ctx, art, sh, a0, a1, lean, side, tool) {
     const rig = this.rig;
     const swing = (POSES[this.pose] || POSES.idle).swing || 0;
-    const sw = swing * Math.sin(this.step * TAU + (side > 0 ? Math.PI : 0)) * 0.55;
+    // An arm opposes the leg on its own side, so it is driven off the same
+    // phase the feet are: the near foot is furthest FORWARD at step 0, which
+    // is exactly when the near arm should be furthest BACK. (A sine here put
+    // the arm a quarter cycle out and made her look like she was wading.)
+    const sw = swing * Math.cos((this.step + (side > 0 ? 0 : 0.5)) * TAU) * 0.55;
     const A = a0 + lean + sw;
     const B = A + a1 + Math.abs(sw) * 0.3;
     const u = art.upper, l = art.lower;
@@ -551,8 +604,8 @@ export class Archaeologist extends Person {
       this.x = seat.x;
       this.y = seat.y + 1;
       this.vx = crab.vx;
-      this.facing = -1;
-      this.faceT = damp(this.faceT, -1, 0.0008, dt);
+      this.setFacing(-1);
+      this._turn(dt);
       this.t += dt; this.poseT += dt; this.animT += dt; this.breathe += dt * 1.3;
       if (this.speechT > 0) { this.speechT -= dt; if (this.speechT <= 0) this.speech = null; }
       if (this.pose !== POSE.SIT && this.pose !== POSE.WRITE && this.pose !== POSE.TALK) {

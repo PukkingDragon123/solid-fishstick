@@ -102,16 +102,36 @@ behind you.
 And **you are hand-sized**. The coral towers over you. That is how you know.
 
 When you have found a hollow you like, you **dig in** — `E`, or the DIG IN
-button — and the animal goes down into the sand in a burst of silt, and while
-it is going down the sea starts to leave. The surface walks down the world, the
-reef thins out, the blue comes out of the light, a counter runs to 1,000, and
-what is left is the desert. Then it is this morning, you are still under the
-sand with only your shell showing, and a woman who has been wrong about a rock
-for eleven years sits down next to you.
+button — and from there the opening is **shot, not just played**.
+
+It is cut into acts, and the camera is a camera. The dig is a **push in**, tight
+on the animal working itself under in a burst of silt. Then the sea starts to
+leave and the camera **pulls wide** and drifts, so you watch it go from the whole
+basin rather than from on top of the animal: the surface walks down the world,
+the reef thins out, the blue comes out of the light, and a counter runs to 1,000
+on a slate held high in the frame.
+
+Then it **cuts to black**. A thousand years does not get a dissolve. The card
+comes up — ONE THOUSAND YEARS, *and nothing at all happens* — a rule draws
+itself out under it, and the black lifts onto a **montage**: four held frames of
+the same mound, hard-cut between rather than faded, each one a different hour, a
+different angle and a little further into the desert, every one of them creeping
+so a held shot is still a shot and not a paused game.
+
+Black again, and then the widest frame in the game: an empty basin at nine in the
+morning with **one person walking across it who is far too small for it**. The
+camera holds, drifts in, and only then cuts to the shell. Every beat under it is
+a framed shot with its own drift, the frame carries a vignette and letterbox bars
+throughout, and the eruption **snaps wide** to give a thousand years of sand
+somewhere to go.
+
+You are still under it with only your shell showing, and a woman who has been
+wrong about a rock for eleven years sits down next to you.
 
 | | |
 | --- | --- |
 | ![Thirty metres down](docs/shot-10-ocean.png) | ![The sea leaving](docs/shot-11-drain.png) |
+| ![A thousand years](docs/shot-14-card.png) | ![Basin nineteen](docs/shot-13-wide.png) |
 
 ![Not a rock](docs/shot-12-startle.png)
 
@@ -493,6 +513,20 @@ from a home position: at any moment one foot is planted and the other is
 swinging past it, and they swap every half cycle. The phase advances with
 distance covered rather than with time, so the feet never slide. That swap is
 the whole difference between walking and skating.
+
+The swing target is **a stride and a half ahead of where the hip is now**, not
+half a stride — because the hip travels a whole stride while the foot is in the
+air. Aim any shorter and the foot lands *behind* the hip and then drags further
+back all through the stance, which is a person walking backwards whichever way
+they happen to be facing. The arms hang off the same phase with a cosine, so
+each one is furthest back exactly when the leg on its side is furthest forward.
+
+**She does not flip when she turns round.** A facing change starts a pivot on its
+own short clock, so every turn takes the same quarter second and ends cleanly,
+and her width only ever narrows to a bit over half — enough to read as turning
+through, never so thin it looks like a card being flipped over. Her feet shuffle
+across as she goes, she rises onto the ball of a foot halfway through, and the
+weight going over scuffs a little dust.
 
 Because she is in pieces, she is **posed rather than flipped through**.
 `js/entities/npc.js` is a skeleton: a pose is a set of joint targets — how far

@@ -404,14 +404,17 @@ export class Sea {
       const yr = Math.round(Math.pow(clamp01(this.drain), 0.72) * 1000);
       const label = `${yr} YEARS`;
       const fade = clamp01(this.drain * 6) * clamp01((1.05 - this.drain) * 6);
-      const w = textWidth(label, 2);
-      ctx.globalAlpha = fade * 0.9;
-      drawText(ctx, label, Math.round(vw / 2), Math.round(vh * 0.30), {
-        color: '#f6ecd2', align: 'center', scale: 2, outline: true, outlineColor: 'rgba(0,0,0,0.7)',
+      // It sits high and small, just under the top bar, like a slate held up
+      // to the camera - in the middle of the frame it competes with the shot.
+      const w = textWidth(label);
+      const ty = Math.round(vh * 0.115);
+      ctx.globalAlpha = fade * 0.55;
+      drawText(ctx, label, Math.round(vw / 2), ty, {
+        color: '#f6ecd2', align: 'center', outline: true, outlineColor: 'rgba(0,0,0,0.6)',
       });
-      ctx.globalAlpha = fade * 0.5;
+      ctx.globalAlpha = fade * 0.32;
       ctx.fillStyle = '#f6ecd2';
-      ctx.fillRect(Math.round(vw / 2 - w / 2), Math.round(vh * 0.30 + 18), Math.round(w * this.drain), 1);
+      ctx.fillRect(Math.round(vw / 2 - w / 2), ty + 10, Math.round(w * this.drain), 1);
       ctx.globalAlpha = 1;
     }
   }

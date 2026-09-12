@@ -6680,7 +6680,7 @@ body {
       bag: { x: -T.W * 0.5, y: -T.H * 0.38 },
       tube: { x: -T.W * 0.1, y: -T.H * 0.06 }
     };
-    rig.standH = (rig.leg.near.upper.len + rig.leg.near.lower.len) * 0.93;
+    rig.standH = (rig.leg.near.upper.len + rig.leg.near.lower.len) * 0.955 + 1.9 * K;
     cache4.set(key2, rig);
     return rig;
   }
@@ -6739,6 +6739,8 @@ body {
     shock: { crouch: 0.16, lean: -0.14, armN: [-1.3, -0.3], armF: [-1.46, -0.26], swing: 0 }
   };
   var CAMP_ITEMS = ["bedroll", "canteen", "lantern", "peg", "skull", "spoil", "pick", "brush"];
+  var TURN_SECS = 0.26;
+  var TURN_MIN = 0.58;
   var Person = class {
     constructor(game2, kind, x, opts = {}) {
       this.game = game2;
@@ -6749,6 +6751,8 @@ body {
       this.vx = 0;
       this.facing = -1;
       this.faceT = -1;
+      this.turnFrom = -1;
+      this.turnT = 1;
       this.pose = POSE.IDLE;
       this.poseT = 0;
       this.animT = 0;
@@ -6844,12 +6848,40 @@ body {
       }
       this.vx = damp(this.vx, want * this.speed, 4e-4, dt);
       this.x += this.vx * dt;
-      if (Math.abs(this.vx) > 5) this.facing = Math.sign(this.vx);
-      this.faceT = damp(this.faceT, this.facing, 8e-4, dt);
+      if (Math.abs(this.vx) > 5) this.setFacing(Math.sign(this.vx));
+      this._turn(dt);
       this.y = damp(this.y, t.surfaceY(this.x), 4e-4, dt);
       this._settle(dt);
       this._air(dt, t);
       this._walkFeet(dt, t);
+    }
+    /**
+     * Turning round. She does not flip: she pivots. The facing runs on its own
+     * short clock rather than on a damp, so every turn takes the same time and
+     * ends cleanly, and the body only ever narrows to a bit over half width -
+     * enough to read as turning through, never so thin it looks like a card
+     * being flipped over.
+     */
+    setFacing(f) {
+      if (f === this.facing) return;
+      this.turnFrom = this.faceT;
+      this.facing = f;
+      this.turnT = 0;
+    }
+    _turn(dt) {
+      if (this.turnT >= 1) {
+        this.faceT = this.facing;
+        return;
+      }
+      this.turnT = Math.min(1, this.turnT + dt / TURN_SECS);
+      const k = this.turnT;
+      const e = k * k * (3 - 2 * k);
+      this.faceT = lerp(this.turnFrom, this.facing, e);
+      if (!this.turnPuffed && k > 0.5) {
+        this.turnPuffed = true;
+        this.game.fx?.dust(this.x, this.y, 0.5);
+      }
+      if (k >= 1) this.turnPuffed = false;
     }
     /** Ease the body towards whatever the current pose asks for. */
     _settle(dt) {
@@ -6936,7 +6968,7 @@ body {
      */
     _walkFeet(dt, terr) {
       const K = this.rig.K;
-      const stride = 13 * K;
+      const stride = 9 * K;
       const spd = Math.abs(this.vx);
       const moving = spd > 5;
       const tuck = 1 - this.b.crouch * 0.62;
@@ -6958,7 +6990,7 @@ body {
         const p = (this.step + i * 0.5) % 1;
         const swinging = moving && p >= 0.5;
         if (!moving) {
-          const tx = this.x + (i === 0 ? 1 : -1) * stride * 0.22 * tuck;
+          const tx = this.x + (i === 0 ? 1 : -1) * stride * 0.26 * tuck * (this.facing || 1);
           f.x = damp(f.x, tx, 2e-3, dt);
           f.y = damp(f.y, terr.surfaceY(f.x), 6e-4, dt);
           f.plant = f.x;
@@ -6968,7 +7000,7 @@ body {
         }
         if (swinging && !f.sw) {
           f.from = f.x;
-          f.to = this.x + dir * stride * 0.62 * tuck + this.vx * 0.09;
+          f.to = this.x + dir * stride * 1.5 * tuck + this.vx * 0.05;
           f.sw = true;
         } else if (!swinging && f.sw) {
           f.sw = false;
@@ -7000,7 +7032,8 @@ body {
       const z = cam.zoom;
       const P = POSES[this.pose] || POSES.idle;
       const dir = this.faceT >= 0 ? 1 : -1;
-      const flat = Math.abs(this.faceT);
+      const t = Math.abs(this.faceT);
+      const flat = TURN_MIN + (1 - TURN_MIN) * (t * t * (3 - 2 * t));
       const sa = this.game.weather ? this.game.weather.shadowAlpha : 0.35;
       if (sa > 0.02) {
         const s0 = cam.worldToScreen(this.x, this.y);
@@ -7030,7 +7063,8 @@ body {
       ctx.save();
       ctx.translate(Math.round(s.x * 2) / 2, Math.round(s.y * 2) / 2);
       ctx.scale(z, z);
-      ctx.scale(dir * Math.max(0.22, flat), 1);
+      ctx.scale(dir * flat, 1);
+      if (flat < 0.995) ctx.translate(0, -(1 - flat) * 2.2 * rig.K);
       if (Math.abs(this.squash) > 5e-3) {
         ctx.scale(1 - this.squash * 0.5, 1 + this.squash);
       }
@@ -7082,7 +7116,7 @@ body {
     _arm(ctx, art, sh, a0, a1, lean, side, tool) {
       const rig = this.rig;
       const swing = (POSES[this.pose] || POSES.idle).swing || 0;
-      const sw = swing * Math.sin(this.step * TAU + (side > 0 ? Math.PI : 0)) * 0.55;
+      const sw = swing * Math.cos((this.step + (side > 0 ? 0 : 0.5)) * TAU) * 0.55;
       const A = a0 + lean + sw;
       const B = A + a1 + Math.abs(sw) * 0.3;
       const u = art.upper, l = art.lower;
@@ -7196,8 +7230,8 @@ body {
         this.x = seat.x;
         this.y = seat.y + 1;
         this.vx = crab.vx;
-        this.facing = -1;
-        this.faceT = damp(this.faceT, -1, 8e-4, dt);
+        this.setFacing(-1);
+        this._turn(dt);
         this.t += dt;
         this.poseT += dt;
         this.animT += dt;
@@ -8526,18 +8560,18 @@ body {
         const yr = Math.round(Math.pow(clamp01(this.drain), 0.72) * 1e3);
         const label = `${yr} YEARS`;
         const fade = clamp01(this.drain * 6) * clamp01((1.05 - this.drain) * 6);
-        const w = textWidth(label, 2);
-        ctx.globalAlpha = fade * 0.9;
-        drawText(ctx, label, Math.round(vw / 2), Math.round(vh * 0.3), {
+        const w = textWidth(label);
+        const ty = Math.round(vh * 0.115);
+        ctx.globalAlpha = fade * 0.55;
+        drawText(ctx, label, Math.round(vw / 2), ty, {
           color: "#f6ecd2",
           align: "center",
-          scale: 2,
           outline: true,
-          outlineColor: "rgba(0,0,0,0.7)"
+          outlineColor: "rgba(0,0,0,0.6)"
         });
-        ctx.globalAlpha = fade * 0.5;
+        ctx.globalAlpha = fade * 0.32;
         ctx.fillStyle = "#f6ecd2";
-        ctx.fillRect(Math.round(vw / 2 - w / 2), Math.round(vh * 0.3 + 18), Math.round(w * this.drain), 1);
+        ctx.fillRect(Math.round(vw / 2 - w / 2), ty + 10, Math.round(w * this.drain), 1);
         ctx.globalAlpha = 1;
       }
     }
@@ -19082,6 +19116,11 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
       this.cut = null;
       this.letterbox = 0;
       this.dialog = null;
+      this.fade = 0;
+      this.fadeWant = 0;
+      this.fadeRate = 2.2;
+      this.card = null;
+      this.drift = null;
       this.tutorial = 0;
       this.attackT = 0;
       this.startIntro();
@@ -19185,6 +19224,7 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
       this.say("narrator", "It dug in. Slowly. With enormous certainty.");
     }
     _runBury(dt) {
+      this._buryBars(dt);
       this.sea.update(dt);
       this.buryT += dt;
       const t = this.buryT;
@@ -19199,31 +19239,75 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
         );
         this.sea.puff(this.crab.x + (Math.random() - 0.5) * 20, this.crab.y, 2);
       }
-      if (t > 2 && !this._drainOn) {
-        this._drainOn = 1;
-        this.sea.beginDrain();
-      }
-      if (t > 3.4 && t < 3.6) this.say("narrator", "And the sea, as it turned out, was in a hurry.");
-      if (t > 8 && t < 8.2) this.say("narrator", "Coast. Lagoon. Salt pan. Dust.");
-      if (t > 12) {
-        if (!this._sleepOn) {
-          this._sleepOn = 1;
-          this.dialog = null;
-          this.cam.cineTo(
-            this.crab.x,
-            this.terrain.surfaceY(this.crab.x) - 10,
-            this.autoZoom() * 2.1,
-            3
-          );
-          this.say("narrator", "It did not dream. There was nothing down there to dream about.");
+      const beat = (from, run) => {
+        const k = `_b${Math.round(from * 10)}`;
+        if (t > from && !this[k]) {
+          this[k] = 1;
+          run();
         }
-        const k = clamp01((t - 12.5) / 9);
-        this.weather.hour = (18 + k * 62) % 24;
-        this.sleep = k;
-        if (t > 16.5 && t < 16.7) this.say("narrator", "Sand went over it. Then more sand. Then a desert.");
-        if (t > 20.4 && t < 20.6) this.say("narrator", "A thousand years is not a long time to something that was not counting.");
+      };
+      beat(0.1, () => {
+        this.shot(this.crab.x, this.crab.y + 4, this.autoZoom() * 2, 2.4, { z: -0.02 });
+      });
+      beat(2, () => {
+        this.sea.beginDrain();
+      });
+      beat(3.2, () => {
+        this.shot(
+          this.crab.x + 30,
+          this.terrain.surfaceY(this.crab.x) - 54,
+          this.autoZoom() * 0.62,
+          4.5,
+          { x: 5, z: -6e-3 }
+        );
+        this.say("narrator", "And the sea, as it turned out, was in a hurry.");
+      });
+      beat(8, () => this.say("narrator", "Coast. Lagoon. Salt pan. Dust."));
+      beat(11.4, () => {
+        this.toBlack(1.5);
+        this.dialog = null;
+      });
+      beat(12.8, () => {
+        this.hold("ONE THOUSAND YEARS", "and nothing at all happens");
+        this.sleep = 1e-3;
+        this.cam.cineCancel();
+        this.cam.snapTo(this.crab.x, this.terrain.surfaceY(this.crab.x) - 12);
+        this.cam.targetZoom = this.cam.zoom = this.autoZoom() * 1.9;
+      });
+      beat(16.2, () => {
+        this.card = null;
+        this.fromBlack(0.9);
+      });
+      const SKY = [
+        { at: 16.4, hour: 19.5, say: "It did not dream. There was nothing down there to dream about." },
+        { at: 20.2, hour: 3, say: "Sand went over it. Then more sand." },
+        { at: 24, hour: 12.5, say: "Then a desert." },
+        {
+          at: 27.8,
+          hour: 17.5,
+          say: "A thousand years is not a long time to something that was not counting."
+        }
+      ];
+      for (const f of SKY) {
+        beat(f.at, () => {
+          this.weather.hour = f.hour;
+          this.sleep = clamp01((f.at - 16) / 12);
+          const px = this.crab.x + (SKY.indexOf(f) % 2 ? 26 : -22);
+          this.cam.cineCancel();
+          this.cam.snapTo(px, this.terrain.surfaceY(this.crab.x) - 10 - SKY.indexOf(f) * 3);
+          this.cam.targetZoom = this.cam.zoom = this.autoZoom() * (2.1 - SKY.indexOf(f) * 0.22);
+          this.drift = { x: SKY.indexOf(f) % 2 ? -3 : 3, y: 0, z: 4e-3, after: 0 };
+          this.say("narrator", f.say);
+          this.fade = 0.85;
+          this.fadeWant = 0;
+          this.fadeRate = 3.4;
+        });
       }
-      if (t > 23.5) {
+      beat(31.6, () => {
+        this.toBlack(1.3);
+        this.dialog = null;
+      });
+      if (t > 33.2) {
         this.dialog = null;
         this.sleep = 0;
         this.startWake();
@@ -19260,7 +19344,7 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
       this.state = "intro";
       this.sea.stop();
       this.buried = 1;
-      this.buryTarget = 0.62;
+      this.buryTarget = 0.9;
       this.weather.hour = 9.4;
       const c = this.crab;
       const npc = this.npc;
@@ -19270,8 +19354,13 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
       npc.faceT = -1;
       npc.hatOff = null;
       npc.setPose(POSE.WALK);
-      this.cam.followEntity(c, true);
-      this.cam.targetZoom = this.cam.zoom = this.autoZoom() * 1.3;
+      this.cam.cineCancel();
+      this.cam.follow = null;
+      this.cam.snapTo(c.x + 150, this.terrain.surfaceY(c.x) - 40);
+      this.cam.targetZoom = this.cam.zoom = this.autoZoom() * 0.55;
+      this.drift = { x: -7, y: 0, z: 4e-3, after: 0 };
+      this.fade = 1;
+      this.fadeWant = 1;
       const N = (text) => this.say("narrator", text);
       const V = (text, mood) => {
         this.say("Dr. Vess", text);
@@ -19280,82 +19369,89 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
       this.cut = {
         t: 0,
         steps: [
-          { at: 0.4, run: () => {
-            this.cam.cineTo(c.x + 40, c.y - 12, this.autoZoom() * 1.1, 2.6);
-            npc.moveTo = c.x + 46;
-            N("Basin nineteen. A thousand years later. Nobody has any reason to be here.");
+          { at: 0.2, run: () => {
+            this.fromBlack(0.55);
+            npc.moveTo = c.x + 120;
           } },
-          { at: 4.4, run: () => V("Survey day four thousand and six. Elevation, wrong. Salinity, wrong.", 7) },
-          { at: 8, run: () => {
+          { at: 1.4, run: () => N("Basin nineteen. A thousand years later. Nobody has any reason to be here.") },
+          { at: 6, run: () => {
+            this.shot(c.x + 44, c.y - 12, this.autoZoom() * 1.15, 2.2, { x: -2 });
+            npc.moveTo = c.x + 46;
+            this.buryTarget = 0.66;
+          } },
+          { at: 7.4, run: () => V("Survey day four thousand and six. Elevation, wrong. Salinity, wrong.", 7) },
+          { at: 10.6, run: () => {
             npc.moveTo = c.x + 30;
             npc.setPose(POSE.WRITE);
             V("One large rock. Sedimentary. Roughly hill-shaped. As per the last four thousand entries.", 4);
           } },
-          { at: 12, run: () => {
+          { at: 14.4, run: () => {
             npc.setPose(POSE.IDLE);
             V("There was an inland sea here. I can prove it. I have the shells, the terraces, the strandlines.", 10);
           } },
-          { at: 16, run: () => V("What I do not have is water. Which is, apparently, the only part anybody funds.", 12) },
-          { at: 19.6, run: () => {
-            npc.facing = 1;
+          { at: 18.2, run: () => V("What I do not have is water. Which is, apparently, the only part anybody funds.", 12) },
+          { at: 21.6, run: () => {
+            npc.setFacing(1);
             npc.setPose(POSE.SIT);
             V("Eleven years. Nobody is watching. Nobody has been watching for a thousand years.", 7);
           } },
-          { at: 23, run: () => {
-            this.cam.cineTo(c.x + 10, c.y - 16, this.autoZoom() * 1.7, 1.6);
+          { at: 25, run: () => {
+            this.shot(c.x + 10, c.y - 16, this.autoZoom() * 1.8, 1.6, { z: 0.01 });
             N("...");
           } },
-          { at: 24.8, run: () => {
+          { at: 26.8, run: () => {
             this._pee = 1;
             this._peeT = 0;
             this.audio.play("water");
             N("The first water to touch this animal in a thousand years is not, strictly, rain.");
           } },
-          { at: 28.4, run: () => {
+          { at: 30.4, run: () => {
             this._pee = 0;
             this.crab.blink = 0.5;
             this.cam.shake(3);
             N("It has been waiting a very long time for that.");
           } },
-          { at: 31, run: () => {
+          { at: 33, run: () => {
+            this.shot(c.x, c.y - 20, this.autoZoom() * 0.95, 0.7, { z: -0.02 });
             this.cam.shake(9);
             this.terrain.deform(c.x, 6, 40);
             this.fx.digBurst(c.x, c.y + 14, 2.4, false);
             this.audio.play("thunder");
-            npc.facing = -1;
+            npc.setFacing(-1);
             this.buryTarget = 0;
           } },
-          { at: 31.6, run: () => {
+          { at: 33.6, run: () => {
             npc.startle(1.25);
             this.cam.shake(4);
             N("");
           } },
-          { at: 32.3, run: () => {
+          { at: 34.3, run: () => {
             npc.moveTo = c.x + 108;
             npc.setPose(POSE.WALK);
             V("NOT A ROCK. NOT A ROCK. THAT IS NOT A ROCK -", 8);
           } },
-          { at: 35, run: () => {
+          { at: 37, run: () => {
             npc.moveTo = void 0;
             npc.setPose(POSE.IDLE);
-            npc.facing = -1;
+            npc.setFacing(-1);
+            this.shot(c.x + 34, c.y - 14, this.autoZoom() * 1.25, 1.8, { z: 4e-3 });
             V("...you are awake.", 2);
           } },
-          { at: 37.8, run: () => {
+          { at: 39.8, run: () => {
             npc.setPose(POSE.TALK);
             V("Oh. Oh, that is what the water table was for. It was never the rainfall. It was you.", 3);
           } },
-          { at: 42, run: () => V("You lay down in a sea and the sea kept coming, because you were in it.", 5) },
-          { at: 46.2, run: () => {
+          { at: 44, run: () => V("You lay down in a sea and the sea kept coming, because you were in it.", 5) },
+          { at: 48.2, run: () => {
             npc.setPose(POSE.POINT);
             V("There is a spring in your back. I can hear it from here and it is the loudest thing in this desert.", 3);
           } },
-          { at: 50.4, run: () => {
+          { at: 52.4, run: () => {
             npc.setPose(POSE.TALK);
             V("So get up. Walk. Put it back.", 6);
           } },
-          { at: 53.6, run: () => V("I have eleven years of notes, one canteen, and absolutely nothing else to do.", 1) },
-          { at: 57, run: () => this.endIntro() }
+          { at: 55.6, run: () => V("I have eleven years of notes, one canteen, and absolutely nothing else to do.", 1) },
+          { at: 59, run: () => this.endIntro() }
         ],
         i: 0
       };
@@ -19374,6 +19470,47 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
     }
     say(who, text) {
       this.dialog = { who, text, t: 0 };
+    }
+    /**
+     * A shot, not a camera move. Frame it, and then keep drifting - a held shot
+     * that is perfectly still reads as a paused game, and one that creeps in a
+     * few pixels a second reads as a camera someone is holding.
+     */
+    shot(x, y, zoom, dur = 2.2, drift = {}) {
+      this.cam.cineTo(x, y, zoom, dur);
+      this.drift = { x: drift.x || 0, y: drift.y || 0, z: drift.z || 0, after: dur };
+    }
+    /** Fade the frame down to black, or back up out of it. */
+    toBlack(rate = 2.2) {
+      this.fadeWant = 1;
+      this.fadeRate = rate;
+    }
+    fromBlack(rate = 1.4) {
+      this.fadeWant = 0;
+      this.fadeRate = rate;
+    }
+    /** Words held on the black between two acts. */
+    hold(text, sub = "") {
+      this.card = { text, sub, t: 0 };
+    }
+    _cineTick(dt) {
+      this.fade += clamp(this.fadeWant - this.fade, -this.fadeRate * dt, this.fadeRate * dt);
+      if (this.card) this.card.t += dt;
+      const d = this.drift;
+      if (d) {
+        if (d.after > 0) d.after -= dt;
+        else if (!this.cam.cine) {
+          this.cam.tx += d.x * dt;
+          this.cam.ty += d.y * dt;
+          this.cam.x += d.x * dt;
+          this.cam.y += d.y * dt;
+          this.cam.targetZoom = clamp(
+            this.cam.targetZoom + d.z * dt,
+            this.cam.minZoom,
+            this.cam.maxZoom
+          );
+        }
+      }
     }
     /**
      * The tutorial is Dr. Vess. There are no instruction cards: she walks with
@@ -19435,6 +19572,7 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
       if (this.state === "intro") this._runCut(dt);
       if (this.state === "prologue") this._runPrologue(dt);
       if (this.state === "burying") this._runBury(dt);
+      if (this.state !== "play") this._cineTick(dt);
       if (this.state !== "play") {
         const skipTap = i.clicked && i.sy < this.renderer.vh - 56 && this.state !== "prologue";
         if (i.justPressed("Escape") || this.state !== "prologue" && i.justPressed(" ") || skipTap) {
@@ -19604,6 +19742,10 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
         }
       }
       this.letterbox = damp(this.letterbox, 1, 2e-3, dt);
+    }
+    /** The bars ride the bury sequence too, so the cut into it is continuous. */
+    _buryBars(dt) {
+      this.letterbox = damp(this.letterbox, 1, 15e-4, dt);
     }
     // -- actions --------------------------------------------------------------
     /** ROAM mode: the crab walks itself toward the next unvisited thing. */
@@ -20307,6 +20449,7 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
       if (this.sea.active) this.sea.overlay(ui, cam, r.vw, r.vh);
       if (this.state === "intro" || this.state === "burying") this._drawCutscene(ui, r);
       else if (this.state === "prologue") this._drawPrologue(ui, r);
+      if (this.state !== "play" && this.state !== "dead") this._drawCine(ui, r);
       else this.ui.draw(ui, r);
       this.fx.drawText(ui, cam, (c, t, x, y, o) => drawText(c, t, x, y, o));
       if (this.state === "dead") this._drawDead(ui, r);
@@ -20606,8 +20749,61 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
         );
       }
     }
+    /**
+     * What makes a cutscene look like one: a vignette that closes the corners
+     * down, the black we cut through between acts, and the card that is held on
+     * that black. Drawn over everything, including the letterbox, so a cut is a
+     * real cut and not a dimmer switch.
+     */
+    _drawCine(ctx, r) {
+      const vw = r.vw, vh = r.vh;
+      const g = ctx.createRadialGradient(
+        vw / 2,
+        vh * 0.48,
+        Math.min(vw, vh) * 0.22,
+        vw / 2,
+        vh * 0.48,
+        Math.max(vw, vh) * 0.72
+      );
+      g.addColorStop(0, "rgba(0,0,0,0)");
+      g.addColorStop(1, "rgba(6,4,3,0.46)");
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, vw, vh);
+      if (this.fade > 2e-3) {
+        ctx.globalAlpha = clamp01(this.fade);
+        ctx.fillStyle = "#050403";
+        ctx.fillRect(0, 0, vw, vh);
+        ctx.globalAlpha = 1;
+      }
+      const card = this.card;
+      if (card && this.fade > 0.4) {
+        const a = clamp01(card.t / 0.7) * clamp01((this.fade - 0.4) / 0.3);
+        ctx.globalAlpha = a;
+        drawText(
+          ctx,
+          card.text,
+          vw / 2,
+          Math.round(vh / 2 - 14),
+          { color: "#e8d9b4", align: "center", scale: 2 }
+        );
+        const w = Math.round(textWidth(card.text, 2) * clamp01((card.t - 0.35) / 0.8));
+        ctx.fillStyle = "rgba(226,183,74,0.55)";
+        ctx.fillRect(Math.round(vw / 2 - w / 2), Math.round(vh / 2 + 4), w, 1);
+        if (card.sub) {
+          ctx.globalAlpha = a * clamp01((card.t - 0.9) / 0.7) * 0.75;
+          drawText(
+            ctx,
+            card.sub,
+            vw / 2,
+            Math.round(vh / 2 + 12),
+            { color: "#b8a683", align: "center" }
+          );
+        }
+        ctx.globalAlpha = 1;
+      }
+    }
     _drawCutscene(ctx, r) {
-      const bar = Math.round(22 * this.letterbox);
+      const bar = Math.round(24 * this.letterbox);
       ctx.fillStyle = "#080604";
       ctx.fillRect(0, 0, r.vw, bar);
       ctx.fillRect(0, r.vh - bar, r.vw, bar);
