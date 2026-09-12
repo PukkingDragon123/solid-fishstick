@@ -445,10 +445,30 @@ function paintBone(len, r0, r1, mat, K, far, kind, opts = {}) {
       { mat: 'shirt', dome: r0 * 1.0, tint: ft + 0.18 });
   }
   if (opts.hand) {
-    p.ellipse(x1 + r1 * 0.5, cy, r1 * 1.34, r1 * 1.12, { mat: 'skin', dome: r1 * 1.2, tint: ft + 0.04 });
-    // a thumb, so a hand reads as a hand and not a bead
-    p.capsule(x1 + r1 * 0.4, cy - r1 * 0.5, x1 + r1 * 1.5, cy - r1 * 0.95, r1 * 0.42, r1 * 0.32,
-      { mat: 'skin', dome: r1 * 0.5, tint: ft + 0.08 });
+    // The palm, then four fingers off the front of it and a thumb off the
+    // side. Curled when there is something in the hand, open when there is
+    // not - which is the difference between a hand on a pick and a bead.
+    const curl = opts.grip ?? 0.35;
+    p.ellipse(x1 + r1 * 0.42, cy, r1 * 1.22, r1 * 1.08,
+      { mat: 'skin', dome: r1 * 1.15, tint: ft + 0.04 });
+    for (let f = 0; f < 4; f++) {
+      // they fan across the palm and shorten toward the little finger
+      const spread = (f - 1.5) * r1 * 0.52;
+      const len = r1 * (1.26 - Math.abs(f - 1.1) * 0.17);
+      const fr = r1 * (0.30 - f * 0.022);
+      const bx = x1 + r1 * 0.95, by = cy + spread * 0.55;
+      // a curled finger comes back toward the palm instead of straight out
+      const tx = bx + len * (1 - curl * 1.25);
+      const ty = by + spread * 0.35 + len * curl * 0.95;
+      p.capsule(bx, by, tx, ty, fr * 1.05, fr * 0.82,
+        { mat: 'skin', dome: fr * 1.2, tint: ft + 0.10 - f * 0.02 });
+      // a knuckle, so the finger has a joint in it
+      p.ellipse(bx, by, fr * 1.1, fr * 1.0,
+        { mat: 'skin', mask: true, dome: fr * 1.1, tint: ft + 0.16 });
+    }
+    // the thumb, off the top of the palm and opposing the rest
+    p.capsule(x1 + r1 * 0.3, cy - r1 * 0.62, x1 + r1 * (1.25 - curl * 0.5), cy - r1 * (0.95 - curl * 0.7),
+      r1 * 0.40, r1 * 0.30, { mat: 'skin', dome: r1 * 0.5, tint: ft + 0.14 });
   }
   if (opts.knee) {
     p.ellipse(x0, cy, r0 * 1.14, r0 * 1.08, { mat, mask: true, dome: r0 * 0.6, tint: ft + 0.10 });
@@ -627,6 +647,25 @@ function paintProps(K, kind) {
       p.capsule(x, y, x + 7 * K, y, 1.2 * K, 1.0 * K, { mat: 'wood', dome: 1.1 * K });
       p.capsule(x + 7 * K, y, x + 11 * K, y, 1.9 * K, 1.2 * K, { mat: 'fur', dome: 1.5 * K, tint: 0.10 });
     }),
+    // a bottle, held by the neck. The level in it goes down as she drinks it,
+    // which is the only prop in the game with a state
+    beer: mk(7 * K, 14 * K, (p, x, y) => {
+      p.capsule(x + 3 * K, y - 6.2 * K, x + 3 * K, y - 4.2 * K, 1.0 * K, 1.2 * K,
+        { mat: 'wood', dome: 0.9 * K, tint: -0.06 });
+      p.rect(x + 2.0 * K, y - 7.0 * K, 2.0 * K, 1.0 * K, { mat: 'brass', dome: 0.8 * K, tint: 0.14 });
+      p.field(x, y - 4.4 * K, x + 6 * K, y + 5.2 * K, (px, py) => {
+        const v = clamp01((py - (y - 4.4 * K)) / (9.6 * K));
+        const hw = 2.0 * K * (v < 0.16 ? lerp(0.55, 1, v / 0.16) : 1);
+        const d = (px - (x + 3 * K)) / hw;
+        if (Math.abs(d) > 1) return null;
+        return { h: Math.sqrt(clamp01(1 - d * d)) * 1.8 * K, tint: -0.02 };
+      }, { mat: 'wood' });
+      // the label, and a highlight down the glass
+      p.rect(x + 1.0 * K, y - 1.0 * K, 4.0 * K, 3.0 * K,
+        { mat: 'paper', mask: true, dome: 0.8 * K, tint: 0.10 });
+      p.capsule(x + 1.8 * K, y - 3.6 * K, x + 1.8 * K, y + 3.6 * K, 0.4 * K, 0.4 * K,
+        { mat: 'wood', mask: true, dome: 0.5 * K, tint: 0.34 });
+    }),
     canteen: mk(9 * K, 11 * K, (p, x, y) => {
       p.ellipse(x + 4 * K, y, 4 * K, 4.8 * K, { mat: 'metal', dome: 3.4 * K, tint: -0.02 });
       p.ellipse(x + 4 * K, y, 2.4 * K, 2.9 * K, { mat: 'metal', mask: true, dome: -1.6 * K, tint: -0.14 });
@@ -730,11 +769,11 @@ export function buildPerson(kind = 'vess', K = 1) {
     arm: {
       near: {
         upper: bone(5.8, 1.9, 1.6, 'shirt', false, { bow: -0.45 * K, shade: -0.16 }),
-        lower: bone(5.4, 1.5, 1.2, 'skin', false, { bow: 0.30 * K, hand: true, sleeve: true }),
+        lower: bone(5.4, 1.5, 1.2, 'skin', false, { bow: 0.30 * K, hand: true, sleeve: true, grip: 0.55 }),
       },
       far: {
         upper: bone(5.8, 1.9, 1.6, 'shirt', true, { bow: -0.45 * K, shade: -0.16 }),
-        lower: bone(5.4, 1.5, 1.2, 'skin', true, { bow: 0.30 * K, hand: true, sleeve: true }),
+        lower: bone(5.4, 1.5, 1.2, 'skin', true, { bow: 0.30 * K, hand: true, sleeve: true, grip: 0.55 }),
       },
     },
     leg: {

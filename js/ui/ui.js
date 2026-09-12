@@ -15,7 +15,7 @@ import { FAUNA, FAUNA_BY_ID, CLADES, OBSERVE_STEPS } from '../data/fauna.js';
 import { BUILDINGS, BUILD_BY_ID, GENES, GENE_BY_ID, SKILL_BY_ID } from '../data/progress.js';
 import { buildPlant } from '../art/floraart.js';
 import { buildStructure } from '../art/buildart.js';
-import { drawShell, drawBloom, drawSprig, drawOrb, drawTab, drawPanel, drawGlyph, drawValve, drawGauge, drawNodeIcon, drawPlate } from './icons.js';
+import { drawShell, drawBloom, drawSprig, drawOrb, drawTab, drawPanel, drawGlyph, drawValve, drawGauge, drawNodeIcon, drawPlate, drawModeArt } from './icons.js';
 import { TreeScreen } from './tree.js';
 import { WORLD_NOTES, ERAS } from '../data/lore.js';
 import { biomeAt } from '../world/biomes.js';
@@ -530,26 +530,33 @@ export class UI {
   _modeBar(ctx, W, H) {
     const g = this.game;
     const avail = MODES.filter((m) => this.modeUnlocked(m.id));
-    const S = 15, gap = 2;
+    const S = 17, gap = 2;
     const bx = 3;
-    const by = H - 26 - (avail.length - 1) * (S + gap);
+    const by = H - 28 - (avail.length - 1) * (S + gap);
     avail.forEach((m, i) => {
       const y = by + i * (S + gap);
       const on = this.mode === m.id;
       const hot = this._hit(bx, y, S, S);
-      drawPlate(ctx, bx, y, S, S, {
-        edge: on ? m.tint : 'rgba(140,112,66,0.4)',
-        top: on ? 'rgba(52,42,26,0.95)' : undefined,
+      // the lit one sits slightly proud of the others, the way a pressed key does
+      const px = on ? bx + 1 : bx;
+      drawPlate(ctx, px, y, S, S, {
+        edge: on ? m.tint : hot ? 'rgba(200,168,110,0.6)' : 'rgba(140,112,66,0.4)',
+        top: on ? 'rgba(56,46,28,0.96)' : undefined,
         rivets: false,
       });
       if (on) {
-        // the one you are in gets a lit bar down its outer edge
+        // a lit bar down the outer edge, and a wash of the colour behind the art
         ctx.fillStyle = m.tint;
-        ctx.fillRect(bx, y, 2, S);
+        ctx.fillRect(px, y, 2, S);
+        ctx.save();
+        ctx.globalAlpha = 0.13 + 0.07 * Math.sin(this.t * 3);
+        ctx.fillStyle = m.tint;
+        ctx.fillRect(px + 2, y + 1, S - 3, S - 2);
+        ctx.restore();
       }
-      drawGlyph(ctx, m.glyph, bx + S / 2 + 1, y + S / 2, {
-        color: on ? m.tint : hot ? '#d6ba8a' : 'rgba(190,166,120,0.55)', scale: 1,
-      });
+      drawModeArt(ctx, m.glyph, px + S / 2 + 1, y + S / 2,
+        on ? m.tint : hot ? '#e0c79a' : 'rgba(190,166,120,0.6)',
+        on ? 'rgba(10,7,4,0.85)' : 'rgba(20,14,8,0.55)');
       if (hot) {
         this.hover = { title: m.name, body: `${m.desc}   (M cycles)` };
         if (g.input.clicked) { g.input.clicked = false; this.setMode(m.id); }
@@ -557,7 +564,7 @@ export class UI {
     });
 
     // and the mode's own controls, to the right of the column
-    const ax = bx + S + 6, ay = H - 26;
+    const ax = bx + S + 7, ay = H - 28;
     if (this.mode === 'hunt') this._huntBar(ctx, ax, ay, W, H);
     else if (this.mode === 'spore') this._sporeBar(ctx, ax, ay, W, H);
     else if (this.mode === 'hive') this._hiveBar(ctx, ax, ay, W, H);

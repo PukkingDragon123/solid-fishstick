@@ -629,4 +629,95 @@ export function drawPlate(ctx, x, y, w, h, opts = {}) {
   ctx.restore();
 }
 
+/**
+ * The mode badges. Fifteen pixels square is enough room for a picture rather
+ * than a symbol, so each of these is the thing itself: the animal standing,
+ * the animal mid-stride, the claw closing, the spray head, and the nerve. They
+ * are drawn flat and hard, and tinted at draw time so the lit one glows in its
+ * own colour without a second copy.
+ */
+const MODE_ART = {
+  // an animal standing square on, shell over six legs
+  crab: [
+    '...........',
+    '..2222222..',
+    '.211111112.',
+    '.211111112.',
+    '.221111122.',
+    '..1212121..',
+    '.1.1.1.1.1.',
+    '1..1.1.1..1',
+    '...........',
+  ],
+  // the same animal mid-stride, legs gathered one way, shell tilted
+  crabwalk: [
+    '...........',
+    '...2222222.',
+    '..211111112',
+    '..211111112',
+    '..221111122',
+    '...1212121.',
+    '..11.1.1.1.',
+    '.1...1..11.',
+    '...........',
+  ],
+  // a claw, open, about to close
+  claw: [
+    '..11....11.',
+    '.1221..1221',
+    '.1221..1221',
+    '..122..221.',
+    '...122221..',
+    '....1221...',
+    '....1221...',
+    '.....11....',
+    '.....11....',
+  ],
+  // a spray head, and what comes out of it
+  jet: [
+    '.11........',
+    '.1221...2.2',
+    '.122211.2.2',
+    '.1222211.2.',
+    '.122211.2.2',
+    '.1221...2.2',
+    '.11........',
+    '...........',
+    '...........',
+  ],
+  // a nerve: one node, and everything strung off it
+  link: [
+    '.2.......2.',
+    '..2.....2..',
+    '...12221...',
+    '..1222221..',
+    '...12221...',
+    '..2.....2..',
+    '.2.......2.',
+    '...........',
+    '...........',
+  ],
+};
+
+/**
+ * Stamp a mode badge. `1` is the body, `2` is the edge, so the lit state can
+ * push the body up to full colour while the edge stays dark and the shape
+ * still reads against a bright plate.
+ */
+export function drawModeArt(ctx, name, cx, cy, body, edge) {
+  const rows = MODE_ART[name];
+  if (!rows) return;
+  const w = rows[0].length, h = rows.length;
+  const x0 = Math.round(cx - w / 2), y0 = Math.round(cy - h / 2);
+  for (let y = 0; y < h; y++) {
+    const line = rows[y];
+    for (let x = 0; x < line.length; x++) {
+      const c = line[x];
+      if (c === '.') continue;
+      ctx.fillStyle = c === '1' ? body : edge;
+      ctx.fillRect(x0 + x, y0 + y, 1, 1);
+    }
+  }
+}
+
 export function clearIconCache() { cache.clear(); }

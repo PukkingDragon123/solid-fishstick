@@ -19,7 +19,7 @@ export const POSE = {
   WALK: 'walk', CROUCH: 'crouch', DIG: 'dig',
   WRITE: 'write', POINT: 'point', DRINK: 'drink', WAVE: 'wave',
   SIT: 'sit', TALK: 'talk', WANDER: 'wander', TIRED: 'tired',
-  SURVEY: 'survey', MEASURE: 'measure', REST: 'rest', SHOCK: 'shock',
+  SURVEY: 'survey', MEASURE: 'measure', REST: 'rest', SHOCK: 'shock', BEER: 'beer',
 };
 
 /**
@@ -44,6 +44,9 @@ const POSES = {
   write: { crouch: 0.05, lean: 0.20, armN: [0.74, 0.84], armF: [0.98, 0.92], tool: 'pencil', hold: 'notebook', swing: 0 },
   point: { crouch: 0, lean: 0.02, armN: [-0.34, 0.02], armF: [1.46, 0.18], swing: 0 },
   drink: { crouch: 0.02, lean: -0.06, armN: [0.20, 1.24], armF: [1.48, 0.16], tool: 'canteen', swing: 0 },
+  // the same pose with a bottle in it, which is what she does on the title
+  // screen and has done every evening for eleven years
+  beer: { crouch: 0.03, lean: -0.04, armN: [0.26, 1.10], armF: [1.46, 0.18], tool: 'beer', swing: 0 },
   wave: { crouch: 0, lean: 0.02, armN: [-0.90, 0.42], armF: [1.46, 0.18], swing: 0, work: 0.6 },
   sit: { crouch: 1, lean: 0.16, armN: [0.90, 0.66], armF: [1.06, 0.58], swing: 0, sit: 1 },
   talk: { crouch: 0, lean: 0.06, armN: [0.96, 0.72], armF: [1.20, 0.52], swing: 0, work: 0.5 },
@@ -497,7 +500,7 @@ export class Person {
       const p = rig.props[tool];
       ctx.save();
       ctx.translate(l.len + 1.4 * rig.K, 0);
-      ctx.rotate(tool === 'canteen' ? -1.5 : tool === 'peg' ? 1.2 : -0.25);
+      ctx.rotate(tool === 'canteen' ? -1.5 : tool === 'beer' ? -1.15 : tool === 'peg' ? 1.2 : -0.25);
       ctx.drawImage(p.cv, -p.ox, -p.oy);
       ctx.restore();
     }

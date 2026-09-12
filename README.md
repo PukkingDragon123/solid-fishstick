@@ -61,6 +61,7 @@ npm run build     # -> dist/crabden.html + dist/crabden.body.html
 | take one of yours (HIVE) | click it, or its token | the same |
 | where to walk (ROAM) | click anywhere in the desert | the same |
 | sing back (taming) | `1`-`5` | the pitch keys |
+| the menu | it is where you start | the same |
 | lure her in | `L` | — |
 | spray the spore | `V` (again to let her go) | — |
 | her pick, once she is yours | `E` | — |
@@ -197,12 +198,36 @@ once, and growing is something you can watch happen — the husk splits on a rin
 of light, every stage up **springs** the plant with an overshoot that settles,
 and a mature one goes off with a ring and its name.
 
+### The front door
+
+There is a title screen, and it is the game rather than a picture of a logo:
+**your own crab**, out of your own save, standing in a sandstorm — and Dr. Vess
+beside it, **drinking a beer**. She takes a pull every couple of seconds, the
+bottle empties as she does, she looks at the empty one for a moment, and then
+she throws it — a real bottle on a real arc that spins, bounces once and lies in
+the sand until the desert takes it back. Then she opens another, because there
+is nothing else to do out here and there has not been for eleven years.
+
+The storm behind it is real weather with the wind turned up, blowing in gusts so
+the title is never evenly lit. Carry on, wake up, or **settings** — sound, touch
+controls, and **erase everything**, which asks you twice and means it.
+
+![The front door](docs/shot-22-title.png)
+
 ### Five things you can be doing
 
-The bottom-left corner is a column of five chips, and the one you are in is lit
-in its own colour with a bar down its edge. **Nothing there is a word you have
-to remember** — the crab standing still is walk, the crab mid-stride is roam,
-the claw is hunt, the jet is spore, the link is the hive. Beside the column is
+The bottom-left corner is a column of five badges, and each one is **a picture
+of the thing, painted pixel by pixel** rather than a symbol standing in for it:
+the animal standing square on, the same animal mid-stride with its legs gathered
+one way, a claw about to close, a spray head with what comes out of it, and a
+nerve with everything strung off it. The one you are in sits proud of the
+others like a pressed key, lit in its own colour with a bar down its edge and a
+wash of that colour behind the art.
+
+**And it shows on the animal, not only in the corner.** The crab's own eyes take
+the mode's colour and burn a little at the back of them — red in hunt, violet in
+spore, cold blue in the hive, green in roam — so you can tell what you are
+holding by looking at the thing you are holding it with. Beside the column is
 whatever that mode actually puts in your hand, and it changes completely
 between them.
 
@@ -227,6 +252,35 @@ go inside the band and the cloud lands where the arc said. Let go early and it
 falls short. Hold too long and it goes off on the animal holding it.
 
 **HIVE** is everything on your nerve, and the nerve itself.
+
+| | |
+| --- | --- |
+| ![Modes and eyes](docs/shot-23-modes.png) | ![A fossil in the ground](docs/shot-24-dig.png) |
+
+### The small print of the desert
+
+Under the bestiary — under everything big enough to matter to you — there is a
+layer you are not supposed to notice until you stop and look, and then cannot
+stop noticing. **Twelve small animals**, none of which can be tamed, fought,
+eaten or collected. They are not content. They are the reason a frame with
+nothing happening in it is still worth looking at.
+
+Each is its own animal rather than a recolour: its own silhouette drawn by hand
+at eight or ten pixels, its own way of moving, its own hours, and its own opinion
+about wind. **Skitterlings** run in bursts and stop dead, never in the middle of
+anything. A **glass mite** is so transparent you see its shadow before you see
+it. **Salt fleas** jump their own length forty times a minute. A **dust moth**
+flies badly on purpose, because nothing that eats it can predict it either.
+**Piper gnats** stand in a column over one spot all morning. An **ash tick**
+holds absolutely still on a stone until something warm goes past. A **lantern
+fly** is cold green and goes out the moment you look at it. A **bone burrower**
+surfaces, turns its head once, and is gone before you are sure. And a **sand
+shrimp** has had a thousand years and still has not accepted that the sea has
+gone.
+
+They live in deterministic colonies, so the same stretch of desert has the same
+small life in it every time you walk back down it — and a sandstorm drives the
+lot of them into the ground.
 
 ### The dream
 
@@ -641,6 +695,11 @@ the brim half as wide again as the head, the chin four units under the eyes.
 The hair is **chunks, not strands** — a fringe hanging out from under the brim
 with a ragged edge, two heavy locks past the cheek, a mass at the nape — and
 the crown is never painted at all, because the hat is sitting on it.
+
+**And she has fingers.** Four off the front of the palm, fanned across it and
+shortening toward the little one, each with a knuckle in it, plus a thumb off
+the side that opposes them — and they curl. A hand with a pick in it closes on
+the pick; an empty one opens.
 
 The rig comes back in pieces: head, hat, pack, map tube, torso, four limb
 bones, and a boot that is its own part.

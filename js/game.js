@@ -26,6 +26,8 @@ import { Mind } from './systems/mind.js';
 import { Combat } from './systems/combat.js';
 import { Taming } from './systems/taming.js';
 import { Hive } from './systems/hive.js';
+import { Critters } from './systems/critters.js';
+import { Menu } from './ui/menu.js';
 import { ITEM_BY_ID } from './data/craft.js';
 import { Fx } from './systems/fx.js';
 import { Garden } from './systems/garden.js';
@@ -55,9 +57,14 @@ export class Game {
     this.input.scale = this.renderer.scale;
     this.cam = new Camera();
 
+    this.menu = new Menu(this);
     this.newRun();
+    // The front door. Whatever is behind it, you arrive at the title first -
+    // with the crab out of your own save standing in it, so the menu is a
+    // picture of the game rather than a picture of a logo.
     const saved = Save.readSave();
     if (saved) { this.load(saved); this.state = 'play'; }
+    this.enterMenu();
 
     window.addEventListener('resize', () => {
       this.renderer.resize();
@@ -95,6 +102,7 @@ export class Game {
     this.combat = new Combat(this);
     this.taming = new Taming(this);
     this.hive = new Hive(this);
+    this.critters = new Critters(this, this.seed);
     this.roamTarget = null;
     this.ui = new UI(this);
 
@@ -474,6 +482,73 @@ export class Game {
     this.teach(1);
   }
 
+  /**
+   * Stand the animal and the archaeologist up in a storm and point a camera
+   * at them. Nothing here is a separate scene: it is the world, paused, with
+   * the weather turned up and her given something to do with her hands.
+   */
+  enterMenu() {
+    this.menuReturn = this.state;
+    this.state = 'title';
+    this.clearCutscene();
+    this.weather.hour = 17.4;
+    this.weather.sand = 0.62;
+    this.weather.wind = 1.35;
+    const c = this.crab;
+    c.vx = 0;
+    this.npc.hidden = false;
+    this.npc.mode = 'free';
+    this.npc.keepAway = false;
+    this.npc.moveTo = undefined;
+    this.npc.x = c.x + c.m.shellW * 0.5 + 104;
+    this.npc.setFacing(-1);
+    this.npc.turnT = 1;
+    this.npc.setPose('beer');
+    // the front door shows a grown animal even before you have grown one
+    if (!Save.readSave()) { c.setStage('adult'); c.snapToGround(); }
+    this.buried = 0;
+    this.buryTarget = 0;
+    this.cam.cineCancel();
+    this.cam.follow = null;
+    // framed wide, and off to one side, so the title has sky to sit in and
+    // the two of them are both in shot without either standing on the words
+    this.cam.snapTo(c.x + 86, c.y - 6);
+    this.cam.targetZoom = this.cam.zoom = this.autoZoom() * 0.72;
+    this.menu.open();
+  }
+
+  /** While the bottle is in the air her hand is empty, so the pose changes. */
+  _menuPose() {
+    const b = this.menu.beer;
+    const want = b.phase === 'throw' ? 'point' : b.phase === 'finish' ? 'survey' : 'beer';
+    if (this.npc.pose !== want) this.npc.setPose(want);
+  }
+
+  /** Carry on from the save that is already loaded. */
+  resumeSave() {
+    this.state = 'play';
+    this.weather.sand = 0;
+    this.npc.mode = 'follow';
+    this.npc.keepAway = true;
+    this.npc.setPose('idle');
+    this.cam.followEntity(this.crab, true);
+    this.cam.targetZoom = this.autoZoom();
+  }
+
+  /** A fresh animal, a fresh basin, and the whole opening again. */
+  startFresh() {
+    Save.clearSave();
+    this.newRun();
+  }
+
+  /** Erase everything and put the title back the way it was on day one. */
+  wipeAll() {
+    Save.clearSave();
+    this.newRun();
+    this.enterMenu();
+    this.ui.say('Erased.', 3);
+  }
+
   say(who, text) { this.dialog = { who, text, t: 0 }; }
 
   /**
@@ -595,6 +670,20 @@ export class Game {
     if (this.state === 'prologue') this._runPrologue(dt);
     if (this.state === 'burying') this._runBury(dt);
     if (this.state !== 'play') this._cineTick(dt);
+    if (this.state === 'title') {
+      // the world keeps breathing behind the menu, but nothing in it is
+      // playable: no input reaches the animal, and the clock does not run
+      this.menu.update(dt);
+      this._menuPose();
+      this.npc.update(dt);
+      this.crab.update(dt, { move: 0 });
+      this.fx.update(dt, this.weather);
+      this.critters.update(dt, this.weather);
+      this.terrain.update(dt, 1.1);
+      this.cam.update(dt);
+      this.input.endFrame();
+      return;
+    }
     if (this.state !== 'play') {
       const skipTap = i.clicked && i.sy < this.renderer.vh - 56 && this.state !== 'prologue';
       if (i.justPressed('Escape') || (this.state !== 'prologue' && i.justPressed(' ')) || skipTap) {
@@ -723,6 +812,7 @@ export class Game {
     this.economy.tickAbilities(sdt);
     this.taming.update(sdt);
     this.hive.update(sdt, this.ui.mode === 'hive');
+    this.critters.update(sdt, this.weather);
     // the claw only comes up against something that is actually in reach
     if (this.ui.mode === 'hunt' && this.state === 'play') {
       const foe = this.wildlife.nearest(this.crab.x, this.crab.y, 150,
@@ -903,6 +993,20 @@ export class Game {
     }
     if (id === 'strike') this.combat.band = this.combat.pos;   // it cannot miss
     return true;
+  }
+
+  /**
+   * The colour of whatever you are holding, or null in plain walk mode. The
+   * animal's own eyes wear it, which is the only HUD that is actually on the
+   * animal.
+   */
+  get modeTint() {
+    const m = this.ui.mode;
+    if (m === 'hunt') return { iris: '#ff8a5e', glow: 'rgba(226,86,79,0.55)' };
+    if (m === 'spore') return { iris: '#e0a8f4', glow: 'rgba(201,138,222,0.55)' };
+    if (m === 'hive') return { iris: '#9ff0ff', glow: 'rgba(111,216,238,0.6)' };
+    if (m === 'auto') return { iris: '#c4f09a', glow: 'rgba(154,216,106,0.45)' };
+    return null;
   }
 
   /** Where you told it to go, standing there waiting for it. */
@@ -1752,6 +1856,7 @@ export class Game {
     if (this.seaShowing) this.sea.drawReef(ctx, cam, true);
     this.encounters.draw(ctx, cam);
     if (this.state === 'play') this.mining.draw(ctx, cam);
+    this.critters.draw(ctx, cam);
     this.fx.draw(ctx, cam, 'far');
 
     // creatures behind the crab, then the crab, then whatever rides on it
@@ -1759,6 +1864,7 @@ export class Game {
     if (!this.npc.riding && !this.npc.hidden) this.npc.draw(ctx, cam);
     this._drawCrab(ctx, cam);
     if (this.npc.riding && !this.npc.hidden) this.npc.draw(ctx, cam);
+    if (this.state === 'title') this.menu.drawBottle(ctx, cam);
     if (this.sleep) this._drawSleep(ctx, cam);
     if (this.waking) this._drawWaking(ctx, cam);
     if (this._pee) this._drawStream(ctx, cam);
@@ -1807,13 +1913,18 @@ export class Game {
     // the water is between you and the world, so it goes on after the world is
     // lit and before anything that is not in the water with you
     if (this.seaShowing) this.sea.overlay(ui, cam, r.vw, r.vh);
-    if (this.state === 'play') {
+    if (this.state === 'play' || this.state === 'title') {
       this.fx.drawDust(ui, cam, r.vw, r.vh, this.weather);
-      this.hive.drawDream(ui, cam, r.vw, r.vh);
     }
-    if (this.state === 'intro' || this.state === 'burying') this._drawCutscene(ui, r);
+    if (this.state === 'play') this.hive.drawDream(ui, cam, r.vw, r.vh);
+    // The title is not a separate screen. It is the world, with the weather
+    // turned up and a menu laid over the top of it, so what you are looking at
+    // on the front door is the animal you are about to play.
+    if (this.state === 'title') { this.menu.draw(ui, r.vw, r.vh); }
+    else if (this.state === 'intro' || this.state === 'burying') this._drawCutscene(ui, r);
     else if (this.state === 'prologue') this._drawPrologue(ui, r);
-    if (this.state !== 'play' && this.state !== 'dead') this._drawCine(ui, r);
+    if (this.state === 'title') { /* the menu is its own chrome */ }
+    else if (this.state !== 'play' && this.state !== 'dead') this._drawCine(ui, r);
     else this.ui.draw(ui, r);
     this.fx.drawText(ui, cam, (c, t, x, y, o) => drawText(c, t, x, y, o));
     if (this.state === 'dead') this._drawDead(ui, r);
@@ -1838,6 +1949,12 @@ export class Game {
    * the sun behind it. Only the shallow ones show at all until you have a claw
    * that can find the rest.
    */
+  /**
+   * A dig site is not a marker. It is the end of something sticking out of
+   * the ground - a bone, the lip of a shell, a nodule of amber - with the
+   * sand heaped up round where it broke the surface, and a shadow under the
+   * overhang. The deeper it is, the less of it there is to see.
+   */
   _drawDigs(ctx, cam) {
     const power = this.economy.stat('fossil');
     for (const site of this.digs.near(this.crab.x, 520)) {
@@ -1845,31 +1962,109 @@ export class Game {
       const y = this.terrain.surfaceY(site.x);
       const s = cam.worldToScreen(site.x, y);
       const z = cam.zoom;
-      const amber = site.relic.kind === 'amber';
-      const r = (2.2 + (1 - site.deep) * 1.6) * z;
-      // the bit sticking out of the sand
-      ctx.fillStyle = amber ? '#a5691a' : '#6f6758';
+      const kind = site.relic.kind;
+      const amber = kind === 'amber';
+      // how proud of the sand it sits
+      const out = (1 - site.deep) * 0.8 + 0.2;
+      const w = (5.0 + out * 3.4) * z;
+      const h = (3.0 + out * 2.6) * z;
+
+      ctx.save();
+      ctx.translate(Math.round(s.x), Math.round(s.y));
+
+      // the sand heaped round it, wider than the thing itself
+      ctx.fillStyle = 'rgba(198,166,112,0.55)';
       ctx.beginPath();
-      ctx.ellipse(s.x, s.y - r * 0.3, r, r * 0.62, 0.3, Math.PI, TAU);
+      ctx.moveTo(-w * 1.5, 1);
+      ctx.quadraticCurveTo(-w * 0.7, -h * 0.55, 0, -h * 0.60);
+      ctx.quadraticCurveTo(w * 0.7, -h * 0.55, w * 1.5, 1);
+      ctx.closePath();
       ctx.fill();
-      ctx.fillStyle = amber ? '#eec66c' : '#c6bea7';
+      ctx.fillStyle = 'rgba(120,92,56,0.30)';
+      ctx.fillRect(-w * 1.5, 0, w * 3, Math.max(1, z * 0.6));
+
+      // and the thing itself, clipped at the sand line
+      ctx.save();
       ctx.beginPath();
-      ctx.ellipse(s.x - r * 0.2, s.y - r * 0.45, r * 0.55, r * 0.3, 0.3, Math.PI, TAU);
+      ctx.rect(-w * 2, -h * 3, w * 4, h * 3 + 1);
+      ctx.clip();
+      if (amber) {
+        // a rounded nodule with a lit core
+        const g = ctx.createRadialGradient(-w * 0.2, -h * 0.7, 0, 0, -h * 0.3, w * 1.1);
+        g.addColorStop(0, '#fae19f');
+        g.addColorStop(0.55, '#d79a2a');
+        g.addColorStop(1, '#8a5a14');
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.ellipse(0, -h * 0.15, w * 0.85, h * 0.95, 0.2, 0, TAU);
+        ctx.fill();
+        ctx.fillStyle = 'rgba(60,34,6,0.55)';
+        ctx.beginPath();
+        ctx.ellipse(w * 0.25, -h * 0.1, w * 0.16, h * 0.22, 0.4, 0, TAU);
+        ctx.fill();
+      } else if (site.relic.id === 'vertebra') {
+        // a bone end: a shaft with two knobs on it
+        ctx.fillStyle = '#cdc4ab';
+        ctx.beginPath();
+        ctx.ellipse(-w * 0.42, -h * 0.5, w * 0.36, h * 0.42, -0.3, 0, TAU);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.ellipse(w * 0.42, -h * 0.32, w * 0.30, h * 0.36, 0.3, 0, TAU);
+        ctx.fill();
+        ctx.fillStyle = '#b3a88d';
+        ctx.beginPath();
+        ctx.moveTo(-w * 0.42, -h * 0.72);
+        ctx.lineTo(w * 0.42, -h * 0.54);
+        ctx.lineTo(w * 0.42, -h * 0.1);
+        ctx.lineTo(-w * 0.42, -h * 0.28);
+        ctx.closePath();
+        ctx.fill();
+        ctx.fillStyle = 'rgba(60,50,34,0.4)';
+        ctx.fillRect(-w * 0.42, -h * 0.34, w * 0.84, Math.max(1, z * 0.5));
+      } else {
+        // a shell lip: a ribbed arc coming out of the sand at an angle
+        ctx.fillStyle = '#9a927e';
+        ctx.beginPath();
+        ctx.ellipse(0, -h * 0.05, w * 0.9, h * 1.0, 0.28, Math.PI * 1.06, TAU * 0.99);
+        ctx.fill();
+        ctx.fillStyle = '#cfc7b0';
+        ctx.beginPath();
+        ctx.ellipse(-w * 0.1, -h * 0.22, w * 0.62, h * 0.72, 0.28, Math.PI * 1.06, TAU * 0.99);
+        ctx.fill();
+        // the ribs, which are what makes it read as a shell
+        ctx.strokeStyle = 'rgba(86,76,56,0.5)';
+        ctx.lineWidth = Math.max(1, z * 0.5);
+        for (let i = 0; i < 4; i++) {
+          const a = Math.PI * 1.12 + i * 0.24;
+          ctx.beginPath();
+          ctx.moveTo(Math.cos(a) * w * 0.25, -h * 0.15 + Math.sin(a) * h * 0.28);
+          ctx.lineTo(Math.cos(a) * w * 0.88, -h * 0.15 + Math.sin(a) * h * 0.95);
+          ctx.stroke();
+        }
+      }
+      ctx.restore();
+
+      // the shadow it casts into its own hole
+      ctx.fillStyle = 'rgba(58,40,20,0.35)';
+      ctx.beginPath();
+      ctx.ellipse(0, 0, w * 0.95, Math.max(1, h * 0.22), 0, 0, TAU);
       ctx.fill();
+      ctx.restore();
+
       if (amber) {
         // amber catches the light, which is how you spot it from a way off
         const tw = 0.5 + 0.5 * Math.sin(this.time * 2.6 + site.ci);
-        ctx.globalAlpha = 0.25 + tw * 0.45;
-        const g = ctx.createRadialGradient(s.x, s.y - r * 0.5, 0, s.x, s.y - r * 0.5, r * 4);
+        ctx.globalAlpha = 0.18 + tw * 0.34;
+        const g = ctx.createRadialGradient(s.x, s.y - h * 0.5, 0, s.x, s.y - h * 0.5, w * 3);
         g.addColorStop(0, '#fae19f');
         g.addColorStop(1, 'rgba(238,198,108,0)');
         ctx.fillStyle = g;
-        ctx.beginPath(); ctx.arc(s.x, s.y - r * 0.5, r * 4, 0, TAU); ctx.fill();
+        ctx.beginPath(); ctx.arc(s.x, s.y - h * 0.5, w * 3, 0, TAU); ctx.fill();
         ctx.globalAlpha = 1;
       }
       if (Math.abs(site.x - this.crab.x) < 40) {
         drawText(ctx, power ? 'E to dig' : 'you would need a digging claw',
-          s.x, s.y - 16 * z, { color: '#dcd6c3', align: 'center' });
+          s.x, s.y - 18 * z, { color: '#dcd6c3', align: 'center' });
       }
     }
   }

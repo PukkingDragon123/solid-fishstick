@@ -5571,6 +5571,24 @@ body {
           const r = art.r;
           const ex = e.x + Math.cos(a) * art.globe;
           const ey = e.y + Math.sin(a) * art.globe;
+          const tint = this.game.modeTint;
+          if (tint) {
+            const heat = 0.55 + 0.45 * Math.sin(this.game.time * 3.2);
+            const gr = ctx.createRadialGradient(ex, ey, 0, ex, ey, r * 3.4);
+            gr.addColorStop(0, tint.glow);
+            gr.addColorStop(1, "rgba(0,0,0,0)");
+            ctx.save();
+            ctx.globalAlpha = 0.35 + heat * 0.4;
+            ctx.fillStyle = gr;
+            ctx.beginPath();
+            ctx.arc(ex, ey, r * 3.4, 0, TAU);
+            ctx.fill();
+            ctx.restore();
+            ctx.fillStyle = tint.iris;
+            ctx.beginPath();
+            ctx.ellipse(ex, ey, r * 0.62, r * 0.62, 0, 0, TAU);
+            ctx.fill();
+          }
           const px = ex + this.look.x * r * 0.22 - r * 0.34;
           const py = ey + this.look.y * r * 0.22 - r * 0.36;
           ctx.fillStyle = "rgba(246,242,248,0.95)";
@@ -6278,15 +6296,46 @@ body {
       );
     }
     if (opts.hand) {
-      p.ellipse(x1 + r1 * 0.5, cy, r1 * 1.34, r1 * 1.12, { mat: "skin", dome: r1 * 1.2, tint: ft + 0.04 });
+      const curl = opts.grip ?? 0.35;
+      p.ellipse(
+        x1 + r1 * 0.42,
+        cy,
+        r1 * 1.22,
+        r1 * 1.08,
+        { mat: "skin", dome: r1 * 1.15, tint: ft + 0.04 }
+      );
+      for (let f = 0; f < 4; f++) {
+        const spread = (f - 1.5) * r1 * 0.52;
+        const len2 = r1 * (1.26 - Math.abs(f - 1.1) * 0.17);
+        const fr = r1 * (0.3 - f * 0.022);
+        const bx = x1 + r1 * 0.95, by = cy + spread * 0.55;
+        const tx = bx + len2 * (1 - curl * 1.25);
+        const ty = by + spread * 0.35 + len2 * curl * 0.95;
+        p.capsule(
+          bx,
+          by,
+          tx,
+          ty,
+          fr * 1.05,
+          fr * 0.82,
+          { mat: "skin", dome: fr * 1.2, tint: ft + 0.1 - f * 0.02 }
+        );
+        p.ellipse(
+          bx,
+          by,
+          fr * 1.1,
+          fr * 1,
+          { mat: "skin", mask: true, dome: fr * 1.1, tint: ft + 0.16 }
+        );
+      }
       p.capsule(
-        x1 + r1 * 0.4,
-        cy - r1 * 0.5,
-        x1 + r1 * 1.5,
-        cy - r1 * 0.95,
-        r1 * 0.42,
-        r1 * 0.32,
-        { mat: "skin", dome: r1 * 0.5, tint: ft + 0.08 }
+        x1 + r1 * 0.3,
+        cy - r1 * 0.62,
+        x1 + r1 * (1.25 - curl * 0.5),
+        cy - r1 * (0.95 - curl * 0.7),
+        r1 * 0.4,
+        r1 * 0.3,
+        { mat: "skin", dome: r1 * 0.5, tint: ft + 0.14 }
       );
     }
     if (opts.knee) {
@@ -6558,6 +6607,43 @@ body {
         p.capsule(x, y, x + 7 * K, y, 1.2 * K, 1 * K, { mat: "wood", dome: 1.1 * K });
         p.capsule(x + 7 * K, y, x + 11 * K, y, 1.9 * K, 1.2 * K, { mat: "fur", dome: 1.5 * K, tint: 0.1 });
       }),
+      // a bottle, held by the neck. The level in it goes down as she drinks it,
+      // which is the only prop in the game with a state
+      beer: mk(7 * K, 14 * K, (p, x, y) => {
+        p.capsule(
+          x + 3 * K,
+          y - 6.2 * K,
+          x + 3 * K,
+          y - 4.2 * K,
+          1 * K,
+          1.2 * K,
+          { mat: "wood", dome: 0.9 * K, tint: -0.06 }
+        );
+        p.rect(x + 2 * K, y - 7 * K, 2 * K, 1 * K, { mat: "brass", dome: 0.8 * K, tint: 0.14 });
+        p.field(x, y - 4.4 * K, x + 6 * K, y + 5.2 * K, (px, py) => {
+          const v = clamp01((py - (y - 4.4 * K)) / (9.6 * K));
+          const hw = 2 * K * (v < 0.16 ? lerp(0.55, 1, v / 0.16) : 1);
+          const d = (px - (x + 3 * K)) / hw;
+          if (Math.abs(d) > 1) return null;
+          return { h: Math.sqrt(clamp01(1 - d * d)) * 1.8 * K, tint: -0.02 };
+        }, { mat: "wood" });
+        p.rect(
+          x + 1 * K,
+          y - 1 * K,
+          4 * K,
+          3 * K,
+          { mat: "paper", mask: true, dome: 0.8 * K, tint: 0.1 }
+        );
+        p.capsule(
+          x + 1.8 * K,
+          y - 3.6 * K,
+          x + 1.8 * K,
+          y + 3.6 * K,
+          0.4 * K,
+          0.4 * K,
+          { mat: "wood", mask: true, dome: 0.5 * K, tint: 0.34 }
+        );
+      }),
       canteen: mk(9 * K, 11 * K, (p, x, y) => {
         p.ellipse(x + 4 * K, y, 4 * K, 4.8 * K, { mat: "metal", dome: 3.4 * K, tint: -0.02 });
         p.ellipse(x + 4 * K, y, 2.4 * K, 2.9 * K, { mat: "metal", mask: true, dome: -1.6 * K, tint: -0.14 });
@@ -6707,11 +6793,11 @@ body {
       arm: {
         near: {
           upper: bone(5.8, 1.9, 1.6, "shirt", false, { bow: -0.45 * K, shade: -0.16 }),
-          lower: bone(5.4, 1.5, 1.2, "skin", false, { bow: 0.3 * K, hand: true, sleeve: true })
+          lower: bone(5.4, 1.5, 1.2, "skin", false, { bow: 0.3 * K, hand: true, sleeve: true, grip: 0.55 })
         },
         far: {
           upper: bone(5.8, 1.9, 1.6, "shirt", true, { bow: -0.45 * K, shade: -0.16 }),
-          lower: bone(5.4, 1.5, 1.2, "skin", true, { bow: 0.3 * K, hand: true, sleeve: true })
+          lower: bone(5.4, 1.5, 1.2, "skin", true, { bow: 0.3 * K, hand: true, sleeve: true, grip: 0.55 })
         }
       },
       leg: {
@@ -6780,7 +6866,8 @@ body {
     SURVEY: "survey",
     MEASURE: "measure",
     REST: "rest",
-    SHOCK: "shock"
+    SHOCK: "shock",
+    BEER: "beer"
   };
   var POSES = {
     idle: { crouch: 0, lean: 0.04, armN: [1.42, 0.16], armF: [1.5, 0.14], swing: 0.25 },
@@ -6793,6 +6880,9 @@ body {
     write: { crouch: 0.05, lean: 0.2, armN: [0.74, 0.84], armF: [0.98, 0.92], tool: "pencil", hold: "notebook", swing: 0 },
     point: { crouch: 0, lean: 0.02, armN: [-0.34, 0.02], armF: [1.46, 0.18], swing: 0 },
     drink: { crouch: 0.02, lean: -0.06, armN: [0.2, 1.24], armF: [1.48, 0.16], tool: "canteen", swing: 0 },
+    // the same pose with a bottle in it, which is what she does on the title
+    // screen and has done every evening for eleven years
+    beer: { crouch: 0.03, lean: -0.04, armN: [0.26, 1.1], armF: [1.46, 0.18], tool: "beer", swing: 0 },
     wave: { crouch: 0, lean: 0.02, armN: [-0.9, 0.42], armF: [1.46, 0.18], swing: 0, work: 0.6 },
     sit: { crouch: 1, lean: 0.16, armN: [0.9, 0.66], armF: [1.06, 0.58], swing: 0, sit: 1 },
     talk: { crouch: 0, lean: 0.06, armN: [0.96, 0.72], armF: [1.2, 0.52], swing: 0, work: 0.5 },
@@ -7203,7 +7293,7 @@ body {
         const p = rig.props[tool];
         ctx.save();
         ctx.translate(l.len + 1.4 * rig.K, 0);
-        ctx.rotate(tool === "canteen" ? -1.5 : tool === "peg" ? 1.2 : -0.25);
+        ctx.rotate(tool === "canteen" ? -1.5 : tool === "beer" ? -1.15 : tool === "peg" ? 1.2 : -0.25);
         ctx.drawImage(p.cv, -p.ox, -p.oy);
         ctx.restore();
       }
@@ -10193,6 +10283,1496 @@ body {
     }
   };
 
+  // js/systems/critters.js
+  var CELL6 = 120;
+  var MAX_LIVE = 140;
+  var CRITTERS = [
+    {
+      id: "skitterling",
+      name: "Skitterling",
+      n: [3, 7],
+      band: 0,
+      weight: 16,
+      hours: [5, 20],
+      wind: 0.4,
+      col: ["#6b4a28", "#8a6338", "#c9a06a"],
+      desc: "Runs in short bursts and stops dead. It is never in the middle of anything.",
+      move: "dart",
+      size: 1
+    },
+    {
+      id: "glassmite",
+      name: "Glass Mite",
+      n: [5, 12],
+      band: 0,
+      weight: 13,
+      hours: [9, 16],
+      wind: 0.2,
+      col: ["#9fc4cc", "#c6e2e8", "#f0fbff"],
+      desc: "Almost transparent. You see the shadow before you see the animal.",
+      move: "drift",
+      size: 0.7
+    },
+    {
+      id: "saltflea",
+      name: "Salt Flea",
+      n: [6, 14],
+      band: 0,
+      weight: 15,
+      hours: [0, 24],
+      wind: 0.6,
+      col: ["#cfc6ae", "#e8e0cc", "#fffaf0"],
+      desc: "Lives in the crust. Jumps the length of its own body forty times a minute.",
+      move: "hop",
+      size: 0.6
+    },
+    {
+      id: "dustmoth",
+      name: "Dust Moth",
+      n: [2, 5],
+      band: 1,
+      weight: 11,
+      hours: [17, 6],
+      wind: 0.8,
+      col: ["#8c7f9a", "#b3a6c0", "#ded2e8"],
+      desc: "Flies badly and on purpose. Nothing that eats it can predict it either.",
+      move: "flutter",
+      size: 1
+    },
+    {
+      id: "threadworm",
+      name: "Thread Worm",
+      n: [1, 3],
+      band: 0,
+      weight: 8,
+      hours: [0, 24],
+      wind: 0.1,
+      col: ["#a4566a", "#c07084", "#dc95a5"],
+      desc: "Comes up where the sand is damp and goes down again before you reach it.",
+      move: "wriggle",
+      size: 1.2
+    },
+    {
+      id: "pipergnat",
+      name: "Piper Gnat",
+      n: [8, 20],
+      band: 1,
+      weight: 12,
+      hours: [4, 9],
+      wind: 0.9,
+      col: ["#c8b46a", "#e2d08a", "#fff0b4"],
+      desc: "A column of them stands over one spot all morning for reasons of its own.",
+      move: "swarm",
+      size: 0.5
+    },
+    {
+      id: "ashtick",
+      name: "Ash Tick",
+      n: [1, 2],
+      band: 0,
+      weight: 7,
+      hours: [0, 24],
+      wind: 0,
+      col: ["#4a4038", "#6a5c4e", "#8d7d6a"],
+      desc: "Holds absolutely still on a stone until something warm goes past.",
+      move: "still",
+      size: 0.9
+    },
+    {
+      id: "quillhopper",
+      name: "Quill Hopper",
+      n: [2, 4],
+      band: 0,
+      weight: 10,
+      hours: [6, 19],
+      wind: 0.3,
+      col: ["#5c6b3a", "#7e9150", "#a8bd74"],
+      desc: "Green, which out here is either a lie or a very good idea.",
+      move: "hop",
+      size: 1.4
+    },
+    {
+      id: "sunmite",
+      name: "Ember Mite",
+      n: [4, 9],
+      band: 0,
+      weight: 9,
+      hours: [10, 15],
+      wind: 0.2,
+      col: ["#a8341c", "#d0562c", "#f08a4a"],
+      desc: "Only out in the worst of the heat. Nothing else is competing for it.",
+      move: "dart",
+      size: 0.6
+    },
+    {
+      id: "lanternfly",
+      name: "Lantern Fly",
+      n: [2, 6],
+      band: 1,
+      weight: 8,
+      hours: [19, 5],
+      wind: 0.5,
+      col: ["#3a6a5a", "#5ca88a", "#9ef0c8"],
+      desc: "Cold green, and it goes out the moment you look straight at it.",
+      move: "flutter",
+      size: 0.8,
+      glow: "#7fe8b4"
+    },
+    {
+      id: "boneburrower",
+      name: "Bone Burrower",
+      n: [1, 2],
+      band: 0,
+      weight: 6,
+      hours: [20, 4],
+      wind: 0,
+      col: ["#cbc2ae", "#e0d8c4", "#f4eeda"],
+      desc: "Surfaces, turns its head once, and is gone before you are sure.",
+      move: "surface",
+      size: 1.1
+    },
+    {
+      id: "ribbonshrimp",
+      name: "Sand Shrimp",
+      n: [2, 5],
+      band: 0,
+      weight: 7,
+      hours: [0, 24],
+      wind: 0.3,
+      col: ["#b06a8a", "#d08aa8", "#eeb0c6"],
+      desc: "A thousand years and it has still not accepted that the sea has gone.",
+      move: "wriggle",
+      size: 0.9,
+      wet: true
+    }
+  ];
+  var TOTAL_W2 = CRITTERS.reduce((t, c) => t + c.weight, 0);
+  var BY_ID = Object.fromEntries(CRITTERS.map((c) => [c.id, c]));
+  function awake(def3, hour) {
+    const [a, b] = def3.hours;
+    if (a === 0 && b === 24) return 1;
+    if (a < b) return hour >= a && hour < b ? 1 : 0;
+    return hour >= a || hour < b ? 1 : 0;
+  }
+  var Critters = class {
+    constructor(game2, seed) {
+      this.game = game2;
+      this.seed = String(seed);
+      this.live = [];
+      this.cells = /* @__PURE__ */ new Map();
+      this.t = 0;
+    }
+    /** What lives in this cell, decided once and for ever. */
+    colony(ci) {
+      let c = this.cells.get(ci);
+      if (c !== void 0) return c;
+      const r = mulberry32((hashStr(this.seed + "crit") ^ ci * 2654435761) >>> 0);
+      if (r() > 0.74) {
+        this.cells.set(ci, null);
+        return null;
+      }
+      let roll = r() * TOTAL_W2;
+      let def3 = CRITTERS[0];
+      for (const d of CRITTERS) {
+        roll -= d.weight;
+        if (roll <= 0) {
+          def3 = d;
+          break;
+        }
+      }
+      const n = def3.n[0] + Math.floor(r() * (def3.n[1] - def3.n[0] + 1));
+      c = { ci, def: def3, n, x: ci * CELL6 + r() * CELL6, seed: r() * TAU };
+      this.cells.set(ci, c);
+      return c;
+    }
+    update(dt, weather) {
+      this.t += dt;
+      const cam = this.game.cam;
+      if (!cam) return;
+      const hour = this.game.weather ? this.game.weather.hour : 12;
+      const wind = weather ? weather.windVec().x : 0.3;
+      const sand = weather ? weather.sand || 0 : 0;
+      const b = cam.bounds(140);
+      const wantCells = /* @__PURE__ */ new Set();
+      for (let ci = Math.floor(b.x0 / CELL6); ci <= Math.floor(b.x1 / CELL6); ci++) wantCells.add(ci);
+      const have = new Set(this.live.map((q) => q.ci));
+      for (const ci of wantCells) {
+        if (have.has(ci)) continue;
+        const col = this.colony(ci);
+        if (!col) continue;
+        if (!awake(col.def, hour)) continue;
+        if (this.live.length >= MAX_LIVE) break;
+        this._hatch(col);
+      }
+      for (let i = this.live.length - 1; i >= 0; i--) {
+        const q = this.live[i];
+        if (q.x < b.x0 - 60 || q.x > b.x1 + 60 || !awake(q.def, hour)) this.live.splice(i, 1);
+      }
+      const t = this.game.terrain;
+      for (const q of this.live) {
+        q.t += dt;
+        const d = q.def;
+        const blow = wind * 26 * d.wind;
+        switch (d.move) {
+          case "dart":
+            q.wait -= dt;
+            if (q.wait <= 0) {
+              q.wait = 0.5 + Math.random() * 2.2;
+              q.vx = (Math.random() < 0.5 ? -1 : 1) * (40 + Math.random() * 60);
+              q.run = 0.18 + Math.random() * 0.2;
+            }
+            q.run -= dt;
+            if (q.run <= 0) q.vx = 0;
+            break;
+          case "hop":
+            q.wait -= dt;
+            if (q.wait <= 0 && q.z <= 0) {
+              q.wait = 0.25 + Math.random() * 0.8;
+              q.zv = 26 + Math.random() * 34;
+              q.vx = (Math.random() < 0.5 ? -1 : 1) * (14 + Math.random() * 26);
+            }
+            break;
+          case "drift":
+            q.vx = damp(q.vx, blow + Math.sin(q.t * 0.7 + q.seed) * 8, 0.02, dt);
+            break;
+          case "flutter":
+            q.vx = damp(q.vx, blow + Math.sin(q.t * 2.3 + q.seed) * 34, 0.05, dt);
+            q.zv = Math.sin(q.t * 5.1 + q.seed * 2) * 40;
+            q.z = clamp(q.z + q.zv * dt, 4, 44);
+            break;
+          case "swarm": {
+            const home = q.homeX + Math.sin(q.t * 0.9 + q.seed) * 9;
+            q.vx = damp(q.vx, (home - q.x) * 3 + blow * 0.3, 0.02, dt);
+            q.z = clamp(14 + Math.sin(q.t * 3.4 + q.seed * 3) * 12 + q.uid % 5 * 3, 4, 40);
+            break;
+          }
+          case "wriggle":
+            q.vx = damp(q.vx, Math.sin(q.t * 1.6 + q.seed) * 18, 0.03, dt);
+            break;
+          case "surface":
+            q.wait -= dt;
+            if (q.wait <= 0) {
+              q.wait = 3 + Math.random() * 7;
+              q.up = 1.4;
+              q.x = q.homeX + (Math.random() - 0.5) * 60;
+            }
+            q.up = Math.max(0, (q.up || 0) - dt);
+            break;
+          case "still":
+          default:
+            q.vx = 0;
+            break;
+        }
+        if (d.band === 0) {
+          if (q.zv || q.z > 0) {
+            q.zv -= 260 * dt;
+            q.z = Math.max(0, q.z + q.zv * dt);
+            if (q.z <= 0) {
+              q.zv = 0;
+              q.vx *= 0.3;
+            }
+          }
+        }
+        q.x += q.vx * dt;
+        q.y = t.surfaceY(q.x);
+        q.hide = damp(q.hide, sand > 0.3 ? 1 : 0, 2e-3, dt);
+      }
+    }
+    _hatch(col) {
+      const d = col.def;
+      for (let i = 0; i < col.n && this.live.length < MAX_LIVE; i++) {
+        const x = col.x + (Math.random() - 0.5) * CELL6 * 0.8;
+        this.live.push({
+          ci: col.ci,
+          def: d,
+          uid: this.live.length + i,
+          x,
+          homeX: x,
+          y: this.game.terrain.surfaceY(x),
+          vx: 0,
+          z: d.band === 1 ? 8 + Math.random() * 24 : 0,
+          zv: 0,
+          t: Math.random() * 10,
+          seed: Math.random() * TAU,
+          wait: Math.random() * 2,
+          run: 0,
+          up: 0,
+          hide: 0,
+          flip: Math.random() < 0.5 ? -1 : 1
+        });
+      }
+    }
+    // -- drawing --------------------------------------------------------------
+    /**
+     * Every one of these is drawn by hand at its own size, because the whole
+     * point is that they are not the same animal in different colours. At this
+     * scale an animal is a silhouette and two accents, so that is what each one
+     * gets.
+     */
+    draw(ctx, cam) {
+      const z = cam.zoom;
+      for (const q of this.live) {
+        if (q.hide > 0.85) continue;
+        const d = q.def;
+        const s = cam.worldToScreen(q.x, q.y - q.z - (d.band === 1 ? 0 : 1));
+        const S = Math.max(1, z * d.size);
+        const px = Math.round(s.x), py = Math.round(s.y);
+        const [dark, mid, lit] = d.col;
+        ctx.save();
+        ctx.globalAlpha = (1 - q.hide) * (d.id === "glassmite" ? 0.55 : 1);
+        const dir = q.vx < -2 ? -1 : q.vx > 2 ? 1 : q.flip;
+        const wag = Math.sin(q.t * 14) * S * 0.5;
+        switch (d.id) {
+          case "skitterling": {
+            ctx.fillStyle = mid;
+            ctx.fillRect(px - S, py - S, S * 2, S);
+            ctx.fillStyle = lit;
+            ctx.fillRect(px + (dir > 0 ? S : -S - 1), py - S, 1, 1);
+            if (Math.abs(q.vx) > 4) {
+              ctx.fillStyle = dark;
+              for (let L = -1; L <= 1; L++) ctx.fillRect(px + L * S, py, 1, Math.max(1, S * 0.7));
+            }
+            break;
+          }
+          case "glassmite": {
+            ctx.globalAlpha *= 0.5;
+            ctx.fillStyle = "#6a553a";
+            ctx.fillRect(px, py + 1, Math.max(1, S), 1);
+            ctx.globalAlpha = (1 - q.hide) * 0.5;
+            ctx.fillStyle = lit;
+            ctx.fillRect(px - S * 0.5, py - S, Math.max(1, S), Math.max(1, S));
+            break;
+          }
+          case "saltflea": {
+            ctx.fillStyle = q.z > 1 ? lit : mid;
+            ctx.fillRect(px, py - S, Math.max(1, S * 0.9), Math.max(1, S * 0.9));
+            break;
+          }
+          case "dustmoth": {
+            const beat = Math.abs(Math.sin(q.t * 11));
+            ctx.fillStyle = mid;
+            ctx.fillRect(px - S * 1.4, py - S * beat, Math.max(1, S * 1.2), Math.max(1, S * 0.8));
+            ctx.fillRect(px + S * 0.3, py - S * (1 - beat) * 0.8, Math.max(1, S * 1.2), Math.max(1, S * 0.8));
+            ctx.fillStyle = dark;
+            ctx.fillRect(px - S * 0.2, py - S * 0.4, Math.max(1, S * 0.6), Math.max(1, S));
+            break;
+          }
+          case "threadworm": {
+            ctx.fillStyle = mid;
+            for (let i = 0; i < 5; i++) {
+              const a = q.t * 4 + i * 0.9;
+              ctx.fillRect(
+                Math.round(px + i * S * 0.7 * dir),
+                Math.round(py - S * 0.6 - Math.sin(a) * S * 0.7),
+                Math.max(1, S * 0.7),
+                Math.max(1, S * 0.7)
+              );
+            }
+            ctx.fillStyle = lit;
+            ctx.fillRect(px, Math.round(py - S * 1.3), Math.max(1, S * 0.7), Math.max(1, S * 0.7));
+            break;
+          }
+          case "pipergnat": {
+            ctx.fillStyle = lit;
+            ctx.fillRect(px, py, Math.max(1, S), Math.max(1, S));
+            break;
+          }
+          case "ashtick": {
+            ctx.fillStyle = dark;
+            ctx.fillRect(px - S, py - S * 1.2, Math.max(1, S * 2), Math.max(1, S * 1.2));
+            ctx.fillStyle = mid;
+            ctx.fillRect(px - S, py - S * 1.2, Math.max(1, S * 2), 1);
+            break;
+          }
+          case "quillhopper": {
+            ctx.fillStyle = mid;
+            ctx.fillRect(px - S, py - S * 1.3, Math.max(1, S * 2), Math.max(1, S * 1.3));
+            ctx.fillStyle = dark;
+            ctx.fillRect(px - S * 1.4 * dir, py - S * 0.6, Math.max(1, S * 0.8), Math.max(1, S * 1.4));
+            ctx.fillStyle = lit;
+            for (let i = -1; i <= 1; i++) ctx.fillRect(px + i * S * 0.8, py - S * 1.8, 1, Math.max(1, S * 0.6));
+            break;
+          }
+          case "sunmite": {
+            ctx.fillStyle = mid;
+            ctx.fillRect(px - S * 0.5, py - S, Math.max(1, S), Math.max(1, S));
+            ctx.fillStyle = lit;
+            ctx.fillRect(px - S * 0.5, py - S, 1, 1);
+            break;
+          }
+          case "lanternfly": {
+            const on = 0.35 + 0.65 * Math.abs(Math.sin(q.t * 1.7 + q.seed));
+            const gr = ctx.createRadialGradient(px, py, 0, px, py, S * 6);
+            gr.addColorStop(0, `rgba(127,232,180,${0.5 * on})`);
+            gr.addColorStop(1, "rgba(127,232,180,0)");
+            ctx.fillStyle = gr;
+            ctx.beginPath();
+            ctx.arc(px, py, S * 6, 0, TAU);
+            ctx.fill();
+            ctx.fillStyle = lit;
+            ctx.fillRect(px, py, Math.max(1, S), Math.max(1, S));
+            break;
+          }
+          case "boneburrower": {
+            const up = clamp01(q.up / 1.4);
+            if (up <= 0.01) break;
+            const h = S * 3 * up;
+            ctx.fillStyle = mid;
+            ctx.fillRect(px - S * 0.6, Math.round(py - h), Math.max(1, S * 1.2), Math.max(1, h));
+            ctx.fillStyle = dark;
+            ctx.fillRect(px - S * 0.6 + (dir > 0 ? S * 0.8 : 0), Math.round(py - h), 1, 1);
+            ctx.fillStyle = "rgba(198,166,112,0.5)";
+            ctx.fillRect(px - S * 1.6, py, Math.max(1, S * 3.2), 1);
+            break;
+          }
+          case "ribbonshrimp": {
+            ctx.fillStyle = mid;
+            for (let i = 0; i < 4; i++) {
+              ctx.fillRect(
+                Math.round(px + i * S * 0.6 * dir),
+                Math.round(py - S * 0.8 - i * S * 0.18),
+                Math.max(1, S * 0.6),
+                Math.max(1, S * 0.7)
+              );
+            }
+            ctx.fillStyle = lit;
+            ctx.fillRect(
+              Math.round(px - S * 0.7 * dir),
+              Math.round(py - S * 0.9 + wag * 0.3),
+              Math.max(1, S * 0.7),
+              Math.max(1, S * 0.5)
+            );
+            break;
+          }
+          default:
+            ctx.fillStyle = mid;
+            ctx.fillRect(px, py - S, Math.max(1, S), Math.max(1, S));
+        }
+        ctx.restore();
+      }
+      ctx.globalAlpha = 1;
+    }
+    /** How many of what is on screen right now, for the field notes. */
+    census() {
+      const out = /* @__PURE__ */ new Map();
+      for (const q of this.live) out.set(q.def.id, (out.get(q.def.id) || 0) + 1);
+      return [...out.entries()].map(([id, n]) => ({ def: BY_ID[id], n }));
+    }
+  };
+
+  // js/ui/icons.js
+  var LIGHT5 = { lightX: -0.55, lightY: -0.68, lightZ: 0.42, ambient: 0.42, dither: 0.6 };
+  var cache6 = /* @__PURE__ */ new Map();
+  var once = (key2, make) => {
+    let v = cache6.get(key2);
+    if (!v) {
+      v = make();
+      cache6.set(key2, v);
+    }
+    return v;
+  };
+  function buildShell(W = 38) {
+    const H = Math.round(W * 0.78);
+    const pad = 3;
+    const w = W + pad * 2, h = H + 8;
+    const cx = w / 2, base = h - 4;
+    const domeAt = (u) => Math.pow(Math.sin(clamp01(u) * Math.PI), 0.52);
+    const inner = new Painter(w, h);
+    inner.field(cx - W / 2, base - H, cx + W / 2, base + 2, (x, y) => {
+      const u = (x - (cx - W / 2)) / W;
+      const dome = domeAt(u);
+      const top2 = base - H * 0.86 * dome;
+      if (y < top2 || y > base) return null;
+      const t = (y - top2) / Math.max(1, base - top2);
+      const band = Math.sin((y - top2) / 2.6 * Math.PI * 2);
+      return { h: 1.5 + band * 0.4, tint: -0.42 + t * 0.1 + band * 0.04 };
+    }, { mat: "shellRock" });
+    inner.grain("shellRock", { freq: 0.34, amp: 0.14, seed: 7 });
+    const back = inner.resolve(MATERIALS, { ...LIGHT5, ambient: 0.3, outline: 1, outlineColor: "#191108" });
+    const q = new Painter(w, h);
+    q.field(cx - W / 2, base - H, cx + W / 2, base + 2, (x, y) => {
+      const u = (x - (cx - W / 2)) / W;
+      const dome = domeAt(u);
+      const top2 = base - H * 0.86 * dome + 2.2;
+      const bot2 = base - 2.5;
+      if (y < top2 || y > bot2) return null;
+      const t = (y - top2) / Math.max(1, bot2 - top2);
+      return { h: 3 - t * 3, tint: 0.16 - t * 0.55 };
+    }, { mat: "water" });
+    const water = q.resolve(MATERIALS, { ...LIGHT5, ambient: 0.52, outline: 0 });
+    const front = new Painter(w, h);
+    front.field(cx - W / 2 - 2, base - H - 2, cx + W / 2 + 2, base + 3, (x, y) => {
+      const u = (x - (cx - W / 2)) / W;
+      if (u < -0.06 || u > 1.06) return null;
+      const dome = domeAt(clamp01(u));
+      const top2 = base - H * 0.86 * dome;
+      if (y < top2 - 1 || y > base) return null;
+      const edgeU = Math.min(u, 1 - u) * W;
+      const dEdge = Math.min(edgeU, y - top2, base - y);
+      const wall = 2.6;
+      if (dEdge > wall && y < base - 3) return null;
+      const k = clamp01(1 - dEdge / wall);
+      const band = Math.sin((y - top2) / 2.6 * Math.PI * 2);
+      return { h: 2.4 + k * 2 + band * 0.5, tint: 0.06 + k * 0.1 + band * 0.05 };
+    }, { mat: "shellRock" });
+    front.grain("shellRock", { freq: 0.3, amp: 0.2, seed: 5, height: 0.5 });
+    front.speckle("shellRock", { density: 0.06, amp: 0.3, seed: 9 });
+    for (const sgn of [-1, 1]) {
+      front.capsule(
+        cx + sgn * W * 0.34,
+        base - 2,
+        cx + sgn * W * 0.5,
+        base + 1.5,
+        1.8,
+        1.2,
+        { mat: "chitin", dome: 1.4, tint: sgn > 0 ? 0 : -0.14 }
+      );
+    }
+    const cv = front.resolve(MATERIALS, { ...LIGHT5, outline: 1, outlineColor: "#191108" });
+    let top = q.h, bot = 0, left = q.w, right = 0;
+    for (let y = 0; y < q.h; y++) {
+      for (let x = 0; x < q.w; x++) {
+        if (!q.mat[y * q.w + x]) continue;
+        if (y < top) top = y;
+        if (y > bot) bot = y;
+        if (x < left) left = x;
+        if (x > right) right = x;
+      }
+    }
+    return { cv, back, water, w, h, top, bot, left, right };
+  }
+  function drawShell(ctx, x, y, f, t, scale = 1) {
+    const S = once("shell", () => buildShell(38));
+    const lvl = S.bot - (S.bot - S.top) * clamp01(f);
+    ctx.save();
+    ctx.translate(Math.round(x), Math.round(y));
+    if (scale !== 1) ctx.scale(scale, scale);
+    ctx.drawImage(S.back, 0, 0);
+    if (f > 5e-3) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(0, lvl, S.w, S.bot - lvl + 2);
+      ctx.clip();
+      ctx.drawImage(S.water, 0, 0);
+      ctx.restore();
+      ctx.fillStyle = "#bfeaf2";
+      for (let x2 = S.left; x2 <= S.right; x2++) {
+        const wob = Math.sin(t * 2.6 + x2 * 0.5) * 0.9 + Math.sin(t * 1.3 + x2 * 0.22) * 0.6;
+        const yy = Math.round(lvl + wob);
+        if (yy < S.top - 1 || yy > S.bot) continue;
+        ctx.fillRect(x2, yy, 1, 1);
+      }
+    }
+    ctx.drawImage(S.cv, 0, 0);
+    ctx.restore();
+    return { w: S.w, h: S.h };
+  }
+  function buildBloom(stage) {
+    const p = new Painter(34, 40);
+    const cx = 17, base = 37;
+    const grow = stage / 8;
+    const h = 8 + grow * 22;
+    p.curve(
+      [{ x: cx, y: base }, { x: cx - 1.5, y: base - h * 0.55 }, { x: cx, y: base - h }],
+      1.5,
+      1,
+      { mat: "leaf", dome: 1.3, steps: 12, tint: -0.04 }
+    );
+    const leaves = Math.min(4, Math.ceil(stage / 2));
+    for (let i = 0; i < leaves; i++) {
+      const sgn = i % 2 ? 1 : -1;
+      const ly = base - h * (0.22 + i * 0.17);
+      const ll = 5 + grow * 5;
+      p.curve(
+        [
+          { x: cx, y: ly },
+          { x: cx + sgn * ll * 0.6, y: ly - ll * 0.5 },
+          { x: cx + sgn * ll, y: ly - ll * 0.15 }
+        ],
+        2.4,
+        0.6,
+        { mat: "leaf", dome: 1.6, steps: 10, tint: sgn > 0 ? 0.06 : -0.1 }
+      );
+    }
+    const ty = base - h;
+    if (stage === 0) {
+      p.ellipse(cx, ty, 2, 2.6, { mat: "leaf", dome: 1.8, tint: 0.05 });
+    } else {
+      const petals = Math.min(9, 2 + stage);
+      const pr = 2.6 + grow * 4.4;
+      for (let i = 0; i < petals; i++) {
+        const a = i / petals * TAU;
+        const sx = Math.cos(a), sy = Math.sin(a) * 0.5;
+        p.ellipse(
+          cx + sx * pr,
+          ty + sy * pr,
+          pr * 0.52,
+          pr * 0.36,
+          {
+            mat: stage >= 6 ? "petalGold" : "petalPink",
+            rot: a,
+            dome: pr * 0.5,
+            tint: sy < 0 ? -0.16 : 0.08
+          }
+        );
+      }
+      p.ellipse(cx, ty, pr * 0.44, pr * 0.34, { mat: "fruitGold", dome: pr * 0.5, tint: 0.1 });
+      p.speckle("fruitGold", { density: 0.35, amp: 0.4, seed: 3 });
+    }
+    return { cv: p.resolve(MATERIALS, { ...LIGHT5, outline: 1, outlineColor: "#141c0e" }), w: 34, h: 40 };
+  }
+  function drawBloom(ctx, x, y, stage, sway = 0, scale = 1) {
+    const st = clamp(Math.round(stage), 0, 8);
+    const B = once("bloom" + st, () => buildBloom(st));
+    ctx.save();
+    ctx.translate(Math.round(x) + 17, Math.round(y) + 37);
+    if (scale !== 1) ctx.scale(scale, scale);
+    ctx.rotate(sway);
+    ctx.drawImage(B.cv, -17, -37);
+    ctx.restore();
+    return { w: B.w, h: B.h };
+  }
+  function buildSprig(n) {
+    const p = new Painter(26, 22);
+    const cx = 13, base = 20;
+    p.curve(
+      [{ x: cx - 8, y: base }, { x: cx, y: base - 8 }, { x: cx + 8, y: base - 5 }],
+      1.3,
+      0.8,
+      { mat: "wood", dome: 1.1, steps: 10 }
+    );
+    for (let i = 0; i < 3; i++) {
+      const a = -0.4 - i * 0.5;
+      p.ellipse(
+        cx - 4 + i * 5,
+        base - 7 - i,
+        3.4,
+        2.2,
+        { mat: "leaf", rot: a, dome: 1.6, tint: (i - 1) * 0.07 }
+      );
+    }
+    const shown = Math.min(5, n);
+    for (let i = 0; i < shown; i++) {
+      const bx = cx - 6 + i * 3.4, by = base - 3 - i % 2 * 2.6;
+      p.ellipse(bx, by, 2.3, 2.3, { mat: "berry", dome: 2.6, tint: 0.02 });
+      p.ellipse(bx - 0.7, by - 0.8, 0.8, 0.7, { mat: "berry", mask: true, dome: 2, tint: 0.5 });
+    }
+    return { cv: p.resolve(MATERIALS, { ...LIGHT5, outline: 1, outlineColor: "#1a0d10" }), w: 26, h: 22 };
+  }
+  function drawSprig(ctx, x, y, n, scale = 1) {
+    const k = clamp(n, 0, 5);
+    const S = once("sprig" + k, () => buildSprig(k));
+    ctx.save();
+    ctx.translate(Math.round(x), Math.round(y));
+    if (scale !== 1) ctx.scale(scale, scale);
+    ctx.drawImage(S.cv, 0, 0);
+    ctx.restore();
+    return { w: S.w, h: S.h };
+  }
+  function buildOrb() {
+    const p = new Painter(30, 30);
+    const cx = 15, cy = 15, r = 11;
+    p.ellipse(cx, cy, r, r, { mat: "glass", dome: r * 1.25, tint: 0.02 });
+    for (let i = 0; i < 22; i++) {
+      const t = i / 21;
+      const a = t * Math.PI * 3.1;
+      const yy = cy - r * 0.72 + t * r * 1.44;
+      for (const sgn of [1, -1]) {
+        const xx = cx + Math.cos(a) * r * 0.46 * sgn;
+        p.ellipse(xx, yy, 1.1, 1.1, { mat: "glow", dome: 1.3, tint: 0.2 + Math.sin(a) * 0.2 });
+      }
+      if (i % 3 === 0) {
+        p.capsule(
+          cx + Math.cos(a) * r * 0.46,
+          yy,
+          cx - Math.cos(a) * r * 0.46,
+          yy,
+          0.5,
+          0.5,
+          { mat: "glow", dome: 0.4, tint: -0.1 }
+        );
+      }
+    }
+    p.ellipse(cx - r * 0.34, cy - r * 0.4, r * 0.26, r * 0.22, { mat: "glass", mask: true, dome: r, tint: 0.7 });
+    return { cv: p.resolve(MATERIALS, { ...LIGHT5, ambient: 0.5, outline: 1, outlineColor: "#0e1a1e" }), w: 30, h: 30 };
+  }
+  function drawOrb(ctx, x, y, t, pulse = 0, scale = 1) {
+    const O = once("orb", buildOrb);
+    ctx.save();
+    ctx.translate(Math.round(x) + 15, Math.round(y) + 15);
+    if (scale !== 1) ctx.scale(scale, scale);
+    const s = 1 + Math.sin(t * 1.7) * 0.03 + pulse * 0.22;
+    ctx.globalAlpha = 0.3 + pulse * 0.5 + Math.sin(t * 2.3) * 0.06;
+    ctx.fillStyle = "#7fe0c8";
+    ctx.beginPath();
+    ctx.arc(0, 0, 13 * s, 0, TAU);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+    ctx.scale(s, s);
+    ctx.drawImage(O.cv, -15, -15);
+    ctx.restore();
+    return { w: O.w, h: O.h };
+  }
+  function buildTab(kind) {
+    const p = new Painter(22, 22);
+    const cx = 11, base = 19;
+    switch (kind) {
+      case "flora":
+        p.curve(
+          [{ x: cx, y: base }, { x: cx - 1, y: base - 8 }, { x: cx, y: base - 14 }],
+          1.3,
+          0.8,
+          { mat: "leaf", dome: 1.1, steps: 8 }
+        );
+        for (const sgn of [-1, 1]) {
+          p.curve(
+            [{ x: cx, y: base - 6 }, { x: cx + sgn * 4, y: base - 10 }, { x: cx + sgn * 6, y: base - 7 }],
+            2.4,
+            0.6,
+            { mat: "leaf", dome: 1.5, steps: 8, tint: sgn > 0 ? 0.06 : -0.1 }
+          );
+        }
+        p.ellipse(cx, base - 14, 3.2, 2.6, { mat: "petalPink", dome: 2.2, tint: 0.06 });
+        break;
+      case "fauna":
+        p.ellipse(cx - 1, base - 6, 6.5, 3.6, { mat: "scaleGreen", dome: 3.4, tint: 0.02 });
+        p.ellipse(cx + 6, base - 8, 3.2, 2.4, { mat: "scaleGreen", dome: 2.4, tint: 0.06 });
+        p.curve(
+          [{ x: cx - 7, y: base - 6 }, { x: cx - 10, y: base - 9 }, { x: cx - 9, y: base - 13 }],
+          1.4,
+          0.5,
+          { mat: "scaleGreen", dome: 1.2, steps: 8 }
+        );
+        for (let i = 0; i < 3; i++) {
+          p.capsule(
+            cx - 4 + i * 4,
+            base - 4,
+            cx - 5 + i * 4,
+            base,
+            0.9,
+            0.6,
+            { mat: "scaleGreen", dome: 0.8, tint: -0.1 }
+          );
+        }
+        p.ellipse(cx + 7, base - 9, 0.9, 0.9, { mat: "eye", dome: 1.1, tint: 0.3 });
+        break;
+      case "build":
+        p.rect(cx - 7, base - 9, 14, 9, { mat: "wood", dome: 2.6, tint: -0.02 });
+        p.poly(
+          [{ x: cx - 9, y: base - 9 }, { x: cx, y: base - 16 }, { x: cx + 9, y: base - 9 }],
+          { mat: "leafDry", dome: 2.6, feather: 2, tint: 0.06 }
+        );
+        p.rect(cx - 2, base - 5, 4, 5, { mat: "wood", mask: true, dome: -1.5, tint: -0.4 });
+        break;
+      case "codex":
+        p.rect(cx - 8, base - 13, 16, 13, { mat: "leather", dome: 2.6, tint: 0.02 });
+        p.rect(cx - 6, base - 11, 12, 9, { mat: "petalWhite", dome: 1.4, tint: 0.08 });
+        for (let i = 0; i < 3; i++) {
+          p.rect(cx - 4, base - 9 + i * 2.6, 8, 0.9, { mat: "petalWhite", mask: true, tint: -0.42, dome: 0 });
+        }
+        break;
+      default:
+        break;
+    }
+    return p.resolve(MATERIALS, { ...LIGHT5, outline: 1, outlineColor: "#1a140c" });
+  }
+  function drawTab(ctx, kind, x, y) {
+    const cv = once("tab" + kind, () => buildTab(kind));
+    ctx.drawImage(cv, Math.round(x), Math.round(y));
+    return { w: 22, h: 22 };
+  }
+  function buildFrame() {
+    const T = 10;
+    const L = 16;
+    const edge = (horizontal) => {
+      const w = horizontal ? L : T, h = horizontal ? T : L;
+      const p = new Painter(w, h);
+      p.field(0, 0, w, h, (x, y) => {
+        const across = horizontal ? y / T : x / T;
+        const along = horizontal ? x / L : y / L;
+        const d = Math.min(across, 1 - across);
+        const dz = Math.sqrt(Math.max(0, 1 - Math.pow(1 - d * 2, 2)));
+        const grain = Math.sin(along * 22 + across * 3) * 0.5 + Math.sin(along * 61) * 0.2;
+        return { h: 1.4 + dz * 3.4 + grain * 0.4, tint: -0.1 + dz * 0.22 + grain * 0.07 };
+      }, { mat: "wood" });
+      p.grain("wood", { freq: 0.6, amp: 0.16, seed: horizontal ? 3 : 9 });
+      return p.resolve(MATERIALS, { ...LIGHT5, outline: 1, outlineColor: "#1a1109" });
+    };
+    const corner = () => {
+      const p = new Painter(T + 4, T + 4);
+      p.field(0, 0, T + 4, T + 4, (x, y) => {
+        const a = Math.min(x, T + 3 - x) / T, b = Math.min(y, T + 3 - y) / T;
+        const d = Math.min(a, b);
+        if (d < -0.1) return null;
+        const dz = Math.sqrt(Math.max(0, 1 - Math.pow(1 - clamp01(d * 2), 2)));
+        return { h: 1.6 + dz * 3.6, tint: -0.06 + dz * 0.2 };
+      }, { mat: "wood" });
+      for (let i = -1; i < 4; i++) {
+        p.capsule(
+          1 + i * 2.6,
+          T + 2 - i * 1.2,
+          T + 2 - i * 1.2,
+          1 + i * 2.6,
+          1,
+          1,
+          { mat: "rope", dome: 1.1, tint: i % 2 ? 0.1 : -0.06 }
+        );
+      }
+      p.grain("wood", { freq: 0.5, amp: 0.18, seed: 21 });
+      return p.resolve(MATERIALS, { ...LIGHT5, outline: 1, outlineColor: "#1a1109" });
+    };
+    return { top: edge(true), side: edge(false), corner: corner(), T, L };
+  }
+  function drawPanel(ctx, x, y, w, h, opts = {}) {
+    const F = once("frame", buildFrame);
+    const T = F.T;
+    x = Math.round(x);
+    y = Math.round(y);
+    w = Math.round(w);
+    h = Math.round(h);
+    const g = ctx.createLinearGradient(0, y, 0, y + h);
+    g.addColorStop(0, opts.top || "rgba(38,28,18,0.975)");
+    g.addColorStop(1, opts.bottom || "rgba(24,17,11,0.985)");
+    ctx.fillStyle = g;
+    ctx.fillRect(x, y, w, h);
+    ctx.strokeStyle = "rgba(214,186,138,0.16)";
+    ctx.strokeRect(x + T - 1.5, y + T - 1.5, w - (T - 1.5) * 2, h - (T - 1.5) * 2);
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(x, y, w, h);
+    ctx.clip();
+    for (let i = 0; i < Math.ceil(w / F.L); i++) {
+      ctx.drawImage(F.top, x + i * F.L, y);
+      ctx.drawImage(F.top, x + i * F.L, y + h - T);
+    }
+    for (let i = 0; i < Math.ceil(h / F.L); i++) {
+      ctx.drawImage(F.side, x, y + i * F.L);
+      ctx.drawImage(F.side, x + w - T, y + i * F.L);
+    }
+    ctx.restore();
+    const c = F.corner;
+    ctx.drawImage(c, x - 2, y - 2);
+    ctx.drawImage(c, x + w - T - 2, y - 2);
+    ctx.drawImage(c, x - 2, y + h - T - 2);
+    ctx.drawImage(c, x + w - T - 2, y + h - T - 2);
+  }
+  var NODE = {
+    // spring
+    drop: "...1.../..111../.11111./1111111/1111111/1111111/.11111./..111../...1...",
+    tank: "1111111/1.....1/1.111.1/1.111.1/1.111.1/1.....1/1111111/.11111./..111..",
+    moon: "..111../.11..1./11....1/11...../11...../11....1/.11..1./..111../.......",
+    jet: "...1.../...1.../..111../..111../.11111./.11111./11...11/1.....1/.......",
+    sprout: "....11./...11../1.11.../11111../..1..../..1..../..1..../.11111./.......",
+    well: "1111111/1.....1/1.111.1/1.1.1.1/1.111.1/1.....1/.11111./..111../...1...",
+    // shell
+    step: ".....11/.....11/....111/...1111/..11111/.111111/1111111/1111111/.......",
+    leaf: ".....11/....111/...1111/..11.11/.11..11/11...11/11..11./.1111../.......",
+    graft: "11...11/.11.11./..111../...1.../..111../.11.11./11...11/......./.......",
+    fruit: "...1.../..11.../.11111./111.111/11...11/11...11/.11.11./..111../.......",
+    tree: "..111../.11111./1111111/.11111./..111../...1.../...1.../..111../.......",
+    // brood
+    call: "..1..../.11..11/.11.1.1/.111..1/.111..1/.11.1.1/.11..11/..1..../.......",
+    hand: ".1.1.1./1111111/1111111/1111111/1111111/.111111/..1111./...11../.......",
+    nest: "......./1111111/11...11/1.111.1/1.....1/.11111./..111../......./.......",
+    point: "...11../...11../11.11../1.111../1.1111./.11111./..1111./...111./.......",
+    egg: "...11../..1111./.111111/1111111/1111111/.111111/..1111./...11../.......",
+    link: ".11..../1..1.11/1..111./.11...1/11...11/1.111../.11..1./.....11/.......",
+    // pincer
+    claw: "11...11/.11.11./..111../.11111./11...11/1.....1/11...11/.11.11./..111..",
+    saw: "1.1.1.1/11111.1/.11111./..111../.11111./11111.1/1.1.1.1/......./.......",
+    spade: "...1.../...1.../..111../.11111./1111111/1111111/.11111./..111../.......",
+    bolt: "....11./...11../..11.../.11111./..111../.11..../11...../1....../.......",
+    comb: "1111111/1111111/1.1.1.1/1.1.1.1/1.1.1.1/1.1.1.1/1.1.1.1/......./.......",
+    hammer: ".111111/.111111/...11../...11../...11../...11../...11../..1111./.......",
+    // legs
+    leg: "11...../.11..../..11.../..11.../...11../...111./....111/...1111/.......",
+    shield: "1111111/1111111/1111111/.11111./.11111./..111../..111../...1.../.......",
+    burrow: "1111111/1.....1/1.....1/.1...1./..1.1../...1.../..111../.11111./.......",
+    load: "1111111/11...11/1111111/11...11/1111111/..111../..111../.11111./.......",
+    skate: "..11.../.1111../11111../1111111/.111111/..11111/1111111/......./.......",
+    crown: "1.....1/11...11/11.1.11/1111111/1111111/.11111./.11111./1111111/.......",
+    // conditions a plant will only ripen under
+    sun: "1..1..1/.1.1.1./..111../11111.1/..111../.1.1.1./1..1..1/......./.......",
+    dusk: "...1.../..111../.11111./1111111/......./1111111/......./......./.......",
+    shade: "..111../.11111./1111111/......./..1.1../..1.1../..1.1../.11111./.......",
+    weight: "..111../.11111./..1.1../.11111./1111111/1111111/.11111./......./.......",
+    clock: "..111../.1...1./1..1..1/1..11.1/1....11/.1...1./..111../......./.......",
+    // the modes: an animal standing, an animal walking
+    crab: ".11111./1111111/1.1.1.1/1111111/.11111./1.1.1.1/1.1.1.1/......./.......",
+    crabwalk: ".11111./1111111/1.1.1.1/1111111/.11111./1..1..1/11...11/......./......."
+  };
+  function drawNodeIcon(ctx, name, cx, cy, color, scale = 1) {
+    const rows = NODE[name];
+    if (!rows) return;
+    const lines = rows.split("/");
+    const w = Math.max(...lines.map((l) => l.length));
+    const s = Math.max(1, Math.round(scale));
+    const x0 = Math.round(cx - w * s / 2), y0 = Math.round(cy - lines.length * s / 2);
+    ctx.fillStyle = color;
+    for (let y = 0; y < lines.length; y++) {
+      for (let x = 0; x < lines[y].length; x++) {
+        if (lines[y][x] === "1") ctx.fillRect(x0 + x * s, y0 + y * s, s, s);
+      }
+    }
+  }
+  var GLYPHS = {
+    // . transparent, 1 dark, 2 mid, 3 light, 4 accent
+    drop: "....11....../...1221...../..122211..../.12222211.../.12222211.../1222222221../1222222331./1222222331./1222222221./.12222221.../..122221..../....1111....",
+    hand: "..1..1..1.../.121.121.12./.122.122.122/.1222222222./.1222222222./112222222221/122222222221/.12222222221/.1222222222./..122222221./...12222221./....111111..",
+    scale: ".....11...../.....11...../..111111111./.1.1.....1.1/1..1.....1..1/1..1.....1..1/.11.......11./.....11...../.....11...../....1111..../...111111.../..11111111..",
+    map: "111111111111/1..........1/1.11....11..1/1.1.1..1..1.1/1.1..11...1.1/1..1....1.1.1/1...1..1..1.1/1....11...1.1/1.........1.1/1..........1/1..........1/111111111111",
+    seed: ".....11...../....1221..../...122221.../..12222221../.1222222221./.1222222221./.1222222221./.1222222221./..12222221../...122221..../....1221..../.....11.....",
+    paw: ".11...11..../1221.1221.../1221.1221.../.11...11..../......11..11/.....1221122/.....12211221/......11..11/..1111111...:/.122222211../.12222222 1./..11111111..",
+    close: "1..........1/11........11/121......121/.121....121./..121..121../...121121.../....12121..../....12121.../...121121.../..121..121../.121....121./1..........1",
+    pump: "....1111..../...122221.../..12222221../.1222222221./1222222222 1/1224444422 1/1224444422 1/1222222222 1/.1222222221./..12222221../...122221.../....1111...."
+  };
+  var GLYPH_COLS = {
+    1: "#1c130b",
+    2: "#d6ba8a",
+    3: "#f5e7c6",
+    4: "#5fc6d8"
+  };
+  function drawGlyph(ctx, name, x, y, opts = {}) {
+    const rows = GLYPHS[name];
+    if (!rows) return 12;
+    const s = opts.scale || 1;
+    const cols = { ...GLYPH_COLS, ...opts.colors || {} };
+    if (opts.color) cols[2] = opts.color;
+    if (opts.accent) cols[4] = opts.accent;
+    if (opts.alpha !== void 0) {
+      ctx.save();
+      ctx.globalAlpha = opts.alpha;
+    }
+    const lines = rows.split("/");
+    for (let ry = 0; ry < lines.length; ry++) {
+      const line = lines[ry];
+      for (let rx = 0; rx < line.length; rx++) {
+        const c = cols[line[rx]];
+        if (!c) continue;
+        ctx.fillStyle = c;
+        ctx.fillRect(Math.round(x + rx * s), Math.round(y + ry * s), s, s);
+      }
+    }
+    if (opts.alpha !== void 0) ctx.restore();
+    return 12 * s;
+  }
+  function buildValve() {
+    const w = 34, h = 34;
+    const p = new Painter(w, h);
+    const cx = w / 2, cy = h / 2;
+    p.ellipse(cx, cy, 15, 15, { mat: "shellRock", dome: 6, tint: -0.06 });
+    p.ellipse(cx, cy, 12.5, 12.5, { mat: "chitin", dome: 5, tint: 0.06 });
+    p.ellipse(cx, cy, 9, 9, { mat: "chitinDark", dome: -6, tint: -0.34 });
+    for (let i = 0; i < 4; i++) {
+      const th = i / 4 * TAU + 0.4;
+      p.poly([
+        { x: cx + Math.cos(th) * 8.6, y: cy + Math.sin(th) * 8.6 },
+        { x: cx + Math.cos(th + 1.2) * 8.6, y: cy + Math.sin(th + 1.2) * 8.6 },
+        { x: cx + Math.cos(th + 0.6) * 2.2, y: cy + Math.sin(th + 0.6) * 2.2 }
+      ], { mat: "chitinPale", dome: 2.6, feather: 2, tint: 0.06 - i * 0.03 });
+    }
+    p.ellipse(cx, cy, 2.4, 2.4, { mat: "flesh", dome: -1.6, tint: -0.3 });
+    p.grain("shellRock", { freq: 0.34, amp: 0.2, seed: 31 });
+    p.grain("chitin", { freq: 0.5, amp: 0.14, seed: 13 });
+    return { cv: p.resolve(MATERIALS, { ...LIGHT5, outline: 1, outlineColor: "#191108" }), w, h };
+  }
+  function drawValve(ctx, x, y, open, t) {
+    const V = once("valve", buildValve);
+    ctx.save();
+    ctx.translate(x + V.w / 2, y + V.h / 2);
+    const k = 1 + open * 0.06 + Math.sin(t * 22) * open * 0.02;
+    ctx.scale(k, k);
+    if (open > 0.01) {
+      const g = ctx.createRadialGradient(0, 0, 0, 0, 0, 16);
+      g.addColorStop(0, `rgba(159,232,238,${0.55 * open})`);
+      g.addColorStop(1, "rgba(95,198,216,0)");
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(0, 0, 16, 0, TAU);
+      ctx.fill();
+    }
+    ctx.drawImage(V.cv, -V.w / 2, -V.h / 2);
+    ctx.restore();
+    return { w: V.w, h: V.h };
+  }
+  function drawGauge(ctx, x, y, w, h, f, col, opts = {}) {
+    x = Math.round(x);
+    y = Math.round(y);
+    w = Math.round(w);
+    h = Math.round(h);
+    ctx.fillStyle = opts.rim || "rgba(132,104,56,0.92)";
+    ctx.fillRect(x - 2, y - 2, w + 4, h + 4);
+    ctx.fillStyle = "rgba(198,162,90,0.55)";
+    ctx.fillRect(x - 2, y - 2, w + 4, 1);
+    ctx.fillStyle = opts.back || "rgba(14,10,6,0.90)";
+    ctx.fillRect(x - 1, y - 1, w + 2, h + 2);
+    ctx.fillStyle = "rgba(52,40,26,0.95)";
+    ctx.fillRect(x, y, w, h);
+    const fw = Math.round(w * clamp01(f));
+    if (fw > 0) {
+      ctx.fillStyle = col;
+      ctx.fillRect(x, y, fw, h);
+      ctx.fillStyle = "rgba(255,255,255,0.38)";
+      ctx.fillRect(x, y, fw, 1);
+      ctx.fillStyle = "rgba(0,0,0,0.26)";
+      ctx.fillRect(x, y + h - 1, fw, 1);
+      ctx.fillStyle = "rgba(255,255,255,0.55)";
+      ctx.fillRect(x + fw - 1, y, 1, h);
+    }
+    if (w > 18) {
+      for (let q = 1; q < 4; q++) {
+        ctx.fillStyle = "rgba(0,0,0,0.30)";
+        ctx.fillRect(x + Math.round(w * q / 4), y, 1, h);
+      }
+    }
+    ctx.fillStyle = "rgba(214,176,100,0.75)";
+    ctx.fillRect(x - 2, y - 1, 1, h + 2);
+    ctx.fillRect(x + w + 1, y - 1, 1, h + 2);
+    if (opts.mark !== void 0) {
+      ctx.fillStyle = "rgba(242,228,194,0.85)";
+      ctx.fillRect(x + Math.round(w * clamp01(opts.mark)), y - 2, 1, h + 4);
+    }
+  }
+  function drawPlate(ctx, x, y, w, h, opts = {}) {
+    x = Math.round(x);
+    y = Math.round(y);
+    w = Math.round(w);
+    h = Math.round(h);
+    const a = opts.alpha ?? 1;
+    ctx.save();
+    ctx.globalAlpha = a;
+    ctx.fillStyle = "rgba(0,0,0,0.28)";
+    ctx.fillRect(x + 1, y + 2, w, h);
+    const g = ctx.createLinearGradient(0, y, 0, y + h);
+    g.addColorStop(0, opts.top || "rgba(46,35,22,0.88)");
+    g.addColorStop(1, opts.bottom || "rgba(26,19,12,0.92)");
+    ctx.fillStyle = g;
+    ctx.fillRect(x, y, w, h);
+    ctx.fillStyle = "rgba(198,162,90,0.30)";
+    ctx.fillRect(x, y, w, 1);
+    ctx.strokeStyle = opts.edge || "rgba(148,118,68,0.55)";
+    ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+    if (opts.rivets !== false) {
+      ctx.fillStyle = "rgba(206,170,96,0.65)";
+      for (const [rx, ry] of [
+        [x + 2, y + 2],
+        [x + w - 3, y + 2],
+        [x + 2, y + h - 3],
+        [x + w - 3, y + h - 3]
+      ]) ctx.fillRect(rx, ry, 1, 1);
+    }
+    ctx.restore();
+  }
+  var MODE_ART = {
+    // an animal standing square on, shell over six legs
+    crab: [
+      "...........",
+      "..2222222..",
+      ".211111112.",
+      ".211111112.",
+      ".221111122.",
+      "..1212121..",
+      ".1.1.1.1.1.",
+      "1..1.1.1..1",
+      "..........."
+    ],
+    // the same animal mid-stride, legs gathered one way, shell tilted
+    crabwalk: [
+      "...........",
+      "...2222222.",
+      "..211111112",
+      "..211111112",
+      "..221111122",
+      "...1212121.",
+      "..11.1.1.1.",
+      ".1...1..11.",
+      "..........."
+    ],
+    // a claw, open, about to close
+    claw: [
+      "..11....11.",
+      ".1221..1221",
+      ".1221..1221",
+      "..122..221.",
+      "...122221..",
+      "....1221...",
+      "....1221...",
+      ".....11....",
+      ".....11...."
+    ],
+    // a spray head, and what comes out of it
+    jet: [
+      ".11........",
+      ".1221...2.2",
+      ".122211.2.2",
+      ".1222211.2.",
+      ".122211.2.2",
+      ".1221...2.2",
+      ".11........",
+      "...........",
+      "..........."
+    ],
+    // a nerve: one node, and everything strung off it
+    link: [
+      ".2.......2.",
+      "..2.....2..",
+      "...12221...",
+      "..1222221..",
+      "...12221...",
+      "..2.....2..",
+      ".2.......2.",
+      "...........",
+      "..........."
+    ]
+  };
+  function drawModeArt(ctx, name, cx, cy, body, edge) {
+    const rows = MODE_ART[name];
+    if (!rows) return;
+    const w = rows[0].length, h = rows.length;
+    const x0 = Math.round(cx - w / 2), y0 = Math.round(cy - h / 2);
+    for (let y = 0; y < h; y++) {
+      const line = rows[y];
+      for (let x = 0; x < line.length; x++) {
+        const c = line[x];
+        if (c === ".") continue;
+        ctx.fillStyle = c === "1" ? body : edge;
+        ctx.fillRect(x0 + x, y0 + y, 1, 1);
+      }
+    }
+  }
+
+  // js/ui/menu.js
+  var ITEMS2 = [
+    { id: "continue", name: "CARRY ON", sub: "pick it up where you left it" },
+    { id: "new", name: "WAKE UP", sub: "a thousand years, from the beginning" },
+    { id: "settings", name: "SETTINGS", sub: "sound, the screen, and the save" }
+  ];
+  var Menu = class {
+    constructor(game2) {
+      this.game = game2;
+      this.on = false;
+      this.t = 0;
+      this.pick = 0;
+      this.page = "main";
+      this.fade = 1;
+      this.beer = { t: 0, phase: "drink", level: 1, bottle: null, thrown: 0 };
+      this.gust = 0;
+    }
+    open() {
+      this.on = true;
+      this.t = 0;
+      this.page = "main";
+      this.fade = 1;
+    }
+    close() {
+      this.on = false;
+      this.page = "main";
+    }
+    get hasSave() {
+      return !!readSave();
+    }
+    // -- her evening ----------------------------------------------------------
+    _beer(dt) {
+      const b = this.beer;
+      const g = this.game;
+      const npc = g.npc;
+      b.t += dt;
+      if (b.phase === "drink") {
+        if (b.t > 2.2) {
+          b.t = 0;
+          b.level = Math.max(0, b.level - 0.34);
+          g.audio?.play("drip", { pitch: 0.5 + b.level * 0.4 });
+          if (b.level <= 1e-3) {
+            b.phase = "finish";
+            b.t = 0;
+          }
+        }
+      } else if (b.phase === "finish") {
+        if (b.t > 1.1) {
+          b.phase = "throw";
+          b.t = 0;
+          const dir = npc.facing || -1;
+          b.bottle = {
+            x: npc.x + dir * 6,
+            y: npc.y - 20,
+            vx: dir * (120 + Math.random() * 60),
+            vy: -170 - Math.random() * 50,
+            spin: dir * (6 + Math.random() * 4),
+            a: 0,
+            rest: 0
+          };
+          g.audio?.play("claw", { pitch: 1.6 });
+        }
+      } else if (b.phase === "throw") {
+        if (b.t > 2.6) {
+          b.phase = "drink";
+          b.t = 0;
+          b.level = 1;
+          b.thrown++;
+        }
+      }
+      const bo = b.bottle;
+      if (bo) {
+        if (bo.rest <= 0) {
+          bo.vy += 620 * dt;
+          bo.x += bo.vx * dt;
+          bo.y += bo.vy * dt;
+          bo.a += bo.spin * dt;
+          const gy = g.terrain.surfaceY(bo.x);
+          if (bo.y >= gy) {
+            bo.y = gy;
+            if (Math.abs(bo.vy) > 90) {
+              bo.vy = -bo.vy * 0.36;
+              bo.vx *= 0.5;
+              bo.spin *= 0.5;
+              g.audio?.play("ui");
+              g.fx?.dust(bo.x, gy, 0.4);
+            } else {
+              bo.rest = 1;
+              bo.vy = 0;
+              bo.vx = 0;
+              bo.a = Math.PI / 2;
+            }
+          }
+        } else {
+          bo.rest += dt;
+          if (bo.rest > 12) b.bottle = null;
+        }
+      }
+    }
+    update(dt) {
+      if (!this.on) return;
+      this.t += dt;
+      this.fade = damp(this.fade, 0, 8e-4, dt);
+      this._beer(dt);
+      this.gust = 0.5 + 0.5 * Math.sin(this.t * 0.37) * Math.sin(this.t * 0.83 + 1.1);
+      const i = this.game.input;
+      const n = this._items().length;
+      if (i.justPressed("ArrowDown") || i.justPressed("s")) {
+        this.pick = (this.pick + 1) % n;
+        this.game.audio?.play("ui");
+      }
+      if (i.justPressed("ArrowUp") || i.justPressed("w")) {
+        this.pick = (this.pick + n - 1) % n;
+        this.game.audio?.play("ui");
+      }
+      if (i.justPressed("Enter") || i.justPressed(" ")) {
+        i.consumeKey("Enter");
+        i.consumeKey(" ");
+        this._choose(this._items()[this.pick].id);
+      }
+      if (i.justPressed("Escape") && this.page !== "main") {
+        i.consumeKey("Escape");
+        this.page = "main";
+        this.pick = 0;
+      }
+    }
+    _items() {
+      if (this.page === "settings") {
+        return [
+          { id: "sound", name: "SOUND", sub: this.game.audio.enabled ? "on" : "off" },
+          {
+            id: "touch",
+            name: "TOUCH CONTROLS",
+            sub: this.game.settings.touchControls === void 0 ? "automatic" : this.game.settings.touchControls ? "always on" : "always off"
+          },
+          { id: "wipe", name: "ERASE EVERYTHING", sub: "the save, the map, the notes" },
+          { id: "back", name: "BACK", sub: "" }
+        ];
+      }
+      if (this.page === "wipe") {
+        return [
+          { id: "no", name: "NO", sub: "keep it" },
+          { id: "yes", name: "YES, ERASE IT", sub: "this cannot be undone" }
+        ];
+      }
+      const out = ITEMS2.slice();
+      if (!this.hasSave) out.shift();
+      return out;
+    }
+    _choose(id) {
+      const g = this.game;
+      g.audio?.resume();
+      g.audio?.play("uiBig");
+      switch (id) {
+        case "continue":
+          this.close();
+          g.resumeSave();
+          break;
+        case "new":
+          this.close();
+          g.startFresh();
+          break;
+        case "settings":
+          this.page = "settings";
+          this.pick = 0;
+          break;
+        case "back":
+          this.page = "main";
+          this.pick = 0;
+          break;
+        case "sound":
+          g.audio.setMuted(g.audio.enabled);
+          g.settings.muted = !g.audio.enabled;
+          writeSettings?.(g.settings);
+          break;
+        case "touch": {
+          const cur = g.settings.touchControls;
+          g.settings.touchControls = cur === void 0 ? true : cur ? false : void 0;
+          writeSettings?.(g.settings);
+          break;
+        }
+        case "wipe":
+          this.page = "wipe";
+          this.pick = 0;
+          break;
+        case "no":
+          this.page = "settings";
+          this.pick = 0;
+          break;
+        case "yes":
+          clearSave();
+          g.wipeAll();
+          this.page = "main";
+          this.pick = 0;
+          g.audio?.play("thunder");
+          break;
+        default:
+          break;
+      }
+    }
+    // -- drawing --------------------------------------------------------------
+    /** The bottle, wherever it is: in her hand, in the air, or in the sand. */
+    drawBottle(ctx, cam) {
+      if (!this.on) return;
+      const bo = this.beer.bottle;
+      if (!bo) return;
+      const s = cam.worldToScreen(bo.x, bo.y);
+      const z = cam.zoom;
+      ctx.save();
+      ctx.translate(Math.round(s.x), Math.round(s.y));
+      ctx.scale(z, z);
+      ctx.rotate(bo.a);
+      ctx.fillStyle = "#5a3a16";
+      ctx.fillRect(-1.5, -5, 3, 6);
+      ctx.fillStyle = "#7a5220";
+      ctx.fillRect(-0.8, -8, 1.6, 3);
+      ctx.fillStyle = "#c9a86a";
+      ctx.fillRect(-1.5, -3.4, 3, 1.6);
+      ctx.fillStyle = "rgba(255,240,200,0.5)";
+      ctx.fillRect(-1.2, -4.6, 0.7, 4);
+      ctx.restore();
+    }
+    draw(ctx, W, H) {
+      if (!this.on) return;
+      const g = this.game;
+      const sky = ctx.createLinearGradient(0, 0, 0, H);
+      sky.addColorStop(0, `rgba(24,16,10,${0.72 + this.gust * 0.12})`);
+      sky.addColorStop(0.45, `rgba(54,36,20,${0.34 + this.gust * 0.14})`);
+      sky.addColorStop(1, "rgba(20,13,8,0.62)");
+      ctx.fillStyle = sky;
+      ctx.fillRect(0, 0, W, H);
+      ctx.save();
+      for (let L = 0; L < 4; L++) {
+        const speed = 120 + L * 260;
+        const n = 14 + L * 16;
+        ctx.globalAlpha = (0.04 + L * 0.045) * (0.6 + this.gust * 0.8);
+        ctx.fillStyle = L === 3 ? "#f6e6c0" : L === 2 ? "#e0c896" : "#bfa478";
+        for (let i = 0; i < n; i++) {
+          const seed = i * 97 + L * 311;
+          const yy = seed * 37 % 1e3 / 1e3 * H;
+          const xx = (seed * 13 % 1e3 / 1e3 * (W + 400) - this.t * speed) % (W + 400);
+          ctx.fillRect(
+            Math.round(xx - 200),
+            Math.round(yy + Math.sin(this.t * 2 + seed) * 4),
+            6 + L * 14,
+            1
+          );
+        }
+      }
+      ctx.restore();
+      ctx.globalAlpha = 1;
+      const ty = Math.round(H * 0.17);
+      const title = "CRABDEN";
+      const scale = W < 420 ? 3 : 4;
+      drawText(ctx, title, W / 2 + 2, ty + 2, { color: "rgba(10,6,4,0.7)", align: "center", scale });
+      drawText(ctx, title, W / 2, ty, { color: "#f2e4c2", align: "center", scale });
+      const tw = textWidth(title, scale);
+      ctx.fillStyle = "rgba(226,183,74,0.6)";
+      ctx.fillRect(Math.round(W / 2 - tw / 2), ty + scale * 8 + 3, tw, 1);
+      drawText(
+        ctx,
+        "a thousand years is not a long time",
+        W / 2,
+        ty + scale * 8 + 8,
+        { color: "rgba(196,172,128,0.8)", align: "center" }
+      );
+      const items = this._items();
+      const mx = Math.round(W * 0.08);
+      const my = Math.round(H * 0.52);
+      items.forEach((it, i) => {
+        const y = my + i * 22;
+        const on = i === this.pick;
+        const hot = this._hit(mx - 4, y - 3, 150, 19);
+        if (hot && !on) this.pick = i;
+        drawPlate(ctx, mx - 4, y - 3, Math.max(120, textWidth(it.name) + 40), 19, {
+          edge: on ? "#e2b74a" : "rgba(120,96,58,0.4)",
+          top: on ? "rgba(58,46,28,0.96)" : void 0,
+          rivets: false
+        });
+        if (on) {
+          ctx.fillStyle = "#e2b74a";
+          ctx.fillRect(mx - 4, y - 3, 2, 19);
+          const b = 0.5 + 0.5 * Math.sin(this.t * 4);
+          ctx.globalAlpha = 0.4 + b * 0.6;
+          ctx.fillRect(mx + 2, y + 2, 3, 3);
+          ctx.globalAlpha = 1;
+        }
+        drawText(ctx, it.name, mx + 9, y, { color: on ? "#f2e4c2" : "#b49c70" });
+        if (it.sub) drawText(ctx, it.sub, mx + 9, y + 9, { color: on ? "rgba(196,172,128,0.95)" : "rgba(150,128,92,0.6)" });
+        if (hot && this.game.input.clicked) {
+          this.game.input.clicked = false;
+          this._choose(it.id);
+        }
+      });
+      if (this.page === "wipe") {
+        drawText(
+          ctx,
+          "Everything. The map, the notes, the animals, the garden.",
+          mx - 4,
+          my - 16,
+          { color: "#e2564f" }
+        );
+      }
+      if (this.page === "main" && this.hasSave) {
+        const d = readSave() || {};
+        const bits = [
+          `day ${(d.day || 0) + 1}`,
+          `${d.stage || "hatchling"}`,
+          `${d.economy && d.economy.genes ? d.economy.genes.length : 0} genes`
+        ];
+        drawText(ctx, bits.join("   "), mx - 4, H - 26, { color: "rgba(160,138,100,0.8)" });
+      }
+      drawText(
+        ctx,
+        "arrows / click, enter to choose",
+        W - 6,
+        H - 12,
+        { color: "rgba(150,128,92,0.55)", align: "right" }
+      );
+      if (this.fade > 4e-3) {
+        ctx.globalAlpha = clamp01(this.fade);
+        ctx.fillStyle = "#050403";
+        ctx.fillRect(0, 0, W, H);
+        ctx.globalAlpha = 1;
+      }
+    }
+    _hit(x, y, w, h) {
+      const i = this.game.input;
+      return i.sx >= x && i.sx <= x + w && i.sy >= y && i.sy <= y + h;
+    }
+  };
+
   // js/systems/fx.js
   var MAX = 900;
   var WIND_PX = 34;
@@ -10782,7 +12362,7 @@ body {
   };
 
   // js/art/buildart.js
-  var LIGHT5 = { lightX: -0.6, lightY: -0.62, lightZ: 0.4, ambient: 0.38, dither: 0.7 };
+  var LIGHT6 = { lightX: -0.6, lightY: -0.62, lightZ: 0.4, ambient: 0.38, dither: 0.7 };
   function rng2(seed) {
     let s = seed | 0 || 3;
     return () => {
@@ -10950,11 +12530,11 @@ body {
       p.rect(x - W * 0.46, y - 2.4 * K, W * 0.92, 2.6 * K, { mat: "rock", dome: 2.2 * K, tint: 0.06 });
     }
   };
-  var cache6 = /* @__PURE__ */ new Map();
+  var cache7 = /* @__PURE__ */ new Map();
   function buildStructure(def3, size = 1) {
     const K = Math.round(size * 20) / 20;
     const key2 = `${def3.id}|${K}`;
-    if (cache6.has(key2)) return cache6.get(key2);
+    if (cache7.has(key2)) return cache7.get(key2);
     const W = def3.w * K, H = def3.h * K;
     const pad = Math.ceil(6 * K) + 5;
     const p = new Painter(Math.ceil(W * 1.9) + pad * 2, Math.ceil(H) + pad * 2);
@@ -10962,9 +12542,9 @@ body {
     const R = rng2(def3.id.length * 977 + def3.w);
     (KIND[def3.kind] || KIND.crate)(p, W, H, x, y, K, R);
     p.smoothHeight(1, 0.4);
-    const cv = p.resolve(MATERIALS, { ...LIGHT5, outline: 1, outlineColor: "#170f09" });
+    const cv = p.resolve(MATERIALS, { ...LIGHT6, outline: 1, outlineColor: "#170f09" });
     const out = { cv, ox: x, oy: y, w: W, h: H };
-    cache6.set(key2, out);
+    cache7.set(key2, out);
     return out;
   }
 
@@ -12321,7 +13901,7 @@ body {
   };
 
   // js/art/faunaart.js
-  var LIGHT6 = { lightX: -0.58, lightY: -0.64, lightZ: 0.4, ambient: 0.37, dither: 0.68 };
+  var LIGHT7 = { lightX: -0.58, lightY: -0.64, lightZ: 0.4, ambient: 0.37, dither: 0.68 };
   function rng3(seed) {
     let s = seed | 0 || 7;
     return () => {
@@ -12788,7 +14368,7 @@ body {
     if (D.skin === "fur") furFringe(p, D.mat, S, (D.seed || 3) + 5, 0.5);
     p.smoothHeight(1, 0.38);
     return {
-      cv: p.resolve(MATERIALS, { ...LIGHT6, outline: 1, outlineColor: D.outline || "#160f0a" }),
+      cv: p.resolve(MATERIALS, { ...LIGHT7, outline: 1, outlineColor: D.outline || "#160f0a" }),
       ox: cx - L * 0.3,
       oy: cy,
       L,
@@ -12883,8 +14463,8 @@ body {
     if (D.skin === "fur" && !far) furFringe(p, mat, S, 61, 0.34);
     return {
       cv: p.resolve(MATERIALS, {
-        ...LIGHT6,
-        ambient: far ? 0.28 : LIGHT6.ambient,
+        ...LIGHT7,
+        ambient: far ? 0.28 : LIGHT7.ambient,
         outline: 1,
         outlineColor: far ? "#100a06" : D.outline || "#160f0a"
       }),
@@ -12979,7 +14559,7 @@ body {
     }
     if (D.skin === "fur") furFringe(p, D.tailMat || D.mat, S, 91, 0.45);
     return {
-      cv: p.resolve(MATERIALS, { ...LIGHT6, outline: 0.95, outlineColor: D.outline || "#160f0a" }),
+      cv: p.resolve(MATERIALS, { ...LIGHT7, outline: 0.95, outlineColor: D.outline || "#160f0a" }),
       ox: x0,
       oy: cy,
       len: L
@@ -13054,8 +14634,8 @@ body {
     }
     return {
       cv: p.resolve(MATERIALS, {
-        ...LIGHT6,
-        ambient: far ? 0.28 : LIGHT6.ambient,
+        ...LIGHT7,
+        ambient: far ? 0.28 : LIGHT7.ambient,
         outline: 0.85,
         outlineColor: D.outline || "#160f0a"
       }),
@@ -13334,16 +14914,16 @@ body {
       }
     }
   }
-  var cache7 = /* @__PURE__ */ new Map();
+  var cache8 = /* @__PURE__ */ new Map();
   function buildCreature(def3) {
-    if (cache7.has(def3.id)) return cache7.get(def3.id);
+    if (cache8.has(def3.id)) return cache8.get(def3.id);
     const S = def3.scale ?? 1;
     const R = rng3(def3.seed || 5);
     const D = def3;
     const plan = D.plan || "beast";
     const built = (PLAN[plan] || PLAN.beast)(D, S);
     const bodyCv = built.p.smoothHeight(1, 0.36).resolve(MATERIALS, {
-      ...LIGHT6,
+      ...LIGHT7,
       outline: 1,
       outlineColor: D.outline || "#160f0a"
     });
@@ -13418,7 +14998,7 @@ body {
     const stance2 = plan === "sprawler" ? 0.68 : plan === "insect" || plan === "arachnid" || plan === "myriapod" ? 0.58 : 0.84;
     rig.standH = D.legU ? (D.legU + D.legL) * S * stance2 + body.H * 0.4 : body.H * 0.5;
     rig.width = body.L;
-    cache7.set(def3.id, rig);
+    cache8.set(def3.id, rig);
     return rig;
   }
 
@@ -15598,7 +17178,7 @@ body {
   ];
 
   // js/systems/encounters.js
-  var CELL6 = 340;
+  var CELL7 = 340;
   var KINDS2 = [
     { id: "relic", name: "Buried Relic", w: 0.2, verb: "Excavate" },
     { id: "wildpatch", name: "Wild Patch", w: 0.22, verb: "Harvest" },
@@ -15637,7 +17217,7 @@ body {
           break;
         }
       }
-      const x = ci * CELL6 + CELL6 * (0.25 + r() * 0.5);
+      const x = ci * CELL7 + CELL7 * (0.25 + r() * 0.5);
       const biome = biomeAt(x);
       const poi = {
         id: `${ci}`,
@@ -15655,9 +17235,9 @@ body {
       this.cells.set(key2, poi);
       return poi;
     }
-    near(x, radius = CELL6) {
+    near(x, radius = CELL7) {
       const out = [];
-      const c0 = Math.floor((x - radius) / CELL6), c1 = Math.floor((x + radius) / CELL6);
+      const c0 = Math.floor((x - radius) / CELL7), c1 = Math.floor((x + radius) / CELL7);
       for (let ci = c0; ci <= c1; ci++) {
         const p = this.cell(ci);
         if (p && Math.abs(p.x - x) <= radius) out.push(p);
@@ -15769,7 +17349,7 @@ body {
     draw(ctx, cam) {
       const t = this.game.terrain;
       const z = cam.zoom;
-      for (const p of this.near(cam.rx, cam.vw / z + CELL6)) {
+      for (const p of this.near(cam.rx, cam.vw / z + CELL7)) {
         const taken = this.isTaken(p);
         const art = this._sprite(p);
         if (!art) continue;
@@ -15927,610 +17507,6 @@ body {
       default:
         return null;
     }
-  }
-
-  // js/ui/icons.js
-  var LIGHT7 = { lightX: -0.55, lightY: -0.68, lightZ: 0.42, ambient: 0.42, dither: 0.6 };
-  var cache8 = /* @__PURE__ */ new Map();
-  var once = (key2, make) => {
-    let v = cache8.get(key2);
-    if (!v) {
-      v = make();
-      cache8.set(key2, v);
-    }
-    return v;
-  };
-  function buildShell(W = 38) {
-    const H = Math.round(W * 0.78);
-    const pad = 3;
-    const w = W + pad * 2, h = H + 8;
-    const cx = w / 2, base = h - 4;
-    const domeAt = (u) => Math.pow(Math.sin(clamp01(u) * Math.PI), 0.52);
-    const inner = new Painter(w, h);
-    inner.field(cx - W / 2, base - H, cx + W / 2, base + 2, (x, y) => {
-      const u = (x - (cx - W / 2)) / W;
-      const dome = domeAt(u);
-      const top2 = base - H * 0.86 * dome;
-      if (y < top2 || y > base) return null;
-      const t = (y - top2) / Math.max(1, base - top2);
-      const band = Math.sin((y - top2) / 2.6 * Math.PI * 2);
-      return { h: 1.5 + band * 0.4, tint: -0.42 + t * 0.1 + band * 0.04 };
-    }, { mat: "shellRock" });
-    inner.grain("shellRock", { freq: 0.34, amp: 0.14, seed: 7 });
-    const back = inner.resolve(MATERIALS, { ...LIGHT7, ambient: 0.3, outline: 1, outlineColor: "#191108" });
-    const q = new Painter(w, h);
-    q.field(cx - W / 2, base - H, cx + W / 2, base + 2, (x, y) => {
-      const u = (x - (cx - W / 2)) / W;
-      const dome = domeAt(u);
-      const top2 = base - H * 0.86 * dome + 2.2;
-      const bot2 = base - 2.5;
-      if (y < top2 || y > bot2) return null;
-      const t = (y - top2) / Math.max(1, bot2 - top2);
-      return { h: 3 - t * 3, tint: 0.16 - t * 0.55 };
-    }, { mat: "water" });
-    const water = q.resolve(MATERIALS, { ...LIGHT7, ambient: 0.52, outline: 0 });
-    const front = new Painter(w, h);
-    front.field(cx - W / 2 - 2, base - H - 2, cx + W / 2 + 2, base + 3, (x, y) => {
-      const u = (x - (cx - W / 2)) / W;
-      if (u < -0.06 || u > 1.06) return null;
-      const dome = domeAt(clamp01(u));
-      const top2 = base - H * 0.86 * dome;
-      if (y < top2 - 1 || y > base) return null;
-      const edgeU = Math.min(u, 1 - u) * W;
-      const dEdge = Math.min(edgeU, y - top2, base - y);
-      const wall = 2.6;
-      if (dEdge > wall && y < base - 3) return null;
-      const k = clamp01(1 - dEdge / wall);
-      const band = Math.sin((y - top2) / 2.6 * Math.PI * 2);
-      return { h: 2.4 + k * 2 + band * 0.5, tint: 0.06 + k * 0.1 + band * 0.05 };
-    }, { mat: "shellRock" });
-    front.grain("shellRock", { freq: 0.3, amp: 0.2, seed: 5, height: 0.5 });
-    front.speckle("shellRock", { density: 0.06, amp: 0.3, seed: 9 });
-    for (const sgn of [-1, 1]) {
-      front.capsule(
-        cx + sgn * W * 0.34,
-        base - 2,
-        cx + sgn * W * 0.5,
-        base + 1.5,
-        1.8,
-        1.2,
-        { mat: "chitin", dome: 1.4, tint: sgn > 0 ? 0 : -0.14 }
-      );
-    }
-    const cv = front.resolve(MATERIALS, { ...LIGHT7, outline: 1, outlineColor: "#191108" });
-    let top = q.h, bot = 0, left = q.w, right = 0;
-    for (let y = 0; y < q.h; y++) {
-      for (let x = 0; x < q.w; x++) {
-        if (!q.mat[y * q.w + x]) continue;
-        if (y < top) top = y;
-        if (y > bot) bot = y;
-        if (x < left) left = x;
-        if (x > right) right = x;
-      }
-    }
-    return { cv, back, water, w, h, top, bot, left, right };
-  }
-  function drawShell(ctx, x, y, f, t, scale = 1) {
-    const S = once("shell", () => buildShell(38));
-    const lvl = S.bot - (S.bot - S.top) * clamp01(f);
-    ctx.save();
-    ctx.translate(Math.round(x), Math.round(y));
-    if (scale !== 1) ctx.scale(scale, scale);
-    ctx.drawImage(S.back, 0, 0);
-    if (f > 5e-3) {
-      ctx.save();
-      ctx.beginPath();
-      ctx.rect(0, lvl, S.w, S.bot - lvl + 2);
-      ctx.clip();
-      ctx.drawImage(S.water, 0, 0);
-      ctx.restore();
-      ctx.fillStyle = "#bfeaf2";
-      for (let x2 = S.left; x2 <= S.right; x2++) {
-        const wob = Math.sin(t * 2.6 + x2 * 0.5) * 0.9 + Math.sin(t * 1.3 + x2 * 0.22) * 0.6;
-        const yy = Math.round(lvl + wob);
-        if (yy < S.top - 1 || yy > S.bot) continue;
-        ctx.fillRect(x2, yy, 1, 1);
-      }
-    }
-    ctx.drawImage(S.cv, 0, 0);
-    ctx.restore();
-    return { w: S.w, h: S.h };
-  }
-  function buildBloom(stage) {
-    const p = new Painter(34, 40);
-    const cx = 17, base = 37;
-    const grow = stage / 8;
-    const h = 8 + grow * 22;
-    p.curve(
-      [{ x: cx, y: base }, { x: cx - 1.5, y: base - h * 0.55 }, { x: cx, y: base - h }],
-      1.5,
-      1,
-      { mat: "leaf", dome: 1.3, steps: 12, tint: -0.04 }
-    );
-    const leaves = Math.min(4, Math.ceil(stage / 2));
-    for (let i = 0; i < leaves; i++) {
-      const sgn = i % 2 ? 1 : -1;
-      const ly = base - h * (0.22 + i * 0.17);
-      const ll = 5 + grow * 5;
-      p.curve(
-        [
-          { x: cx, y: ly },
-          { x: cx + sgn * ll * 0.6, y: ly - ll * 0.5 },
-          { x: cx + sgn * ll, y: ly - ll * 0.15 }
-        ],
-        2.4,
-        0.6,
-        { mat: "leaf", dome: 1.6, steps: 10, tint: sgn > 0 ? 0.06 : -0.1 }
-      );
-    }
-    const ty = base - h;
-    if (stage === 0) {
-      p.ellipse(cx, ty, 2, 2.6, { mat: "leaf", dome: 1.8, tint: 0.05 });
-    } else {
-      const petals = Math.min(9, 2 + stage);
-      const pr = 2.6 + grow * 4.4;
-      for (let i = 0; i < petals; i++) {
-        const a = i / petals * TAU;
-        const sx = Math.cos(a), sy = Math.sin(a) * 0.5;
-        p.ellipse(
-          cx + sx * pr,
-          ty + sy * pr,
-          pr * 0.52,
-          pr * 0.36,
-          {
-            mat: stage >= 6 ? "petalGold" : "petalPink",
-            rot: a,
-            dome: pr * 0.5,
-            tint: sy < 0 ? -0.16 : 0.08
-          }
-        );
-      }
-      p.ellipse(cx, ty, pr * 0.44, pr * 0.34, { mat: "fruitGold", dome: pr * 0.5, tint: 0.1 });
-      p.speckle("fruitGold", { density: 0.35, amp: 0.4, seed: 3 });
-    }
-    return { cv: p.resolve(MATERIALS, { ...LIGHT7, outline: 1, outlineColor: "#141c0e" }), w: 34, h: 40 };
-  }
-  function drawBloom(ctx, x, y, stage, sway = 0, scale = 1) {
-    const st = clamp(Math.round(stage), 0, 8);
-    const B = once("bloom" + st, () => buildBloom(st));
-    ctx.save();
-    ctx.translate(Math.round(x) + 17, Math.round(y) + 37);
-    if (scale !== 1) ctx.scale(scale, scale);
-    ctx.rotate(sway);
-    ctx.drawImage(B.cv, -17, -37);
-    ctx.restore();
-    return { w: B.w, h: B.h };
-  }
-  function buildSprig(n) {
-    const p = new Painter(26, 22);
-    const cx = 13, base = 20;
-    p.curve(
-      [{ x: cx - 8, y: base }, { x: cx, y: base - 8 }, { x: cx + 8, y: base - 5 }],
-      1.3,
-      0.8,
-      { mat: "wood", dome: 1.1, steps: 10 }
-    );
-    for (let i = 0; i < 3; i++) {
-      const a = -0.4 - i * 0.5;
-      p.ellipse(
-        cx - 4 + i * 5,
-        base - 7 - i,
-        3.4,
-        2.2,
-        { mat: "leaf", rot: a, dome: 1.6, tint: (i - 1) * 0.07 }
-      );
-    }
-    const shown = Math.min(5, n);
-    for (let i = 0; i < shown; i++) {
-      const bx = cx - 6 + i * 3.4, by = base - 3 - i % 2 * 2.6;
-      p.ellipse(bx, by, 2.3, 2.3, { mat: "berry", dome: 2.6, tint: 0.02 });
-      p.ellipse(bx - 0.7, by - 0.8, 0.8, 0.7, { mat: "berry", mask: true, dome: 2, tint: 0.5 });
-    }
-    return { cv: p.resolve(MATERIALS, { ...LIGHT7, outline: 1, outlineColor: "#1a0d10" }), w: 26, h: 22 };
-  }
-  function drawSprig(ctx, x, y, n, scale = 1) {
-    const k = clamp(n, 0, 5);
-    const S = once("sprig" + k, () => buildSprig(k));
-    ctx.save();
-    ctx.translate(Math.round(x), Math.round(y));
-    if (scale !== 1) ctx.scale(scale, scale);
-    ctx.drawImage(S.cv, 0, 0);
-    ctx.restore();
-    return { w: S.w, h: S.h };
-  }
-  function buildOrb() {
-    const p = new Painter(30, 30);
-    const cx = 15, cy = 15, r = 11;
-    p.ellipse(cx, cy, r, r, { mat: "glass", dome: r * 1.25, tint: 0.02 });
-    for (let i = 0; i < 22; i++) {
-      const t = i / 21;
-      const a = t * Math.PI * 3.1;
-      const yy = cy - r * 0.72 + t * r * 1.44;
-      for (const sgn of [1, -1]) {
-        const xx = cx + Math.cos(a) * r * 0.46 * sgn;
-        p.ellipse(xx, yy, 1.1, 1.1, { mat: "glow", dome: 1.3, tint: 0.2 + Math.sin(a) * 0.2 });
-      }
-      if (i % 3 === 0) {
-        p.capsule(
-          cx + Math.cos(a) * r * 0.46,
-          yy,
-          cx - Math.cos(a) * r * 0.46,
-          yy,
-          0.5,
-          0.5,
-          { mat: "glow", dome: 0.4, tint: -0.1 }
-        );
-      }
-    }
-    p.ellipse(cx - r * 0.34, cy - r * 0.4, r * 0.26, r * 0.22, { mat: "glass", mask: true, dome: r, tint: 0.7 });
-    return { cv: p.resolve(MATERIALS, { ...LIGHT7, ambient: 0.5, outline: 1, outlineColor: "#0e1a1e" }), w: 30, h: 30 };
-  }
-  function drawOrb(ctx, x, y, t, pulse = 0, scale = 1) {
-    const O = once("orb", buildOrb);
-    ctx.save();
-    ctx.translate(Math.round(x) + 15, Math.round(y) + 15);
-    if (scale !== 1) ctx.scale(scale, scale);
-    const s = 1 + Math.sin(t * 1.7) * 0.03 + pulse * 0.22;
-    ctx.globalAlpha = 0.3 + pulse * 0.5 + Math.sin(t * 2.3) * 0.06;
-    ctx.fillStyle = "#7fe0c8";
-    ctx.beginPath();
-    ctx.arc(0, 0, 13 * s, 0, TAU);
-    ctx.fill();
-    ctx.globalAlpha = 1;
-    ctx.scale(s, s);
-    ctx.drawImage(O.cv, -15, -15);
-    ctx.restore();
-    return { w: O.w, h: O.h };
-  }
-  function buildTab(kind) {
-    const p = new Painter(22, 22);
-    const cx = 11, base = 19;
-    switch (kind) {
-      case "flora":
-        p.curve(
-          [{ x: cx, y: base }, { x: cx - 1, y: base - 8 }, { x: cx, y: base - 14 }],
-          1.3,
-          0.8,
-          { mat: "leaf", dome: 1.1, steps: 8 }
-        );
-        for (const sgn of [-1, 1]) {
-          p.curve(
-            [{ x: cx, y: base - 6 }, { x: cx + sgn * 4, y: base - 10 }, { x: cx + sgn * 6, y: base - 7 }],
-            2.4,
-            0.6,
-            { mat: "leaf", dome: 1.5, steps: 8, tint: sgn > 0 ? 0.06 : -0.1 }
-          );
-        }
-        p.ellipse(cx, base - 14, 3.2, 2.6, { mat: "petalPink", dome: 2.2, tint: 0.06 });
-        break;
-      case "fauna":
-        p.ellipse(cx - 1, base - 6, 6.5, 3.6, { mat: "scaleGreen", dome: 3.4, tint: 0.02 });
-        p.ellipse(cx + 6, base - 8, 3.2, 2.4, { mat: "scaleGreen", dome: 2.4, tint: 0.06 });
-        p.curve(
-          [{ x: cx - 7, y: base - 6 }, { x: cx - 10, y: base - 9 }, { x: cx - 9, y: base - 13 }],
-          1.4,
-          0.5,
-          { mat: "scaleGreen", dome: 1.2, steps: 8 }
-        );
-        for (let i = 0; i < 3; i++) {
-          p.capsule(
-            cx - 4 + i * 4,
-            base - 4,
-            cx - 5 + i * 4,
-            base,
-            0.9,
-            0.6,
-            { mat: "scaleGreen", dome: 0.8, tint: -0.1 }
-          );
-        }
-        p.ellipse(cx + 7, base - 9, 0.9, 0.9, { mat: "eye", dome: 1.1, tint: 0.3 });
-        break;
-      case "build":
-        p.rect(cx - 7, base - 9, 14, 9, { mat: "wood", dome: 2.6, tint: -0.02 });
-        p.poly(
-          [{ x: cx - 9, y: base - 9 }, { x: cx, y: base - 16 }, { x: cx + 9, y: base - 9 }],
-          { mat: "leafDry", dome: 2.6, feather: 2, tint: 0.06 }
-        );
-        p.rect(cx - 2, base - 5, 4, 5, { mat: "wood", mask: true, dome: -1.5, tint: -0.4 });
-        break;
-      case "codex":
-        p.rect(cx - 8, base - 13, 16, 13, { mat: "leather", dome: 2.6, tint: 0.02 });
-        p.rect(cx - 6, base - 11, 12, 9, { mat: "petalWhite", dome: 1.4, tint: 0.08 });
-        for (let i = 0; i < 3; i++) {
-          p.rect(cx - 4, base - 9 + i * 2.6, 8, 0.9, { mat: "petalWhite", mask: true, tint: -0.42, dome: 0 });
-        }
-        break;
-      default:
-        break;
-    }
-    return p.resolve(MATERIALS, { ...LIGHT7, outline: 1, outlineColor: "#1a140c" });
-  }
-  function drawTab(ctx, kind, x, y) {
-    const cv = once("tab" + kind, () => buildTab(kind));
-    ctx.drawImage(cv, Math.round(x), Math.round(y));
-    return { w: 22, h: 22 };
-  }
-  function buildFrame() {
-    const T = 10;
-    const L = 16;
-    const edge = (horizontal) => {
-      const w = horizontal ? L : T, h = horizontal ? T : L;
-      const p = new Painter(w, h);
-      p.field(0, 0, w, h, (x, y) => {
-        const across = horizontal ? y / T : x / T;
-        const along = horizontal ? x / L : y / L;
-        const d = Math.min(across, 1 - across);
-        const dz = Math.sqrt(Math.max(0, 1 - Math.pow(1 - d * 2, 2)));
-        const grain = Math.sin(along * 22 + across * 3) * 0.5 + Math.sin(along * 61) * 0.2;
-        return { h: 1.4 + dz * 3.4 + grain * 0.4, tint: -0.1 + dz * 0.22 + grain * 0.07 };
-      }, { mat: "wood" });
-      p.grain("wood", { freq: 0.6, amp: 0.16, seed: horizontal ? 3 : 9 });
-      return p.resolve(MATERIALS, { ...LIGHT7, outline: 1, outlineColor: "#1a1109" });
-    };
-    const corner = () => {
-      const p = new Painter(T + 4, T + 4);
-      p.field(0, 0, T + 4, T + 4, (x, y) => {
-        const a = Math.min(x, T + 3 - x) / T, b = Math.min(y, T + 3 - y) / T;
-        const d = Math.min(a, b);
-        if (d < -0.1) return null;
-        const dz = Math.sqrt(Math.max(0, 1 - Math.pow(1 - clamp01(d * 2), 2)));
-        return { h: 1.6 + dz * 3.6, tint: -0.06 + dz * 0.2 };
-      }, { mat: "wood" });
-      for (let i = -1; i < 4; i++) {
-        p.capsule(
-          1 + i * 2.6,
-          T + 2 - i * 1.2,
-          T + 2 - i * 1.2,
-          1 + i * 2.6,
-          1,
-          1,
-          { mat: "rope", dome: 1.1, tint: i % 2 ? 0.1 : -0.06 }
-        );
-      }
-      p.grain("wood", { freq: 0.5, amp: 0.18, seed: 21 });
-      return p.resolve(MATERIALS, { ...LIGHT7, outline: 1, outlineColor: "#1a1109" });
-    };
-    return { top: edge(true), side: edge(false), corner: corner(), T, L };
-  }
-  function drawPanel(ctx, x, y, w, h, opts = {}) {
-    const F = once("frame", buildFrame);
-    const T = F.T;
-    x = Math.round(x);
-    y = Math.round(y);
-    w = Math.round(w);
-    h = Math.round(h);
-    const g = ctx.createLinearGradient(0, y, 0, y + h);
-    g.addColorStop(0, opts.top || "rgba(38,28,18,0.975)");
-    g.addColorStop(1, opts.bottom || "rgba(24,17,11,0.985)");
-    ctx.fillStyle = g;
-    ctx.fillRect(x, y, w, h);
-    ctx.strokeStyle = "rgba(214,186,138,0.16)";
-    ctx.strokeRect(x + T - 1.5, y + T - 1.5, w - (T - 1.5) * 2, h - (T - 1.5) * 2);
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(x, y, w, h);
-    ctx.clip();
-    for (let i = 0; i < Math.ceil(w / F.L); i++) {
-      ctx.drawImage(F.top, x + i * F.L, y);
-      ctx.drawImage(F.top, x + i * F.L, y + h - T);
-    }
-    for (let i = 0; i < Math.ceil(h / F.L); i++) {
-      ctx.drawImage(F.side, x, y + i * F.L);
-      ctx.drawImage(F.side, x + w - T, y + i * F.L);
-    }
-    ctx.restore();
-    const c = F.corner;
-    ctx.drawImage(c, x - 2, y - 2);
-    ctx.drawImage(c, x + w - T - 2, y - 2);
-    ctx.drawImage(c, x - 2, y + h - T - 2);
-    ctx.drawImage(c, x + w - T - 2, y + h - T - 2);
-  }
-  var NODE = {
-    // spring
-    drop: "...1.../..111../.11111./1111111/1111111/1111111/.11111./..111../...1...",
-    tank: "1111111/1.....1/1.111.1/1.111.1/1.111.1/1.....1/1111111/.11111./..111..",
-    moon: "..111../.11..1./11....1/11...../11...../11....1/.11..1./..111../.......",
-    jet: "...1.../...1.../..111../..111../.11111./.11111./11...11/1.....1/.......",
-    sprout: "....11./...11../1.11.../11111../..1..../..1..../..1..../.11111./.......",
-    well: "1111111/1.....1/1.111.1/1.1.1.1/1.111.1/1.....1/.11111./..111../...1...",
-    // shell
-    step: ".....11/.....11/....111/...1111/..11111/.111111/1111111/1111111/.......",
-    leaf: ".....11/....111/...1111/..11.11/.11..11/11...11/11..11./.1111../.......",
-    graft: "11...11/.11.11./..111../...1.../..111../.11.11./11...11/......./.......",
-    fruit: "...1.../..11.../.11111./111.111/11...11/11...11/.11.11./..111../.......",
-    tree: "..111../.11111./1111111/.11111./..111../...1.../...1.../..111../.......",
-    // brood
-    call: "..1..../.11..11/.11.1.1/.111..1/.111..1/.11.1.1/.11..11/..1..../.......",
-    hand: ".1.1.1./1111111/1111111/1111111/1111111/.111111/..1111./...11../.......",
-    nest: "......./1111111/11...11/1.111.1/1.....1/.11111./..111../......./.......",
-    point: "...11../...11../11.11../1.111../1.1111./.11111./..1111./...111./.......",
-    egg: "...11../..1111./.111111/1111111/1111111/.111111/..1111./...11../.......",
-    link: ".11..../1..1.11/1..111./.11...1/11...11/1.111../.11..1./.....11/.......",
-    // pincer
-    claw: "11...11/.11.11./..111../.11111./11...11/1.....1/11...11/.11.11./..111..",
-    saw: "1.1.1.1/11111.1/.11111./..111../.11111./11111.1/1.1.1.1/......./.......",
-    spade: "...1.../...1.../..111../.11111./1111111/1111111/.11111./..111../.......",
-    bolt: "....11./...11../..11.../.11111./..111../.11..../11...../1....../.......",
-    comb: "1111111/1111111/1.1.1.1/1.1.1.1/1.1.1.1/1.1.1.1/1.1.1.1/......./.......",
-    hammer: ".111111/.111111/...11../...11../...11../...11../...11../..1111./.......",
-    // legs
-    leg: "11...../.11..../..11.../..11.../...11../...111./....111/...1111/.......",
-    shield: "1111111/1111111/1111111/.11111./.11111./..111../..111../...1.../.......",
-    burrow: "1111111/1.....1/1.....1/.1...1./..1.1../...1.../..111../.11111./.......",
-    load: "1111111/11...11/1111111/11...11/1111111/..111../..111../.11111./.......",
-    skate: "..11.../.1111../11111../1111111/.111111/..11111/1111111/......./.......",
-    crown: "1.....1/11...11/11.1.11/1111111/1111111/.11111./.11111./1111111/.......",
-    // conditions a plant will only ripen under
-    sun: "1..1..1/.1.1.1./..111../11111.1/..111../.1.1.1./1..1..1/......./.......",
-    dusk: "...1.../..111../.11111./1111111/......./1111111/......./......./.......",
-    shade: "..111../.11111./1111111/......./..1.1../..1.1../..1.1../.11111./.......",
-    weight: "..111../.11111./..1.1../.11111./1111111/1111111/.11111./......./.......",
-    clock: "..111../.1...1./1..1..1/1..11.1/1....11/.1...1./..111../......./.......",
-    // the modes: an animal standing, an animal walking
-    crab: ".11111./1111111/1.1.1.1/1111111/.11111./1.1.1.1/1.1.1.1/......./.......",
-    crabwalk: ".11111./1111111/1.1.1.1/1111111/.11111./1..1..1/11...11/......./......."
-  };
-  function drawNodeIcon(ctx, name, cx, cy, color, scale = 1) {
-    const rows = NODE[name];
-    if (!rows) return;
-    const lines = rows.split("/");
-    const w = Math.max(...lines.map((l) => l.length));
-    const s = Math.max(1, Math.round(scale));
-    const x0 = Math.round(cx - w * s / 2), y0 = Math.round(cy - lines.length * s / 2);
-    ctx.fillStyle = color;
-    for (let y = 0; y < lines.length; y++) {
-      for (let x = 0; x < lines[y].length; x++) {
-        if (lines[y][x] === "1") ctx.fillRect(x0 + x * s, y0 + y * s, s, s);
-      }
-    }
-  }
-  var GLYPHS = {
-    // . transparent, 1 dark, 2 mid, 3 light, 4 accent
-    drop: "....11....../...1221...../..122211..../.12222211.../.12222211.../1222222221../1222222331./1222222331./1222222221./.12222221.../..122221..../....1111....",
-    hand: "..1..1..1.../.121.121.12./.122.122.122/.1222222222./.1222222222./112222222221/122222222221/.12222222221/.1222222222./..122222221./...12222221./....111111..",
-    scale: ".....11...../.....11...../..111111111./.1.1.....1.1/1..1.....1..1/1..1.....1..1/.11.......11./.....11...../.....11...../....1111..../...111111.../..11111111..",
-    map: "111111111111/1..........1/1.11....11..1/1.1.1..1..1.1/1.1..11...1.1/1..1....1.1.1/1...1..1..1.1/1....11...1.1/1.........1.1/1..........1/1..........1/111111111111",
-    seed: ".....11...../....1221..../...122221.../..12222221../.1222222221./.1222222221./.1222222221./.1222222221./..12222221../...122221..../....1221..../.....11.....",
-    paw: ".11...11..../1221.1221.../1221.1221.../.11...11..../......11..11/.....1221122/.....12211221/......11..11/..1111111...:/.122222211../.12222222 1./..11111111..",
-    close: "1..........1/11........11/121......121/.121....121./..121..121../...121121.../....12121..../....12121.../...121121.../..121..121../.121....121./1..........1",
-    pump: "....1111..../...122221.../..12222221../.1222222221./1222222222 1/1224444422 1/1224444422 1/1222222222 1/.1222222221./..12222221../...122221.../....1111...."
-  };
-  var GLYPH_COLS = {
-    1: "#1c130b",
-    2: "#d6ba8a",
-    3: "#f5e7c6",
-    4: "#5fc6d8"
-  };
-  function drawGlyph(ctx, name, x, y, opts = {}) {
-    const rows = GLYPHS[name];
-    if (!rows) return 12;
-    const s = opts.scale || 1;
-    const cols = { ...GLYPH_COLS, ...opts.colors || {} };
-    if (opts.color) cols[2] = opts.color;
-    if (opts.accent) cols[4] = opts.accent;
-    if (opts.alpha !== void 0) {
-      ctx.save();
-      ctx.globalAlpha = opts.alpha;
-    }
-    const lines = rows.split("/");
-    for (let ry = 0; ry < lines.length; ry++) {
-      const line = lines[ry];
-      for (let rx = 0; rx < line.length; rx++) {
-        const c = cols[line[rx]];
-        if (!c) continue;
-        ctx.fillStyle = c;
-        ctx.fillRect(Math.round(x + rx * s), Math.round(y + ry * s), s, s);
-      }
-    }
-    if (opts.alpha !== void 0) ctx.restore();
-    return 12 * s;
-  }
-  function buildValve() {
-    const w = 34, h = 34;
-    const p = new Painter(w, h);
-    const cx = w / 2, cy = h / 2;
-    p.ellipse(cx, cy, 15, 15, { mat: "shellRock", dome: 6, tint: -0.06 });
-    p.ellipse(cx, cy, 12.5, 12.5, { mat: "chitin", dome: 5, tint: 0.06 });
-    p.ellipse(cx, cy, 9, 9, { mat: "chitinDark", dome: -6, tint: -0.34 });
-    for (let i = 0; i < 4; i++) {
-      const th = i / 4 * TAU + 0.4;
-      p.poly([
-        { x: cx + Math.cos(th) * 8.6, y: cy + Math.sin(th) * 8.6 },
-        { x: cx + Math.cos(th + 1.2) * 8.6, y: cy + Math.sin(th + 1.2) * 8.6 },
-        { x: cx + Math.cos(th + 0.6) * 2.2, y: cy + Math.sin(th + 0.6) * 2.2 }
-      ], { mat: "chitinPale", dome: 2.6, feather: 2, tint: 0.06 - i * 0.03 });
-    }
-    p.ellipse(cx, cy, 2.4, 2.4, { mat: "flesh", dome: -1.6, tint: -0.3 });
-    p.grain("shellRock", { freq: 0.34, amp: 0.2, seed: 31 });
-    p.grain("chitin", { freq: 0.5, amp: 0.14, seed: 13 });
-    return { cv: p.resolve(MATERIALS, { ...LIGHT7, outline: 1, outlineColor: "#191108" }), w, h };
-  }
-  function drawValve(ctx, x, y, open, t) {
-    const V = once("valve", buildValve);
-    ctx.save();
-    ctx.translate(x + V.w / 2, y + V.h / 2);
-    const k = 1 + open * 0.06 + Math.sin(t * 22) * open * 0.02;
-    ctx.scale(k, k);
-    if (open > 0.01) {
-      const g = ctx.createRadialGradient(0, 0, 0, 0, 0, 16);
-      g.addColorStop(0, `rgba(159,232,238,${0.55 * open})`);
-      g.addColorStop(1, "rgba(95,198,216,0)");
-      ctx.fillStyle = g;
-      ctx.beginPath();
-      ctx.arc(0, 0, 16, 0, TAU);
-      ctx.fill();
-    }
-    ctx.drawImage(V.cv, -V.w / 2, -V.h / 2);
-    ctx.restore();
-    return { w: V.w, h: V.h };
-  }
-  function drawGauge(ctx, x, y, w, h, f, col, opts = {}) {
-    x = Math.round(x);
-    y = Math.round(y);
-    w = Math.round(w);
-    h = Math.round(h);
-    ctx.fillStyle = opts.rim || "rgba(132,104,56,0.92)";
-    ctx.fillRect(x - 2, y - 2, w + 4, h + 4);
-    ctx.fillStyle = "rgba(198,162,90,0.55)";
-    ctx.fillRect(x - 2, y - 2, w + 4, 1);
-    ctx.fillStyle = opts.back || "rgba(14,10,6,0.90)";
-    ctx.fillRect(x - 1, y - 1, w + 2, h + 2);
-    ctx.fillStyle = "rgba(52,40,26,0.95)";
-    ctx.fillRect(x, y, w, h);
-    const fw = Math.round(w * clamp01(f));
-    if (fw > 0) {
-      ctx.fillStyle = col;
-      ctx.fillRect(x, y, fw, h);
-      ctx.fillStyle = "rgba(255,255,255,0.38)";
-      ctx.fillRect(x, y, fw, 1);
-      ctx.fillStyle = "rgba(0,0,0,0.26)";
-      ctx.fillRect(x, y + h - 1, fw, 1);
-      ctx.fillStyle = "rgba(255,255,255,0.55)";
-      ctx.fillRect(x + fw - 1, y, 1, h);
-    }
-    if (w > 18) {
-      for (let q = 1; q < 4; q++) {
-        ctx.fillStyle = "rgba(0,0,0,0.30)";
-        ctx.fillRect(x + Math.round(w * q / 4), y, 1, h);
-      }
-    }
-    ctx.fillStyle = "rgba(214,176,100,0.75)";
-    ctx.fillRect(x - 2, y - 1, 1, h + 2);
-    ctx.fillRect(x + w + 1, y - 1, 1, h + 2);
-    if (opts.mark !== void 0) {
-      ctx.fillStyle = "rgba(242,228,194,0.85)";
-      ctx.fillRect(x + Math.round(w * clamp01(opts.mark)), y - 2, 1, h + 4);
-    }
-  }
-  function drawPlate(ctx, x, y, w, h, opts = {}) {
-    x = Math.round(x);
-    y = Math.round(y);
-    w = Math.round(w);
-    h = Math.round(h);
-    const a = opts.alpha ?? 1;
-    ctx.save();
-    ctx.globalAlpha = a;
-    ctx.fillStyle = "rgba(0,0,0,0.28)";
-    ctx.fillRect(x + 1, y + 2, w, h);
-    const g = ctx.createLinearGradient(0, y, 0, y + h);
-    g.addColorStop(0, opts.top || "rgba(46,35,22,0.88)");
-    g.addColorStop(1, opts.bottom || "rgba(26,19,12,0.92)");
-    ctx.fillStyle = g;
-    ctx.fillRect(x, y, w, h);
-    ctx.fillStyle = "rgba(198,162,90,0.30)";
-    ctx.fillRect(x, y, w, 1);
-    ctx.strokeStyle = opts.edge || "rgba(148,118,68,0.55)";
-    ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
-    if (opts.rivets !== false) {
-      ctx.fillStyle = "rgba(206,170,96,0.65)";
-      for (const [rx, ry] of [
-        [x + 2, y + 2],
-        [x + w - 3, y + 2],
-        [x + 2, y + h - 3],
-        [x + w - 3, y + h - 3]
-      ]) ctx.fillRect(rx, ry, 1, 1);
-    }
-    ctx.restore();
   }
 
   // js/art/anatomy.js
@@ -19257,26 +20233,36 @@ body {
     _modeBar(ctx, W, H) {
       const g = this.game;
       const avail = MODES.filter((m) => this.modeUnlocked(m.id));
-      const S = 15, gap = 2;
+      const S = 17, gap = 2;
       const bx = 3;
-      const by = H - 26 - (avail.length - 1) * (S + gap);
+      const by = H - 28 - (avail.length - 1) * (S + gap);
       avail.forEach((m, i) => {
         const y = by + i * (S + gap);
         const on = this.mode === m.id;
         const hot = this._hit(bx, y, S, S);
-        drawPlate(ctx, bx, y, S, S, {
-          edge: on ? m.tint : "rgba(140,112,66,0.4)",
-          top: on ? "rgba(52,42,26,0.95)" : void 0,
+        const px = on ? bx + 1 : bx;
+        drawPlate(ctx, px, y, S, S, {
+          edge: on ? m.tint : hot ? "rgba(200,168,110,0.6)" : "rgba(140,112,66,0.4)",
+          top: on ? "rgba(56,46,28,0.96)" : void 0,
           rivets: false
         });
         if (on) {
           ctx.fillStyle = m.tint;
-          ctx.fillRect(bx, y, 2, S);
+          ctx.fillRect(px, y, 2, S);
+          ctx.save();
+          ctx.globalAlpha = 0.13 + 0.07 * Math.sin(this.t * 3);
+          ctx.fillStyle = m.tint;
+          ctx.fillRect(px + 2, y + 1, S - 3, S - 2);
+          ctx.restore();
         }
-        drawGlyph(ctx, m.glyph, bx + S / 2 + 1, y + S / 2, {
-          color: on ? m.tint : hot ? "#d6ba8a" : "rgba(190,166,120,0.55)",
-          scale: 1
-        });
+        drawModeArt(
+          ctx,
+          m.glyph,
+          px + S / 2 + 1,
+          y + S / 2,
+          on ? m.tint : hot ? "#e0c79a" : "rgba(190,166,120,0.6)",
+          on ? "rgba(10,7,4,0.85)" : "rgba(20,14,8,0.55)"
+        );
         if (hot) {
           this.hover = { title: m.name, body: `${m.desc}   (M cycles)` };
           if (g.input.clicked) {
@@ -19285,7 +20271,7 @@ body {
           }
         }
       });
-      const ax = bx + S + 6, ay = H - 26;
+      const ax = bx + S + 7, ay = H - 28;
       if (this.mode === "hunt") this._huntBar(ctx, ax, ay, W, H);
       else if (this.mode === "spore") this._sporeBar(ctx, ax, ay, W, H);
       else if (this.mode === "hive") this._hiveBar(ctx, ax, ay, W, H);
@@ -21283,12 +22269,14 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
       this.renderer = new Renderer(canvas2);
       this.input.scale = this.renderer.scale;
       this.cam = new Camera();
+      this.menu = new Menu(this);
       this.newRun();
       const saved = readSave();
       if (saved) {
         this.load(saved);
         this.state = "play";
       }
+      this.enterMenu();
       window.addEventListener("resize", () => {
         this.renderer.resize();
         this.input.scale = this.renderer.scale;
@@ -21322,6 +22310,7 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
       this.combat = new Combat(this);
       this.taming = new Taming(this);
       this.hive = new Hive(this);
+      this.critters = new Critters(this, this.seed);
       this.roamTarget = null;
       this.ui = new UI(this);
       this.seeds = { dustmoss: 3, saltgrass: 2 };
@@ -21764,6 +22753,68 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
       this.tutorial = 0;
       this.teach(1);
     }
+    /**
+     * Stand the animal and the archaeologist up in a storm and point a camera
+     * at them. Nothing here is a separate scene: it is the world, paused, with
+     * the weather turned up and her given something to do with her hands.
+     */
+    enterMenu() {
+      this.menuReturn = this.state;
+      this.state = "title";
+      this.clearCutscene();
+      this.weather.hour = 17.4;
+      this.weather.sand = 0.62;
+      this.weather.wind = 1.35;
+      const c = this.crab;
+      c.vx = 0;
+      this.npc.hidden = false;
+      this.npc.mode = "free";
+      this.npc.keepAway = false;
+      this.npc.moveTo = void 0;
+      this.npc.x = c.x + c.m.shellW * 0.5 + 104;
+      this.npc.setFacing(-1);
+      this.npc.turnT = 1;
+      this.npc.setPose("beer");
+      if (!readSave()) {
+        c.setStage("adult");
+        c.snapToGround();
+      }
+      this.buried = 0;
+      this.buryTarget = 0;
+      this.cam.cineCancel();
+      this.cam.follow = null;
+      this.cam.snapTo(c.x + 86, c.y - 6);
+      this.cam.targetZoom = this.cam.zoom = this.autoZoom() * 0.72;
+      this.menu.open();
+    }
+    /** While the bottle is in the air her hand is empty, so the pose changes. */
+    _menuPose() {
+      const b = this.menu.beer;
+      const want = b.phase === "throw" ? "point" : b.phase === "finish" ? "survey" : "beer";
+      if (this.npc.pose !== want) this.npc.setPose(want);
+    }
+    /** Carry on from the save that is already loaded. */
+    resumeSave() {
+      this.state = "play";
+      this.weather.sand = 0;
+      this.npc.mode = "follow";
+      this.npc.keepAway = true;
+      this.npc.setPose("idle");
+      this.cam.followEntity(this.crab, true);
+      this.cam.targetZoom = this.autoZoom();
+    }
+    /** A fresh animal, a fresh basin, and the whole opening again. */
+    startFresh() {
+      clearSave();
+      this.newRun();
+    }
+    /** Erase everything and put the title back the way it was on day one. */
+    wipeAll() {
+      clearSave();
+      this.newRun();
+      this.enterMenu();
+      this.ui.say("Erased.", 3);
+    }
     say(who, text) {
       this.dialog = { who, text, t: 0 };
     }
@@ -21901,6 +22952,18 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
       if (this.state === "prologue") this._runPrologue(dt);
       if (this.state === "burying") this._runBury(dt);
       if (this.state !== "play") this._cineTick(dt);
+      if (this.state === "title") {
+        this.menu.update(dt);
+        this._menuPose();
+        this.npc.update(dt);
+        this.crab.update(dt, { move: 0 });
+        this.fx.update(dt, this.weather);
+        this.critters.update(dt, this.weather);
+        this.terrain.update(dt, 1.1);
+        this.cam.update(dt);
+        this.input.endFrame();
+        return;
+      }
       if (this.state !== "play") {
         const skipTap = i.clicked && i.sy < this.renderer.vh - 56 && this.state !== "prologue";
         if (i.justPressed("Escape") || this.state !== "prologue" && i.justPressed(" ") || skipTap) {
@@ -22020,6 +23083,7 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
       this.economy.tickAbilities(sdt);
       this.taming.update(sdt);
       this.hive.update(sdt, this.ui.mode === "hive");
+      this.critters.update(sdt, this.weather);
       if (this.ui.mode === "hunt" && this.state === "play") {
         const foe = this.wildlife.nearest(
           this.crab.x,
@@ -22217,6 +23281,19 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
       }
       if (id === "strike") this.combat.band = this.combat.pos;
       return true;
+    }
+    /**
+     * The colour of whatever you are holding, or null in plain walk mode. The
+     * animal's own eyes wear it, which is the only HUD that is actually on the
+     * animal.
+     */
+    get modeTint() {
+      const m = this.ui.mode;
+      if (m === "hunt") return { iris: "#ff8a5e", glow: "rgba(226,86,79,0.55)" };
+      if (m === "spore") return { iris: "#e0a8f4", glow: "rgba(201,138,222,0.55)" };
+      if (m === "hive") return { iris: "#9ff0ff", glow: "rgba(111,216,238,0.6)" };
+      if (m === "auto") return { iris: "#c4f09a", glow: "rgba(154,216,106,0.45)" };
+      return null;
     }
     /** Where you told it to go, standing there waiting for it. */
     _drawRoamMark(ctx, cam) {
@@ -23104,11 +24181,13 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
       if (this.seaShowing) this.sea.drawReef(ctx, cam, true);
       this.encounters.draw(ctx, cam);
       if (this.state === "play") this.mining.draw(ctx, cam);
+      this.critters.draw(ctx, cam);
       this.fx.draw(ctx, cam, "far");
       this.wildlife.draw(ctx, cam, "ground");
       if (!this.npc.riding && !this.npc.hidden) this.npc.draw(ctx, cam);
       this._drawCrab(ctx, cam);
       if (this.npc.riding && !this.npc.hidden) this.npc.draw(ctx, cam);
+      if (this.state === "title") this.menu.drawBottle(ctx, cam);
       if (this.sleep) this._drawSleep(ctx, cam);
       if (this.waking) this._drawWaking(ctx, cam);
       if (this._pee) this._drawStream(ctx, cam);
@@ -23154,13 +24233,16 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
       r.composite(this.weather, this);
       const ui = r.ui;
       if (this.seaShowing) this.sea.overlay(ui, cam, r.vw, r.vh);
-      if (this.state === "play") {
+      if (this.state === "play" || this.state === "title") {
         this.fx.drawDust(ui, cam, r.vw, r.vh, this.weather);
-        this.hive.drawDream(ui, cam, r.vw, r.vh);
       }
-      if (this.state === "intro" || this.state === "burying") this._drawCutscene(ui, r);
+      if (this.state === "play") this.hive.drawDream(ui, cam, r.vw, r.vh);
+      if (this.state === "title") {
+        this.menu.draw(ui, r.vw, r.vh);
+      } else if (this.state === "intro" || this.state === "burying") this._drawCutscene(ui, r);
       else if (this.state === "prologue") this._drawPrologue(ui, r);
-      if (this.state !== "play" && this.state !== "dead") this._drawCine(ui, r);
+      if (this.state === "title") {
+      } else if (this.state !== "play" && this.state !== "dead") this._drawCine(ui, r);
       else this.ui.draw(ui, r);
       this.fx.drawText(ui, cam, (c, t, x, y, o) => drawText(c, t, x, y, o));
       if (this.state === "dead") this._drawDead(ui, r);
@@ -23188,6 +24270,12 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
      * the sun behind it. Only the shallow ones show at all until you have a claw
      * that can find the rest.
      */
+    /**
+     * A dig site is not a marker. It is the end of something sticking out of
+     * the ground - a bone, the lip of a shell, a nodule of amber - with the
+     * sand heaped up round where it broke the surface, and a shadow under the
+     * overhang. The deeper it is, the less of it there is to see.
+     */
     _drawDigs(ctx, cam) {
       const power = this.economy.stat("fossil");
       for (const site of this.digs.near(this.crab.x, 520)) {
@@ -23195,25 +24283,91 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
         const y = this.terrain.surfaceY(site.x);
         const s = cam.worldToScreen(site.x, y);
         const z = cam.zoom;
-        const amber = site.relic.kind === "amber";
-        const r = (2.2 + (1 - site.deep) * 1.6) * z;
-        ctx.fillStyle = amber ? "#a5691a" : "#6f6758";
+        const kind = site.relic.kind;
+        const amber = kind === "amber";
+        const out = (1 - site.deep) * 0.8 + 0.2;
+        const w = (5 + out * 3.4) * z;
+        const h = (3 + out * 2.6) * z;
+        ctx.save();
+        ctx.translate(Math.round(s.x), Math.round(s.y));
+        ctx.fillStyle = "rgba(198,166,112,0.55)";
         ctx.beginPath();
-        ctx.ellipse(s.x, s.y - r * 0.3, r, r * 0.62, 0.3, Math.PI, TAU);
+        ctx.moveTo(-w * 1.5, 1);
+        ctx.quadraticCurveTo(-w * 0.7, -h * 0.55, 0, -h * 0.6);
+        ctx.quadraticCurveTo(w * 0.7, -h * 0.55, w * 1.5, 1);
+        ctx.closePath();
         ctx.fill();
-        ctx.fillStyle = amber ? "#eec66c" : "#c6bea7";
+        ctx.fillStyle = "rgba(120,92,56,0.30)";
+        ctx.fillRect(-w * 1.5, 0, w * 3, Math.max(1, z * 0.6));
+        ctx.save();
         ctx.beginPath();
-        ctx.ellipse(s.x - r * 0.2, s.y - r * 0.45, r * 0.55, r * 0.3, 0.3, Math.PI, TAU);
+        ctx.rect(-w * 2, -h * 3, w * 4, h * 3 + 1);
+        ctx.clip();
+        if (amber) {
+          const g = ctx.createRadialGradient(-w * 0.2, -h * 0.7, 0, 0, -h * 0.3, w * 1.1);
+          g.addColorStop(0, "#fae19f");
+          g.addColorStop(0.55, "#d79a2a");
+          g.addColorStop(1, "#8a5a14");
+          ctx.fillStyle = g;
+          ctx.beginPath();
+          ctx.ellipse(0, -h * 0.15, w * 0.85, h * 0.95, 0.2, 0, TAU);
+          ctx.fill();
+          ctx.fillStyle = "rgba(60,34,6,0.55)";
+          ctx.beginPath();
+          ctx.ellipse(w * 0.25, -h * 0.1, w * 0.16, h * 0.22, 0.4, 0, TAU);
+          ctx.fill();
+        } else if (site.relic.id === "vertebra") {
+          ctx.fillStyle = "#cdc4ab";
+          ctx.beginPath();
+          ctx.ellipse(-w * 0.42, -h * 0.5, w * 0.36, h * 0.42, -0.3, 0, TAU);
+          ctx.fill();
+          ctx.beginPath();
+          ctx.ellipse(w * 0.42, -h * 0.32, w * 0.3, h * 0.36, 0.3, 0, TAU);
+          ctx.fill();
+          ctx.fillStyle = "#b3a88d";
+          ctx.beginPath();
+          ctx.moveTo(-w * 0.42, -h * 0.72);
+          ctx.lineTo(w * 0.42, -h * 0.54);
+          ctx.lineTo(w * 0.42, -h * 0.1);
+          ctx.lineTo(-w * 0.42, -h * 0.28);
+          ctx.closePath();
+          ctx.fill();
+          ctx.fillStyle = "rgba(60,50,34,0.4)";
+          ctx.fillRect(-w * 0.42, -h * 0.34, w * 0.84, Math.max(1, z * 0.5));
+        } else {
+          ctx.fillStyle = "#9a927e";
+          ctx.beginPath();
+          ctx.ellipse(0, -h * 0.05, w * 0.9, h * 1, 0.28, Math.PI * 1.06, TAU * 0.99);
+          ctx.fill();
+          ctx.fillStyle = "#cfc7b0";
+          ctx.beginPath();
+          ctx.ellipse(-w * 0.1, -h * 0.22, w * 0.62, h * 0.72, 0.28, Math.PI * 1.06, TAU * 0.99);
+          ctx.fill();
+          ctx.strokeStyle = "rgba(86,76,56,0.5)";
+          ctx.lineWidth = Math.max(1, z * 0.5);
+          for (let i = 0; i < 4; i++) {
+            const a = Math.PI * 1.12 + i * 0.24;
+            ctx.beginPath();
+            ctx.moveTo(Math.cos(a) * w * 0.25, -h * 0.15 + Math.sin(a) * h * 0.28);
+            ctx.lineTo(Math.cos(a) * w * 0.88, -h * 0.15 + Math.sin(a) * h * 0.95);
+            ctx.stroke();
+          }
+        }
+        ctx.restore();
+        ctx.fillStyle = "rgba(58,40,20,0.35)";
+        ctx.beginPath();
+        ctx.ellipse(0, 0, w * 0.95, Math.max(1, h * 0.22), 0, 0, TAU);
         ctx.fill();
+        ctx.restore();
         if (amber) {
           const tw = 0.5 + 0.5 * Math.sin(this.time * 2.6 + site.ci);
-          ctx.globalAlpha = 0.25 + tw * 0.45;
-          const g = ctx.createRadialGradient(s.x, s.y - r * 0.5, 0, s.x, s.y - r * 0.5, r * 4);
+          ctx.globalAlpha = 0.18 + tw * 0.34;
+          const g = ctx.createRadialGradient(s.x, s.y - h * 0.5, 0, s.x, s.y - h * 0.5, w * 3);
           g.addColorStop(0, "#fae19f");
           g.addColorStop(1, "rgba(238,198,108,0)");
           ctx.fillStyle = g;
           ctx.beginPath();
-          ctx.arc(s.x, s.y - r * 0.5, r * 4, 0, TAU);
+          ctx.arc(s.x, s.y - h * 0.5, w * 3, 0, TAU);
           ctx.fill();
           ctx.globalAlpha = 1;
         }
@@ -23222,7 +24376,7 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
             ctx,
             power ? "E to dig" : "you would need a digging claw",
             s.x,
-            s.y - 16 * z,
+            s.y - 18 * z,
             { color: "#dcd6c3", align: "center" }
           );
         }
