@@ -56,6 +56,9 @@ export class Game {
     this.renderer = new Renderer(canvas);
     this.input.scale = this.renderer.scale;
     this.cam = new Camera();
+    // before the first frame, so the title screen it opens on is framed
+    // against the real window rather than the camera's default guess
+    this.cam.setViewport(this.renderer.vw, this.renderer.vh);
 
     this.menu = new Menu(this);
     this.newRun();
@@ -69,6 +72,7 @@ export class Game {
     window.addEventListener('resize', () => {
       this.renderer.resize();
       this.input.scale = this.renderer.scale;
+      this.cam.setViewport(this.renderer.vw, this.renderer.vh);
       this.cam.targetZoom = this.autoZoom();
     });
     this._autosave = 0;
@@ -512,8 +516,8 @@ export class Game {
     this.cam.follow = null;
     // framed wide, and off to one side, so the title has sky to sit in and
     // the two of them are both in shot without either standing on the words
-    this.cam.snapTo(c.x + 86, c.y - 6);
-    this.cam.targetZoom = this.cam.zoom = this.autoZoom() * 0.72;
+    this.cam.snapTo(c.x + 30, c.y - 10);
+    this.cam.targetZoom = this.cam.zoom = this.autoZoom() * 0.66;
     this.menu.open();
   }
 
@@ -658,6 +662,12 @@ export class Game {
 
   update(dt) {
     this.time += dt;
+    // The camera has to know how big the window is before anything reads it.
+    // This used to live at the bottom of the play path, which meant the title
+    // screen ran on a stale 460x258 viewport - the backdrop painted a scratch
+    // buffer narrower than the frame and left a bright band down one side,
+    // and every screen-to-world sum on the menu was off by the difference.
+    this.cam.setViewport(this.renderer.vw, this.renderer.vh);
     // how long you have actually been playing, which is what the control hints
     // fade against - a cutscene does not count as practice
     if (this.state === 'play') this.playT = (this.playT || 0) + dt;
@@ -869,7 +879,6 @@ export class Game {
     }
     if (this.dialog) this.dialog.t += dt;
 
-    this.cam.setViewport(this.renderer.vw, this.renderer.vh);
     this.cam.update(dt);
     const w = this.cam.screenToWorld(i.sx, i.sy);
     i.wx = w.x; i.wy = w.y;

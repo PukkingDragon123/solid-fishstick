@@ -11443,10 +11443,10 @@ body {
 
   // js/ui/menu.js
   var ITEMS2 = [
-    { id: "continue", name: "CARRY ON", sub: "pick it up where you left it" },
-    { id: "new", name: "WAKE UP", sub: "a thousand years, from the beginning" },
-    { id: "settings", name: "SETTINGS", sub: "sound, the screen, and the save" }
+    { id: "start", name: "START" },
+    { id: "settings", name: "SETTINGS" }
   ];
+  var CREDIT = "PUKKINGDRAGON";
   var Menu = class {
     constructor(game2) {
       this.game = game2;
@@ -11457,16 +11457,28 @@ body {
       this.fade = 1;
       this.beer = { t: 0, phase: "drink", level: 1, bottle: null, thrown: 0 };
       this.gust = 0;
+      this._rows = [];
+      this.embers = [];
     }
+    /**
+     * Every part of the title is reset here rather than left over from the last
+     * time it was open, because the menu can be re-entered after a wipe and a
+     * stale selection or a bottle mid-flight is a bug you can see.
+     */
     open() {
       this.on = true;
       this.t = 0;
       this.page = "main";
+      this.pick = 0;
       this.fade = 1;
+      this._rows = [];
+      this.embers = [];
+      this.beer = { t: 0, phase: "drink", level: 1, bottle: null, thrown: 0 };
     }
     close() {
       this.on = false;
       this.page = "main";
+      this._rows = [];
     }
     get hasSave() {
       return !!readSave();
@@ -11540,14 +11552,51 @@ body {
         }
       }
     }
+    /**
+     * Grit picked out by the low sun. It is not the weather - the weather is
+     * real and behind this - it is the handful of bright specks over the top
+     * that keep a still frame from looking like a photograph.
+     */
+    _embers(dt) {
+      const E = this.embers;
+      if (E.length < 36 && Math.random() < dt * 44) {
+        E.push({
+          x: -30,
+          y: Math.random(),
+          v: 40 + Math.random() * 170,
+          r: Math.random() < 0.18 ? 2 : 1,
+          bob: Math.random() * TAU
+        });
+      }
+      for (let k = E.length - 1; k >= 0; k--) {
+        const e = E[k];
+        e.x += e.v * dt;
+        e.bob += dt * 2.4;
+        if (e.x > 1500) E.splice(k, 1);
+      }
+    }
     update(dt) {
       if (!this.on) return;
       this.t += dt;
       this.fade = damp(this.fade, 0, 8e-4, dt);
       this._beer(dt);
+      this._embers(dt);
       this.gust = 0.5 + 0.5 * Math.sin(this.t * 0.37) * Math.sin(this.t * 0.83 + 1.1);
       const i = this.game.input;
       const n = this._items().length;
+      if (this.pick >= n) this.pick = 0;
+      for (const r of this._rows) {
+        if (i.sx < r.x || i.sx > r.x + r.w || i.sy < r.y || i.sy > r.y + r.h) continue;
+        if (this.pick !== r.i) {
+          this.pick = r.i;
+          this.game.audio?.play("ui");
+        }
+        if (i.clicked) {
+          i.clicked = false;
+          this._choose(r.id);
+        }
+        break;
+      }
       if (i.justPressed("ArrowDown") || i.justPressed("s")) {
         this.pick = (this.pick + 1) % n;
         this.game.audio?.play("ui");
@@ -11570,46 +11619,43 @@ body {
     _items() {
       if (this.page === "settings") {
         return [
-          { id: "sound", name: "SOUND", sub: this.game.audio.enabled ? "on" : "off" },
+          { id: "sound", name: "SOUND", sub: this.game.audio.enabled ? "ON" : "OFF" },
           {
             id: "touch",
-            name: "TOUCH CONTROLS",
-            sub: this.game.settings.touchControls === void 0 ? "automatic" : this.game.settings.touchControls ? "always on" : "always off"
+            name: "TOUCH",
+            sub: this.game.settings.touchControls === void 0 ? "AUTO" : this.game.settings.touchControls ? "ON" : "OFF"
           },
-          { id: "wipe", name: "ERASE EVERYTHING", sub: "the save, the map, the notes" },
+          { id: "wipe", name: "ERASE EVERYTHING", sub: "" },
           { id: "back", name: "BACK", sub: "" }
         ];
       }
       if (this.page === "wipe") {
         return [
-          { id: "no", name: "NO", sub: "keep it" },
-          { id: "yes", name: "YES, ERASE IT", sub: "this cannot be undone" }
+          { id: "no", name: "NO", sub: "" },
+          { id: "yes", name: "YES, ERASE IT", sub: "" }
         ];
       }
-      const out = ITEMS2.slice();
-      if (!this.hasSave) out.shift();
-      return out;
+      return ITEMS2.slice();
     }
     _choose(id) {
       const g = this.game;
       g.audio?.resume();
       g.audio?.play("uiBig");
       switch (id) {
-        case "continue":
+        case "start":
           this.close();
-          g.resumeSave();
-          break;
-        case "new":
-          this.close();
-          g.startFresh();
+          if (this.hasSave) g.resumeSave();
+          else g.startFresh();
           break;
         case "settings":
           this.page = "settings";
           this.pick = 0;
+          this._rows = [];
           break;
         case "back":
           this.page = "main";
           this.pick = 0;
+          this._rows = [];
           break;
         case "sound":
           g.audio.setMuted(g.audio.enabled);
@@ -11625,16 +11671,19 @@ body {
         case "wipe":
           this.page = "wipe";
           this.pick = 0;
+          this._rows = [];
           break;
         case "no":
           this.page = "settings";
           this.pick = 0;
+          this._rows = [];
           break;
         case "yes":
           clearSave();
           g.wipeAll();
           this.page = "main";
           this.pick = 0;
+          this._rows = [];
           g.audio?.play("thunder");
           break;
         default:
@@ -11667,11 +11716,16 @@ body {
       if (!this.on) return;
       const g = this.game;
       const sky = ctx.createLinearGradient(0, 0, 0, H);
-      sky.addColorStop(0, `rgba(24,16,10,${0.72 + this.gust * 0.12})`);
-      sky.addColorStop(0.45, `rgba(54,36,20,${0.34 + this.gust * 0.14})`);
-      sky.addColorStop(1, "rgba(20,13,8,0.62)");
+      sky.addColorStop(0, `rgba(24,16,10,${0.58 + this.gust * 0.12})`);
+      sky.addColorStop(0.45, `rgba(54,36,20,${0.16 + this.gust * 0.12})`);
+      sky.addColorStop(1, "rgba(20,13,8,0.40)");
       ctx.fillStyle = sky;
       ctx.fillRect(0, 0, W, H);
+      const col = ctx.createLinearGradient(0, 0, W * 0.46, 0);
+      col.addColorStop(0, "rgba(12,8,5,0.62)");
+      col.addColorStop(1, "rgba(12,8,5,0)");
+      ctx.fillStyle = col;
+      ctx.fillRect(0, 0, Math.round(W * 0.46), H);
       ctx.save();
       for (let L = 0; L < 4; L++) {
         const speed = 120 + L * 260;
@@ -11692,74 +11746,78 @@ body {
       }
       ctx.restore();
       ctx.globalAlpha = 1;
-      const ty = Math.round(H * 0.17);
+      for (const e of this.embers) {
+        const xx = e.x % (W + 80) - 40;
+        const yy = e.y * H + Math.sin(e.bob) * 9;
+        ctx.globalAlpha = 0.3 + 0.5 * (0.5 + 0.5 * Math.sin(e.bob * 1.7));
+        ctx.fillStyle = e.r > 1 ? "#ffd88a" : "#e8c88e";
+        ctx.fillRect(Math.round(xx), Math.round(yy), e.r, e.r);
+      }
+      ctx.globalAlpha = 1;
+      const ty = Math.round(H * 0.17 + Math.sin(this.t * 0.9) * 1.5);
       const title = "CRABDEN";
       const scale = W < 420 ? 3 : 4;
+      const tw = textWidth(title, scale);
+      ctx.globalAlpha = 0.1 + this.gust * 0.13;
+      ctx.fillStyle = "#e2b74a";
+      ctx.fillRect(Math.round(W / 2 - tw / 2) - 8, ty - 5, tw + 16, scale * 8 + 11);
+      ctx.globalAlpha = 1;
       drawText(ctx, title, W / 2 + 2, ty + 2, { color: "rgba(10,6,4,0.7)", align: "center", scale });
       drawText(ctx, title, W / 2, ty, { color: "#f2e4c2", align: "center", scale });
-      const tw = textWidth(title, scale);
-      ctx.fillStyle = "rgba(226,183,74,0.6)";
+      ctx.globalAlpha = 0.45 + this.gust * 0.55;
+      ctx.fillStyle = "#e2b74a";
       ctx.fillRect(Math.round(W / 2 - tw / 2), ty + scale * 8 + 3, tw, 1);
-      drawText(
-        ctx,
-        "a thousand years is not a long time",
-        W / 2,
-        ty + scale * 8 + 8,
-        { color: "rgba(196,172,128,0.8)", align: "center" }
-      );
+      ctx.globalAlpha = 1;
       const items = this._items();
       const mx = Math.round(W * 0.08);
-      const my = Math.round(H * 0.52);
+      const my = Math.round(H * 0.58);
+      const rows = [];
       items.forEach((it, i) => {
-        const y = my + i * 22;
+        const y = my + i * 24;
         const on = i === this.pick;
-        const hot = this._hit(mx - 4, y - 3, 150, 19);
-        if (hot && !on) this.pick = i;
-        drawPlate(ctx, mx - 4, y - 3, Math.max(120, textWidth(it.name) + 40), 19, {
+        const w = Math.max(132, textWidth(it.name) + 52);
+        rows.push({ i, id: it.id, x: mx - 4, y: y - 5, w, h: 21 });
+        const b = 0.5 + 0.5 * Math.sin(this.t * 3.1);
+        const push = on ? Math.round(1 + b * 3) : 0;
+        if (on) {
+          ctx.globalAlpha = 0.1 + b * 0.14;
+          ctx.fillStyle = "#e2b74a";
+          ctx.fillRect(mx - 8 + push, y - 9, w + 8, 29);
+          ctx.globalAlpha = 1;
+        }
+        drawPlate(ctx, mx - 4 + push, y - 5, w, 21, {
           edge: on ? "#e2b74a" : "rgba(120,96,58,0.4)",
-          top: on ? "rgba(58,46,28,0.96)" : void 0,
+          top: on ? "rgba(64,50,30,0.96)" : void 0,
           rivets: false
         });
         if (on) {
           ctx.fillStyle = "#e2b74a";
-          ctx.fillRect(mx - 4, y - 3, 2, 19);
-          const b = 0.5 + 0.5 * Math.sin(this.t * 4);
-          ctx.globalAlpha = 0.4 + b * 0.6;
-          ctx.fillRect(mx + 2, y + 2, 3, 3);
-          ctx.globalAlpha = 1;
+          ctx.fillRect(mx - 4 + push, y - 5, 2, 21);
         }
-        drawText(ctx, it.name, mx + 9, y, { color: on ? "#f2e4c2" : "#b49c70" });
-        if (it.sub) drawText(ctx, it.sub, mx + 9, y + 9, { color: on ? "rgba(196,172,128,0.95)" : "rgba(150,128,92,0.6)" });
-        if (hot && this.game.input.clicked) {
-          this.game.input.clicked = false;
-          this._choose(it.id);
+        drawText(ctx, it.name, mx + 11 + push, y, { color: on ? "#f7ecd0" : "#b49c70" });
+        if (it.sub) {
+          drawText(
+            ctx,
+            it.sub,
+            mx + push + w - 9,
+            y,
+            { color: on ? "#e2b74a" : "rgba(150,128,92,0.7)", align: "right" }
+          );
         }
       });
+      this._rows = rows;
       if (this.page === "wipe") {
         drawText(
           ctx,
           "Everything. The map, the notes, the animals, the garden.",
           mx - 4,
-          my - 16,
+          my - 18,
           { color: "#e2564f" }
         );
       }
-      if (this.page === "main" && this.hasSave) {
-        const d = readSave() || {};
-        const bits = [
-          `day ${(d.day || 0) + 1}`,
-          `${d.stage || "hatchling"}`,
-          `${d.economy && d.economy.genes ? d.economy.genes.length : 0} genes`
-        ];
-        drawText(ctx, bits.join("   "), mx - 4, H - 26, { color: "rgba(160,138,100,0.8)" });
-      }
-      drawText(
-        ctx,
-        "arrows / click, enter to choose",
-        W - 6,
-        H - 12,
-        { color: "rgba(150,128,92,0.55)", align: "right" }
-      );
+      ctx.globalAlpha = 0.55 + this.gust * 0.35;
+      drawText(ctx, CREDIT, W / 2, H - 13, { color: "#e2b74a", align: "center" });
+      ctx.globalAlpha = 1;
       if (this.fade > 4e-3) {
         ctx.globalAlpha = clamp01(this.fade);
         ctx.fillStyle = "#050403";
@@ -22269,6 +22327,7 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
       this.renderer = new Renderer(canvas2);
       this.input.scale = this.renderer.scale;
       this.cam = new Camera();
+      this.cam.setViewport(this.renderer.vw, this.renderer.vh);
       this.menu = new Menu(this);
       this.newRun();
       const saved = readSave();
@@ -22280,6 +22339,7 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
       window.addEventListener("resize", () => {
         this.renderer.resize();
         this.input.scale = this.renderer.scale;
+        this.cam.setViewport(this.renderer.vw, this.renderer.vh);
         this.cam.targetZoom = this.autoZoom();
       });
       this._autosave = 0;
@@ -22783,8 +22843,8 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
       this.buryTarget = 0;
       this.cam.cineCancel();
       this.cam.follow = null;
-      this.cam.snapTo(c.x + 86, c.y - 6);
-      this.cam.targetZoom = this.cam.zoom = this.autoZoom() * 0.72;
+      this.cam.snapTo(c.x + 30, c.y - 10);
+      this.cam.targetZoom = this.cam.zoom = this.autoZoom() * 0.66;
       this.menu.open();
     }
     /** While the bottle is in the air her hand is empty, so the pose changes. */
@@ -22943,6 +23003,7 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
     // -- loop -----------------------------------------------------------------
     update(dt) {
       this.time += dt;
+      this.cam.setViewport(this.renderer.vw, this.renderer.vh);
       if (this.state === "play") this.playT = (this.playT || 0) + dt;
       const i = this.input;
       const slow = this.state === "dead" ? 0.3 : 1;
@@ -23144,7 +23205,6 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
         this.crab.hp = Math.min(this.crab.hpMax, this.crab.hp + sdt * (0.8 + this.garden.lushness * 2.4));
       }
       if (this.dialog) this.dialog.t += dt;
-      this.cam.setViewport(this.renderer.vw, this.renderer.vh);
       this.cam.update(dt);
       const w = this.cam.screenToWorld(i.sx, i.sy);
       i.wx = w.x;

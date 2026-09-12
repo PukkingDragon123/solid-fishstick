@@ -209,8 +209,12 @@ the sand until the desert takes it back. Then she opens another, because there
 is nothing else to do out here and there has not been for eleven years.
 
 The storm behind it is real weather with the wind turned up, blowing in gusts so
-the title is never evenly lit. Carry on, wake up, or **settings** — sound, touch
-controls, and **erase everything**, which asks you twice and means it.
+the title is never evenly lit, with lit grit blowing past over the top of it and
+the selected plate breathing where your hand is. There are two words on it:
+**START**, which carries on from your save if you have one and wakes you out of
+the sand if you do not, and **SETTINGS** — sound, touch controls, and **erase
+everything**, which asks you twice and means it. Nothing on it explains itself,
+and the only other thing written there is whose desert this is.
 
 ![The front door](docs/shot-22-title.png)
 
