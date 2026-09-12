@@ -14,7 +14,7 @@ import { FAUNA, FAUNA_BY_ID, CLADES, OBSERVE_STEPS } from '../data/fauna.js';
 import { BUILDINGS, BUILD_BY_ID, GENES, GENE_BY_ID, SKILL_BY_ID } from '../data/progress.js';
 import { buildPlant } from '../art/floraart.js';
 import { buildStructure } from '../art/buildart.js';
-import { drawShell, drawBloom, drawSprig, drawOrb, drawTab, drawPanel, drawGlyph, drawValve, drawGauge, drawNodeIcon } from './icons.js';
+import { drawShell, drawBloom, drawSprig, drawOrb, drawTab, drawPanel, drawGlyph, drawValve, drawGauge, drawNodeIcon, drawPlate } from './icons.js';
 import { TreeScreen } from './tree.js';
 import { WORLD_NOTES, ERAS } from '../data/lore.js';
 import { biomeAt } from '../world/biomes.js';
@@ -467,12 +467,9 @@ export class UI {
       - (lines.length - 1) * LINE_H) + Math.round((1 - inK) * 5);
     ctx.save();
     ctx.globalAlpha = a;
-    ctx.fillStyle = 'rgba(14,11,8,0.80)';
-    ctx.fillRect(bx, by, bw, bh);
+    drawPlate(ctx, bx, by, bw, bh);
     ctx.fillStyle = 'rgba(226,183,74,0.85)';
     ctx.fillRect(bx, by, 2, bh);
-    ctx.strokeStyle = 'rgba(214,186,138,0.28)';
-    ctx.strokeRect(bx + 0.5, by + 0.5, bw - 1, bh - 1);
     lines.forEach((l, i) => drawText(ctx, l, W / 2 + 1, by + 4 + i * LINE_H,
       { color: INK, align: 'center' }));
     ctx.restore();
@@ -636,8 +633,15 @@ export class UI {
     const room = W - (L + 96) - 10;
     const label = narrow ? ellipsize(g.biome.name, Math.max(40, room))
       : `${g.biome.name}   ${g.weather.label()}`;
-    drawText(ctx, label, W - 24, 5, { color: DIM, align: 'right', outline: true, outlineColor: OUT });
-    this._clock(ctx, W - 15, narrow ? 22 : 25);
+    // Everything the HUD knows about the world outside you - where you are,
+    // what the sky is doing, what day it is - hangs off one riveted plate in
+    // the corner, instead of three sizes of outlined text over the sky.
+    const lw = Math.max(textWidth(label), 62) + 12;
+    drawPlate(ctx, W - 22 - lw, 1, lw + 20, narrow ? 30 : 44, { alpha: 0.90 });
+    drawText(ctx, label, W - 26, 4, { color: DIM, align: 'right' });
+    ctx.fillStyle = 'rgba(148,118,68,0.35)';
+    ctx.fillRect(W - 20 - lw, 13, lw + 16, 1);
+    this._clock(ctx, W - 15, narrow ? 20 : 23);
     if (!narrow) this._compass(ctx, W, H);
 
     // the gene orb: the way into the tree
@@ -735,7 +739,9 @@ export class UI {
     // on touch the mode is a button of its own, and the label would sit under
     // the thumbstick
     if (this.touchEnabled) return;
-    drawText(ctx, modeDef.name, 6, H - 20, { color: FAINT, outline: true, outlineColor: OUT });
+    const mw = textWidth(modeDef.name) + 8;
+    drawPlate(ctx, 3, H - 22, mw, 11, { alpha: 0.85, rivets: false });
+    drawText(ctx, modeDef.name, 7, H - 20, { color: FAINT });
     if (this._hit(4, H - 22, 34, 10)) {
       this.hover = { title: modeDef.name, body: modeDef.desc + '   (M to switch)' };
       if (this.game.input.clicked) { this.game.input.clicked = false; this.cycleMode(); }
@@ -775,12 +781,7 @@ export class UI {
     ctx.globalAlpha = Math.min(1, a);
     caps.forEach(([k, word], i) => {
       const w = capW[i];
-      ctx.fillStyle = 'rgba(14,11,8,0.66)';
-      ctx.fillRect(x, y, w, 11);
-      ctx.fillStyle = 'rgba(226,183,74,0.30)';
-      ctx.fillRect(x, y + 10, w, 1);
-      ctx.strokeStyle = 'rgba(214,186,138,0.32)';
-      ctx.strokeRect(x + 0.5, y + 0.5, w - 1, 10);
+      drawPlate(ctx, x, y, w, 11, { edge: 'rgba(180,146,86,0.45)' });
       drawText(ctx, k, x + w / 2, y + 2, { color: '#e6d5ad', align: 'center' });
       x += w + gap;
       drawText(ctx, word, x, y + 2,
@@ -1017,10 +1018,9 @@ export class UI {
     ctx.fillStyle = 'rgba(255,246,196,0.35)';
     ctx.beginPath(); ctx.arc(sx, sy, 4.2, 0, TAU); ctx.fill();
 
-    drawText(ctx, `DAY ${day}`, cx - R - 4, cy - 8,
-      { color: INK, align: 'right', outline: true, outlineColor: OUT });
+    drawText(ctx, `DAY ${day}`, cx - R - 4, cy - 8, { color: INK, align: 'right' });
     drawText(ctx, `${String(Math.floor(hour)).padStart(2, '0')}:${String(Math.floor((hour % 1) * 60)).padStart(2, '0')}`,
-      cx - R - 4, cy + 1, { color: DIM, align: 'right', outline: true, outlineColor: OUT });
+      cx - R - 4, cy + 1, { color: DIM, align: 'right' });
 
     if (this._hit(cx - R - 44, cy - R, R * 2 + 44, R * 2)) {
       const toNight = hour < 20 ? 20 - hour : 24 - hour + 20;
@@ -1037,8 +1037,7 @@ export class UI {
   _compass(ctx, W, H) {
     const g = this.game;
     const lm = g.world.nextUnfound(g.crab.x);
-    drawText(ctx, `${g.world.found.size} found`, W - 6, 38,
-      { color: FAINT, align: 'right', outline: true, outlineColor: OUT });
+    drawText(ctx, `${g.world.found.size} found`, W - 6, 34, { color: FAINT, align: 'right' });
     if (!lm) return;
     const d = lm.x - g.crab.x;
     const dir = Math.sign(d) || 1;

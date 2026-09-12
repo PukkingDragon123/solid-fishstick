@@ -461,13 +461,32 @@ the spine, insects walk an alternating tripod, reptiles bask.
 
 ### Dr. Vess
 
-She is painted, not drawn. `js/art/personart.js` builds her the same way the
-crab is built — height fields, material ramps, one light and a hard outline —
-and hands back a **rig in pieces**: skull, jaw, ear, nose and one eye you can
-read; hair tied back with strands pulling loose downwind; a felt hat with a
-brim and a crown; goggles that sit on the band or come down over the eye; a
-coat over a shirt, cut away down the front, with a bandolier of sample vials
-and a belt; a satchel; four limb bones, and a boot that is its own part.
+**She is designed from the sheets in `assets/`, and painted from scratch.**
+Those two reference sheets — a young field archaeologist and an old wanderer —
+are the design document: what she wears, what she carries, what her face does.
+Nothing in `assets/` is loaded at runtime. `js/art/personart.js` rebuilds that
+design the same way the crab is built — height fields, material ramps, one
+light and a hard outline — so she is lit by the same sun as the ground she is
+standing on, and can be **posed** rather than flipped through.
+
+What comes off the sheet: a **wide tan bush hat** with a maroon band and brass
+goggles pushed up on it, a **cream shirt** with the sleeves already rolled, a
+leather placket and a belt with a brass buckle, **olive trousers** into heavy
+dark **boots with a turned-down cuff**, a **canvas pack** with a buckled flap
+and a bedroll strapped across the top, and the **maroon map tube** on her hip —
+the one saturated thing on her, and the first thing your eye lands on. Her
+proportions come off the sheet too: the head with its hat is about a third of
+the figure, the legs are short, and the pack is nearly as wide as she is.
+
+The head is laid out in whole units rather than fractions of a box, because a
+face is a set of distances: the eyes two units apart with a catchlight in each,
+the brim half as wide again as the head, the chin four units under the eyes.
+The hair is **chunks, not strands** — a fringe hanging out from under the brim
+with a ragged edge, two heavy locks past the cheek, a mass at the nape — and
+the crown is never painted at all, because the hat is sitting on it.
+
+The rig comes back in pieces: head, hat, pack, map tube, torso, four limb
+bones, and a boot that is its own part.
 
 Her gait is driven by one phase rather than by how far each foot has drifted
 from a home position: at any moment one foot is planted and the other is
@@ -499,8 +518,13 @@ spins away on its own arc, bounces once and stays where it lands. Her kit — be
 spoil heap, pick, brush — is painted the same way and scattered on the ground
 wherever she sets up to dig.
 
-Nothing in the game is a photograph of a sprite sheet any more, which is also
-why the whole build is 40% smaller than it was.
+The **Elder** off the second sheet is the same rig with five ramps swapped and
+three shapes added: a red hat with a quill through the band, a pale shawl over
+a slate coat, and a white beard. That is the whole point of painting people
+instead of drawing them — a second character costs a palette, not a sheet.
+
+Nothing in the game is a photograph of a sprite sheet, which is also why the
+whole build is 40% smaller than it was.
 
 She does three things now. On the ground she works — wanders, crouches, digs,
 writes. **Follow** and she keeps pace behind you. **Get on** (once you are big
@@ -546,6 +570,22 @@ reads back anything else you spell letter by letter.
   **keycaps** along the bottom that fade out once you have been playing a few
   minutes, and come back if you reach for them. What is left of the writing is
   spoken: Dr. Vess says it, in her bubble, with her face doing the work.
+
+### The interface is made of something
+
+The HUD is not a set of rounded rectangles. Everything it says sits on a
+**riveted brass plate** — a bevelled slab with a lit top edge, a shadow under
+it and a rivet in each corner — so the place name, the weather, the day, the
+clock, the control keycaps and the toast all read as parts of one instrument
+rather than as text floating over the sky. Gauges are **brass-bound glass**:
+end caps you could unscrew, a tick every quarter, a lit top edge on the fill, a
+shadow under it and a meniscus at the leading edge, so a level reads as a level.
+
+And when Dr. Vess talks, she talks on **a page out of her own notebook**: cream
+paper with a ruled red margin, a faint rule under every line, a torn lower edge,
+her face pinned to it behind four brass tacks, and a dog-eared corner pointing
+at whoever is speaking. Tapped code gets the same card in ink-blue, because a
+signal is still something written down.
 
 ### Layout
 

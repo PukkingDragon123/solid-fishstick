@@ -364,10 +364,24 @@ export class Person {
 
     // ---- far leg, far arm, then body, then near leg and arm ---------------
     this._leg(ctx, rig.leg.far, this.feet[1], hipWorldY, dir, -1);
-    // the bag is slung behind her, under everything
+    // the pack is slung behind her, under everything, and lags a beat behind
+    // the body it is strapped to - which is most of what sells the weight
     const bg = rot(rig.sockets.bag.x, rig.sockets.bag.y, lean);
-    ctx.drawImage(rig.satchel.cv, Math.round(bg.x - rig.satchel.ox),
-      Math.round(bg.y - rig.satchel.oy + breath));
+    const sway = Math.abs(this.vx) > 6 ? Math.sin(this.step * TAU * 2 + 0.9) * 0.7 * rig.K : 0;
+    ctx.save();
+    ctx.translate(bg.x, bg.y + breath + sway);
+    ctx.rotate(lean * 0.8);
+    ctx.drawImage(rig.pack.cv, -rig.pack.ox, -rig.pack.oy);
+    ctx.restore();
+    // and the map tube hangs off the far hip, angled
+    if (rig.tube) {
+      const tb = rot(rig.sockets.tube.x, rig.sockets.tube.y, lean);
+      ctx.save();
+      ctx.translate(tb.x, tb.y + breath);
+      ctx.rotate(lean + 1.02);
+      ctx.drawImage(rig.tube.cv, -rig.tube.ox, -rig.tube.oy);
+      ctx.restore();
+    }
     this._arm(ctx, rig.arm.far, shoulder, this.b.armF0, this.b.armF1, lean, -1, null);
 
     ctx.save();

@@ -550,23 +550,80 @@ export function drawValve(ctx, x, y, open, t) {
 }
 
 /** A small horizontal gauge, used for ripeness and for load. */
+/**
+ * A gauge as a piece of brass-bound glass rather than a progress bar: end
+ * caps you could unscrew, a tick every quarter, a lit top edge on the fill
+ * and a shadow under it. It is the shape the whole interface is cut from.
+ */
 export function drawGauge(ctx, x, y, w, h, f, col, opts = {}) {
-  x = Math.round(x); y = Math.round(y);
-  ctx.fillStyle = opts.back || 'rgba(12,8,5,0.78)';
+  x = Math.round(x); y = Math.round(y); w = Math.round(w); h = Math.round(h);
+  // the brass bezel, then the well it is set into
+  ctx.fillStyle = opts.rim || 'rgba(132,104,56,0.92)';
+  ctx.fillRect(x - 2, y - 2, w + 4, h + 4);
+  ctx.fillStyle = 'rgba(198,162,90,0.55)';
+  ctx.fillRect(x - 2, y - 2, w + 4, 1);
+  ctx.fillStyle = opts.back || 'rgba(14,10,6,0.90)';
   ctx.fillRect(x - 1, y - 1, w + 2, h + 2);
-  ctx.fillStyle = 'rgba(60,46,30,0.9)';
+  ctx.fillStyle = 'rgba(52,40,26,0.95)';
   ctx.fillRect(x, y, w, h);
+
   const fw = Math.round(w * clamp01(f));
   if (fw > 0) {
     ctx.fillStyle = col;
     ctx.fillRect(x, y, fw, h);
-    ctx.fillStyle = 'rgba(255,255,255,0.35)';
+    ctx.fillStyle = 'rgba(255,255,255,0.38)';
     ctx.fillRect(x, y, fw, 1);
+    ctx.fillStyle = 'rgba(0,0,0,0.26)';
+    ctx.fillRect(x, y + h - 1, fw, 1);
+    // the meniscus at the leading edge, so the fill reads as a level
+    ctx.fillStyle = 'rgba(255,255,255,0.55)';
+    ctx.fillRect(x + fw - 1, y, 1, h);
   }
+  // quarter ticks, cut into the glass
+  if (w > 18) {
+    for (let q = 1; q < 4; q++) {
+      ctx.fillStyle = 'rgba(0,0,0,0.30)';
+      ctx.fillRect(x + Math.round(w * q / 4), y, 1, h);
+    }
+  }
+  // the two end caps
+  ctx.fillStyle = 'rgba(214,176,100,0.75)';
+  ctx.fillRect(x - 2, y - 1, 1, h + 2);
+  ctx.fillRect(x + w + 1, y - 1, 1, h + 2);
   if (opts.mark !== undefined) {
-    ctx.fillStyle = 'rgba(242,228,194,0.8)';
-    ctx.fillRect(x + Math.round(w * clamp01(opts.mark)), y - 1, 1, h + 2);
+    ctx.fillStyle = 'rgba(242,228,194,0.85)';
+    ctx.fillRect(x + Math.round(w * clamp01(opts.mark)), y - 2, 1, h + 4);
   }
+}
+
+/**
+ * A brass plate to hang a reading on: a bevelled slab with a rivet in each
+ * corner. Everything the HUD says about the world - where you are, what the
+ * weather is doing, what time it is - sits on one of these rather than
+ * floating as outlined text over the sky.
+ */
+export function drawPlate(ctx, x, y, w, h, opts = {}) {
+  x = Math.round(x); y = Math.round(y); w = Math.round(w); h = Math.round(h);
+  const a = opts.alpha ?? 1;
+  ctx.save();
+  ctx.globalAlpha = a;
+  ctx.fillStyle = 'rgba(0,0,0,0.28)';
+  ctx.fillRect(x + 1, y + 2, w, h);
+  const g = ctx.createLinearGradient(0, y, 0, y + h);
+  g.addColorStop(0, opts.top || 'rgba(46,35,22,0.88)');
+  g.addColorStop(1, opts.bottom || 'rgba(26,19,12,0.92)');
+  ctx.fillStyle = g;
+  ctx.fillRect(x, y, w, h);
+  ctx.fillStyle = 'rgba(198,162,90,0.30)';
+  ctx.fillRect(x, y, w, 1);
+  ctx.strokeStyle = opts.edge || 'rgba(148,118,68,0.55)';
+  ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+  if (opts.rivets !== false) {
+    ctx.fillStyle = 'rgba(206,170,96,0.65)';
+    for (const [rx, ry] of [[x + 2, y + 2], [x + w - 3, y + 2],
+      [x + 2, y + h - 3], [x + w - 3, y + h - 3]]) ctx.fillRect(rx, ry, 1, 1);
+  }
+  ctx.restore();
 }
 
 export function clearIconCache() { cache.clear(); }

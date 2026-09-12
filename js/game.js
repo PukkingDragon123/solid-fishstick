@@ -1440,54 +1440,81 @@ export class Game {
     this.ui.drawPrologueControls(ctx, vw, vh);
   }
 
+  /**
+   * What she says, on a page out of her own notebook. This is the one piece
+   * of interface the game uses constantly, so it is not a rounded rectangle:
+   * it is cream paper with a ruled margin, a torn lower edge, her face pinned
+   * to it behind brass tacks, and a dog-eared corner pointing at whoever is
+   * talking. Tapped code gets the same card in ink-blue, because a signal is
+   * still something written down.
+   */
   _drawSpeech(ctx, cam, who, code = false) {
     const s = cam.worldToScreen(who.x, who.y - 40);
-    // her face goes in the bubble, painted at four times her walking size:
-    // the whole point of a close-up is that you can see what she thinks of you
+    // her face goes on the card at four times her walking size: the whole
+    // point of a close-up is that you can see what she thinks of you
     const port = !code && who.portrait ? who.portrait() : null;
     const pw = port ? 30 : 0;
-    const lines = wrapText(who.speech, 132 - (port ? pw + 4 : 0));
-    const w = Math.max(...lines.map((l) => textWidth(l))) + 12 + (port ? pw + 4 : 0);
-    const h = Math.max(lines.length * LINE_H + 8, port ? pw + 6 : 0);
+    const lines = wrapText(who.speech, 132 - (port ? pw + 6 : 0));
+    const w = Math.max(...lines.map((l) => textWidth(l))) + 14 + (port ? pw + 6 : 0);
+    const h = Math.max(lines.length * LINE_H + 10, port ? pw + 8 : 0);
     const x = clamp(Math.round(s.x - w / 2), 3, this.renderer.vw - w - 3);
     const y = clamp(Math.round(s.y - h), 3, this.renderer.vh - h - 12);
-    const tailX = clamp(Math.round(s.x), x + 6, x + w - 6);
+    const tailX = clamp(Math.round(s.x), x + 8, x + w - 8);
 
-    // the tail first, so the body's edge draws over where it joins
-    ctx.fillStyle = code ? 'rgba(10,22,24,0.94)' : 'rgba(18,13,9,0.94)';
+    const PAPER = code ? '#0e2226' : '#e9dcbc';
+    const SHADE = code ? '#0a1a1d' : '#d2c29c';
+    const INKC = code ? '#8fe0cc' : '#2a2016';
+    const RULE = code ? 'rgba(143,224,204,0.20)' : 'rgba(42,32,22,0.13)';
+    const EDGE = code ? 'rgba(143,224,204,0.55)' : 'rgba(92,70,44,0.75)';
+
+    // the dog-ear pointing at the speaker, drawn first so the page covers its root
+    ctx.fillStyle = SHADE;
     ctx.beginPath();
-    ctx.moveTo(tailX - 4, y + h - 1);
-    ctx.lineTo(tailX + 4, y + h - 1);
-    ctx.lineTo(tailX + (code ? 0 : 2), y + h + 6);
+    ctx.moveTo(tailX - 5, y + h - 2);
+    ctx.lineTo(tailX + 5, y + h - 2);
+    ctx.lineTo(tailX + (code ? 0 : 3), y + h + 7);
     ctx.closePath();
     ctx.fill();
 
+    // the page, with a shadow under it and a torn bottom edge
+    ctx.fillStyle = 'rgba(0,0,0,0.30)';
+    ctx.fillRect(x + 2, y + 3, w, h);
+    ctx.fillStyle = PAPER;
     ctx.fillRect(x, y, w, h);
-    ctx.strokeStyle = code ? 'rgba(159,232,212,0.55)' : 'rgba(226,200,150,0.45)';
-    ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
-    // a lighter inner line: a bubble with an edge reads as drawn, not as a box
-    ctx.strokeStyle = code ? 'rgba(159,232,212,0.16)' : 'rgba(226,200,150,0.14)';
-    ctx.strokeRect(x + 2.5, y + 2.5, w - 5, h - 5);
-
-    let tx = x + 6;
-    if (port) {
-      const ph = Math.min(pw, h - 6);
-      ctx.save();
-      ctx.beginPath();
-      ctx.rect(x + 3, y + 3, pw, ph);
-      ctx.clip();
-      ctx.fillStyle = 'rgba(30,22,14,0.9)';
-      ctx.fillRect(x + 3, y + 3, pw, ph);
-      // framed on the face rather than centred on the neck joint
-      ctx.drawImage(port.cv, Math.round(x + 3 + pw / 2 - port.ox),
-        Math.round(y + 3 + ph * 0.62 - port.oy + port.H * 0.66));
-      ctx.restore();
-      ctx.strokeStyle = 'rgba(226,200,150,0.25)';
-      ctx.strokeRect(x + 2.5, y + 2.5, pw + 1, Math.min(pw, h - 6) + 1);
-      tx = x + 6 + pw + 2;
+    // torn: a row of one-pixel bites along the bottom
+    for (let i = 0; i < w; i += 2) {
+      const bite = (i * 37 % 5) < 2 ? 1 : 0;
+      if (bite) { ctx.fillStyle = SHADE; ctx.fillRect(x + i, y + h - 1, 2, 1); }
     }
-    lines.forEach((l, i) => drawText(ctx, l, tx, y + 5 + i * LINE_H,
-      { color: code ? '#9fe8d4' : '#f2e4c2' }));
+    ctx.strokeStyle = EDGE;
+    ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+
+    let tx = x + 7;
+    if (port) {
+      // her face, pinned to the page behind four brass tacks
+      const ph = Math.min(pw, h - 8);
+      const px = x + 4, py = y + 4;
+      ctx.save();
+      ctx.beginPath(); ctx.rect(px, py, pw, ph); ctx.clip();
+      ctx.fillStyle = code ? '#0a1a1d' : '#c8b590';
+      ctx.fillRect(px, py, pw, ph);
+      ctx.drawImage(port.cv, Math.round(px + pw / 2 - port.ox),
+        Math.round(py + ph * 0.62 - port.oy + port.H * 0.66));
+      ctx.restore();
+      ctx.strokeStyle = 'rgba(60,44,26,0.55)';
+      ctx.strokeRect(px - 0.5, py - 0.5, pw + 1, ph + 1);
+      ctx.fillStyle = code ? '#5fbfae' : '#c9a24a';
+      for (const [tx2, ty2] of [[px, py], [px + pw - 1, py], [px, py + ph - 1], [px + pw - 1, py + ph - 1]]) {
+        ctx.fillRect(tx2 - 1, ty2 - 1, 2, 2);
+      }
+      tx = px + pw + 6;
+    }
+    // the ruled margin the text is written against, and a faint rule per line
+    ctx.fillStyle = code ? 'rgba(143,224,204,0.35)' : 'rgba(150,52,42,0.45)';
+    ctx.fillRect(tx - 3, y + 3, 1, h - 6);
+    ctx.fillStyle = RULE;
+    lines.forEach((l, i) => ctx.fillRect(tx, y + 5 + i * LINE_H + 8, w - (tx - x) - 6, 1));
+    lines.forEach((l, i) => drawText(ctx, l, tx, y + 6 + i * LINE_H, { color: INKC }));
     if (code) {
       drawText(ctx, this.morse.learned ? 'she is listening' : 'tapping',
         x + w / 2, y - 9, { color: 'rgba(159,232,212,0.5)', align: 'center' });

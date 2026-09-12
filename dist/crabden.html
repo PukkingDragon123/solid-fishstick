@@ -5582,73 +5582,101 @@ body {
   };
 
   // js/art/personart.js
-  var LIGHT3 = { lightX: -0.58, lightY: -0.66, lightZ: 0.42, ambient: 0.4, dither: 0.7 };
-  var FAR = { ...LIGHT3, ambient: 0.27 };
-  var MATS = withMaterials({
-    coat: {
-      ramp: ["#221f14", "#33301d", "#464227", "#5a5533", "#6f6941", "#857e51", "#9c9466", "#b4ac80"],
+  var LIGHT3 = { lightX: -0.58, lightY: -0.66, lightZ: 0.42, ambient: 0.42, dither: 0.62 };
+  var FAR = { ...LIGHT3, ambient: 0.28 };
+  var BASE = {
+    skin: {
+      ramp: ["#5e3627", "#7a4733", "#985c42", "#b47353", "#cd8e69", "#e0a982", "#eec39d", "#f7dcbc"],
       diffuse: 0.8,
       rim: 0.3,
-      ao: 0.12,
-      normalScale: 0.58,
-      outline: "#221e12"
-    },
-    shirt: {
-      ramp: ["#43301f", "#5b432c", "#74583a", "#8d6e4a", "#a5865d", "#bda074", "#d3bb92", "#e7d6b6"],
-      diffuse: 0.78,
-      rim: 0.26,
-      ao: 0.11,
-      normalScale: 0.52,
-      outline: "#241a10"
-    },
-    trouser: {
-      ramp: ["#20222a", "#2f323d", "#414553", "#545a6b", "#6a7183", "#828a9d", "#9ea5b6", "#bec4d0"],
-      diffuse: 0.76,
-      rim: 0.32,
-      ao: 0.12,
-      normalScale: 0.55,
-      outline: "#14161d"
-    },
-    scarf: {
-      ramp: ["#3a1212", "#541c1a", "#712a23", "#8e3a2c", "#a85039", "#c06a4d", "#d48a69", "#e6ae8f"],
-      diffuse: 0.8,
-      rim: 0.36,
-      ao: 0.1,
-      normalScale: 0.5,
-      outline: "#240a0a"
-    },
-    hat: {
-      ramp: ["#2c2317", "#413523", "#594931", "#726040", "#8b7852", "#a49169", "#bdab86", "#d5c6a9"],
-      diffuse: 0.76,
-      rim: 0.28,
-      ao: 0.13,
-      normalScale: 0.62,
-      outline: "#1a1410"
+      spec: 0.1,
+      ao: 0.09,
+      normalScale: 0.46,
+      outline: "#3a1f16"
     },
     hair: {
-      ramp: ["#140e0b", "#221610", "#322219", "#432e22", "#553c2d", "#6a4d3a", "#82644c", "#9d8166"],
-      diffuse: 0.72,
-      rim: 0.42,
+      ramp: ["#120b08", "#1e130d", "#2c1d14", "#3d291c", "#4f3626", "#654733", "#7d5a43", "#987258"],
+      diffuse: 0.7,
+      rim: 0.46,
       ao: 0.13,
+      normalScale: 0.56,
+      outline: "#0b0605"
+    },
+    shirt: {
+      ramp: ["#5c503c", "#73664d", "#8b7d60", "#a39575", "#bbad8c", "#d2c5a6", "#e6dcc2", "#f6efdc"],
+      diffuse: 0.82,
+      rim: 0.24,
+      ao: 0.11,
+      normalScale: 0.46,
+      outline: "#332c20"
+    },
+    leather: {
+      ramp: ["#1c110b", "#2b1a10", "#3d2717", "#51351f", "#674629", "#7e5935", "#976f46", "#b08a5e"],
+      diffuse: 0.74,
+      rim: 0.32,
+      spec: 0.18,
+      ao: 0.14,
+      normalScale: 0.6,
+      outline: "#100906"
+    },
+    trouser: {
+      ramp: ["#2e2b1d", "#3f3b28", "#524d34", "#666043", "#7c7554", "#948c68", "#ada481", "#c6bd9f"],
+      diffuse: 0.78,
+      rim: 0.26,
+      ao: 0.12,
       normalScale: 0.52,
-      outline: "#0d0806"
+      outline: "#1c1a11"
+    },
+    hat: {
+      ramp: ["#4a3a24", "#5f4c30", "#76603e", "#8e764e", "#a88e61", "#c0a878", "#d6c095", "#ecd9b6"],
+      diffuse: 0.78,
+      rim: 0.28,
+      ao: 0.12,
+      normalScale: 0.58,
+      outline: "#2a2014"
+    },
+    pack: {
+      ramp: ["#3c3020", "#4e402b", "#635337", "#786745", "#8e7c55", "#a59367", "#bcab80", "#d3c3a0"],
+      diffuse: 0.76,
+      rim: 0.26,
+      ao: 0.14,
+      normalScale: 0.62,
+      outline: "#241c12"
+    },
+    maroon: {
+      ramp: ["#2c0f0e", "#401614", "#571f1b", "#6f2a23", "#88372c", "#a04a3a", "#b7644e", "#cd8368"],
+      diffuse: 0.78,
+      rim: 0.36,
+      ao: 0.11,
+      normalScale: 0.52,
+      outline: "#1a0807"
+    },
+    brass: {
+      ramp: ["#372413", "#4d331b", "#664526", "#805831", "#9c6f3e", "#b88a50", "#d2a768", "#e8c68c"],
+      diffuse: 0.7,
+      rim: 0.55,
+      spec: 0.7,
+      ao: 0.08,
+      normalScale: 0.7,
+      outline: "#201406"
     },
     lens: {
-      ramp: ["#111c22", "#1a2c34", "#264048", "#33565f", "#437078", "#5a8e96", "#7cb0b8", "#aad6dc"],
-      diffuse: 0.55,
-      rim: 0.8,
+      ramp: ["#13303a", "#1b4450", "#265c68", "#337781", "#43929a", "#5db0b6", "#84cfd3", "#bceaec"],
+      diffuse: 0.52,
+      rim: 0.82,
       spec: 0.95,
       ao: 0.05,
       normalScale: 0.6,
-      outline: "#0a1114"
+      outline: "#0a1a20"
     },
     boot: {
-      ramp: ["#20140c", "#331f13", "#48301d", "#5e4127", "#755534", "#8d6c45", "#a5855b", "#bda078"],
-      diffuse: 0.74,
+      ramp: ["#170f0a", "#241811", "#342319", "#463022", "#5a402d", "#70543b", "#886b4c", "#a28763"],
+      diffuse: 0.72,
       rim: 0.3,
-      ao: 0.14,
+      spec: 0.22,
+      ao: 0.15,
       normalScale: 0.58,
-      outline: "#140c07"
+      outline: "#0c0705"
     },
     paper: {
       ramp: ["#544f45", "#6d675a", "#868070", "#9f9887", "#b7b09e", "#cfc8b6", "#e4dece", "#f6f2e6"],
@@ -5658,33 +5686,78 @@ body {
       normalScale: 0.4,
       outline: "#2a2620"
     }
-  });
-  function bake(p, ox, oy, far, extra = {}) {
+  };
+  var ELDER = {
+    hair: {
+      ramp: ["#4c4740", "#605b53", "#767068", "#8d867d", "#a49d93", "#bcb5ab", "#d3cdc4", "#eae6df"],
+      diffuse: 0.78,
+      rim: 0.42,
+      ao: 0.1,
+      normalScale: 0.5,
+      outline: "#2c2823"
+    },
+    shirt: {
+      ramp: ["#5b4b3a", "#72604b", "#8a765d", "#a28d70", "#b9a586", "#cfbd9f", "#e2d3ba", "#f2e7d4"],
+      diffuse: 0.82,
+      rim: 0.24,
+      ao: 0.11,
+      normalScale: 0.46,
+      outline: "#332920"
+    },
+    trouser: {
+      ramp: ["#2a1418", "#3c1d21", "#51282c", "#673439", "#7e4347", "#955557", "#ac6d6c", "#c48d8a"],
+      diffuse: 0.76,
+      rim: 0.28,
+      ao: 0.12,
+      normalScale: 0.52,
+      outline: "#190b0e"
+    },
+    leather: {
+      ramp: ["#1e1f26", "#2c2e38", "#3d404d", "#4f5364", "#65697c", "#7d8296", "#989db0", "#b5bac9"],
+      diffuse: 0.76,
+      rim: 0.32,
+      ao: 0.12,
+      normalScale: 0.55,
+      outline: "#12131a"
+    },
+    hat: {
+      ramp: ["#35110f", "#4b1a15", "#63251d", "#7c3226", "#954232", "#ad5743", "#c3735c", "#d7947c"],
+      diffuse: 0.76,
+      rim: 0.32,
+      ao: 0.12,
+      normalScale: 0.58,
+      outline: "#200907"
+    }
+  };
+  var MATS = withMaterials(BASE);
+  var MATS_ELDER = withMaterials({ ...BASE, ...ELDER });
+  var matsFor = (kind) => kind === "elder" ? MATS_ELDER : MATS;
+  function bake(p, ox, oy, far, kind, extra = {}) {
     return {
-      cv: p.resolve(MATS, {
+      cv: p.resolve(matsFor(kind), {
         ...far ? FAR : LIGHT3,
         outline: 1,
-        outlineColor: far ? "#100b07" : "#191308"
+        outlineColor: far ? "#0f0a07" : "#191008"
       }),
       ox,
       oy,
       ...extra
     };
   }
-  function paintTorso(K, far) {
-    const W = 9.5 * K, H = 12.2 * K;
+  function paintTorso(K, far, kind) {
+    const W = 8.6 * K, H = 10.6 * K;
     const pad = Math.ceil(7 * K) + 5;
     const p = new Painter(Math.ceil(W * 2) + pad, Math.ceil(H) + pad * 2);
     const cx = p.w * 0.5, hipY = p.h - pad;
     const topY = hipY - H;
+    const elder = kind === "elder";
     const PROF = [
-      [0, 0.44],
-      [0.1, 0.6],
-      [0.26, 0.56],
-      [0.46, 0.48],
-      [0.68, 0.44],
-      [0.88, 0.48],
-      [1, 0.48]
+      [0, 0.4],
+      [0.09, 0.54],
+      [0.3, 0.5],
+      [0.55, 0.43],
+      [0.78, 0.45],
+      [1, 0.5]
     ];
     const half = (v) => {
       for (let i = 1; i < PROF.length; i++) {
@@ -5695,120 +5768,154 @@ body {
       }
       return W * PROF[PROF.length - 1][1];
     };
-    const mid = (v) => cx + (0.4 - v) * W * 0.12;
-    const body = (mat, shrink, cut) => {
+    const mid = (v) => cx + (0.34 - v) * W * 0.1;
+    const body = (mat, shrink, opts = {}) => {
       p.field(cx - W, topY - 1, cx + W, hipY + 2, (x, y) => {
         const v = clamp01((y - topY) / H);
+        if (v < (opts.from || 0) || v > (opts.to ?? 1)) return null;
         const hw = half(v) * shrink;
         const d = (x - mid(v)) / hw;
         if (Math.abs(d) > 1) return null;
-        if (cut) {
-          const o = 0.04 + v * 0.3;
-          if (d > o && d < o + 0.4 && v > 0.2) return null;
+        if (opts.open) {
+          if (d > 0.3) return null;
         }
         const dz = Math.sqrt(clamp01(1 - d * d));
-        return { h: dz * W * 0.46 * shrink, tint: -0.03 + (v < 0.14 ? 0.09 : 0) + (d < -0.55 ? -0.09 : 0) };
+        return {
+          h: dz * W * 0.44 * shrink,
+          tint: -0.02 + (v < 0.12 ? 0.08 : 0) + (d < -0.5 ? -0.1 : d > 0.3 ? 0.05 : 0)
+        };
       }, { mat });
     };
-    body("shirt", 0.8, false);
-    body("coat", 1, true);
-    for (const sx of [-0.44, 0.36]) {
+    body("shirt", 1);
+    if (elder) {
+      body("leather", 0.94, { from: 0.05 });
+      body("shirt", 1.04, { open: true, to: 0.6 });
+    } else {
+      p.capsule(
+        cx + W * 0.36,
+        topY + H * 0.1,
+        cx + W * 0.3,
+        hipY - H * 0.16,
+        1.5 * K,
+        1.7 * K,
+        { mat: "leather", mask: true, dome: 1.3 * K, tint: 0.06 }
+      );
+      for (let i = 0; i < 3; i++) {
+        p.ellipse(
+          cx + W * 0.36,
+          topY + H * (0.22 + i * 0.2),
+          0.8 * K,
+          0.7 * K,
+          { mat: "brass", dome: 0.8 * K, tint: 0.18 }
+        );
+      }
+    }
+    for (const sx of [-0.4, 0.32]) {
       p.ellipse(
         cx + W * sx,
-        topY + H * 0.11,
-        W * 0.2,
-        H * 0.075,
-        { mat: "coat", dome: W * 0.24, tint: sx < 0 ? -0.04 : 0.08 }
+        topY + H * 0.1,
+        W * 0.19,
+        H * 0.08,
+        { mat: "shirt", dome: W * 0.24, tint: sx < 0 ? -0.05 : 0.09 }
       );
     }
-    p.grain("coat", { freq: 0.5 / K, amp: 0.15, seed: 7 });
-    p.ridges("coat", { angle: 1.32, freq: 0.85 / K, amp: 0.11, height: 0.55 * K, seed: 3, warp: 1.5 });
-    p.grain("shirt", { freq: 0.8 / K, amp: 0.14, seed: 11 });
-    p.curve(
-      [
-        { x: cx + W * 0.02, y: topY + H * 0.1 },
-        { x: cx + W * 0.26, y: topY + H * 0.28 },
-        { x: cx + W * 0.16, y: topY + H * 0.52 }
-      ],
-      1.5 * K,
-      0.8 * K,
-      { mat: "coat", dome: 1.4 * K, steps: 10, tint: 0.13 }
-    );
-    p.curve(
-      [
-        { x: cx - W * 0.24, y: topY + H * 0.09 },
-        { x: cx - W * 0.38, y: topY + H * 0.26 },
-        { x: cx - W * 0.32, y: topY + H * 0.48 }
-      ],
+    p.grain("leather", { freq: 0.55 / K, amp: 0.13, seed: 7 });
+    p.grain("shirt", { freq: 0.85 / K, amp: 0.13, seed: 11 });
+    p.ridges("shirt", { angle: 1.42, freq: 0.9 / K, amp: 0.1, height: 0.45 * K, seed: 3, warp: 1.4 });
+    for (const [sx, tint] of [[-0.3, -0.02], [0.22, 0.1]]) {
+      p.capsule(
+        cx + W * sx,
+        topY + H * 0.03,
+        cx + W * (sx * 0.5 + 0.06),
+        hipY - H * 0.14,
+        1.25 * K,
+        1.15 * K,
+        { mat: "leather", dome: 1.1 * K, tint: 0.04 + tint }
+      );
+    }
+    p.rect(
+      cx + W * 0.16,
+      topY + H * 0.4,
+      2 * K,
       1.3 * K,
-      0.7 * K,
-      { mat: "coat", dome: 1.3 * K, steps: 10, tint: 0.07 }
+      { mat: "brass", dome: 1 * K, tint: 0.14 }
     );
-    p.field(cx - W, topY + H * 0.22, cx + W, hipY, (x, y) => {
-      const d = Math.hypot((x - cx + W * 0.22) / (W * 0.34), (y - topY - H * 0.5) / (H * 0.28));
-      if (d > 1) return null;
-      return { h: 0, tint: -(1 - d) * 0.2 };
-    }, { mat: "coat", mask: true });
     p.capsule(
-      cx - W * 0.34,
-      topY + H * 0.1,
-      cx + W * 0.24,
-      hipY - H * 0.08,
-      1.3 * K,
+      cx - W * 0.2,
+      topY + H * 0.02,
+      cx + W * 0.2,
+      topY + H * 0.05,
+      1.35 * K,
       1.2 * K,
-      { mat: "boot", dome: 1.2 * K, tint: 0.06 }
+      { mat: elder ? "shirt" : "maroon", dome: 1.3 * K, tint: 0.08 }
+    );
+    p.curve(
+      [
+        { x: cx + W * 0.1, y: topY + H * 0.06 },
+        { x: cx + W * 0.28, y: topY + H * 0.2 },
+        { x: cx + W * 0.18, y: topY + H * 0.34 }
+      ],
+      1.1 * K,
+      0.5 * K,
+      { mat: elder ? "shirt" : "maroon", dome: 1 * K, steps: 9, tint: -0.04 }
     );
     p.capsule(
-      cx + W * 0.28,
-      topY + H * 0.11,
-      cx - W * 0.22,
-      hipY - H * 0.12,
+      cx - W * 0.26,
+      topY + H * 0.01,
+      cx - W * 0.02,
+      topY + H * 0.07,
       1.1 * K,
       1 * K,
-      { mat: "canvasBag", dome: 1 * K, tint: -0.02 }
-    );
-    for (let i = 0; i < 4; i++) {
-      const t = 0.22 + i * 0.17;
-      const vx = lerp(cx + W * 0.26, cx - W * 0.2, t), vy = lerp(topY + H * 0.2, hipY - H * 0.14, t);
-      p.capsule(
-        vx + 0.9 * K,
-        vy,
-        vx - 0.2 * K,
-        vy + 2 * K,
-        0.8 * K,
-        0.7 * K,
-        { mat: "glass", dome: 0.8 * K, tint: 0.12 }
-      );
-    }
-    p.capsule(
-      cx - W * 0.22,
-      topY + H * 0.04,
-      cx + W * 0.2,
-      topY + H * 0.06,
-      1.3 * K,
-      1.2 * K,
-      { mat: "scarf", dome: 1.3 * K, tint: 0.06 }
-    );
-    p.curve(
-      [
-        { x: cx + W * 0.1, y: topY + H * 0.1 },
-        { x: cx + W * 0.36, y: topY + H * 0.26 },
-        { x: cx + W * 0.24, y: topY + H * 0.46 }
-      ],
-      1.3 * K,
-      0.6 * K,
-      { mat: "scarf", dome: 1.2 * K, steps: 10, tint: -0.05 }
+      { mat: "shirt", dome: 1.2 * K, tint: 0.16 }
     );
     p.rect(
-      cx - W * 0.48,
-      hipY - H * 0.17,
-      W * 0.96,
-      1.9 * K,
-      { mat: "boot", mask: true, dome: 1.5 * K, tint: 0.05 }
+      cx - W * 0.46,
+      hipY - H * 0.2,
+      W * 0.94,
+      2 * K,
+      { mat: "leather", mask: true, dome: 1.5 * K, tint: 0.08 }
     );
-    p.ellipse(cx + W * 0.06, hipY - H * 0.14, 1.5 * K, 1.3 * K, { mat: "metal", dome: 1.3 * K, tint: 0.14 });
+    p.rect(
+      cx + W * 0.02,
+      hipY - H * 0.21,
+      2.4 * K,
+      2.3 * K,
+      { mat: "brass", dome: 1.4 * K, tint: 0.16 }
+    );
+    p.rect(
+      cx - W * 0.36,
+      hipY - H * 0.16,
+      3.2 * K,
+      3.4 * K,
+      { mat: "leather", dome: 1.6 * K, tint: -0.04 }
+    );
+    p.rect(
+      cx - W * 0.36,
+      hipY - H * 0.16,
+      3.2 * K,
+      1.3 * K,
+      { mat: "leather", mask: true, dome: 1.3 * K, tint: 0.14 }
+    );
+    if (elder) {
+      p.capsule(
+        cx - W * 0.3,
+        hipY - H * 0.18,
+        cx - W * 0.34,
+        hipY - H * 0.02,
+        0.5 * K,
+        0.5 * K,
+        { mat: "leather", dome: 0.5 * K }
+      );
+      p.ellipse(
+        cx - W * 0.35,
+        hipY + H * 0.04,
+        1.6 * K,
+        2 * K,
+        { mat: "brass", dome: 1.5 * K, tint: 0.1 }
+      );
+    }
     p.smoothHeight(1, 0.4);
-    return bake(p, cx, hipY, far, { W, H, topY: topY - hipY });
+    return bake(p, cx, hipY, far, kind, { W, H, topY: topY - hipY });
   }
   var FACES = [
     { lid: 0, brow: 0, open: 0, curl: 0, wide: 0 },
@@ -5841,211 +5948,252 @@ body {
     // fond
   ];
   var FACE_COUNT = FACES.length;
-  function paintHead(K, far, opts = {}) {
-    const W = 7.4 * K, H = 7.8 * K;
-    const pad = Math.ceil(8 * K) + 6;
-    const p = new Painter(Math.ceil(W * 2.8) + pad, Math.ceil(H * 3) + pad);
-    const cx = p.w * 0.46, cy = p.h * 0.52;
+  function paintHead(K, far, kind, opts = {}) {
+    const u = K;
+    const W = 8.6 * K, H = 8.8 * K;
+    const pad = Math.ceil(10 * K) + 6;
+    const p = new Painter(Math.ceil(16 * K) + pad, Math.ceil(18 * K) + pad);
+    const cx = Math.round(p.w * 0.46), cy = Math.round(p.h * 0.54);
+    const X = (n) => cx + n * u, Y = (n) => cy + n * u;
     const mood = opts.mood | 0;
-    const neckY = cy + H * 0.68;
-    p.capsule(
-      cx - W * 0.1,
-      cy + H * 0.28,
-      cx - W * 0.04,
-      neckY,
-      1.7 * K,
-      1.9 * K,
-      { mat: "skin", dome: 1.5 * K, tint: -0.18 }
-    );
-    p.ellipse(cx - W * 0.48, cy - H * 0.02, W * 0.23, H * 0.25, { mat: "hair", dome: W * 0.28, tint: -0.03 });
-    p.ellipse(cx, cy, W * 0.5, H * 0.5, { mat: "skin", dome: W * 0.48, tint: 0.02 });
-    p.ellipse(cx + W * 0.1, cy + H * 0.21, W * 0.35, H * 0.2, { mat: "skin", dome: W * 0.3 });
-    p.ellipse(cx - W * 0.26, cy + H * 0.06, W * 0.1, H * 0.13, { mat: "skin", dome: W * 0.14, tint: 0.04 });
-    p.field(cx - W * 0.72, cy - H * 0.58, cx + W * 0.06, cy + H * 0.2, (x, y) => {
-      const a2 = (x - cx + W * 0.22) / (W * 0.46), b2 = (y - cy + H * 0.18) / (H * 0.4);
-      const d = a2 * a2 + b2 * b2;
-      if (d > 1) return null;
-      return { h: Math.sqrt(1 - d) * W * 0.26, tint: 0.03 };
-    }, { mat: "hair" });
-    p.capsule(
-      cx - W * 0.18,
-      cy - H * 0.34,
-      cx + W * 0.24,
-      cy - H * 0.27,
-      1.5 * K,
-      0.9 * K,
-      { mat: "hair", dome: 1.2 * K, tint: 0.06 }
-    );
-    for (let i = 0; i < 4; i++) {
-      p.curve(
-        [
-          { x: cx - W * 0.34, y: cy - H * 0.32 + i * 1.1 * K },
-          { x: cx - W * 0.6, y: cy - H * 0.2 + i * 1.3 * K },
-          { x: cx - W * 0.76, y: cy + H * 0.02 + i * 1.5 * K }
-        ],
-        0.7 * K,
-        0.28 * K,
-        { mat: "hair", dome: 0.7 * K, steps: 8, tint: 0.07 }
-      );
-    }
-    p.capsule(
-      cx - W * 0.02,
-      cy - H * 0.16,
-      cx + W * 0.36,
-      cy - H * 0.13,
-      1.2 * K,
-      0.9 * K,
-      { mat: "skin", mask: true, dome: 1.4 * K, tint: 0.1 }
-    );
-    p.ellipse(cx + W * 0.46, cy + H * 0.06, W * 0.11, H * 0.09, { mat: "skin", dome: W * 0.26, tint: 0.13 });
-    p.ellipse(
-      cx + W * 0.28,
-      cy + H * 0.34,
-      W * 0.13,
-      H * 0.09,
-      { mat: "skin", mask: true, dome: W * 0.15, tint: 0.07 }
-    );
-    p.speckle("skin", { density: 0.05, amp: 0.24, seed: 19 });
     const F = FACES[mood] || FACES[0];
-    if (!opts.goggles) {
-      const open = clamp01(1 - F.lid);
-      p.ellipse(
-        cx + W * 0.25,
-        cy - H * 0.03,
-        W * (0.13 + F.wide * 0.05),
-        H * 0.115 * open,
-        { mat: "eye", dome: 1.8 * K, tint: -0.08 }
-      );
-      if (F.lid < 0.34) {
-        p.ellipse(
-          cx + W * 0.21,
-          cy - H * 0.065,
-          W * 0.055,
-          H * 0.042,
-          { mat: "eye", mask: true, dome: 1.8 * K, tint: 0.66 }
+    const elder = kind === "elder";
+    const bare = !!opts.noHat;
+    const neckY = Y(4.8);
+    p.capsule(
+      X(-0.5),
+      Y(2.6),
+      X(-0.1),
+      neckY,
+      1.5 * u,
+      1.6 * u,
+      { mat: "skin", dome: 1.3 * u, tint: -0.28 }
+    );
+    p.ellipse(X(-1), Y(-1), 3.6 * u, 3.6 * u, { mat: "hair", dome: 2.4 * u, tint: -0.03 });
+    p.ellipse(X(-2.6), Y(1.2), 1.5 * u, 1.8 * u, { mat: "hair", dome: 1.6 * u, tint: 0.02 });
+    p.field(X(-4.6), Y(-4.6), X(4.8), Y(4), (x, y) => {
+      const v = (y - cy - 0.2 * u) / (3.5 * u);
+      const taper = v > 0 ? 1 - Math.pow(v, 3) * 0.26 : 1 - v * v * 0.16;
+      const hw = 4 * u * taper;
+      const d = (x - cx) / hw;
+      if (Math.abs(d) > 1) return null;
+      return {
+        h: Math.sqrt(clamp01(1 - d * d)) * 3.4 * u * taper,
+        tint: 0.04 - Math.max(0, v) * 0.05 + (d < -0.5 ? -0.09 : 0)
+      };
+    }, { mat: "skin" });
+    p.ellipse(X(-3.3), Y(-0.1), 0.8 * u, 1 * u, { mat: "skin", dome: 1 * u, tint: 0.02 });
+    p.capsule(
+      X(3.3),
+      Y(0.5),
+      X(3.9),
+      Y(1),
+      0.75 * u,
+      0.55 * u,
+      { mat: "skin", dome: 1.5 * u, tint: 0.22 }
+    );
+    p.field(X(-4.2), Y(1.6), X(4.2), Y(4), (x, y) => ({ h: 0, tint: -clamp01((y - Y(1.6)) / (2.2 * u)) * 0.2 }), { mat: "skin", mask: true });
+    p.speckle("skin", { density: 0.04, amp: 0.16, seed: 19 });
+    if (!elder) {
+      p.field(X(-4.4), Y(-4.9), X(4.4), Y(-1.2), (x, y) => {
+        const t = (x - cx) / (4.2 * u);
+        if (Math.abs(t) > 1) return null;
+        const edge = Y(-2.1 - Math.abs(Math.sin(t * 4.2)) * 0.5 + t * 0.25);
+        if (y > edge || y < Y(-4.7 + t * t * 0.7)) return null;
+        return { h: 1.7 * u * Math.sqrt(clamp01(1 - t * t * 0.7)), tint: 0.06 - t * 0.05 };
+      }, { mat: "hair" });
+      for (const [x0, y0, x1, y1, r] of [[-3.2, -2.4, -3.8, 1.6, 1.3], [3, -2.2, 3.4, -0.2, 0.85]]) {
+        p.curve(
+          [
+            { x: X(x0), y: Y(y0) },
+            { x: X((x0 + x1) / 2 - 0.4), y: Y((y0 + y1) / 2) },
+            { x: X(x1), y: Y(y1) }
+          ],
+          r * u,
+          0.4 * u,
+          { mat: "hair", dome: r * 0.9 * u, steps: 9, tint: 0.08 }
         );
       }
-      if (F.lid > 0.2) {
+    } else {
+      p.field(X(-3.2), Y(0), X(4), Y(3.6), (x, y) => {
+        const v = clamp01((y - Y(0)) / (3.6 * u));
+        const hw = lerp(3.4, 1.4, v * v) * u;
+        const d = (x - X(0.3)) / hw;
+        if (Math.abs(d) > 1) return null;
+        return { h: Math.sqrt(clamp01(1 - d * d)) * 1.9 * u, tint: -0.1 - v * 0.06 };
+      }, { mat: "hair" });
+      p.capsule(
+        X(0.2),
+        Y(0.5),
+        X(3.4),
+        Y(0.8),
+        1.2 * u,
+        0.85 * u,
+        { mat: "hair", dome: 1.1 * u, tint: 0.14 }
+      );
+      p.capsule(
+        X(-0.4),
+        Y(-2.2),
+        X(3),
+        Y(-1.9),
+        1.2 * u,
+        0.85 * u,
+        { mat: "hair", dome: 1 * u, tint: 0.12 }
+      );
+    }
+    const open = clamp01(1 - F.lid);
+    const EYES = elder ? [[1.8, 0.6]] : [[2.05, 1], [-1.15, 0.78]];
+    for (const [ex, sc] of EYES) {
+      if (opts.goggles) break;
+      const ew = (1.05 + F.wide * 0.3) * u * sc, eh = 1.6 * u * open * sc;
+      if (eh < 0.6) {
+        p.curve(
+          [{ x: X(ex) - ew, y: Y(-0.4) }, { x: X(ex), y: Y(-0.15) }, { x: X(ex) + ew, y: Y(-0.4) }],
+          0.6 * u,
+          0.5 * u,
+          { mat: "hair", mask: true, dome: 0.5 * u, steps: 7, tint: 0.04 }
+        );
+        continue;
+      }
+      p.ellipse(X(ex), Y(-0.35), ew, eh, { mat: "paper", dome: 1.5 * u, tint: 0.32 });
+      p.ellipse(X(ex + 0.22), Y(-0.28), ew * 0.62, eh * 0.84, { mat: "eye", dome: 1.7 * u, tint: -0.04 });
+      p.ellipse(
+        X(ex - 0.18),
+        Y(-0.72),
+        ew * 0.32,
+        eh * 0.28,
+        { mat: "eye", mask: true, dome: 1.7 * u, tint: 0.8 }
+      );
+      p.capsule(
+        X(ex) - ew,
+        Y(-1),
+        X(ex) + ew * 0.9,
+        Y(-1.05),
+        0.5 * u,
+        0.42 * u,
+        { mat: "hair", dome: 0.5 * u, tint: 0.02 }
+      );
+    }
+    if (!elder && !opts.goggles) {
+      for (const [bx, sc] of [[2.05, 1], [-1.15, 0.8]]) {
         p.capsule(
-          cx + W * 0.14,
-          cy + H * 0.02,
-          cx + W * 0.36,
-          cy + H * 0.02,
-          0.7 * K,
-          0.6 * K,
-          { mat: "skin", mask: true, dome: 0.7 * K, tint: 0.12 }
+          X(bx - 0.9 * sc),
+          Y(-2 - F.brow * 8),
+          X(bx + 0.9 * sc),
+          Y(-1.8 - F.brow * 5),
+          0.7 * u,
+          0.55 * u,
+          { mat: "hair", mask: true, dome: 0.7 * u, tint: 0.1 }
         );
       }
     }
-    p.capsule(
-      cx + W * 0.09,
-      cy - H * (0.16 - F.brow),
-      cx + W * 0.42,
-      cy - H * (0.14 + F.brow * 0.6),
-      0.85 * K,
-      0.65 * K,
-      { mat: "hair", dome: 0.8 * K, tint: 0.05 }
-    );
+    const mx = X(2), my = Y(1.55);
     if (F.open > 0.12) {
       p.ellipse(
-        cx + W * 0.31,
-        cy + H * (0.2 + F.open * 0.05),
-        W * (0.09 + F.open * 0.06),
-        H * (0.05 + F.open * 0.13),
-        { mat: "eye", dome: -1.2 * K, tint: -0.3 }
+        mx,
+        my + F.open * 0.4 * u,
+        (0.65 + F.open * 0.45) * u,
+        (0.4 + F.open * 1) * u,
+        { mat: "eye", dome: -1.1 * u, tint: -0.34 }
       );
       p.ellipse(
-        cx + W * 0.31,
-        cy + H * (0.24 + F.open * 0.08),
-        W * 0.06,
-        H * 0.04 * F.open,
-        { mat: "scarf", mask: true, dome: 0.8 * K, tint: 0.1 }
+        mx,
+        my + (0.35 + F.open * 0.5) * u,
+        0.45 * u,
+        0.3 * u * F.open,
+        { mat: "maroon", mask: true, dome: 0.8 * u, tint: 0.18 }
       );
     } else {
       p.curve(
         [
-          { x: cx + W * 0.22, y: cy + H * 0.2 },
-          { x: cx + W * 0.32, y: cy + H * (0.2 + F.curl) },
-          { x: cx + W * 0.42, y: cy + H * 0.2 }
+          { x: mx - 0.8 * u, y: my },
+          { x: mx, y: my + F.curl * 8 * u },
+          { x: mx + 0.8 * u, y: my }
         ],
-        0.65 * K,
-        0.5 * K,
-        { mat: "skin", mask: true, dome: -1.1 * K, steps: 8, tint: -0.32 }
+        0.58 * u,
+        0.44 * u,
+        { mat: "skin", mask: true, dome: -1 * u, steps: 8, tint: -0.36 }
       );
     }
     if (F.blush) {
-      p.ellipse(
-        cx + W * 0.3,
-        cy + H * 0.08,
-        W * 0.14,
-        H * 0.07,
-        { mat: "skin", mask: true, dome: 0.6 * K, tint: 0.22 }
-      );
+      for (const bx of [2.5, -0.5]) {
+        p.ellipse(
+          X(bx),
+          Y(0.6),
+          0.9 * u,
+          0.42 * u,
+          { mat: "skin", mask: true, dome: 0.6 * u, tint: 0.26 }
+        );
+      }
     }
     if (F.sweat) {
-      p.ellipse(
-        cx - W * 0.02,
-        cy - H * 0.3,
-        W * 0.06,
-        H * 0.08,
-        { mat: "lens", dome: 1.4 * K, tint: 0.34 }
-      );
+      p.ellipse(X(-0.2), Y(-3.6), 0.5 * u, 0.7 * u, { mat: "lens", dome: 1.3 * u, tint: 0.34 });
     }
-    if (!opts.noGoggles) {
-      const gy = opts.goggles ? cy - H * 0.05 : cy - H * 0.44;
+    if (!opts.noGoggles && !elder) {
+      const gy = opts.goggles ? Y(-0.35) : Y(bare ? -3.5 : -4);
       p.capsule(
-        cx - W * 0.36,
+        X(-3.4),
         gy,
-        cx + W * 0.38,
+        X(3.4),
         gy,
-        1.6 * K,
-        1.6 * K,
-        { mat: "boot", dome: 1.4 * K, tint: -0.05 }
+        1.3 * u,
+        1.3 * u,
+        { mat: "leather", dome: 1.1 * u, tint: -0.04 }
       );
-      p.ellipse(cx + W * 0.26, gy, W * 0.18, H * 0.14, { mat: "lens", dome: 2.1 * K, tint: 0.08 });
-      p.ellipse(
-        cx + W * 0.2,
-        gy - H * 0.04,
-        W * 0.06,
-        H * 0.042,
-        { mat: "lens", mask: true, dome: 1.9 * K, tint: 0.55 }
-      );
+      for (const [gx, sc] of [[2.05, 1], [-1.15, 0.8]]) {
+        p.ellipse(X(gx), gy, 1.35 * u * sc, 1.25 * u * sc, { mat: "brass", dome: 1.9 * u, tint: 0.12 });
+        p.ellipse(X(gx), gy, 0.95 * u * sc, 0.88 * u * sc, { mat: "lens", dome: 1.6 * u, tint: 0.1 });
+        p.ellipse(
+          X(gx - 0.4),
+          gy - 0.4 * u,
+          0.4 * u * sc,
+          0.3 * u * sc,
+          { mat: "lens", mask: true, dome: 1.5 * u, tint: 0.62 }
+        );
+      }
     }
-    if (!opts.noHat) {
-      const hy = cy - H * 0.54;
-      p.ellipse(cx - W * 0.04, hy, W * 0.8, H * 0.11, { mat: "hat", dome: W * 0.14, tint: 0.02 });
+    if (!bare) {
+      const hy = Y(-3.6);
+      p.ellipse(X(0), hy, 6 * u, 0.95 * u, { mat: "hat", dome: 1.1 * u, tint: 0.05 });
+      p.ellipse(X(3.4), hy + 0.45 * u, 2.9 * u, 0.65 * u, { mat: "hat", dome: 0.9 * u, tint: -0.07 });
+      p.ellipse(X(-3.6), hy + 0.35 * u, 2.4 * u, 0.55 * u, { mat: "hat", dome: 0.8 * u, tint: -0.13 });
+      p.ellipse(X(-0.3), hy - 1.8 * u, 3.1 * u, 2 * u, { mat: "hat", dome: 3.4 * u, tint: 0.11 });
       p.ellipse(
-        cx + W * 0.34,
-        hy + H * 0.035,
-        W * 0.42,
-        H * 0.08,
-        { mat: "hat", dome: W * 0.11, tint: -0.05 }
-      );
-      p.ellipse(cx - W * 0.06, hy - H * 0.18, W * 0.39, H * 0.21, { mat: "hat", dome: W * 0.38, tint: 0.08 });
-      p.ellipse(
-        cx - W * 0.2,
-        hy - H * 0.26,
-        W * 0.16,
-        H * 0.07,
-        { mat: "hat", mask: true, dome: -W * 0.2, tint: -0.18 }
+        X(-1.2),
+        hy - 2.9 * u,
+        1.3 * u,
+        0.6 * u,
+        { mat: "hat", mask: true, dome: -2 * u, tint: -0.22 }
       );
       p.rect(
-        cx - W * 0.4,
-        hy - H * 0.1,
-        W * 0.72,
-        1.2 * K,
-        { mat: "boot", mask: true, dome: 1.1 * K, tint: 0.03 }
+        X(-3.3),
+        hy - 1 * u,
+        6.3 * u,
+        1.4 * u,
+        { mat: elder ? "leather" : "maroon", mask: true, dome: 1.3 * u, tint: 0.08 }
       );
-      p.grain("hat", { freq: 0.55 / K, amp: 0.15, seed: 23 });
+      if (elder) {
+        p.curve(
+          [
+            { x: X(-1.8), y: hy - 1 * u },
+            { x: X(-3), y: hy - 4 * u },
+            { x: X(-3.4), y: hy - 7.2 * u }
+          ],
+          1 * u,
+          0.3 * u,
+          { mat: "paper", dome: 1 * u, steps: 9, tint: 0.22 }
+        );
+      }
+      p.grain("hat", { freq: 0.55 / K, amp: 0.13, seed: 23 });
     }
     p.smoothHeight(1, 0.4);
-    return bake(p, cx, neckY, far, { W, H, eye: { x: W * 0.25, y: -H * 0.03 } });
+    return bake(p, cx, neckY, far, kind, { W, H, eye: { x: 2.05 * u, y: -0.35 * u } });
   }
-  function paintBone(len, r0, r1, mat, K, far, opts = {}) {
+  function paintBone(len, r0, r1, mat, K, far, kind, opts = {}) {
     const pad = Math.ceil(Math.max(r0, r1) * 2 + 6);
     const p = new Painter(Math.ceil(len) + pad * 2, pad * 2 + 4);
     const cy = p.h / 2, x0 = pad, x1 = pad + len;
-    const ft = far ? -0.18 : 0;
+    const ft = (far ? -0.18 : 0) + (opts.shade || 0);
     p.curve(
       [{ x: x0, y: cy }, { x: (x0 + x1) / 2, y: cy - (opts.bow || 0) }, { x: x1, y: cy }],
       r0,
@@ -6053,130 +6201,264 @@ body {
       { mat, dome: r0 * 0.92, steps: 12, tint: ft }
     );
     p.ellipse(x0, cy, r0 * 1.08, r0 * 1.02, { mat, dome: r0, tint: ft + 0.05 });
-    if (opts.cuff) {
+    if (opts.sleeve) {
       p.capsule(
-        x1 - 2.6 * K,
-        cy - 0.2 * K,
-        x1 - 1 * K,
+        x0 - r0 * 0.2,
         cy,
-        r1 * 1.35,
-        r1 * 1.3,
-        { mat: "coat", dome: r1 * 1.1, tint: ft + 0.08 }
+        x0 + len * 0.26,
+        cy - (opts.bow || 0) * 0.3,
+        r0 * 1.22,
+        r0 * 1.16,
+        { mat: "shirt", dome: r0 * 1.1, tint: ft + 0.08 }
+      );
+      p.capsule(
+        x0 + len * 0.24,
+        cy,
+        x0 + len * 0.3,
+        cy,
+        r0 * 1.26,
+        r0 * 1.2,
+        { mat: "shirt", dome: r0 * 1, tint: ft + 0.18 }
       );
     }
     if (opts.hand) {
-      p.ellipse(x1 + r1 * 0.45, cy, r1 * 1.3, r1 * 1.1, { mat: "skin", dome: r1 * 1.2, tint: ft + 0.03 });
+      p.ellipse(x1 + r1 * 0.5, cy, r1 * 1.34, r1 * 1.12, { mat: "skin", dome: r1 * 1.2, tint: ft + 0.04 });
       p.capsule(
         x1 + r1 * 0.4,
         cy - r1 * 0.5,
         x1 + r1 * 1.5,
-        cy - r1 * 0.9,
+        cy - r1 * 0.95,
         r1 * 0.42,
-        r1 * 0.34,
-        { mat: "skin", dome: r1 * 0.5, tint: ft + 0.06 }
+        r1 * 0.32,
+        { mat: "skin", dome: r1 * 0.5, tint: ft + 0.08 }
       );
     }
     if (opts.knee) {
-      p.ellipse(x0, cy, r0 * 1.15, r0 * 1.1, { mat, mask: true, dome: r0 * 0.6, tint: ft + 0.1 });
+      p.ellipse(x0, cy, r0 * 1.14, r0 * 1.08, { mat, mask: true, dome: r0 * 0.6, tint: ft + 0.1 });
     }
-    p.grain(mat, { freq: 0.6 / K, amp: 0.11, seed: 31 });
-    return bake(p, pad, cy, far, { len });
+    p.grain(mat, { freq: 0.6 / K, amp: 0.1, seed: 31 });
+    return bake(p, pad, cy, far, kind, { len });
   }
-  function paintHat(K, far) {
-    const W = 7.4 * K, H = 7.8 * K;
+  function paintHat(K, far, kind) {
+    const W = 8.6 * K, H = 8.8 * K;
     const p = new Painter(Math.ceil(W * 2.2) + 8, Math.ceil(H * 1.2) + 8);
     const cx = p.w * 0.5, cy = p.h * 0.62;
-    p.ellipse(cx - W * 0.04, cy, W * 0.8, H * 0.11, { mat: "hat", dome: W * 0.14, tint: 0.02 });
-    p.ellipse(cx + W * 0.34, cy + H * 0.035, W * 0.42, H * 0.08, { mat: "hat", dome: W * 0.11, tint: -0.05 });
-    p.ellipse(cx - W * 0.06, cy - H * 0.18, W * 0.39, H * 0.21, { mat: "hat", dome: W * 0.38, tint: 0.08 });
+    const elder = kind === "elder";
+    p.ellipse(cx - W * 0.02, cy, W * 0.88, H * 0.115, { mat: "hat", dome: W * 0.13, tint: 0.03 });
+    p.ellipse(cx + W * 0.4, cy + H * 0.045, W * 0.44, H * 0.075, { mat: "hat", dome: W * 0.1, tint: -0.06 });
+    p.ellipse(cx - W * 0.04, cy - H * 0.19, W * 0.38, H * 0.22, { mat: "hat", dome: W * 0.4, tint: 0.09 });
     p.ellipse(
-      cx - W * 0.2,
-      cy - H * 0.26,
-      W * 0.16,
+      cx - W * 0.14,
+      cy - H * 0.3,
+      W * 0.15,
       H * 0.07,
-      { mat: "hat", mask: true, dome: -W * 0.2, tint: -0.18 }
+      { mat: "hat", mask: true, dome: -W * 0.22, tint: -0.2 }
     );
     p.rect(
       cx - W * 0.4,
       cy - H * 0.1,
-      W * 0.72,
-      1.2 * K,
-      { mat: "boot", mask: true, dome: 1.1 * K, tint: 0.03 }
+      W * 0.74,
+      1.4 * K,
+      { mat: elder ? "leather" : "maroon", mask: true, dome: 1.2 * K, tint: 0.06 }
     );
-    p.grain("hat", { freq: 0.55 / K, amp: 0.15, seed: 23 });
+    if (!elder) {
+      p.capsule(
+        cx - W * 0.34,
+        cy - H * 0.09,
+        cx + W * 0.34,
+        cy - H * 0.09,
+        1.2 * K,
+        1.2 * K,
+        { mat: "leather", dome: 1 * K, tint: -0.04 }
+      );
+      p.ellipse(cx + W * 0.22, cy - H * 0.09, W * 0.15, H * 0.12, { mat: "brass", dome: 1.7 * K, tint: 0.1 });
+      p.ellipse(cx + W * 0.22, cy - H * 0.09, W * 0.11, H * 0.085, { mat: "lens", dome: 1.4 * K, tint: 0.14 });
+    }
+    p.grain("hat", { freq: 0.55 / K, amp: 0.14, seed: 23 });
     p.smoothHeight(1, 0.4);
-    return bake(p, cx, cy, far);
+    return bake(p, cx, cy, far, kind);
   }
-  function paintBoot(K, far) {
-    const p = new Painter(Math.ceil(11 * K) + 8, Math.ceil(8 * K) + 8);
-    const ax = 4 + 2.6 * K, ay = 4 + 3 * K;
+  function paintBoot(K, far, kind) {
+    const p = new Painter(Math.ceil(12 * K) + 8, Math.ceil(9 * K) + 8);
+    const ax = 4 + 2.8 * K, ay = 4 + 3.4 * K;
     const ft = far ? -0.18 : 0;
     p.capsule(
       ax,
-      ay - 1.6 * K,
+      ay - 2.8 * K,
       ax,
       ay + 1.4 * K,
-      1.9 * K,
-      1.7 * K,
-      { mat: "boot", dome: 1.7 * K, tint: ft + 0.05 }
+      2 * K,
+      1.8 * K,
+      { mat: "boot", dome: 1.8 * K, tint: ft + 0.04 }
     );
     p.capsule(
       ax - 0.4 * K,
       ay + 1.9 * K,
-      ax + 4.6 * K,
+      ax + 4.4 * K,
       ay + 2.1 * K,
-      1.5 * K,
+      1.6 * K,
       1.1 * K,
-      { mat: "boot", dome: 1.3 * K, tint: ft }
+      { mat: "boot", dome: 1.4 * K, tint: ft }
     );
     p.capsule(
-      ax - 1.6 * K,
+      ax - 1.7 * K,
       ay + 2.2 * K,
       ax - 0.6 * K,
       ay + 2.2 * K,
-      1.2 * K,
       1.3 * K,
-      { mat: "boot", dome: 1.1 * K, tint: ft - 0.05 }
-    );
-    p.rect(
-      ax - 2 * K,
-      ay + 2.7 * K,
-      7 * K,
-      0.9 * K,
-      { mat: "boot", mask: true, tint: ft - 0.26, dome: 0 }
+      1.4 * K,
+      { mat: "boot", dome: 1.1 * K, tint: ft - 0.06 }
     );
     p.capsule(
-      ax + 1.2 * K,
-      ay + 0.8 * K,
-      ax + 1.8 * K,
+      ax - 0.6 * K,
+      ay - 3.1 * K,
+      ax + 0.7 * K,
+      ay - 2.6 * K,
+      2.5 * K,
+      2.4 * K,
+      { mat: "boot", dome: 2 * K, tint: ft + 0.42 }
+    );
+    p.capsule(
+      ax - 0.6 * K,
+      ay - 2.2 * K,
+      ax + 0.7 * K,
+      ay - 2 * K,
+      2.2 * K,
+      2.1 * K,
+      { mat: "boot", mask: true, dome: 1.4 * K, tint: ft - 0.12 }
+    );
+    p.rect(
+      ax - 2.1 * K,
+      ay + 2.7 * K,
+      6.9 * K,
+      1 * K,
+      { mat: "boot", mask: true, tint: ft - 0.28, dome: 0 }
+    );
+    p.capsule(
+      ax + 1 * K,
+      ay + 0.7 * K,
+      ax + 1.6 * K,
       ay + 2.6 * K,
       0.7 * K,
       0.6 * K,
-      { mat: "boot", mask: true, dome: 0.8 * K, tint: ft + 0.14 }
+      { mat: "boot", mask: true, dome: 0.8 * K, tint: ft + 0.16 }
     );
-    p.grain("boot", { freq: 0.6 / K, amp: 0.12, seed: 37 });
-    return bake(p, ax, ay, far);
+    p.rect(ax + 0.6 * K, ay - 0.4 * K, 1.5 * K, 1.1 * K, { mat: "brass", dome: 0.9 * K, tint: 0.12 });
+    p.grain("boot", { freq: 0.6 / K, amp: 0.11, seed: 37 });
+    return bake(p, ax, ay, far, kind);
   }
-  function paintSatchel(K, far) {
-    const W = 6.6 * K, H = 6.2 * K;
-    const p = new Painter(Math.ceil(W) + 12, Math.ceil(H) + 12);
+  function paintPack(K, far, kind) {
+    const W = 8.2 * K, H = 10 * K;
+    const p = new Painter(Math.ceil(W) + 16, Math.ceil(H) + 18);
     const cx = p.w / 2, cy = p.h / 2;
-    p.rect(cx - W / 2, cy - H / 2, W, H, { mat: "canvasBag", dome: 3.4 * K, tint: -0.02 });
-    p.rect(cx - W / 2, cy - H / 2, W, H * 0.44, { mat: "boot", dome: 2.8 * K, tint: 0.06 });
-    p.ellipse(cx, cy + H * 0.02, 1.5 * K, 1.3 * K, { mat: "metal", dome: 1.3 * K, tint: 0.14 });
-    p.rect(cx - W * 0.34, cy + H * 0.18, W * 0.3, H * 0.22, { mat: "paper", dome: 1 * K, tint: 0.1 });
-    p.ridges("canvasBag", { angle: 0.1, freq: 1 / K, amp: 0.14, height: 0.6 * K, seed: 5, warp: 0.5 });
-    return bake(p, cx, cy, far);
+    const x0 = cx - W / 2, y0 = cy - H / 2;
+    p.field(x0, y0, x0 + W, y0 + H, (x, y) => {
+      const u = (x - x0) / W, v = (y - y0) / H;
+      const bulge = 1 - Math.pow(Math.abs(v - 0.5) * 2, 3) * 0.35;
+      const d = (u - 0.5) * 2 / bulge;
+      if (Math.abs(d) > 1) return null;
+      return { h: Math.sqrt(clamp01(1 - d * d)) * W * 0.44, tint: -0.02 + (d < -0.4 ? -0.08 : 0) };
+    }, { mat: "pack" });
+    p.ridges("pack", { angle: 0.08, freq: 1 / K, amp: 0.13, height: 0.55 * K, seed: 5, warp: 0.6 });
+    p.field(x0, y0, x0 + W, y0 + H * 0.42, (x, y) => {
+      const u = (x - x0) / W, v = (y - y0) / (H * 0.42);
+      const d = (u - 0.5) * 2 / (1 - v * v * 0.18);
+      if (Math.abs(d) > 1) return null;
+      return { h: Math.sqrt(clamp01(1 - d * d)) * W * 0.4 + 0.8 * K, tint: 0.04 };
+    }, { mat: "leather" });
+    for (const bx of [0.3, 0.68]) {
+      p.capsule(
+        x0 + W * bx,
+        y0 + H * 0.3,
+        x0 + W * bx,
+        y0 + H * 0.52,
+        0.9 * K,
+        0.85 * K,
+        { mat: "leather", dome: 0.8 * K, tint: 0.14 }
+      );
+      p.rect(
+        x0 + W * bx - 1 * K,
+        y0 + H * 0.44,
+        2 * K,
+        1.5 * K,
+        { mat: "brass", dome: 1.1 * K, tint: 0.16 }
+      );
+    }
+    p.capsule(
+      x0 + W * 0.02,
+      y0 - H * 0.03,
+      x0 + W * 0.98,
+      y0 - H * 0.03,
+      2.4 * K,
+      2.4 * K,
+      { mat: "shirt", dome: 2.2 * K, tint: 0.08 }
+    );
+    for (const sx of [0.26, 0.72]) {
+      p.capsule(
+        x0 + W * sx,
+        y0 - H * 0.1,
+        x0 + W * sx,
+        y0 + H * 0.06,
+        0.7 * K,
+        0.7 * K,
+        { mat: "leather", mask: true, dome: 0.7 * K, tint: 0.12 }
+      );
+    }
+    p.ellipse(
+      x0 + W * 0.02,
+      y0 - H * 0.03,
+      2.2 * K,
+      2.3 * K,
+      { mat: "shirt", dome: -1.4 * K, tint: -0.14 }
+    );
+    p.rect(
+      x0 + W * 0.58,
+      y0 + H * 0.58,
+      W * 0.38,
+      H * 0.26,
+      { mat: "pack", dome: 1.8 * K, tint: 0.1 }
+    );
+    p.ellipse(x0 + W * 0.18, y0 + H * 0.86, 2 * K, 1.8 * K, { mat: "brass", dome: 1.5 * K, tint: 0.08 });
+    p.smoothHeight(1, 0.4);
+    return bake(p, cx, cy, far, kind);
   }
-  function paintProps(K) {
+  function paintTube(K, far, kind) {
+    const L = 10.4 * K, R = 1.9 * K;
+    const p = new Painter(Math.ceil(L) + 12, Math.ceil(R * 2) + 12);
+    const cx = p.w / 2, cy = p.h / 2;
+    p.capsule(cx - L / 2, cy, cx + L / 2, cy, R, R, { mat: "maroon", dome: R * 0.95, tint: 0.02 });
+    for (const ex of [-0.5, 0.5]) {
+      p.capsule(
+        cx + L * ex * 0.92,
+        cy,
+        cx + L * ex,
+        cy,
+        R * 1.12,
+        R * 1.05,
+        { mat: "brass", dome: R * 1, tint: 0.14 }
+      );
+    }
+    p.capsule(
+      cx - L * 0.12,
+      cy - R,
+      cx - L * 0.12,
+      cy + R,
+      0.7 * K,
+      0.7 * K,
+      { mat: "leather", mask: true, dome: 0.7 * K, tint: 0.12 }
+    );
+    p.grain("maroon", { freq: 0.7 / K, amp: 0.1, seed: 41 });
+    return bake(p, cx, cy, far, kind);
+  }
+  function paintProps(K, kind) {
     const mk = (w, h, fn) => {
       const p = new Painter(Math.ceil(w) + 10, Math.ceil(h) + 10);
       fn(p, 5, p.h / 2);
-      return bake(p, 5, p.h / 2, false);
+      return bake(p, 5, p.h / 2, false, kind);
     };
     return {
       notebook: mk(8 * K, 10 * K, (p, x, y) => {
-        p.rect(x, y - 4.6 * K, 6.6 * K, 9.2 * K, { mat: "boot", dome: 1.9 * K, tint: 0.03 });
+        p.rect(x, y - 4.6 * K, 6.6 * K, 9.2 * K, { mat: "leather", dome: 1.9 * K, tint: 0.03 });
         p.rect(x + 1 * K, y - 3.6 * K, 5 * K, 7.2 * K, { mat: "paper", dome: 1 * K, tint: 0.06 });
         for (let i = 0; i < 5; i++) {
           p.rect(
@@ -6194,22 +6476,24 @@ body {
           y + 4.6 * K,
           0.5 * K,
           0.5 * K,
-          { mat: "scarf", dome: 0.5 * K, tint: 0.1 }
+          { mat: "maroon", dome: 0.5 * K, tint: 0.12 }
         );
       }),
       pencil: mk(9 * K, 3 * K, (p, x, y) => {
         p.capsule(x, y, x + 7 * K, y, 0.75 * K, 0.7 * K, { mat: "wood", dome: 0.7 * K });
         p.capsule(x + 7 * K, y, x + 8.6 * K, y, 0.7 * K, 0.25 * K, { mat: "hair", dome: 0.5 * K, tint: -0.1 });
       }),
+      // the trowel off the sheet's dig row: a wooden handle and a worn blade
       trowel: mk(13 * K, 6 * K, (p, x, y) => {
         p.capsule(x, y, x + 5 * K, y, 1.3 * K, 1 * K, { mat: "wood", dome: 1.2 * K });
+        p.capsule(x + 4.4 * K, y, x + 5.6 * K, y, 1 * K, 0.8 * K, { mat: "brass", dome: 0.9 * K, tint: 0.12 });
         p.poly(
           [
-            { x: x + 5 * K, y: y - 2.4 * K },
+            { x: x + 5.4 * K, y: y - 2.3 * K },
             { x: x + 10 * K, y: y - 1.1 * K },
             { x: x + 12.6 * K, y },
             { x: x + 10 * K, y: y + 1.1 * K },
-            { x: x + 5 * K, y: y + 2.4 * K }
+            { x: x + 5.4 * K, y: y + 2.3 * K }
           ],
           { mat: "metal", dome: 1.5 * K, tint: 0.08 }
         );
@@ -6223,9 +6507,38 @@ body {
         p.ellipse(x + 4 * K, y, 2.4 * K, 2.9 * K, { mat: "metal", mask: true, dome: -1.6 * K, tint: -0.14 });
         p.capsule(x + 4 * K, y - 4.8 * K, x + 4 * K, y - 6.4 * K, 1.3 * K, 1.2 * K, { mat: "wood", dome: 1.1 * K });
       }),
+      // the map, which is the pose the sheet draws her in most often
+      map: mk(14 * K, 10 * K, (p, x, y) => {
+        p.field(x, y - 4.4 * K, x + 13 * K, y + 4.4 * K, (px, py) => {
+          const u = (px - x) / (13 * K);
+          const curl = Math.sin(u * Math.PI) * 0.8 * K;
+          if (Math.abs(py - y) > 4 * K - curl) return null;
+          return { h: 1.2 * K + Math.sin(u * Math.PI * 3) * 0.5 * K, tint: 0.08 };
+        }, { mat: "paper" });
+        for (let i = 0; i < 4; i++) {
+          p.rect(
+            x + 2 * K,
+            y - 2.6 * K + i * 1.6 * K,
+            (4 + i % 2 * 3) * K,
+            0.6 * K,
+            { mat: "paper", mask: true, tint: -0.4, dome: 0 }
+          );
+        }
+        for (const ex of [0, 12.4]) {
+          p.capsule(
+            x + ex * K,
+            y - 4.2 * K,
+            x + ex * K,
+            y + 4.2 * K,
+            0.8 * K,
+            0.8 * K,
+            { mat: "maroon", dome: 0.8 * K, tint: 0.06 }
+          );
+        }
+      }),
       lens: mk(11 * K, 7 * K, (p, x, y) => {
         p.capsule(x, y, x + 4 * K, y, 1 * K, 0.9 * K, { mat: "wood", dome: 0.9 * K });
-        p.ellipse(x + 7.6 * K, y, 3.2 * K, 3.2 * K, { mat: "metal", dome: 1.6 * K, tint: 0.06 });
+        p.ellipse(x + 7.6 * K, y, 3.2 * K, 3.2 * K, { mat: "brass", dome: 1.6 * K, tint: 0.1 });
         p.ellipse(x + 7.6 * K, y, 2.3 * K, 2.3 * K, { mat: "lens", dome: 1.2 * K, tint: 0.22 });
       }),
       pick: mk(14 * K, 8 * K, (p, x, y) => {
@@ -6249,6 +6562,19 @@ body {
           { mat: "metal", dome: 1 * K, tint: 0.04 }
         );
       }),
+      staff: mk(4 * K, 30 * K, (p, x, y) => {
+        p.curve(
+          [
+            { x: x + 2 * K, y: y - 15 * K },
+            { x: x + 3.2 * K, y },
+            { x: x + 2 * K, y: y + 15 * K }
+          ],
+          1 * K,
+          0.9 * K,
+          { mat: "wood", dome: 0.9 * K, steps: 14 }
+        );
+        p.ellipse(x + 2 * K, y - 15 * K, 1.6 * K, 1.4 * K, { mat: "wood", dome: 1.4 * K, tint: 0.12 });
+      }),
       lantern: mk(10 * K, 14 * K, (p, x, y) => {
         p.capsule(x + 4 * K, y - 6.4 * K, x + 4 * K, y - 4.4 * K, 0.7 * K, 0.9 * K, { mat: "metal", dome: 0.8 * K });
         p.rect(x + 1.3 * K, y - 4.4 * K, 5.6 * K, 7.2 * K, { mat: "glass", dome: 2.4 * K, tint: 0.12 });
@@ -6263,10 +6589,10 @@ body {
       }),
       peg: mk(6 * K, 9 * K, (p, x, y) => {
         p.capsule(x + 2 * K, y - 4 * K, x + 2.6 * K, y + 4 * K, 0.8 * K, 0.5 * K, { mat: "wood", dome: 0.8 * K });
-        p.rect(x, y - 5 * K, 4.4 * K, 2 * K, { mat: "scarf", dome: 0.9 * K, tint: 0.14 });
+        p.rect(x, y - 5 * K, 4.4 * K, 2 * K, { mat: "maroon", dome: 0.9 * K, tint: 0.16 });
       }),
       bedroll: mk(15 * K, 7 * K, (p, x, y) => {
-        p.capsule(x + 2.5 * K, y, x + 12 * K, y, 3 * K, 3 * K, { mat: "canvasBag", dome: 2.8 * K });
+        p.capsule(x + 2.5 * K, y, x + 12 * K, y, 3 * K, 3 * K, { mat: "shirt", dome: 2.8 * K });
         for (let i = 0; i < 3; i++) {
           p.capsule(
             x + 4 * K + i * 3.2 * K,
@@ -6275,7 +6601,7 @@ body {
             y + 3 * K,
             0.5 * K,
             0.5 * K,
-            { mat: "boot", mask: true, dome: 0.6 * K, tint: 0.05 }
+            { mat: "leather", mask: true, dome: 0.6 * K, tint: 0.05 }
           );
         }
       }),
@@ -6311,42 +6637,45 @@ body {
   function buildPerson(kind = "vess", K = 1) {
     const key2 = kind + ":" + K;
     if (cache4.has(key2)) return cache4.get(key2);
-    const bone = (len, r0, r1, mat, far, o) => paintBone(len * K, r0 * K, r1 * K, mat, K, far, o);
+    const bone = (len, r0, r1, mat, far, o) => paintBone(len * K, r0 * K, r1 * K, mat, K, far, kind, o);
+    const elder = kind === "elder";
     const rig = {
       kind,
       K,
-      torso: { near: paintTorso(K, false), far: paintTorso(K, true) },
-      hat: paintHat(K, false),
-      satchel: paintSatchel(K, false),
-      boot: { near: paintBoot(K, false), far: paintBoot(K, true) },
-      props: paintProps(K),
+      torso: { near: paintTorso(K, false, kind), far: paintTorso(K, true, kind) },
+      hat: paintHat(K, false, kind),
+      pack: paintPack(K, false, kind),
+      tube: elder ? null : paintTube(K, false, kind),
+      boot: { near: paintBoot(K, false, kind), far: paintBoot(K, true, kind) },
+      props: paintProps(K, kind),
       arm: {
         near: {
-          upper: bone(6.6, 1.9, 1.6, "coat", false, { bow: 0.6 * K }),
-          lower: bone(6.4, 1.5, 1.25, "skin", false, { bow: -0.4 * K, hand: true, cuff: true })
+          upper: bone(5.8, 1.9, 1.6, "shirt", false, { bow: 0.5 * K, shade: -0.16 }),
+          lower: bone(5.4, 1.5, 1.2, "skin", false, { bow: -0.35 * K, hand: true, sleeve: true })
         },
         far: {
-          upper: bone(6.6, 1.9, 1.6, "coat", true, { bow: 0.6 * K }),
-          lower: bone(6.4, 1.5, 1.25, "skin", true, { bow: -0.4 * K, hand: true, cuff: true })
+          upper: bone(5.8, 1.9, 1.6, "shirt", true, { bow: 0.5 * K, shade: -0.16 }),
+          lower: bone(5.4, 1.5, 1.2, "skin", true, { bow: -0.35 * K, hand: true, sleeve: true })
         }
       },
       leg: {
         near: {
-          upper: bone(10.4, 2.5, 2, "trouser", false, { bow: 0.5 * K }),
-          lower: bone(10, 2, 1.5, "trouser", false, { bow: -0.5 * K, knee: true })
+          upper: bone(7.2, 2.6, 2.1, "trouser", false, { bow: 0.45 * K }),
+          lower: bone(6.4, 2.1, 1.6, "trouser", false, { bow: -0.4 * K, knee: true })
         },
         far: {
-          upper: bone(10.4, 2.5, 2, "trouser", true, { bow: 0.5 * K }),
-          lower: bone(10, 2, 1.5, "trouser", true, { bow: -0.5 * K, knee: true })
+          upper: bone(7.2, 2.6, 2.1, "trouser", true, { bow: 0.45 * K }),
+          lower: bone(6.4, 2.1, 1.6, "trouser", true, { bow: -0.4 * K, knee: true })
         }
       }
     };
+    rig.satchel = rig.pack;
     const heads = /* @__PURE__ */ new Map();
     rig.headFor = (mood = 0, goggles = false, bare = false) => {
       const k = `${mood}:${goggles ? 1 : 0}:${bare ? 1 : 0}`;
       let v = heads.get(k);
       if (!v) {
-        v = paintHead(K, false, { mood, goggles, noHat: bare });
+        v = paintHead(K, false, kind, { mood, goggles, noHat: bare });
         heads.set(k, v);
       }
       return v;
@@ -6355,10 +6684,11 @@ body {
     rig.headGoggles = rig.headFor(0, true);
     const T = rig.torso.near;
     rig.sockets = {
-      neck: { x: 0.7 * K, y: T.topY + T.H * 0.01 },
-      shoulder: { x: 0.3 * K, y: T.topY + T.H * 0.16 },
+      neck: { x: 0.8 * K, y: T.topY + T.H * 0.02 },
+      shoulder: { x: 0.2 * K, y: T.topY + T.H * 0.15 },
       hip: { x: -0.3 * K, y: -T.H * 0.03 },
-      bag: { x: -T.W * 0.46, y: -T.H * 0.2 }
+      bag: { x: -T.W * 0.5, y: -T.H * 0.38 },
+      tube: { x: -T.W * 0.1, y: -T.H * 0.06 }
     };
     rig.standH = (rig.leg.near.upper.len + rig.leg.near.lower.len) * 0.93;
     cache4.set(key2, rig);
@@ -6369,7 +6699,7 @@ body {
     const key2 = `${kind}:${mood}:${K}`;
     let v = portraits.get(key2);
     if (!v) {
-      v = paintHead(K, false, { mood, goggles: mood === 2 });
+      v = paintHead(K, false, kind, { mood, goggles: mood === 2 });
       portraits.set(key2, v);
     }
     return v;
@@ -6721,11 +7051,20 @@ body {
       const neck = rot(nk.x, nk.y, lean);
       this._leg(ctx, rig.leg.far, this.feet[1], hipWorldY, dir, -1);
       const bg = rot(rig.sockets.bag.x, rig.sockets.bag.y, lean);
-      ctx.drawImage(
-        rig.satchel.cv,
-        Math.round(bg.x - rig.satchel.ox),
-        Math.round(bg.y - rig.satchel.oy + breath)
-      );
+      const sway = Math.abs(this.vx) > 6 ? Math.sin(this.step * TAU * 2 + 0.9) * 0.7 * rig.K : 0;
+      ctx.save();
+      ctx.translate(bg.x, bg.y + breath + sway);
+      ctx.rotate(lean * 0.8);
+      ctx.drawImage(rig.pack.cv, -rig.pack.ox, -rig.pack.oy);
+      ctx.restore();
+      if (rig.tube) {
+        const tb = rot(rig.sockets.tube.x, rig.sockets.tube.y, lean);
+        ctx.save();
+        ctx.translate(tb.x, tb.y + breath);
+        ctx.rotate(lean + 1.02);
+        ctx.drawImage(rig.tube.cv, -rig.tube.ox, -rig.tube.oy);
+        ctx.restore();
+      }
       this._arm(ctx, rig.arm.far, shoulder, this.b.armF0, this.b.armF1, lean, -1, null);
       ctx.save();
       ctx.rotate(lean);
@@ -10161,7 +10500,7 @@ body {
   var BUILD_BY_ID = Object.fromEntries(BUILDINGS.map((b) => [b.id, b]));
 
   // js/systems/economy.js
-  var BASE = {
+  var BASE2 = {
     pumpGain: 6,
     waterMax: 200,
     pondGain: 0,
@@ -10203,7 +10542,7 @@ body {
       this.skills = /* @__PURE__ */ new Set();
       this.evolutions = /* @__PURE__ */ new Set();
       this.genes = /* @__PURE__ */ new Set();
-      this.stats = { ...BASE };
+      this.stats = { ...BASE2 };
       this.dirty = true;
     }
     // -- genes ----------------------------------------------------------------
@@ -10231,7 +10570,7 @@ body {
       this.dirty = true;
     }
     recompute() {
-      const s = { ...BASE };
+      const s = { ...BASE2 };
       const apply = (e) => {
         if (!e) return;
         for (const [k, v] of Object.entries(e)) {
@@ -14348,21 +14687,70 @@ body {
   function drawGauge(ctx, x, y, w, h, f, col, opts = {}) {
     x = Math.round(x);
     y = Math.round(y);
-    ctx.fillStyle = opts.back || "rgba(12,8,5,0.78)";
+    w = Math.round(w);
+    h = Math.round(h);
+    ctx.fillStyle = opts.rim || "rgba(132,104,56,0.92)";
+    ctx.fillRect(x - 2, y - 2, w + 4, h + 4);
+    ctx.fillStyle = "rgba(198,162,90,0.55)";
+    ctx.fillRect(x - 2, y - 2, w + 4, 1);
+    ctx.fillStyle = opts.back || "rgba(14,10,6,0.90)";
     ctx.fillRect(x - 1, y - 1, w + 2, h + 2);
-    ctx.fillStyle = "rgba(60,46,30,0.9)";
+    ctx.fillStyle = "rgba(52,40,26,0.95)";
     ctx.fillRect(x, y, w, h);
     const fw = Math.round(w * clamp01(f));
     if (fw > 0) {
       ctx.fillStyle = col;
       ctx.fillRect(x, y, fw, h);
-      ctx.fillStyle = "rgba(255,255,255,0.35)";
+      ctx.fillStyle = "rgba(255,255,255,0.38)";
       ctx.fillRect(x, y, fw, 1);
+      ctx.fillStyle = "rgba(0,0,0,0.26)";
+      ctx.fillRect(x, y + h - 1, fw, 1);
+      ctx.fillStyle = "rgba(255,255,255,0.55)";
+      ctx.fillRect(x + fw - 1, y, 1, h);
     }
+    if (w > 18) {
+      for (let q = 1; q < 4; q++) {
+        ctx.fillStyle = "rgba(0,0,0,0.30)";
+        ctx.fillRect(x + Math.round(w * q / 4), y, 1, h);
+      }
+    }
+    ctx.fillStyle = "rgba(214,176,100,0.75)";
+    ctx.fillRect(x - 2, y - 1, 1, h + 2);
+    ctx.fillRect(x + w + 1, y - 1, 1, h + 2);
     if (opts.mark !== void 0) {
-      ctx.fillStyle = "rgba(242,228,194,0.8)";
-      ctx.fillRect(x + Math.round(w * clamp01(opts.mark)), y - 1, 1, h + 2);
+      ctx.fillStyle = "rgba(242,228,194,0.85)";
+      ctx.fillRect(x + Math.round(w * clamp01(opts.mark)), y - 2, 1, h + 4);
     }
+  }
+  function drawPlate(ctx, x, y, w, h, opts = {}) {
+    x = Math.round(x);
+    y = Math.round(y);
+    w = Math.round(w);
+    h = Math.round(h);
+    const a = opts.alpha ?? 1;
+    ctx.save();
+    ctx.globalAlpha = a;
+    ctx.fillStyle = "rgba(0,0,0,0.28)";
+    ctx.fillRect(x + 1, y + 2, w, h);
+    const g = ctx.createLinearGradient(0, y, 0, y + h);
+    g.addColorStop(0, opts.top || "rgba(46,35,22,0.88)");
+    g.addColorStop(1, opts.bottom || "rgba(26,19,12,0.92)");
+    ctx.fillStyle = g;
+    ctx.fillRect(x, y, w, h);
+    ctx.fillStyle = "rgba(198,162,90,0.30)";
+    ctx.fillRect(x, y, w, 1);
+    ctx.strokeStyle = opts.edge || "rgba(148,118,68,0.55)";
+    ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+    if (opts.rivets !== false) {
+      ctx.fillStyle = "rgba(206,170,96,0.65)";
+      for (const [rx, ry] of [
+        [x + 2, y + 2],
+        [x + w - 3, y + 2],
+        [x + 2, y + h - 3],
+        [x + w - 3, y + h - 3]
+      ]) ctx.fillRect(rx, ry, 1, 1);
+    }
+    ctx.restore();
   }
 
   // js/art/anatomy.js
@@ -16997,12 +17385,9 @@ body {
       const by = Math.round((this.touchEnabled ? H * 0.3 : H - 50) - (lines.length - 1) * LINE_H) + Math.round((1 - inK) * 5);
       ctx.save();
       ctx.globalAlpha = a;
-      ctx.fillStyle = "rgba(14,11,8,0.80)";
-      ctx.fillRect(bx, by, bw, bh);
+      drawPlate(ctx, bx, by, bw, bh);
       ctx.fillStyle = "rgba(226,183,74,0.85)";
       ctx.fillRect(bx, by, 2, bh);
-      ctx.strokeStyle = "rgba(214,186,138,0.28)";
-      ctx.strokeRect(bx + 0.5, by + 0.5, bw - 1, bh - 1);
       lines.forEach((l, i) => drawText(
         ctx,
         l,
@@ -17187,8 +17572,12 @@ body {
       const narrow = W < 320;
       const room = W - (L + 96) - 10;
       const label = narrow ? ellipsize(g.biome.name, Math.max(40, room)) : `${g.biome.name}   ${g.weather.label()}`;
-      drawText(ctx, label, W - 24, 5, { color: DIM, align: "right", outline: true, outlineColor: OUT });
-      this._clock(ctx, W - 15, narrow ? 22 : 25);
+      const lw = Math.max(textWidth(label), 62) + 12;
+      drawPlate(ctx, W - 22 - lw, 1, lw + 20, narrow ? 30 : 44, { alpha: 0.9 });
+      drawText(ctx, label, W - 26, 4, { color: DIM, align: "right" });
+      ctx.fillStyle = "rgba(148,118,68,0.35)";
+      ctx.fillRect(W - 20 - lw, 13, lw + 16, 1);
+      this._clock(ctx, W - 15, narrow ? 20 : 23);
       if (!narrow) this._compass(ctx, W, H);
       const ox = W - 32, oy = narrow ? 42 : 48;
       const ready = this._treeReady();
@@ -17287,7 +17676,9 @@ body {
       const modeDef = MODES.find((m) => m.id === this.mode);
       if (this.buildOn) return;
       if (this.touchEnabled) return;
-      drawText(ctx, modeDef.name, 6, H - 20, { color: FAINT, outline: true, outlineColor: OUT });
+      const mw = textWidth(modeDef.name) + 8;
+      drawPlate(ctx, 3, H - 22, mw, 11, { alpha: 0.85, rivets: false });
+      drawText(ctx, modeDef.name, 7, H - 20, { color: FAINT });
       if (this._hit(4, H - 22, 34, 10)) {
         this.hover = { title: modeDef.name, body: modeDef.desc + "   (M to switch)" };
         if (this.game.input.clicked) {
@@ -17337,12 +17728,7 @@ body {
       ctx.globalAlpha = Math.min(1, a);
       caps.forEach(([k, word], i) => {
         const w = capW[i];
-        ctx.fillStyle = "rgba(14,11,8,0.66)";
-        ctx.fillRect(x, y, w, 11);
-        ctx.fillStyle = "rgba(226,183,74,0.30)";
-        ctx.fillRect(x, y + 10, w, 1);
-        ctx.strokeStyle = "rgba(214,186,138,0.32)";
-        ctx.strokeRect(x + 0.5, y + 0.5, w - 1, 10);
+        drawPlate(ctx, x, y, w, 11, { edge: "rgba(180,146,86,0.45)" });
         drawText(ctx, k, x + w / 2, y + 2, { color: "#e6d5ad", align: "center" });
         x += w + gap;
         drawText(
@@ -17583,19 +17969,13 @@ body {
       ctx.beginPath();
       ctx.arc(sx, sy, 4.2, 0, TAU);
       ctx.fill();
-      drawText(
-        ctx,
-        `DAY ${day}`,
-        cx - R - 4,
-        cy - 8,
-        { color: INK, align: "right", outline: true, outlineColor: OUT }
-      );
+      drawText(ctx, `DAY ${day}`, cx - R - 4, cy - 8, { color: INK, align: "right" });
       drawText(
         ctx,
         `${String(Math.floor(hour)).padStart(2, "0")}:${String(Math.floor(hour % 1 * 60)).padStart(2, "0")}`,
         cx - R - 4,
         cy + 1,
-        { color: DIM, align: "right", outline: true, outlineColor: OUT }
+        { color: DIM, align: "right" }
       );
       if (this._hit(cx - R - 44, cy - R, R * 2 + 44, R * 2)) {
         const toNight = hour < 20 ? 20 - hour : 24 - hour + 20;
@@ -17609,13 +17989,7 @@ body {
     _compass(ctx, W, H) {
       const g = this.game;
       const lm = g.world.nextUnfound(g.crab.x);
-      drawText(
-        ctx,
-        `${g.world.found.size} found`,
-        W - 6,
-        38,
-        { color: FAINT, align: "right", outline: true, outlineColor: OUT }
-      );
+      drawText(ctx, `${g.world.found.size} found`, W - 6, 34, { color: FAINT, align: "right" });
       if (!lm) return;
       const d = lm.x - g.crab.x;
       const dir = Math.sign(d) || 1;
@@ -20160,54 +20534,78 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
       }
       this.ui.drawPrologueControls(ctx, vw, vh);
     }
+    /**
+     * What she says, on a page out of her own notebook. This is the one piece
+     * of interface the game uses constantly, so it is not a rounded rectangle:
+     * it is cream paper with a ruled margin, a torn lower edge, her face pinned
+     * to it behind brass tacks, and a dog-eared corner pointing at whoever is
+     * talking. Tapped code gets the same card in ink-blue, because a signal is
+     * still something written down.
+     */
     _drawSpeech(ctx, cam, who, code = false) {
       const s = cam.worldToScreen(who.x, who.y - 40);
       const port = !code && who.portrait ? who.portrait() : null;
       const pw = port ? 30 : 0;
-      const lines = wrapText(who.speech, 132 - (port ? pw + 4 : 0));
-      const w = Math.max(...lines.map((l) => textWidth(l))) + 12 + (port ? pw + 4 : 0);
-      const h = Math.max(lines.length * LINE_H + 8, port ? pw + 6 : 0);
+      const lines = wrapText(who.speech, 132 - (port ? pw + 6 : 0));
+      const w = Math.max(...lines.map((l) => textWidth(l))) + 14 + (port ? pw + 6 : 0);
+      const h = Math.max(lines.length * LINE_H + 10, port ? pw + 8 : 0);
       const x = clamp(Math.round(s.x - w / 2), 3, this.renderer.vw - w - 3);
       const y = clamp(Math.round(s.y - h), 3, this.renderer.vh - h - 12);
-      const tailX = clamp(Math.round(s.x), x + 6, x + w - 6);
-      ctx.fillStyle = code ? "rgba(10,22,24,0.94)" : "rgba(18,13,9,0.94)";
+      const tailX = clamp(Math.round(s.x), x + 8, x + w - 8);
+      const PAPER = code ? "#0e2226" : "#e9dcbc";
+      const SHADE = code ? "#0a1a1d" : "#d2c29c";
+      const INKC = code ? "#8fe0cc" : "#2a2016";
+      const RULE = code ? "rgba(143,224,204,0.20)" : "rgba(42,32,22,0.13)";
+      const EDGE = code ? "rgba(143,224,204,0.55)" : "rgba(92,70,44,0.75)";
+      ctx.fillStyle = SHADE;
       ctx.beginPath();
-      ctx.moveTo(tailX - 4, y + h - 1);
-      ctx.lineTo(tailX + 4, y + h - 1);
-      ctx.lineTo(tailX + (code ? 0 : 2), y + h + 6);
+      ctx.moveTo(tailX - 5, y + h - 2);
+      ctx.lineTo(tailX + 5, y + h - 2);
+      ctx.lineTo(tailX + (code ? 0 : 3), y + h + 7);
       ctx.closePath();
       ctx.fill();
+      ctx.fillStyle = "rgba(0,0,0,0.30)";
+      ctx.fillRect(x + 2, y + 3, w, h);
+      ctx.fillStyle = PAPER;
       ctx.fillRect(x, y, w, h);
-      ctx.strokeStyle = code ? "rgba(159,232,212,0.55)" : "rgba(226,200,150,0.45)";
+      for (let i = 0; i < w; i += 2) {
+        const bite = i * 37 % 5 < 2 ? 1 : 0;
+        if (bite) {
+          ctx.fillStyle = SHADE;
+          ctx.fillRect(x + i, y + h - 1, 2, 1);
+        }
+      }
+      ctx.strokeStyle = EDGE;
       ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
-      ctx.strokeStyle = code ? "rgba(159,232,212,0.16)" : "rgba(226,200,150,0.14)";
-      ctx.strokeRect(x + 2.5, y + 2.5, w - 5, h - 5);
-      let tx = x + 6;
+      let tx = x + 7;
       if (port) {
-        const ph = Math.min(pw, h - 6);
+        const ph = Math.min(pw, h - 8);
+        const px = x + 4, py = y + 4;
         ctx.save();
         ctx.beginPath();
-        ctx.rect(x + 3, y + 3, pw, ph);
+        ctx.rect(px, py, pw, ph);
         ctx.clip();
-        ctx.fillStyle = "rgba(30,22,14,0.9)";
-        ctx.fillRect(x + 3, y + 3, pw, ph);
+        ctx.fillStyle = code ? "#0a1a1d" : "#c8b590";
+        ctx.fillRect(px, py, pw, ph);
         ctx.drawImage(
           port.cv,
-          Math.round(x + 3 + pw / 2 - port.ox),
-          Math.round(y + 3 + ph * 0.62 - port.oy + port.H * 0.66)
+          Math.round(px + pw / 2 - port.ox),
+          Math.round(py + ph * 0.62 - port.oy + port.H * 0.66)
         );
         ctx.restore();
-        ctx.strokeStyle = "rgba(226,200,150,0.25)";
-        ctx.strokeRect(x + 2.5, y + 2.5, pw + 1, Math.min(pw, h - 6) + 1);
-        tx = x + 6 + pw + 2;
+        ctx.strokeStyle = "rgba(60,44,26,0.55)";
+        ctx.strokeRect(px - 0.5, py - 0.5, pw + 1, ph + 1);
+        ctx.fillStyle = code ? "#5fbfae" : "#c9a24a";
+        for (const [tx2, ty2] of [[px, py], [px + pw - 1, py], [px, py + ph - 1], [px + pw - 1, py + ph - 1]]) {
+          ctx.fillRect(tx2 - 1, ty2 - 1, 2, 2);
+        }
+        tx = px + pw + 6;
       }
-      lines.forEach((l, i) => drawText(
-        ctx,
-        l,
-        tx,
-        y + 5 + i * LINE_H,
-        { color: code ? "#9fe8d4" : "#f2e4c2" }
-      ));
+      ctx.fillStyle = code ? "rgba(143,224,204,0.35)" : "rgba(150,52,42,0.45)";
+      ctx.fillRect(tx - 3, y + 3, 1, h - 6);
+      ctx.fillStyle = RULE;
+      lines.forEach((l, i) => ctx.fillRect(tx, y + 5 + i * LINE_H + 8, w - (tx - x) - 6, 1));
+      lines.forEach((l, i) => drawText(ctx, l, tx, y + 6 + i * LINE_H, { color: INKC }));
       if (code) {
         drawText(
           ctx,
