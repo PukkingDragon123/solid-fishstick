@@ -64,6 +64,42 @@ The game autosaves every twenty seconds and reloads where you left off.
 
 ---
 
+## The opening
+
+The game does not start in the desert. It starts thirty metres under water,
+because that is where the animal went to sleep.
+
+`js/render/ocean.js` takes the screen for twenty seconds and is not the world
+renderer at all: its own light, its own colour, its own physics. Kelp rooted on
+the seabed rolls rather than wags, because each segment lags the one below it.
+Three shoals hold formation around a moving centre and flash a flank as they
+turn. God rays lean off the vertical and sway. Caustics crawl over the sand and
+over the animal's back. Silt drifts up past you. And the crab — the real rig,
+the same one you walk around in, with the red taken out of it by thirty metres
+of water — comes down out of the blue, finds a hollow out of the current, and
+**digs itself in**, throwing silt, until there is nothing left above the sand
+but a ridge of shell.
+
+Then the sea leaves. The waterline descends the screen over a thousand years
+and eight seconds: the kelp above it browns and folds, the fish go with the
+water, the sun burns through, the seabed above the line dries pale, and a
+counter runs up to 1,000. The whole scene then **dissolves** into the desert
+that has been drawn underneath it the entire time, so the mound you were
+looking at and the animal you are about to play are in the same place on the
+screen and are obviously the same thing.
+
+And then it is this morning, and there is a woman who has been wrong about a
+rock for eleven years, and the first water to touch this animal in a thousand
+years is not, strictly, rain.
+
+| | |
+| --- | --- |
+| ![Thirty metres down](docs/shot-10-ocean.png) | ![The sea leaving](docs/shot-11-drain.png) |
+
+![Not a rock](docs/shot-12-startle.png)
+
+---
+
 ## The loop
 
 **Water → plants → genes → evolution → more water — and the whole time, keep
@@ -410,10 +446,18 @@ same two-bone IK the crab's legs use, so she stands on slopes, tucks her feet
 under her when she crouches over a dig, and swings a leg through rather than
 sliding. The boot stays flat whatever the shin above it is doing.
 
-The face is the same painter with a `mood` argument, which moves the brow, the
-eyelid and the mouth and nothing else, because at this size nothing else reads.
-Eight of them, baked on demand at four times her walking scale, are what goes
-in her speech bubbles. Her kit — bedroll, canteen, lantern, survey peg, skull,
+The face is the same painter with a `mood` argument. An expression is four
+numbers — how far the lid is down, how the brow is angled, how wide the mouth
+opens, which way a closed mouth bows — plus two flags for a blush and a bead of
+sweat. **Fourteen of them**: level, wry, alarmed, delighted, sour, asking,
+proud, weary, shocked, laughing, thinking, stricken, grim, fond. They are baked
+on demand, so she wears the right face in the world as well as in the bubble,
+and the bubble's copy is painted at four times her walking scale.
+
+She can also be **startled**, which is its own small piece of physics: she
+leaves the ground, squashes on the way out and stretches at the top, tucks her
+feet under her, lands with a thump and a puff of dust — and her hat comes off,
+spins away on its own arc, bounces once and stays where it lands. Her kit — bedroll, canteen, lantern, survey peg, skull,
 spoil heap, pick, brush — is painted the same way and scattered on the ground
 wherever she sets up to dig.
 

@@ -17,7 +17,7 @@ import { clamp, clamp01, lerp, damp, TAU } from '../lib/math.js';
 const BASE_SPEED = 0.95;        // sweeps per second at combo 0
 const BASE_BAND = 0.30;         // how much of the gauge is the sweet spot
 const IDLE_OUT = 2.6;           // seconds of not stroking before it shuts
-const MAX_COMBO = 12;
+const MAX_COMBO = 10;
 
 export class Pump {
   constructor(game) {
@@ -45,7 +45,7 @@ export class Pump {
   get centre() {
     return 0.5 + (this.combo >= 4 ? Math.sin(this.game.time * 0.7) * 0.18 : 0);
   }
-  get mult() { return 1 + Math.min(this.combo, MAX_COMBO) * 0.14; }
+  get mult() { return 1 + Math.min(this.combo, MAX_COMBO) * 0.085; }
 
   wake() {
     if (!this.live) {
@@ -104,18 +104,18 @@ export class Pump {
     if (d <= half * 0.34) {
       this.combo++;
       this.landed++;
-      push = 2.4;
+      push = 1.9;
       this._say('PERFECT', '#c9f2fa');
       this.game.audio?.play('drip', { pitch: 1 + Math.min(this.combo, 10) * 0.06 });
     } else if (d <= half) {
       this.combo++;
       this.landed++;
-      push = 1.35;
+      push = 0.95;
       this._say('GOOD', '#9de3ee');
       this.game.audio?.play('water');
     } else {
       this.combo = 0;
-      push = 0.12;
+      push = 0.06;
       this.shake = 1;
       this._say('SLIPPED', '#e08c9c');
       this.game.audio?.play('deny');

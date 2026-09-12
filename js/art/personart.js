@@ -157,6 +157,29 @@ function paintTorso(K, far) {
  * `mood` runs 0..7 and moves only the brow, the lid and the mouth, which is
  * all a face this size needs.
  */
+/**
+ * Every expression she has. `lid` closes the eye, `brow` tilts it, `open`
+ * turns the mouth into a hole, `curl` bows a closed mouth, `wide` opens the
+ * eye past normal, and the two flags add a blush or a bead of sweat.
+ */
+const FACES = [
+  { lid: 0.00, brow: 0.00, open: 0.00, curl: 0.00, wide: 0 },                       // level
+  { lid: 0.14, brow: -0.05, open: 0.00, curl: 0.06, wide: 0 },                      // wry
+  { lid: -0.20, brow: -0.14, open: 0.55, curl: 0.00, wide: 0.7, sweat: 1 },         // alarmed
+  { lid: 0.02, brow: 0.06, open: 0.30, curl: 0.10, wide: 0.2, blush: 1 },           // delighted
+  { lid: 0.34, brow: -0.10, open: 0.00, curl: -0.09, wide: 0 },                     // sour
+  { lid: -0.06, brow: 0.10, open: 0.10, curl: 0.03, wide: 0.2 },                    // asking
+  { lid: 0.12, brow: 0.03, open: 0.00, curl: 0.07, wide: 0 },                       // proud
+  { lid: 0.48, brow: 0.00, open: 0.00, curl: -0.04, wide: 0 },                      // weary
+  { lid: -0.35, brow: -0.18, open: 0.95, curl: 0.00, wide: 1, sweat: 1 },           // shocked
+  { lid: 0.40, brow: 0.04, open: 0.62, curl: 0.12, wide: 0, blush: 1 },             // laughing
+  { lid: 0.20, brow: 0.12, open: 0.00, curl: 0.02, wide: 0 },                       // thinking
+  { lid: -0.10, brow: 0.16, open: 0.22, curl: -0.06, wide: 0.4, sweat: 1 },         // stricken
+  { lid: 0.10, brow: -0.16, open: 0.00, curl: -0.10, wide: 0 },                     // grim
+  { lid: 0.30, brow: 0.05, open: 0.00, curl: 0.09, wide: 0, blush: 1 },             // fond
+];
+export const FACE_COUNT = FACES.length;
+
 function paintHead(K, far, opts = {}) {
   const W = 7.4 * K, H = 7.8 * K;
   const pad = Math.ceil(8 * K) + 6;
@@ -202,24 +225,50 @@ function paintHead(K, far, opts = {}) {
     { mat: 'skin', mask: true, dome: W * 0.15, tint: 0.07 });
   p.speckle('skin', { density: 0.05, amp: 0.24, seed: 19 });
 
-  // the eye: a dark bead under a lid whose height is the mood
-  const lid = [0.0, 0.12, -0.18, 0.0, 0.32, -0.08, 0.10, 0.46][mood] || 0;
+  // The face. Fourteen of them, and each is only four numbers: how far the
+  // lid is down, how the brow is angled, how wide the mouth opens and which
+  // way its corners go. At this size that is everything a face has.
+  //
+  //  0 level   1 wry     2 alarmed  3 delighted  4 sour      5 asking  6 proud
+  //  7 weary   8 shocked 9 laughing 10 thinking 11 stricken 12 grim   13 fond
+  const F = FACES[mood] || FACES[0];
   if (!opts.goggles) {
-    p.ellipse(cx + W * 0.25, cy - H * 0.03, W * 0.13, H * 0.115 * clamp01(1 - lid),
+    const open = clamp01(1 - F.lid);
+    p.ellipse(cx + W * 0.25, cy - H * 0.03, W * (0.13 + F.wide * 0.05), H * 0.115 * open,
       { mat: 'eye', dome: 1.8 * K, tint: -0.08 });
-    if (lid < 0.34) {
+    if (F.lid < 0.34) {
       p.ellipse(cx + W * 0.21, cy - H * 0.065, W * 0.055, H * 0.042,
         { mat: 'eye', mask: true, dome: 1.8 * K, tint: 0.66 });
     }
+    // a lower lid, which is what makes a squint read as a squint
+    if (F.lid > 0.2) {
+      p.capsule(cx + W * 0.14, cy + H * 0.02, cx + W * 0.36, cy + H * 0.02, 0.7 * K, 0.6 * K,
+        { mat: 'skin', mask: true, dome: 0.7 * K, tint: 0.12 });
+    }
   }
-  const brow = [0, -0.05, -0.13, 0.05, -0.09, 0.09, 0.02, 0][mood] || 0;
-  p.capsule(cx + W * 0.10, cy - H * 0.16 + brow * H, cx + W * 0.40, cy - H * 0.13 - brow * H * 0.5,
-    0.8 * K, 0.65 * K, { mat: 'hair', dome: 0.8 * K, tint: 0.05 });
-  const m = [[0.20, 0.0], [0.22, 0.05], [0.16, -0.10], [0.24, 0.09], [0.20, -0.07],
-    [0.20, 0.02], [0.22, 0.0], [0.18, -0.03]][mood] || [0.20, 0];
-  p.curve([{ x: cx + W * 0.22, y: cy + H * m[0] }, { x: cx + W * 0.32, y: cy + H * (m[0] + m[1]) },
-    { x: cx + W * 0.42, y: cy + H * m[0] }], 0.65 * K, 0.5 * K,
-    { mat: 'skin', mask: true, dome: -1.1 * K, steps: 8, tint: -0.32 });
+  // the brow, angled
+  p.capsule(cx + W * 0.09, cy - H * (0.16 - F.brow), cx + W * 0.42, cy - H * (0.14 + F.brow * 0.6),
+    0.85 * K, 0.65 * K, { mat: 'hair', dome: 0.8 * K, tint: 0.05 });
+  // the mouth: a line that bows, or a hole with a tongue in it
+  if (F.open > 0.12) {
+    p.ellipse(cx + W * 0.31, cy + H * (0.20 + F.open * 0.05), W * (0.09 + F.open * 0.06),
+      H * (0.05 + F.open * 0.13), { mat: 'eye', dome: -1.2 * K, tint: -0.30 });
+    p.ellipse(cx + W * 0.31, cy + H * (0.24 + F.open * 0.08), W * 0.06, H * 0.04 * F.open,
+      { mat: 'scarf', mask: true, dome: 0.8 * K, tint: 0.10 });
+  } else {
+    p.curve([{ x: cx + W * 0.22, y: cy + H * 0.20 }, { x: cx + W * 0.32, y: cy + H * (0.20 + F.curl) },
+      { x: cx + W * 0.42, y: cy + H * 0.20 }], 0.65 * K, 0.5 * K,
+      { mat: 'skin', mask: true, dome: -1.1 * K, steps: 8, tint: -0.32 });
+  }
+  // and the extras that sell the strong ones
+  if (F.blush) {
+    p.ellipse(cx + W * 0.30, cy + H * 0.08, W * 0.14, H * 0.07,
+      { mat: 'skin', mask: true, dome: 0.6 * K, tint: 0.22 });
+  }
+  if (F.sweat) {
+    p.ellipse(cx - W * 0.02, cy - H * 0.30, W * 0.06, H * 0.08,
+      { mat: 'lens', dome: 1.4 * K, tint: 0.34 });
+  }
 
   // goggles: pushed up on the hat band, or pulled down over the eye
   if (!opts.noGoggles) {
@@ -273,6 +322,23 @@ function paintBone(len, r0, r1, mat, K, far, opts = {}) {
   }
   p.grain(mat, { freq: 0.6 / K, amp: 0.11, seed: 31 });
   return bake(p, pad, cy, far, { len });
+}
+
+/** The hat on its own, so it can be knocked off her head and land in the sand. */
+function paintHat(K, far) {
+  const W = 7.4 * K, H = 7.8 * K;
+  const p = new Painter(Math.ceil(W * 2.2) + 8, Math.ceil(H * 1.2) + 8);
+  const cx = p.w * 0.5, cy = p.h * 0.62;
+  p.ellipse(cx - W * 0.04, cy, W * 0.80, H * 0.110, { mat: 'hat', dome: W * 0.14, tint: 0.02 });
+  p.ellipse(cx + W * 0.34, cy + H * 0.035, W * 0.42, H * 0.080, { mat: 'hat', dome: W * 0.11, tint: -0.05 });
+  p.ellipse(cx - W * 0.06, cy - H * 0.18, W * 0.39, H * 0.21, { mat: 'hat', dome: W * 0.38, tint: 0.08 });
+  p.ellipse(cx - W * 0.20, cy - H * 0.26, W * 0.16, H * 0.07,
+    { mat: 'hat', mask: true, dome: -W * 0.20, tint: -0.18 });
+  p.rect(cx - W * 0.40, cy - H * 0.10, W * 0.72, 1.2 * K,
+    { mat: 'boot', mask: true, dome: 1.1 * K, tint: 0.03 });
+  p.grain('hat', { freq: 0.55 / K, amp: 0.15, seed: 23 });
+  p.smoothHeight(1, 0.4);
+  return bake(p, cx, cy, far);
 }
 
 /** A boot, drawn from the ankle, toe pointing along +x. */
@@ -416,8 +482,7 @@ export function buildPerson(kind = 'vess', K = 1) {
   const rig = {
     kind, K,
     torso: { near: paintTorso(K, false), far: paintTorso(K, true) },
-    head: paintHead(K, false),
-    headGoggles: paintHead(K, false, { goggles: true }),
+    hat: paintHat(K, false),
     satchel: paintSatchel(K, false),
     boot: { near: paintBoot(K, false), far: paintBoot(K, true) },
     props: paintProps(K),
@@ -442,6 +507,18 @@ export function buildPerson(kind = 'vess', K = 1) {
       },
     },
   };
+  // heads are baked the first time a face is worn, which is cheap enough that
+  // she can change expression in the world and not only in a speech bubble
+  const heads = new Map();
+  rig.headFor = (mood = 0, goggles = false, bare = false) => {
+    const k = `${mood}:${goggles ? 1 : 0}:${bare ? 1 : 0}`;
+    let v = heads.get(k);
+    if (!v) { v = paintHead(K, false, { mood, goggles, noHat: bare }); heads.set(k, v); }
+    return v;
+  };
+  rig.head = rig.headFor(0, false);
+  rig.headGoggles = rig.headFor(0, true);
+
   const T = rig.torso.near;
   rig.sockets = {
     neck: { x: 0.7 * K, y: T.topY + T.H * 0.01 },

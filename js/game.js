@@ -17,6 +17,7 @@ import { Crab } from './entities/crab.js';
 import { Archaeologist, Elder, POSE } from './entities/npc.js';
 import { Morse } from './systems/talk.js';
 import { Pump } from './systems/pump.js';
+import { OceanIntro } from './render/ocean.js';
 import { Green } from './systems/green.js';
 import { Digs, RELIC_BY_ID } from './systems/digs.js';
 import { Fx } from './systems/fx.js';
@@ -117,36 +118,81 @@ export class Game {
 
   // -- opening --------------------------------------------------------------
 
+  /**
+   * The opening. It is in two halves and they are a thousand years apart.
+   *
+   * The first is the sea: the animal comes down out of thirty metres of water,
+   * finds a hollow, and digs itself in, and then the sea leaves without it.
+   * None of that is the world renderer - `js/render/ocean.js` owns the screen
+   * for twenty seconds and then dissolves into the desert that is already
+   * drawn underneath it.
+   *
+   * The second is this morning, and a woman who has been wrong about a rock
+   * for eleven years.
+   */
   startIntro() {
     this.state = 'intro';
     const c = this.crab;
     const npc = this.npc;
-    npc.x = c.x + 190;
+    this.ocean = new OceanIntro(this);
+    npc.x = c.x + 320;
     npc.facing = -1;
     npc.faceT = -1;
-    this.cam.snapTo(c.x + 30, c.y - 10);
-    this.cam.targetZoom = this.cam.zoom = this.autoZoom() * 1.25;
+    npc.hatOff = null;
+    npc.setPose(POSE.IDLE);
+    this.cam.snapTo(c.x, c.y - 8);
+    this.cam.targetZoom = this.cam.zoom = this.autoZoom() * 1.5;
+    const N = (text) => this.say('narrator', text);
+    const V = (text, mood) => { this.say('Dr. Vess', text); npc.face = mood ?? npc._moodFor(text); };
     this.cut = {
       t: 0,
       steps: [
-        { at: 0, run: () => { this.dialog = null; this.cam.cineTo(c.x, c.y - 4, 3.0, 2.2); } },
-        { at: 0.6, run: () => this.say('narrator', 'A thousand years ago this was thirty metres under water.') },
-        { at: 4.2, run: () => { this.cam.cineTo(c.x + 90, c.y - 16, 2.0, 2.0); npc.moveTo = c.x + 30; } },
-        { at: 4.6, run: () => this.say('narrator', 'Nothing has moved here since. Nothing at all.') },
-        { at: 8.0, run: () => { npc.setPose(POSE.WALK); this.say('Dr. Vess', 'Survey day four thousand and six. Basin nineteen. Still nothing.') } },
-        { at: 12.0, run: () => { npc.moveTo = c.x + 24; npc.setPose(POSE.WRITE); this.say('Dr. Vess', 'Correction. One large rock. Sedimentary. Roughly hill-shaped.') } },
-        { at: 16.0, run: () => { npc.setPose(POSE.IDLE); this.say('Dr. Vess', "Eleven years. Eleven. And the department wants 'findings'.") } },
-        { at: 20.0, run: () => { npc.facing = 1; npc.setPose(POSE.SIT); this.say('Dr. Vess', 'Right. Nobody is watching. Nobody has been watching for a thousand years.') } },
-        { at: 24.0, run: () => { this.cam.cineTo(c.x + 6, c.y - 22, 3.2, 1.4); this.say('narrator', '...') } },
-        { at: 26.5, run: () => { this._pee = 1; this.say('narrator', 'A single drop of water lands on the rock.') } },
-        { at: 29.5, run: () => { this._pee = 0; this.crab.blink = 0.4; this.cam.shake(3); this.say('narrator', 'The rock has been waiting a very long time for that.') } },
-        { at: 32.0, run: () => { this.cam.shake(8); this.terrain.deform(c.x, 6, 40); this.fx.dust(c.x, c.y + 20, 6); this.audio.play('thunder'); } },
-        { at: 33.4, run: () => { npc.facing = -1; npc.setPose(POSE.IDLE); this.say('Dr. Vess', 'That is not a rock.') } },
-        { at: 36.0, run: () => { npc.moveTo = c.x + 74; this.say('Dr. Vess', 'That is not a rock, that is not a rock, that is NOT A ROCK -') } },
-        { at: 39.5, run: () => { npc.setPose(POSE.TALK); npc.facing = -1; this.say('Dr. Vess', "...you're awake. Oh. Oh, that's what the water table was for.") } },
-        { at: 43.0, run: () => { this.say('Dr. Vess', "There's a spring in your back. You made this whole basin, didn't you.") } },
-        { at: 46.5, run: () => { this.say('Dr. Vess', "Then make it again. I'll help. I have eleven years of notes and nothing else.") } },
-        { at: 50.0, run: () => this.endIntro() },
+        // ---- thirty metres down ----------------------------------------
+        { at: 0.8, run: () => N('Thirty metres of water, and every one of them warm.') },
+        { at: 4.0, run: () => N('It picked a hollow out of the current, the way its kind always has.') },
+        { at: 7.2, run: () => N('It dug in. Slowly. With enormous certainty.') },
+        { at: 10.0, run: () => N('It had eaten. It had grown. It was in no hurry at all.') },
+        { at: 12.6, run: () => N('The sea, as it turned out, was.') },
+        { at: 15.4, run: () => N('It went the way everything goes here - not at once. Coast. Lagoon. Salt pan.') },
+        { at: 18.6, run: () => N('Dust.') },
+        { at: 20.6, run: () => N('And the animal slept through every part of it.') },
+
+        // ---- this morning ----------------------------------------------
+        { at: 23.2, run: () => {
+          this.ocean = null;
+          this.cam.cineTo(c.x + 40, c.y - 12, 2.4, 2.4);
+          npc.moveTo = c.x + 46;
+          npc.setPose(POSE.WALK);
+          N('Basin nineteen. Eleven years later. Nobody has any reason to be here.');
+        } },
+        { at: 27.0, run: () => V('Survey day four thousand and six. Elevation, wrong. Salinity, wrong.', 7) },
+        { at: 30.6, run: () => { npc.moveTo = c.x + 30; npc.setPose(POSE.WRITE); V('One large rock. Sedimentary. Roughly hill-shaped. As per the last four thousand entries.', 4); } },
+        { at: 34.6, run: () => { npc.setPose(POSE.IDLE); V('There was an inland sea here. I can prove it. I have the shells, the terraces, the strandlines.', 10); } },
+        { at: 38.6, run: () => V('What I do not have is water. Which is, apparently, the only part anybody funds.', 12) },
+        { at: 42.2, run: () => { npc.facing = 1; npc.setPose(POSE.SIT); V('Eleven years. Nobody is watching. Nobody has been watching for a thousand years.', 7); } },
+
+        // ---- the yellow line -------------------------------------------
+        { at: 45.6, run: () => { this.cam.cineTo(c.x + 10, c.y - 20, 3.2, 1.6); N('...'); } },
+        { at: 47.4, run: () => { this._pee = 1; this.audio.play('water'); N('The first water to touch this rock in a thousand years is not, strictly, rain.') } },
+        { at: 51.0, run: () => { this._pee = 0; this.crab.blink = 0.5; this.cam.shake(3); N('The rock has been waiting a very long time for that.') } },
+        { at: 53.6, run: () => {
+          this.cam.shake(9);
+          this.terrain.deform(c.x, 6, 40);
+          this.fx.dust(c.x, c.y + 20, 7);
+          this.audio.play('thunder');
+          npc.facing = -1;
+        } },
+
+        // ---- the jump ---------------------------------------------------
+        { at: 54.2, run: () => { npc.startle(1.25); this.cam.shake(4); N('') } },
+        { at: 54.9, run: () => { npc.moveTo = c.x + 108; npc.setPose(POSE.WALK); V('NOT A ROCK. NOT A ROCK. THAT IS NOT A ROCK -', 8); } },
+        { at: 57.6, run: () => { npc.moveTo = undefined; npc.setPose(POSE.IDLE); npc.facing = -1; V('...you are awake.', 2); } },
+        { at: 60.4, run: () => { npc.setPose(POSE.TALK); V('Oh. Oh, that is what the water table was for. It was never the rainfall. It was you.', 3); } },
+        { at: 64.6, run: () => V('You made this basin. You lay down in a sea and the sea kept coming because you were in it.', 5) },
+        { at: 68.8, run: () => { npc.setPose(POSE.POINT); V('There is a spring in your back. I can hear it from here and it is the loudest thing in this desert.', 3); } },
+        { at: 73.0, run: () => { npc.setPose(POSE.TALK); V('So get up. Walk. Put it back.', 6); } },
+        { at: 76.2, run: () => V('I have eleven years of notes, one canteen, and absolutely nothing else to do.', 1) },
+        { at: 79.6, run: () => this.endIntro() },
       ],
       i: 0,
     };
@@ -166,6 +212,8 @@ export class Game {
   say(who, text) { this.dialog = { who, text, t: 0 }; }
 
   skipIntro() {
+    this.ocean = null;
+    this.npc.hatOff = null;
     this.endIntro();
     this.npc.x = this.crab.x + 130;
     this.npc.facing = -1;
@@ -318,6 +366,10 @@ export class Game {
   }
 
   _runCut(dt) {
+    if (this.ocean) {
+      this.ocean.update(dt);
+      if (!this.ocean.active) this.ocean = null;
+    }
     const c = this.cut;
     if (!c) return;
     c.t += dt;
@@ -327,10 +379,10 @@ export class Game {
     }
     if (this._pee) {
       const p = this.npc;
-      if (Math.random() < 0.6) {
+      if (Math.random() < 0.5) {
         this.fx._add({
-          k: 'water', x: p.x - 6 * (p.facing || -1), y: p.y - 14,
-          vx: -18 * (p.facing || -1) + (Math.random() - 0.5) * 6, vy: 26 + Math.random() * 20,
+          k: 'water', x: p.x - 8 * (p.facing || -1), y: p.y - 13,
+          vx: -34 * (p.facing || -1) + (Math.random() - 0.5) * 5, vy: 10 + Math.random() * 14,
           life: 0.9, t: 0, r: 1, grav: 210, splash: true,
         });
       }
@@ -392,7 +444,7 @@ export class Game {
     if (push <= 0) return;
     const maxW = e.stat('waterMax');
     const before = e.water;
-    e.water = clamp(e.water + e.stat('pumpGain') * 3.1 * push, 0, maxW);
+    e.water = clamp(e.water + e.stat('pumpGain') * 1.35 * push, 0, maxW);
     const took = e.water - before;
     this.garden.pumpInto(0.06 * push);
     const o = this.crab.shellWorldAB(this.crab.m.organ.a, this.crab.m.organ.b);
@@ -969,6 +1021,7 @@ export class Game {
     if (!this.npc.riding) this.npc.draw(ctx, cam);
     this.crab.draw(ctx, cam, this.garden);
     if (this.npc.riding) this.npc.draw(ctx, cam);
+    if (this._pee) this._drawStream(ctx, cam);
     this.ui.drawGhost(ctx, cam);
     this.wildlife.draw(ctx, cam, 'shell');
     if (this.state === 'play') this.ui.drawCrop(ctx, cam);
@@ -1001,6 +1054,14 @@ export class Game {
     r.composite(this.weather, this);
 
     const ui = r.ui;
+    if (this.ocean) {
+      // the sea is drawn over the finished frame and dissolves off it, so the
+      // handover to the desert is one shot rather than a cut
+      ui.save();
+      ui.globalAlpha = 1 - this.ocean.handover;
+      this.ocean.draw(ui, r.vw, r.vh);
+      ui.restore();
+    }
     if (this.state === 'intro') this._drawCutscene(ui, r);
     else this.ui.draw(ui, r);
     this.fx.drawText(ui, cam, (c, t, x, y, o) => drawText(c, t, x, y, o));
@@ -1080,6 +1141,46 @@ export class Game {
       ctx.drawImage(art.cv, -art.ox, -art.oy);
       ctx.restore();
     }
+  }
+
+  /**
+   * The yellow line. It is the first water to land on this animal in a
+   * thousand years and the whole game turns on it, so it gets drawn properly:
+   * an arc with weight to it, a bright core, and a wet patch where it lands.
+   */
+  _drawStream(ctx, cam) {
+    const p = this.npc;
+    const c = this.crab;
+    const dir = p.facing || -1;
+    const a = cam.worldToScreen(p.x - 7 * dir, p.y - 13);
+    const hit = c.shellWorldAB(0.1, 0.5);
+    const b = cam.worldToScreen(hit.x, hit.y);
+    const mx = (a.x + b.x) / 2, my = Math.min(a.y, b.y) - 10 * cam.zoom;
+    const wob = Math.sin(this.time * 9) * 1.2 * cam.zoom;
+    ctx.lineCap = 'round';
+    for (const [col, w] of [['rgba(120,92,20,0.55)', 3.4], ['#d8b43c', 2.2], ['#f6e58a', 1.0]]) {
+      ctx.strokeStyle = col;
+      ctx.lineWidth = Math.max(1, w * cam.zoom * 0.6);
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y);
+      ctx.quadraticCurveTo(mx + wob, my, b.x, b.y);
+      ctx.stroke();
+    }
+    // droplets coming off the arc, and the patch where it lands
+    for (let i = 0; i < 5; i++) {
+      const t = ((this.time * 1.6 + i * 0.2) % 1);
+      const u = 1 - t;
+      const x = u * u * a.x + 2 * u * t * (mx + wob) + t * t * b.x;
+      const y = u * u * a.y + 2 * u * t * my + t * t * b.y;
+      ctx.fillStyle = '#f6e58a';
+      ctx.fillRect(Math.round(x), Math.round(y), 2, 2);
+    }
+    ctx.globalAlpha = 0.5 + 0.3 * Math.sin(this.time * 7);
+    ctx.fillStyle = '#c9a233';
+    ctx.beginPath();
+    ctx.ellipse(b.x, b.y, 5 * cam.zoom, 2 * cam.zoom, 0, 0, TAU);
+    ctx.fill();
+    ctx.globalAlpha = 1;
   }
 
   _drawSpeech(ctx, cam, who, code = false) {

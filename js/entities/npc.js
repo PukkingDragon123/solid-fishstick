@@ -19,7 +19,7 @@ export const POSE = {
   WALK: 'walk', CROUCH: 'crouch', DIG: 'dig',
   WRITE: 'write', POINT: 'point', DRINK: 'drink', WAVE: 'wave',
   SIT: 'sit', TALK: 'talk', WANDER: 'wander', TIRED: 'tired',
-  SURVEY: 'survey', MEASURE: 'measure', REST: 'rest',
+  SURVEY: 'survey', MEASURE: 'measure', REST: 'rest', SHOCK: 'shock',
 };
 
 /**
@@ -49,6 +49,9 @@ const POSES = {
   survey: { crouch: 0, lean: -0.04, armN: [0.22, 1.30], armF: [1.44, 0.30], tool: 'lens', swing: 0 },
   measure: { crouch: 0.10, lean: 0.22, armN: [0.30, 0.70], armF: [0.50, 0.80], tool: 'peg', swing: 0 },
   rest: { crouch: 0.94, lean: 0.24, armN: [1.00, 0.80], armF: [1.14, 0.74], swing: 0, sit: 1 },
+  // both arms straight up, spine back: the shape a person makes when the rock
+  // they have been sitting on turns out to be an animal
+  shock: { crouch: 0.16, lean: -0.14, armN: [-1.30, -0.30], armF: [-1.46, -0.26], swing: 0 },
 };
 
 const CAMP_ITEMS = ['bedroll', 'canteen', 'lantern', 'peg', 'skull', 'spoil', 'pick', 'brush'];
@@ -84,6 +87,10 @@ export class Person {
       { x, y: this.y, plant: x, air: 0, side: -1 },
     ];
     this.breathe = Math.random() * TAU;
+    this.jz = 0;                 // how far off the ground she is
+    this.jv = 0;
+    this.squash = 0;             // <0 squashed, >0 stretched
+    this.hatOff = null;          // the hat, once it has left
   }
 
   get scale() { return 1; }
@@ -148,6 +155,7 @@ export class Person {
     this.y = damp(this.y, t.surfaceY(this.x), 0.0004, dt);
 
     this._settle(dt);
+    this._air(dt, t);
     this._walkFeet(dt, t);
 
     if (Math.abs(this.vx) > 24 && Math.random() < dt * 5) {
@@ -172,12 +180,73 @@ export class Person {
   }
 
   /**
+   * Off the ground, and the hat that is no longer on her head. Both exist
+   * for exactly one gag, and the gag is worth it.
+   */
+  _air(dt, terr) {
+    if (this.jz > 0 || this.jv !== 0) {
+      this.jv -= 520 * dt;
+      this.jz += this.jv * dt;
+      if (this.jz <= 0) {
+        // the landing: a hard squash that springs back
+        if (this.jv < -60) { this.squash = -0.34; this.game.fx?.dust(this.x, this.y, 1.6); }
+        this.jz = 0; this.jv = 0;
+      }
+      this.squash = damp(this.squash, this.jv > 40 ? 0.18 : 0, 0.0008, dt);
+    } else this.squash = damp(this.squash, 0, 0.0009, dt);
+
+    const h = this.hatOff;
+    if (h) {
+      h.t += dt;
+      h.vy += 340 * dt;
+      h.x += h.vx * dt;
+      h.y += h.vy * dt;
+      h.rot += h.spin * dt;
+      const gy = terr.surfaceY(h.x);
+      if (h.y >= gy) {
+        h.y = gy; h.vy *= -0.34; h.vx *= 0.5; h.spin *= 0.4;
+        if (Math.abs(h.vy) < 18) { h.vy = 0; h.vx = 0; h.spin = 0; h.rot = 0.18; h.down = true; }
+      }
+      if (h.t > 30) this.hatOff = null;
+    }
+  }
+
+  /** The whole cartoon: straight up, hat off, face open. */
+  startle(power = 1) {
+    this.jv = 150 * power;
+    this.jz = 0.01;
+    this.squash = 0.24;
+    this.setPose(POSE.SHOCK);
+    this.face = 8;
+    if (!this.hatOff) {
+      this.hatOff = {
+        x: this.x, y: this.y - 26 * this.rig.K, t: 0,
+        vx: -this.facing * (16 + Math.random() * 16), vy: -150 * power,
+        rot: 0, spin: (Math.random() < 0.5 ? -1 : 1) * (5 + Math.random() * 4),
+      };
+    }
+    this.game.audio?.play('hurt', { pitch: 1.6 });
+  }
+
+  /**
    * Feet. Each one holds its ground until the hip has walked too far past it,
    * then swings to a new plant. Exactly the way the crab does it, with two
    * legs instead of eight.
    */
   _walkFeet(dt, terr) {
     const stride = 11 * this.rig.K;
+    // in the air the feet come up with her, tucked under the hips, or she
+    // reads as a person being dragged upward rather than one jumping
+    if (this.jz > 0.5) {
+      for (let i = 0; i < 2; i++) {
+        const f = this.feet[i];
+        f.air = 0;
+        f.x = damp(f.x, this.x + (i === 0 ? 1 : -1) * stride * 0.22, 0.0001, dt);
+        f.y = damp(f.y, this.y - this.jz * 0.55, 0.0001, dt);
+        f.plant = f.x;
+      }
+      return;
+    }
     const moving = Math.abs(this.vx) > 6;
     const P = POSES[this.pose] || POSES.idle;
     for (let i = 0; i < 2; i++) {
@@ -228,11 +297,24 @@ export class Person {
       ctx.globalAlpha = 1;
     }
 
+    // the hat, if it is no longer on her head
+    if (this.hatOff) {
+      const h = this.hatOff;
+      const hs = cam.worldToScreen(h.x, h.y);
+      const art = rig.hat;
+      ctx.save();
+      ctx.translate(Math.round(hs.x), Math.round(hs.y));
+      ctx.scale(z, z);
+      ctx.rotate(h.rot);
+      ctx.drawImage(art.cv, -art.ox, -art.oy);
+      ctx.restore();
+    }
+
     // hips: the root of everything, dropped by the crouch and bobbed by the gait
     const drop = this.b.crouch * rig.standH * 0.62;
     const bob = Math.abs(this.vx) > 6 ? Math.sin(this.step * TAU * 2) * 1.1 * rig.K : 0;
     const breath = Math.sin(this.breathe) * 0.35 * rig.K;
-    const hipWorldY = this.y - rig.standH + drop + bob;
+    const hipWorldY = this.y - rig.standH + drop + bob - this.jz;
     const s = cam.worldToScreen(this.x, hipWorldY);
 
     ctx.save();
@@ -240,6 +322,10 @@ export class Person {
     ctx.scale(z, z);
     // turning is a squash, not a mirror: she pivots on the spot
     ctx.scale(dir * Math.max(0.22, flat), 1);
+    // and a jump squashes on the way out and stretches at the top
+    if (Math.abs(this.squash) > 0.005) {
+      ctx.scale(1 - this.squash * 0.5, 1 + this.squash);
+    }
 
     const lean = this.b.lean;
     const sh = rig.sockets.shoulder, nk = rig.sockets.neck;
@@ -350,7 +436,8 @@ export class Person {
     const tilt = lean * 0.4 + this.b.look * 0.22
       + (this.speech ? Math.sin(this.t * 5.5) * 0.035 : 0)
       + (P.work ? Math.sin(this.animT * 4.0) * 0.05 : 0);
-    const art = P.tool === 'lens' || P.tool === 'canteen' ? rig.headGoggles : rig.head;
+    const goggles = P.tool === 'lens' || P.tool === 'canteen';
+    const art = rig.headFor(this.face | 0, goggles, !!this.hatOff);
     ctx.save();
     ctx.translate(neck.x, neck.y + breath);
     ctx.rotate(tilt);
@@ -443,6 +530,8 @@ export class Archaeologist extends Person {
     }
 
     super.update(dt);
+    // during the opening the script owns her: no idle rota, no small talk
+    if (this.game.state === 'intro') return;
     this._chatter(dt);
 
     if (this.mode === 'follow') return;
