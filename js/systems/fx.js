@@ -153,6 +153,40 @@ export class Fx {
     });
   }
 
+  /**
+   * Blood. It comes out in the direction the blow came from, arcs, and lands -
+   * and where it lands it stays, because a desert keeps what you spill on it.
+   * Insects bleed the wrong colour on purpose.
+   */
+  blood(x, y, dir = 1, power = 1, color = '#8e1f22') {
+    dir = Math.sign(dir) || 1;
+    const n = Math.round(6 + power * 12);
+    for (let i = 0; i < n; i++) {
+      const a = (Math.random() - 0.5) * 1.5;
+      const sp = (50 + Math.random() * 150) * power;
+      this._add({
+        k: 'blood', x, y, color,
+        vx: dir * Math.cos(a) * sp, vy: Math.sin(a) * sp - 40 - Math.random() * 90,
+        life: 0.5 + Math.random() * 0.7, t: 0, r: 0.6 + Math.random() * 1.5, grav: 420,
+      });
+    }
+    // a fine mist that hangs for a moment
+    for (let i = 0; i < Math.round(3 + power * 4); i++) {
+      this._add({
+        k: 'gore', x, y, color,
+        vx: dir * (10 + Math.random() * 50), vy: -20 - Math.random() * 30,
+        life: 0.45 + Math.random() * 0.4, t: 0, r: 1 + Math.random() * 2.4,
+      });
+    }
+  }
+
+  /** A stain, left where blood landed. It fades over a long time. */
+  stain(x, y, r, color) {
+    this.stains = this.stains || [];
+    if (this.stains.length > 90) this.stains.shift();
+    this.stains.push({ x, y, r, color, t: 0, life: 42 });
+  }
+
   ring(x, y, color = '#b6de8f', r = 14) {
     this._add({ k: 'ring', x, y, r0: 2, r1: r, life: 0.5, t: 0, color });
   }
@@ -168,17 +202,6 @@ export class Fx {
     }
   }
 
-  blood(x, y, n = 6) {
-    for (let i = 0; i < n; i++) {
-      const a = -Math.PI / 2 + (Math.random() - 0.5) * 2.4;
-      this._add({
-        k: 'chip', x, y, vx: Math.cos(a) * (20 + Math.random() * 45),
-        vy: Math.sin(a) * (20 + Math.random() * 45), life: 0.5 + Math.random() * 0.5,
-        t: 0, r: 1, grav: 210, settle: true,
-      });
-    }
-  }
-
   popup(x, y, text, color = '#f4e2b4') {
     this._add({ k: 'text', x, y, vx: 0, vy: -18, life: 1.25, t: 0, text, color });
   }
@@ -186,7 +209,16 @@ export class Fx {
   // -- simulation -----------------------------------------------------------
 
   update(dt, weather) {
+    this.t = (this.t || 0) + dt;
     const t = this.game.terrain;
+    // stains dry out and the sand takes them back
+    if (this.stains) {
+      for (let i = this.stains.length - 1; i >= 0; i--) {
+        const st = this.stains[i];
+        st.t += dt;
+        if (st.t >= st.life) this.stains.splice(i, 1);
+      }
+    }
     // the weather reports wind as a unitless strength; particles want px/s
     const wv = weather ? weather.windVec() : { x: 0.4, y: 0 };
     const wind = { x: wv.x * WIND_PX, y: 0 };
@@ -233,6 +265,21 @@ export class Fx {
           break;
         case 'ring':
           break;
+        case 'gore':
+          q.vy += 40 * dt;
+          q.vx *= Math.pow(0.3, dt);
+          q.r += dt * 7;
+          break;
+        case 'blood': {
+          q.vy += (q.grav || 420) * dt;
+          const gy = this.game.terrain.surfaceY(q.x);
+          if (q.y >= gy && q.vy > 0) {
+            // it lands, and what lands stays
+            this.stain(q.x, gy, q.r * (1.4 + Math.random()), q.color);
+            q.t = q.life;
+          }
+          break;
+        }
         case 'bug': {
           // it falls to the sand, then scuttles along it in a hurry
           const gy = this.game.terrain.surfaceY(q.x);
@@ -306,9 +353,69 @@ export class Fx {
 
   // -- drawing --------------------------------------------------------------
 
+  /**
+   * The air itself. Above a breeze the desert stops being still: sheets of
+   * grain go past in long streaks at three different speeds, and in a real
+   * storm a wall of it crosses the frame. Drawn in screen space over the
+   * world, because that is where you would see it from.
+   */
+  drawDust(ctx, cam, vw, vh, weather) {
+    const wv = weather ? weather.windVec() : { x: 0.4, y: 0 };
+    const sand = weather ? (weather.sand || 0) : 0;
+    const w = Math.abs(wv.x);
+    const heavy = clamp01((w - 0.25) / 0.9) * (0.35 + sand * 1.4);
+    if (heavy < 0.02) return;
+    const dir = Math.sign(wv.x) || 1;
+    const t = this.t || 0;
+    ctx.save();
+    // three sheets, each faster and brighter than the one behind it
+    for (let L = 0; L < 3; L++) {
+      const speed = 160 + L * 240;
+      const n = Math.round((10 + L * 14) * heavy);
+      const alpha = (0.05 + L * 0.05) * heavy;
+      const len = 6 + L * 12;
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = L === 2 ? '#f4e2ba' : L === 1 ? '#dcc49a' : '#c8ab78';
+      for (let i = 0; i < n; i++) {
+        const seed = i * 97 + L * 311;
+        const yy = ((seed * 37) % 1000) / 1000 * vh;
+        const xx = (((seed * 13) % 1000) / 1000 * (vw + 400)
+          + dir * t * speed) % (vw + 400) - 200;
+        const x = dir > 0 ? xx : vw - xx;
+        const bob = Math.sin(t * 2 + seed) * 3;
+        ctx.fillRect(Math.round(x), Math.round(yy + bob), len, 1);
+      }
+    }
+    // and in a storm, a wash over the whole frame
+    if (sand > 0.25) {
+      ctx.globalAlpha = (sand - 0.25) * 0.42;
+      const g = ctx.createLinearGradient(0, 0, 0, vh);
+      g.addColorStop(0, 'rgba(214,178,120,0.5)');
+      g.addColorStop(0.6, 'rgba(196,158,104,0.75)');
+      g.addColorStop(1, 'rgba(160,124,78,0.85)');
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, vw, vh);
+    }
+    ctx.globalAlpha = 1;
+    ctx.restore();
+  }
+
   draw(ctx, cam, layer = 'near') {
     const z = cam.zoom;
     const b = cam.bounds(30);
+    // stains go down first, under everything, because they are on the ground
+    if (layer === 'far' && this.stains) {
+      for (const st of this.stains) {
+        if (st.x < b.x0 || st.x > b.x1) continue;
+        const s = cam.worldToScreen(st.x, st.y);
+        ctx.globalAlpha = 0.5 * (1 - st.t / st.life);
+        ctx.fillStyle = st.color;
+        ctx.beginPath();
+        ctx.ellipse(s.x, s.y, st.r * z, st.r * 0.42 * z, 0, 0, TAU);
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+    }
     for (const q of this.p) {
       if ((q.far ? 'far' : 'near') !== layer) continue;
       if (q.x < b.x0 || q.x > b.x1 || q.y < b.y0 || q.y > b.y1) continue;
@@ -360,6 +467,26 @@ export class Fx {
           ctx.fillRect(px - Math.round(w / 2) + (q.dir > 0 ? w - 1 : 0), py, 1, 1);
           break;
         }
+        case 'blood': {
+          // a drop stretches along the way it is going, which is what makes a
+          // spray read as a spray and not as confetti
+          ctx.globalAlpha = a;
+          ctx.fillStyle = q.color;
+          const sp = Math.hypot(q.vx, q.vy);
+          const len = Math.max(1, Math.round(Math.min(5, sp / 60) * z));
+          const ang = Math.atan2(q.vy, q.vx);
+          ctx.save();
+          ctx.translate(s.x, s.y);
+          ctx.rotate(ang);
+          ctx.fillRect(0, 0, len, Math.max(1, Math.round(q.r * z * 0.7)));
+          ctx.restore();
+          break;
+        }
+        case 'gore':
+          ctx.globalAlpha = a * 0.42;
+          ctx.fillStyle = q.color;
+          ctx.beginPath(); ctx.arc(s.x, s.y, q.r * z, 0, TAU); ctx.fill();
+          break;
         case 'grit':
           ctx.globalAlpha = a;
           ctx.fillStyle = Math.random() < 0.3 ? '#f0dcb2' : '#b9955f';

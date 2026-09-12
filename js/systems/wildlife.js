@@ -26,6 +26,20 @@ export class Wildlife {
   get wild() { return this.list.filter((c) => !c.tamed && !c.hostile && c.alive); }
   get hostiles() { return this.list.filter((c) => c.hostile && c.alive); }
 
+  /**
+   * The nearest fresh body. Anything that eats meat will cross a basin for
+   * one, and a body that has been picked over is no longer worth crossing for.
+   */
+  nearestKill(x, r = 150) {
+    let best = null, bd = r;
+    for (const c of this.list) {
+      if (c.alive || c.moodT > 26 || (c.eaten || 0) > 5) continue;
+      const d = Math.abs(c.x - x);
+      if (d < bd) { bd = d; best = c; }
+    }
+    return best;
+  }
+
   /** How much a species wants to live on the current shell, 0..1. */
   attraction(def) {
     if (def.hostile || !def.attract) return 0;

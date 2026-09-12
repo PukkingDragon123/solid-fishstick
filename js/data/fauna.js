@@ -373,7 +373,7 @@ export const FAUNA = [
 
   // == MAMMALS ==============================================================
   {
-    id: 'quilljerboa', name: 'Quill Jerboa', sci: 'Jaculus spinifer', clade: 'mammal',
+    id: 'quilljerboa', name: 'Quill Jerboa', sci: 'Jaculus spinifer', clade: 'mammal', hops: true,
     plan: 'beast', tier: 1, scale: 0.6, seed: 101,
     mat: 'furPale', matFar: 'fur', skin: 'fur', outline: '#1e150d',
     bodyL: 16, bodyH: 12, headL: 8, headH: 7, legU: 8, legL: 9, neck: 2, arch: 0.26,

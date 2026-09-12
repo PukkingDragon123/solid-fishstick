@@ -40,10 +40,22 @@ const BUILD_TABS = [
   { id: 'build', icon: 'build', name: 'BUILD' },
 ];
 
+/**
+ * The five things you can be doing. Each one owns the bottom-right corner of
+ * the screen while it is on: its own buttons, its own colour and its own
+ * glyph, so what you are holding is never a word you have to remember.
+ */
 export const MODES = [
-  { id: 'direct', name: 'WALK', desc: 'You steer. A crab goes sideways.' },
-  { id: 'auto', name: 'ROAM', desc: 'The crab walks itself toward whatever is over the next dune.', skill: 'stride' },
-  { id: 'creature', name: 'FLEET', desc: 'Click one of your own and send it somewhere.', skill: 'command' },
+  { id: 'direct', name: 'WALK', glyph: 'crab', tint: '#e2b74a',
+    desc: 'You steer. A crab goes sideways.' },
+  { id: 'auto', name: 'ROAM', glyph: 'crabwalk', tint: '#9ad86a', skill: 'stride',
+    desc: 'Click where you want to be and it walks itself there. It will not wander off on its own.' },
+  { id: 'hunt', name: 'HUNT', glyph: 'claw', tint: '#e2564f',
+    desc: 'The claw, on a timer. Hit the band for damage and the core for a great deal of it.' },
+  { id: 'spore', name: 'SPORE', glyph: 'jet', tint: '#c98ade',
+    desc: 'Hold to charge, release at pressure. A spore only takes in something willing.' },
+  { id: 'hive', name: 'HIVE', glyph: 'link', tint: '#6fd8ee', skill: 'command',
+    desc: 'Everything on your nerve, and the nerve itself. Click one and you are it.' },
 ];
 
 export class UI {
@@ -147,10 +159,22 @@ export class UI {
   cycleMode() {
     const avail = MODES.filter((m) => this.modeUnlocked(m.id));
     const i = avail.findIndex((m) => m.id === this.mode);
-    const next = avail[(i + 1) % avail.length];
-    this.mode = next.id;
+    this.setMode(avail[(i + 1) % avail.length].id);
+  }
+
+  setMode(id) {
+    if (this.mode === id) return;
+    const m = MODES.find((x) => x.id === id);
+    if (!m || !this.modeUnlocked(id)) return;
+    // leaving a mode puts down whatever it had you holding
+    this.game.combat?.stop();
+    this.game.hive?.hold(false);
+    if (id !== 'hive') this.game.hive && (this.game.hive.pick = null);
+    if (id !== 'auto') this.game.roamTarget = null;
+    this.mode = id;
     this.selected = null;
-    this.say(`${next.name}: ${next.desc}`, 4);
+    this.say(`${m.name}: ${m.desc}`, 4);
+    this.game.audio?.play('ui');
   }
 
   // -- frame ----------------------------------------------------------------
@@ -213,7 +237,11 @@ export class UI {
     if (this.placing) this._updatePlacing();
     this._updateDrag(dt);
     // fleet mode: click a creature, then click the ground to send it
-    if (this.mode === 'creature' && !this.drawerOpen) this._updateCommand();
+    if (!this.drawerOpen && !this.paused) {
+      if (this.mode === 'creature') this._updateCommand();
+      else if (this.mode === 'auto') this._updateRoam();
+      else if (this.mode === 'hive') this._updateHive();
+    }
 
     const b = this.game.economy.nutrients;
     this.bloomShown = damp(this.bloomShown, b, 0.05, dt);
@@ -410,6 +438,40 @@ export class UI {
     if (g.input.rightClicked) { g.input.rightClicked = false; this.placing = null; }
   }
 
+  /**
+   * ROAM: a click anywhere in the desert is where you want to be, and it
+   * walks itself there. Nothing else. It will not pick its own destinations.
+   */
+  _updateRoam() {
+    const g = this.game;
+    if (!g.input.clicked || g.input.sy > this.game.renderer.vh - 34) return;
+    g.input.clicked = false;
+    const w = g.cam.screenToWorld(g.input.sx, g.input.sy);
+    g.roamTarget = w.x;
+    g.fx.ring(w.x, g.terrain.surfaceY(w.x), '#9ad86a', 14);
+    g.fx.spark(w.x, g.terrain.surfaceY(w.x) - 2, '#9ad86a', 8, 24);
+    g.audio?.play('ui');
+  }
+
+  /** HIVE: a click on one of yours takes it. A click on the ground sends it. */
+  _updateHive() {
+    const g = this.game;
+    if (!g.input.clicked) return;
+    const w = g.cam.screenToWorld(g.input.sx, g.input.sy);
+    const list = g.hive.roster();
+    let best = null, bd = 34;
+    for (const q of list) {
+      const d = Math.hypot(q.x - w.x, (q.y - 8) - w.y);
+      if (d < bd) { bd = d; best = q; }
+    }
+    if (best) { g.input.clicked = false; g.takeHive(best); return; }
+    if (g.hive.pick && g.hive.pick !== g.npc) {
+      g.input.clicked = false;
+      g.hive.pick.commanded = { x: w.x };
+      g.fx.spark(w.x, g.terrain.surfaceY(w.x), '#6fd8ee', 8, 22);
+    }
+  }
+
   _updateCommand() {
     const g = this.game;
     if (!g.input.clicked) return;
@@ -451,10 +513,282 @@ export class UI {
     else if (this.touchEnabled) this._touchControls(ctx, W, H);
 
     if (this.toast) this._toast(ctx, W, H);
+    if (this.game.taming?.live) this._songCard(ctx, W, H);
     if (this.drag) this._drawCarried(ctx, W, H);
     this._exitChip(ctx, W, H);
     if (this.paused) this._pauseCard(ctx, W, H);
     if (this.hover && !this.drag) this._tooltip(ctx, W, H);
+  }
+
+  /**
+   * The mode bar. Five of them down the left-hand edge - a glyph each, lit in
+   * its own colour when it is the one you are in - and then, beside it,
+   * whatever that mode actually gives you to press. Nothing here is a word you
+   * have to remember: the walking crab is roam, the claw is hunt, the jet is
+   * spore, the link is the hive.
+   */
+  _modeBar(ctx, W, H) {
+    const g = this.game;
+    const avail = MODES.filter((m) => this.modeUnlocked(m.id));
+    const S = 15, gap = 2;
+    const bx = 3;
+    const by = H - 26 - (avail.length - 1) * (S + gap);
+    avail.forEach((m, i) => {
+      const y = by + i * (S + gap);
+      const on = this.mode === m.id;
+      const hot = this._hit(bx, y, S, S);
+      drawPlate(ctx, bx, y, S, S, {
+        edge: on ? m.tint : 'rgba(140,112,66,0.4)',
+        top: on ? 'rgba(52,42,26,0.95)' : undefined,
+        rivets: false,
+      });
+      if (on) {
+        // the one you are in gets a lit bar down its outer edge
+        ctx.fillStyle = m.tint;
+        ctx.fillRect(bx, y, 2, S);
+      }
+      drawGlyph(ctx, m.glyph, bx + S / 2 + 1, y + S / 2, {
+        color: on ? m.tint : hot ? '#d6ba8a' : 'rgba(190,166,120,0.55)', scale: 1,
+      });
+      if (hot) {
+        this.hover = { title: m.name, body: `${m.desc}   (M cycles)` };
+        if (g.input.clicked) { g.input.clicked = false; this.setMode(m.id); }
+      }
+    });
+
+    // and the mode's own controls, to the right of the column
+    const ax = bx + S + 6, ay = H - 26;
+    if (this.mode === 'hunt') this._huntBar(ctx, ax, ay, W, H);
+    else if (this.mode === 'spore') this._sporeBar(ctx, ax, ay, W, H);
+    else if (this.mode === 'hive') this._hiveBar(ctx, ax, ay, W, H);
+    else if (this.mode === 'auto') this._roamBar(ctx, ax, ay, W, H);
+  }
+
+  /**
+   * The song. It sings a phrase at you as a row of blocks climbing and
+   * falling, and then you give it back on the number keys - and the row fills
+   * in under it as you do, green for right and red for wrong. Neither of you
+   * has words, so nothing here is a word.
+   */
+  _songCard(ctx, W, H) {
+    const t = this.game.taming;
+    const c = t.target;
+    if (!c) return;
+    const notes = t.lureFor(c.def).notes;
+    const cw = Math.min(190, W - 24);
+    const ch = 62;
+    const x = Math.round(W / 2 - cw / 2);
+    const y = Math.round(H * 0.62);
+    drawPlate(ctx, x, y, cw, ch);
+
+    drawText(ctx, c.def.name, x + 6, y + 4, { color: '#ffe9a8' });
+    drawText(ctx, `${t.round + 1}/4`, x + cw - 6, y + 4, { color: FAINT, align: 'right' });
+
+    // the phrase, as a staircase: each block's height is its pitch
+    const gx = x + 8, gy = y + 16, gw = cw - 16, gh = 20;
+    const n = Math.max(1, t.call.length);
+    const bw = Math.floor(gw / n) - 2;
+    for (let i = 0; i < t.call.length; i++) {
+      const p = t.call[i];
+      const bh = Math.round((p + 1) / notes * gh);
+      const bx = gx + i * (bw + 2);
+      const sounding = t.phase === 'listen' && t.idx === i;
+      // what it sang
+      ctx.fillStyle = sounding ? '#fff4d0' : 'rgba(226,183,74,0.55)';
+      ctx.fillRect(bx, gy + gh - bh, bw, bh);
+      // what you sang back
+      if (i < t.said.length) {
+        const right = t.said[i] === p;
+        ctx.fillStyle = right ? 'rgba(140,220,130,0.9)' : 'rgba(226,86,79,0.9)';
+        ctx.fillRect(bx, gy + gh + 3, bw, 3);
+      } else if (t.phase === 'answer' && i === t.said.length) {
+        // the note it is waiting on, blinking
+        ctx.globalAlpha = 0.4 + 0.6 * Math.abs(Math.sin(this.t * 6));
+        ctx.fillStyle = '#9fe8d4';
+        ctx.fillRect(bx, gy + gh + 3, bw, 3);
+        ctx.globalAlpha = 1;
+      }
+    }
+
+    // the pitches you have, as numbered keys
+    const ky = y + ch - 14;
+    for (let p = 0; p < notes; p++) {
+      const kx = x + 8 + p * 17;
+      const hot = this._hit(kx, ky, 15, 11);
+      const live = t.phase === 'answer';
+      drawPlate(ctx, kx, ky, 15, 11, {
+        edge: live ? 'rgba(160,130,78,0.6)' : 'rgba(80,66,44,0.35)',
+        top: hot && live ? 'rgba(66,52,30,0.95)' : undefined,
+        rivets: false,
+      });
+      ctx.globalAlpha = live ? 1 : 0.45;
+      // a block whose height is the pitch, so the key looks like the note
+      const bh2 = Math.round((p + 1) / notes * 7);
+      ctx.fillStyle = '#e2b74a';
+      ctx.fillRect(kx + 3, ky + 9 - bh2, 3, bh2);
+      drawText(ctx, `${p + 1}`, kx + 10, ky + 2, { color: DIM });
+      ctx.globalAlpha = 1;
+      if (hot && live && this.game.input.clicked) {
+        this.game.input.clicked = false;
+        t.answer(p);
+      }
+    }
+    const say = t.phase === 'listen' ? 'listen' : t.phase === 'answer' ? 'sing it back' : '...';
+    drawText(ctx, say, x + cw - 6, ky + 2, { color: FAINT, align: 'right' });
+  }
+
+  /** A button that says what it is with a picture and a key. */
+  _actBtn(ctx, x, y, w, h, glyph, label, key, opts = {}) {
+    const hot = this._hit(x, y, w, h);
+    const on = !!opts.on;
+    const dim = !!opts.dim;
+    drawPlate(ctx, x, y, w, h, {
+      edge: on ? (opts.tint || '#e2b74a') : dim ? 'rgba(90,74,50,0.35)' : 'rgba(160,130,78,0.5)',
+      top: hot && !dim ? 'rgba(66,52,30,0.95)' : undefined,
+    });
+    ctx.globalAlpha = dim ? 0.45 : 1;
+    drawGlyph(ctx, glyph, x + 9, y + h / 2, { color: opts.tint || '#e2b74a', scale: 1 });
+    drawText(ctx, label, x + 17, y + 3, { color: dim ? DIM : INK });
+    if (key) drawText(ctx, key, x + w - 4, y + 3, { color: FAINT, align: 'right' });
+    ctx.globalAlpha = 1;
+    if (hot && !dim) this.hover = opts.hover || null;
+    return hot && this.game.input.clicked;
+  }
+
+  /**
+   * Hunt: the strike gauge, the claw, and a row of whatever abilities your
+   * genome has actually grown.
+   */
+  _huntBar(ctx, x, y, W, H) {
+    const g = this.game;
+    const cb = g.combat;
+    const foe = cb.target || g.nearestHostile?.(g.crab.x, 150);
+    const w = 92;
+    // the gauge itself, above the button, only while something is in reach
+    if (cb.live) {
+      const gy = y - 16;
+      drawPlate(ctx, x, gy, w, 13);
+      const iw = w - 6, ix = x + 3, iy = gy + 3;
+      ctx.fillStyle = 'rgba(12,8,5,0.9)';
+      ctx.fillRect(ix, iy, iw, 7);
+      // the window, and the core inside it
+      const [lo, hi] = cb.window;
+      ctx.fillStyle = 'rgba(226,86,79,0.42)';
+      ctx.fillRect(ix + iw * lo, iy, iw * (hi - lo), 7);
+      const cw = (hi - lo) * 0.34;
+      ctx.fillStyle = 'rgba(255,214,120,0.75)';
+      ctx.fillRect(ix + iw * (cb.band - cw / 2), iy, iw * cw, 7);
+      // the needle
+      ctx.fillStyle = cb.flash > 0 ? '#fff4d0' : '#f2e4c2';
+      ctx.fillRect(Math.round(ix + iw * cb.pos), iy - 1, 1, 9);
+      if (cb.combo > 0) {
+        drawText(ctx, `x${cb.mult.toFixed(1)}`, x + w - 3, gy - 9,
+          { color: '#ffd678', align: 'right' });
+      }
+      if (cb.open > 0) drawText(ctx, 'OPEN', x + 3, gy - 9, { color: '#e2564f' });
+    }
+    const label = cb.open > 0 ? 'OPEN' : cb.live ? 'STRIKE' : 'NOTHING NEAR';
+    if (this._actBtn(ctx, x, y, w, 14, 'claw', label, 'Q', {
+      tint: '#e2564f', dim: !cb.live || cb.open > 0,
+      hover: { title: 'Strike', body: foe ? `${foe.def.name}. Land it on the band for damage and on the core for a great deal of it.` : 'Nothing close enough to hit.' },
+    })) { g.input.clicked = false; g.strike(); }
+
+    // abilities, as a row of slots to the right
+    const abil = g.economy.abilities ? g.economy.abilities() : [];
+    let ax = x + w + 5;
+    abil.slice(0, 4).forEach((a, i) => {
+      const hot = this._hit(ax, y, 15, 14);
+      const ready = !a.cool || a.cool <= 0;
+      drawPlate(ctx, ax, y, 15, 14, { edge: ready ? 'rgba(160,130,78,0.6)' : 'rgba(80,66,44,0.4)' });
+      drawGlyph(ctx, a.icon || 'bolt', ax + 8, y + 7, { color: ready ? '#e2b74a' : '#6b5a3c', scale: 1 });
+      if (!ready) {
+        ctx.fillStyle = 'rgba(8,6,4,0.6)';
+        ctx.fillRect(ax + 1, y + 1, 13, 12 * clamp01(a.cool / (a.cd || 1)));
+      }
+      if (hot) {
+        this.hover = { title: a.name, body: ready ? a.desc : `${a.desc}\n\nComing back.` };
+        if (ready && g.input.clicked) { g.input.clicked = false; g.useAbility(a.id); }
+      }
+      ax += 17;
+    });
+  }
+
+  /** Spore: a charge bar that tells you where pressure is. */
+  _sporeBar(ctx, x, y, W, H) {
+    const g = this.game;
+    const hv = g.hive;
+    const w = 96;
+    const k = clamp01(hv.charge / 1.35);
+    // the charge, with the sweet band marked on it
+    const gy = y - 16;
+    drawPlate(ctx, x, gy, w, 13);
+    const iw = w - 6, ix = x + 3, iy = gy + 3;
+    ctx.fillStyle = 'rgba(12,8,5,0.9)';
+    ctx.fillRect(ix, iy, iw, 7);
+    ctx.fillStyle = 'rgba(201,138,222,0.40)';
+    ctx.fillRect(ix + iw * 0.62, iy, iw * 0.26, 7);
+    ctx.fillStyle = 'rgba(226,86,79,0.5)';
+    ctx.fillRect(ix + iw * 0.93, iy, iw * 0.07, 7);
+    ctx.fillStyle = hv.pressured ? '#f0d4ff' : '#c98ade';
+    ctx.fillRect(ix, iy, Math.round(iw * Math.min(1, k)), 7);
+    drawText(ctx, `${g.economy.parasites}`, x + w - 3, gy - 9,
+      { color: '#c98ade', align: 'right' });
+
+    const holding = hv.holding;
+    this._actBtn(ctx, x, y, w, 14, 'jet', holding ? 'RELEASE' : 'HOLD TO CHARGE', 'V', {
+      tint: '#c98ade', dim: g.economy.parasites < 1,
+      hover: { title: 'Spore', body: 'Hold to build pressure, let go inside the band. Too long and it goes off on you - and it only takes in something already worn down, fed, or half trusting you.' },
+    });
+  }
+
+  /** Hive: everything on your nerve, as a row you can click. */
+  _hiveBar(ctx, x, y, W, H) {
+    const g = this.game;
+    const list = g.hive.roster();
+    if (!list.length) {
+      drawPlate(ctx, x, y, 104, 14, { rivets: false });
+      drawText(ctx, 'nothing on the nerve', x + 5, y + 3, { color: FAINT });
+      return;
+    }
+    let cx2 = x;
+    for (const q of list.slice(0, 8)) {
+      const on = g.hive.pick === q;
+      const hot = this._hit(cx2, y, 15, 14);
+      drawPlate(ctx, cx2, y, 15, 14, {
+        edge: on ? '#6fd8ee' : 'rgba(120,150,160,0.4)',
+        top: hot ? 'rgba(40,60,72,0.95)' : undefined,
+      });
+      // a token in its own colour, and a thread of health under it
+      ctx.fillStyle = on ? '#9fe8f4' : q.hostile ? '#d88a7a' : '#8ec8d8';
+      ctx.fillRect(cx2 + 5, y + 4, 5, 5);
+      const hp = clamp01((q.hp ?? 1) / (q.hpMax ?? 1));
+      ctx.fillStyle = 'rgba(10,20,24,0.8)';
+      ctx.fillRect(cx2 + 2, y + 11, 11, 1);
+      ctx.fillStyle = hp > 0.4 ? '#6fd8ee' : '#e2564f';
+      ctx.fillRect(cx2 + 2, y + 11, Math.round(11 * hp), 1);
+      if (hot) {
+        this.hover = { title: q.name || q.def?.name || 'One of yours',
+          body: on ? 'You are this one. A / D walks it; click it again to let go.'
+            : 'Click to be this one.' };
+        if (g.input.clicked) { g.input.clicked = false; g.takeHive(q); }
+      }
+      cx2 += 17;
+    }
+  }
+
+  /** Roam: it does not move until you say where. */
+  _roamBar(ctx, x, y, W, H) {
+    const g = this.game;
+    const set = g.roamTarget !== null && g.roamTarget !== undefined;
+    const w = 104;
+    if (this._actBtn(ctx, x, y, w, 14, 'point', set ? 'WALKING THERE' : 'CLICK A PLACE', null, {
+      tint: '#9ad86a', on: set,
+      hover: { title: 'Roam', body: set ? 'On its way. Click somewhere else to change its mind, or press this to stop.' : 'Click anywhere in the desert and it walks itself there. It will not wander off on its own.' },
+    })) { g.input.clicked = false; g.roamTarget = null; }
+    if (set) {
+      const d = Math.abs(g.roamTarget - g.crab.x);
+      drawText(ctx, `${Math.round(d)}`, x + w + 5, y + 3, { color: FAINT });
+    }
   }
 
   /**
@@ -742,19 +1076,10 @@ export class UI {
       ctx.fillRect(x, y, Math.round(w * (crab.hp / crab.hpMax)), 4);
     }
 
-    // mode + prompts
-    const modeDef = MODES.find((m) => m.id === this.mode);
+    // the mode, and whatever that mode puts in your hand
     if (this.buildOn) return;
-    // on touch the mode is a button of its own, and the label would sit under
-    // the thumbstick
+    this._modeBar(ctx, W, H);
     if (this.touchEnabled) return;
-    const mw = textWidth(modeDef.name) + 8;
-    drawPlate(ctx, 3, H - 22, mw, 11, { alpha: 0.85, rivets: false });
-    drawText(ctx, modeDef.name, 7, H - 20, { color: FAINT });
-    if (this._hit(4, H - 22, 34, 10)) {
-      this.hover = { title: modeDef.name, body: modeDef.desc + '   (M to switch)' };
-      if (this.game.input.clicked) { this.game.input.clicked = false; this.cycleMode(); }
-    }
 
     const hint = g.actionHint();
     if (hint && !this.touchEnabled) {

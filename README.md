@@ -54,6 +54,13 @@ npm run build     # -> dist/crabden.html + dist/crabden.body.html
 | inside you | `G` | tap the orb |
 | control mode | `M` | **MODE** |
 | zoom / pan | wheel, drag (locked while you are on your own back) | pinch, drag (same) |
+| switch mode | `M`, or click one of the five chips | the same chips |
+| the claw (HUNT) | `Q`, on the band | **STRIKE** |
+| an ability (HUNT) | click its slot | the same |
+| the spore (SPORE) | hold `V`, release at pressure | hold the button |
+| take one of yours (HIVE) | click it, or its token | the same |
+| where to walk (ROAM) | click anywhere in the desert | the same |
+| sing back (taming) | `1`-`5` | the pitch keys |
 | lure her in | `L` | — |
 | spray the spore | `V` (again to let her go) | — |
 | her pick, once she is yours | `E` | — |
@@ -189,6 +196,76 @@ ripens, and the shape of the whole loop the first time you pick. Each beat fires
 once, and growing is something you can watch happen — the husk splits on a ring
 of light, every stage up **springs** the plant with an overshoot that settles,
 and a mature one goes off with a ring and its name.
+
+### Five things you can be doing
+
+The bottom-left corner is a column of five chips, and the one you are in is lit
+in its own colour with a bar down its edge. **Nothing there is a word you have
+to remember** — the crab standing still is walk, the crab mid-stride is roam,
+the claw is hunt, the jet is spore, the link is the hive. Beside the column is
+whatever that mode actually puts in your hand, and it changes completely
+between them.
+
+**WALK** steers. **ROAM** does not wander: click anywhere in the desert and a
+pin goes in the sand and it walks itself there and stops. It will never pick
+its own destination — an animal that wanders off while you are reading a panel
+is an animal you then have to go and find.
+
+**HUNT** brings up the strike gauge. A needle sweeps, a band on it is where the
+claw is actually closing on the thing, and a much narrower core inside that band
+is where it lands on the joint. Band is damage; core is a great deal of damage,
+a stagger, and a knockback. Land them in a row and the multiplier climbs — and
+the window narrows and the sweep speeds up, because of course it does. Miss and
+the claw is out and open and you are the one standing there with your chest
+exposed for the best part of a second. Beside the gauge sit the abilities your
+genome has actually grown: **Thorn Hide**, **Bulwark**, **Strike Reflex** (the
+next swing cannot miss), **Apex Nerve**, **Lumen Organ** (everything looking at
+you flinches), **Signal Skin**.
+
+**SPORE** is a throw. Hold to build pressure and the arc goes further out; let
+go inside the band and the cloud lands where the arc said. Let go early and it
+falls short. Hold too long and it goes off on the animal holding it.
+
+**HIVE** is everything on your nerve, and the nerve itself.
+
+### The dream
+
+While you are in the hive the world goes over. The whole frame grades cold and
+a little bit wrong, slow bands of light cross it out of step with each other so
+nothing in the picture sits still, three pulses travel out from your shell along
+the nerve, and every animal on that nerve is haloed and strung back to you by a
+thread with a bead of signal running down it. The frame breathes closed at the
+edges. Your roster is a row of tokens along the bottom with a thread of health
+under each; click one and you are it, and A / D walks it.
+
+### A song, not a purchase
+
+**You do not buy an animal.** There is nothing to buy one with and nothing out
+here that wants what you have.
+
+What you do is put out the thing its species actually crosses a desert for, and
+it is different for every clade: **berries for the birds**, **standing water for
+the reptiles**, **a flower in bloom for the insects**, **shade for the small
+nocturnal things**. All four are things already on your back, so baiting a bird
+means growing what a bird wants. A ring fills on the animal as it decides about
+you, and when it is full a note bobs over its head, and it sticks to you.
+
+Then you have to talk to it, and neither of you has words — so you do what two
+animals without words have always done. **It gives you a phrase and you give it
+back.** The phrase is a row of blocks whose heights are the pitches; it sings
+them at you, and then you sing them back on the number keys, on the beat. Four
+phrases, getting longer and faster. Fumble one and you lose ground but not the
+animal. Get most of them and it joins you — and a bird's range is wider than a
+lizard's, which is most of why a bird is harder.
+
+A spore is the other way in, and that has a condition of its own: **it only
+takes in something willing**. Worn down, fed, or already half trusting you. An
+animal that is none of those throws it off, and remembers that you tried.
+
+| | |
+| --- | --- |
+| ![The hive](docs/shot-18-hive.png) | ![The strike gauge](docs/shot-19-hunt.png) |
+| ![The song](docs/shot-20-song.png) | ![A sandstorm](docs/shot-21-storm.png) |
 
 ### Hands
 
@@ -640,6 +717,19 @@ reads back anything else you spell letter by letter.
 
 ### The rest
 
+- **Everything out here leaves the ground.** A body that jumps squashes on the
+  way out and stretches at the top; a jerboa hops as its ordinary gait; and a
+  hunter does not simply run at you — it drops, gathers for half a second, and
+  throws itself the last stretch. That wind-up is the only warning you get.
+  Anything that eats meat will stop for a body instead of for you, and stands
+  over it biting pieces off, which is the one reliable way to walk past a hunter.
+- **Things bleed.** A blow throws blood the way the blow went, each drop
+  stretched along its own path so a spray reads as a spray; a killing blow opens
+  it up properly; and what lands **stays on the sand**, because a desert keeps
+  what you spill on it. Insects bleed the wrong colour.
+- **The air is not still.** Above a breeze, three sheets of grain cross the frame
+  at three different speeds, and in a real sandstorm a wall of it comes over the
+  whole picture.
 - **Terrain** is a heightfield over X, baked into 256px chunks, with a live
   deformation map. Sand is a fluid in no hurry: it **slumps**, so a pit with a
   sharp edge pulls its neighbours in and what you dig becomes a cone rather than

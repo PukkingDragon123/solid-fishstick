@@ -23,6 +23,9 @@ import { Digs, RELIC_BY_ID } from './systems/digs.js';
 import { Mining } from './systems/mining.js';
 import { Craft } from './systems/craft.js';
 import { Mind } from './systems/mind.js';
+import { Combat } from './systems/combat.js';
+import { Taming } from './systems/taming.js';
+import { Hive } from './systems/hive.js';
 import { ITEM_BY_ID } from './data/craft.js';
 import { Fx } from './systems/fx.js';
 import { Garden } from './systems/garden.js';
@@ -89,6 +92,10 @@ export class Game {
     this.mining = new Mining(this, this.seed);
     this.craft = new Craft(this);
     this.mind = new Mind(this);
+    this.combat = new Combat(this);
+    this.taming = new Taming(this);
+    this.hive = new Hive(this);
+    this.roamTarget = null;
     this.ui = new UI(this);
 
     this.seeds = { dustmoss: 3, saltgrass: 2 };
@@ -620,7 +627,8 @@ export class Game {
         if (!d.alive) this.ui.release();
         else { d.driveX = move; move = 0; }
       }
-      if (this.ui.mode === 'auto' && Math.abs(move) < 0.05) move = this._autoWalk(sdt);
+      // ROAM does not wander. It goes where you clicked, and stops there.
+      if (this.ui.mode === 'auto' && Math.abs(move) < 0.05) move = this._roamWalk(sdt);
       // the spring is not a key you hold. It is a muscle with a rhythm, and
       // every stroke either catches the chamber full or does not.
       if (play && (i.justPressed(' ') || i.justPressed('Space') || tapped)) {
@@ -635,6 +643,12 @@ export class Game {
       if (play && i.justPressed('f')) this.callVess();
       if (play && i.justPressed('x')) this.infest();
       if (play && i.justPressed('k')) this.incubateBest();
+      // the song: 1-5 are the pitches you answer with
+      if (play && this.taming.live && this.taming.phase === 'answer') {
+        for (let n = 0; n < 5; n++) {
+          if (i.justPressed(String(n + 1))) { i.consumeKey(String(n + 1)); this.taming.answer(n); }
+        }
+      }
       if (play && i.justPressed('l')) this.lureVess();
       if (play && i.justPressed('v')) this.sprayVess();
       // While the spore has her, she is the one with the hands: the movement
@@ -650,7 +664,24 @@ export class Game {
       }
       // T is the tap key: hold for a long tap, release for a short one
       if (play) this.morse.update(sdt, i.key('t'));
-      if (play && i.justPressed('q')) this.attack();
+      // Q is the claw. In HUNT it is the timed strike; anywhere else it is
+      // the old flat swipe, so you are never without a way to defend yourself.
+      if (play && i.justPressed('q')) {
+        if (this.ui.mode === 'hunt' && this.combat.live) this.strike();
+        else this.attack();
+      }
+      // SPORE mode: hold V to charge, let go to throw
+      if (play && this.ui.mode === 'spore') this.hive.hold(i.key('v'));
+      else if (this.hive.holding) this.hive.hold(false);
+      // HIVE mode: A/D walks whichever of yours you have picked
+      if (play && this.ui.mode === 'hive' && this.hive.pick) {
+        const p = this.hive.pick;
+        if (Math.abs(move) > 0.05) {
+          if (p === this.npc) { p.driveX = move; p.moveTo = undefined; }
+          else { p.driveX = move; p.puppet = true; }
+          move = 0;
+        } else if (p.driveX) p.driveX = 0;
+      }
     }
     this.crab.update(sdt, {
       move, sprint: i.key('Shift'), grab: i.key('e'),
@@ -688,6 +719,16 @@ export class Game {
     this.mining.update(sdt);
     this.craft.update(sdt);
     this.mind.update(sdt);
+    this.combat.update(sdt);
+    this.economy.tickAbilities(sdt);
+    this.taming.update(sdt);
+    this.hive.update(sdt, this.ui.mode === 'hive');
+    // the claw only comes up against something that is actually in reach
+    if (this.ui.mode === 'hunt' && this.state === 'play') {
+      const foe = this.wildlife.nearest(this.crab.x, this.crab.y, 150,
+        (q) => q.alive && q.hostile);
+      if (foe) this.combat.engage(foe); else this.combat.stop();
+    }
 
     // garden drinks from the tank, and pays out nutrients and fruit
     const eco = this.economy;
@@ -783,7 +824,127 @@ export class Game {
 
   // -- actions --------------------------------------------------------------
 
-  /** ROAM mode: the crab walks itself toward the next unvisited thing. */
+  /**
+   * ROAM: it walks to where you pointed and then it stops. It does not pick
+   * its own destinations any more - an animal that wanders off while you are
+   * reading a panel is an animal you have to go and find.
+   */
+  _roamWalk(dt) {
+    if (this.roamTarget === null || this.roamTarget === undefined) return 0;
+    const d = this.roamTarget - this.crab.x;
+    if (Math.abs(d) < 14) {
+      this.roamTarget = null;
+      this.fx.ring(this.crab.x, this.terrain.surfaceY(this.crab.x), '#9ad86a', 12);
+      return 0;
+    }
+    return clamp(d / 40, -1, 1);
+  }
+
+  /**
+   * Start singing at something. It has to be willing first - which means it
+   * has had what its species comes for and has stuck around long enough to
+   * half trust you - and then it is a conversation, not a purchase.
+   */
+  singTo(c) {
+    const res = this.taming.begin(c);
+    if (!res.ok) { this.ui.say(res.why, 3.5); this.audio.play('deny'); return false; }
+    this.cam.cineTo(c.x, c.y - 16, Math.max(this.autoZoom(), 2.4), 0.8);
+    this.audio.play('uiBig');
+    return true;
+  }
+
+  onSungTame(c) {
+    if (!c) return;
+    c.tamed = true;
+    c.trust = 1;
+    if (!this.wildlife.fleet.includes(c)) this.wildlife.fleet.push(c);
+    this.fx.ring(c.x, c.y - 10, '#ffe9a8', 20);
+    this.fx.spark(c.x, c.y - 10, '#ffe9a8', 22, 50);
+    this.fx.popup(c.x, c.y - 20, c.def.name, '#ffe9a8');
+    this.audio.play('discover');
+    this.cam.cineCancel();
+    this.cam.followEntity(this.crab, false);
+    this.cam.targetZoom = this.autoZoom();
+    this.economy.markDirty();
+    this.npc.say(`It answered you. Do you have the faintest idea how rare that is.`, 6, 3);
+  }
+
+  onSongLost(c) {
+    this.cam.cineCancel();
+    this.cam.followEntity(this.crab, false);
+    this.cam.targetZoom = this.autoZoom();
+    if (!c) return;
+    this.fx.drift(c.x, c.y - 10, '#9a8a70', 4);
+    this.ui.say('It lost interest.', 3);
+    this.audio.play('deny');
+  }
+
+  /**
+   * Fire one of the things your genome grew. Each is a short window rather
+   * than a number: the animal does something for a few seconds and you make
+   * that window count.
+   */
+  useAbility(id) {
+    const a = this.economy.useAbility(id);
+    if (!a) { this.audio.play('deny'); return false; }
+    const c = this.crab;
+    this.buff = this.buff || {};
+    this.buff[id] = 6;
+    this.fx.ring(c.x, c.y - c.m.rx * 0.4, '#ffe9a8', 22);
+    this.fx.popup(c.x, c.y - c.m.rx, a.name, '#ffe9a8');
+    this.audio.play('uiBig');
+    this.cam.shake(2);
+    if (id === 'lumen') {
+      // everything looking at you flinches
+      for (const q of this.wildlife.hostiles) {
+        if (Math.abs(q.x - c.x) < 160) { q.stagger = 0.7; q.recoil = 1.4; }
+      }
+      this.fx.ring(c.x, c.y - c.m.rx * 0.4, '#fff4d0', 48);
+    }
+    if (id === 'strike') this.combat.band = this.combat.pos;   // it cannot miss
+    return true;
+  }
+
+  /** Where you told it to go, standing there waiting for it. */
+  _drawRoamMark(ctx, cam) {
+    if (this.roamTarget === null || this.roamTarget === undefined) return;
+    const x = this.roamTarget;
+    const y = this.terrain.surfaceY(x);
+    const s = cam.worldToScreen(x, y);
+    const z = cam.zoom;
+    const p = (this.time * 1.4) % 1;
+    ctx.save();
+    ctx.globalAlpha = 0.55 * (1 - p) + 0.25;
+    ctx.strokeStyle = '#9ad86a';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.ellipse(s.x, s.y, (5 + p * 9) * z, (2 + p * 4) * z, 0, 0, TAU);
+    ctx.stroke();
+    // a pin standing in the sand
+    ctx.globalAlpha = 0.85;
+    ctx.fillStyle = '#9ad86a';
+    ctx.fillRect(Math.round(s.x), Math.round(s.y - 9 * z), Math.max(1, Math.round(z)), Math.round(9 * z));
+    ctx.fillRect(Math.round(s.x), Math.round(s.y - 10 * z), Math.round(4 * z), Math.round(3 * z));
+    ctx.restore();
+    ctx.globalAlpha = 1;
+  }
+
+  /** Take one of yours, or put it back down. */
+  takeHive(q) {
+    if (this.hive.pick === q) {
+      this.hive.pick = null;
+      if (q.driveX !== undefined) q.driveX = 0;
+      this.ui.say('Back on its own.', 2);
+      return;
+    }
+    this.hive.pick = q;
+    this.cam.shake(1.5);
+    this.fx.ring(q.x, q.y - 8, '#6fd8ee', 16);
+    this.audio.play('uiBig');
+    this.ui.say(`${q.name || q.def?.name}. A / D.`, 3);
+  }
+
+  /** The old flat auto-walk, kept for the encounter hint. */
   _autoWalk(dt) {
     const cx = this.crab.x;
     if (!this._autoTarget || Math.abs(this._autoTarget - cx) < 26) {
@@ -860,10 +1021,10 @@ export class Game {
     const c = this.crab;
     const foe = this.wildlife.nearest(c.x, c.y, 44, (q) => q.hostile);
     if (foe) return `Strike ${foe.def.name}`;
-    const wildOne = this.wildlife.nearest(c.x, c.y, 40, (q) => !q.hostile && !q.tamed && q.trust > 0.45);
+    const wildOne = this.wildlife.nearest(c.x, c.y, 46, (q) => !q.hostile && !q.tamed);
     if (wildOne) {
-      const need = wildOne.def.tame;
-      return `Offer to ${wildOne.def.name} (${need.berries} berries, ${need.water} water)`;
+      const why = this.taming.why(wildOne);
+      return why ? `${wildOne.def.name}: ${why}` : `Sing with ${wildOne.def.name}`;
     }
     if (this.encounters.hint) return this.encounters.hint;
     if (Math.abs(this.npc.x - c.x) < 46) return 'Talk to Dr. Vess';
@@ -1108,6 +1269,10 @@ export class Game {
     if (this.garden.ripeCount) { this.harvestAll(); return; }
     const foe = this.wildlife.nearest(c.x, c.y, 44, (q) => q.hostile);
     if (foe) { this.attack(); return; }
+    // something willing close by: sing to it rather than buy it
+    const sing = this.wildlife.nearest(c.x, c.y, 46,
+      (q) => q.alive && !q.hostile && !q.tamed && this.taming.willing(q));
+    if (sing) { this.singTo(sing); return; }
     const wildOne = this.wildlife.nearest(c.x, c.y, 40, (q) => !q.hostile && !q.tamed && q.trust > 0.45);
     if (wildOne) {
       const res = this.wildlife.tryTame(wildOne);
@@ -1143,6 +1308,57 @@ export class Game {
     const found = this.world.found.size;
     for (const l of VESS_LORE) if (found >= l.need) out.push(l.line);
     return out.slice(-6);
+  }
+
+  /**
+   * One timed swing. The gauge decides what it was worth: on the band it does
+   * damage, on the core it does a great deal of it and staggers the animal,
+   * and off it entirely you are stood there with the claw open.
+   */
+  strike() {
+    const res = this.combat.strike();
+    const c = this.crab;
+    if (res.kind === 'none') { this.ui.say('Nothing close enough.', 2); return; }
+    if (res.kind === 'open') { this.audio.play('deny'); return; }
+    if (res.kind === 'early') return;
+    c.clawOpen = 1;
+    this.attackT = 0.4;
+    const t = this.combat.target;
+    if (res.kind === 'miss') {
+      this.audio.play('claw');
+      this.fx.dust(c.x + (c.facing || 1) * c.m.shellW * 0.5, c.y + c.standH * 0.6, 1.2);
+      this.fx.popup(c.x, c.y - c.m.rx, 'wide', '#9a8a70');
+      return;
+    }
+    const dmg = this.economy.stat('dmg') * res.mult;
+    if (t && t.alive) {
+      t.hurt(dmg, c.x);
+      this.gore(t, res.kind === 'crit' ? 1.6 : 0.8, c.x);
+      if (res.kind === 'crit') {
+        t.stagger = 0.9;
+        t.vx += Math.sign(t.x - c.x) * 120;
+        this.cam.shake(6);
+        this.fx.popup(t.x, t.y - 18, `${Math.round(dmg)}!`, '#ffd678');
+        this.audio.play('hit', { pitch: 0.7 });
+      } else {
+        this.cam.shake(2.6);
+        this.fx.popup(t.x, t.y - 16, `${Math.round(dmg)}`, '#f2e4c2');
+        this.audio.play('hit');
+      }
+    }
+  }
+
+  /**
+   * Something bled. Gore is a spray of it in the direction it was hit from,
+   * and a stain that stays on the sand afterwards, because a desert keeps
+   * what you spill on it.
+   */
+  gore(c, power = 1, fromX = null) {
+    if (!c) return;
+    const dir = fromX === null ? (Math.random() < 0.5 ? -1 : 1) : Math.sign(c.x - fromX) || 1;
+    const col = c.def.blood || (c.def.clade === 'insect' || c.def.clade === 'arachnid'
+      ? '#c8d07a' : '#8e1f22');
+    this.fx.blood(c.x, c.y - 8, dir, power, col);
   }
 
   attack() {
@@ -1210,6 +1426,25 @@ export class Game {
   floraEffect(def) { return def.boonText || 'Fixes nutrients.'; }
 
   /** In plain words, what a creature is waiting for before it walks over. */
+  /**
+   * How strongly the thing this species actually comes for is on offer right
+   * now. Berries for the birds, standing water for the reptiles, a flower in
+   * bloom for the insects, shade for the small nocturnal things - each is
+   * something already on your back, so putting a bird's bait out means growing
+   * the plant a bird wants rather than buying a bird.
+   */
+  baitFor(def) {
+    const l = this.taming.lureFor(def);
+    const e = this.economy, gd = this.garden;
+    switch (l.bait) {
+      case 'berries': return clamp01(e.berries / Math.max(1, l.n)) * 0.9;
+      case 'water': return gd.pond >= 0.3 ? clamp01(gd.pond * 1.4) * 0.9 : 0;
+      case 'nectar': return clamp01(gd.bloom || gd.lushness * 1.6) * 0.8;
+      case 'shade': return clamp01((gd.lushness || 0) * 2.2) * 0.7;
+      default: return 0;
+    }
+  }
+
   attractNeeds(def) {
     if (!def.attract) return 'Comes on its own terms.';
     const e = this.economy;
@@ -1449,6 +1684,7 @@ export class Game {
       morse: this.morse.toJSON(), green: this.green.toJSON(), pump: this.pump.toJSON(),
       digs: this.digs.toJSON(), relics: this.relics,
       mining: this.mining.toJSON(), craft: this.craft.toJSON(), mind: this.mind.toJSON(),
+      combat: this.combat.toJSON(),
     });
   }
 
@@ -1479,6 +1715,7 @@ export class Game {
       this.mining.fromJSON(d.mining);
       this.craft.fromJSON(d.craft);
       this.mind.fromJSON(d.mind);
+      this.combat.fromJSON(d.combat);
       this.relics = d.relics || {};
       if (d.mode) this.ui.mode = d.mode;
       this.economy.recomputeGenes();
@@ -1525,7 +1762,15 @@ export class Game {
     if (this.sleep) this._drawSleep(ctx, cam);
     if (this.waking) this._drawWaking(ctx, cam);
     if (this._pee) this._drawStream(ctx, cam);
-    if (this.state === 'play') this.mind.draw(ctx, cam);
+    if (this.state === 'play') {
+      this.mind.draw(ctx, cam);
+      this.hive.drawAim(ctx, cam);
+      this._drawRoamMark(ctx, cam);
+      // how far along you are with everything wild that is near you
+      for (const q of this.wildlife.list) {
+        if (cam.isVisible(q.x, q.y, 40)) q.drawTame?.(ctx, cam);
+      }
+    }
     this.ui.drawGhost(ctx, cam);
     this.wildlife.draw(ctx, cam, 'shell');
     if (this.state === 'play') this.ui.drawCrop(ctx, cam);
@@ -1562,6 +1807,10 @@ export class Game {
     // the water is between you and the world, so it goes on after the world is
     // lit and before anything that is not in the water with you
     if (this.seaShowing) this.sea.overlay(ui, cam, r.vw, r.vh);
+    if (this.state === 'play') {
+      this.fx.drawDust(ui, cam, r.vw, r.vh, this.weather);
+      this.hive.drawDream(ui, cam, r.vw, r.vh);
+    }
     if (this.state === 'intro' || this.state === 'burying') this._drawCutscene(ui, r);
     else if (this.state === 'prologue') this._drawPrologue(ui, r);
     if (this.state !== 'play' && this.state !== 'dead') this._drawCine(ui, r);

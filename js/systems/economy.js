@@ -189,6 +189,39 @@ export class Economy {
 
   // -- save -----------------------------------------------------------------
 
+  /**
+   * What you can actually do in a fight, drawn from the genome rather than
+   * from a list: every expressed gene that carries a combat effect becomes a
+   * slot, and the slots come off their own cooldowns.
+   */
+  abilities() {
+    if (!this._abil) this._abil = new Map();
+    const out = [];
+    for (const id of this.genes) {
+      const g = GENE_BY_ID[id];
+      if (!g || !g.combat) continue;
+      const st = this._abil.get(id) || { cool: 0 };
+      this._abil.set(id, st);
+      out.push({ id, name: g.name, desc: g.combat.desc || g.desc,
+        icon: g.icon || 'bolt', cd: g.combat.cd || 8, cool: st.cool });
+    }
+    return out;
+  }
+
+  /** Fire one, if it is off cooldown. */
+  useAbility(id) {
+    const list = this.abilities();
+    const a = list.find((x) => x.id === id);
+    if (!a || a.cool > 0) return null;
+    this._abil.get(id).cool = a.cd;
+    return a;
+  }
+
+  tickAbilities(dt) {
+    if (!this._abil) return;
+    for (const st of this._abil.values()) if (st.cool > 0) st.cool -= dt;
+  }
+
   toJSON() {
     return {
       water: this.water, nutrients: this.nutrients, berries: this.berries,

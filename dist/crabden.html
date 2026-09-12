@@ -9640,6 +9640,559 @@ body {
     }
   };
 
+  // js/systems/combat.js
+  var BASE_SPEED2 = 1.15;
+  var BASE_BAND2 = 0.26;
+  var CORE = 0.34;
+  var MAX_COMBO2 = 6;
+  var OPEN_SECS = 0.85;
+  var Combat = class {
+    constructor(game2) {
+      this.game = game2;
+      this.live = false;
+      this.pos = 0;
+      this.dir = 1;
+      this.band = 0.5;
+      this.combo = 0;
+      this.best = 0;
+      this.open = 0;
+      this.cool = 0;
+      this.target = null;
+      this.flash = 0;
+      this.crit = 0;
+    }
+    get speed() {
+      return BASE_SPEED2 * (1 + Math.min(this.combo, MAX_COMBO2) * 0.16);
+    }
+    /** The window narrows as the combo climbs, because of course it does. */
+    get width() {
+      return BASE_BAND2 * (1 - Math.min(this.combo, MAX_COMBO2) * 0.085);
+    }
+    get mult() {
+      return 1 + Math.min(this.combo, MAX_COMBO2) * 0.22;
+    }
+    /** Where on the sweep the window starts and ends. */
+    get window() {
+      const w = this.width;
+      return [this.band - w / 2, this.band + w / 2];
+    }
+    /** Bring the gauge up against a target, or drop it if there is nothing. */
+    engage(target) {
+      if (!target || !target.alive) {
+        this.stop();
+        return false;
+      }
+      this.target = target;
+      if (!this.live) {
+        this.live = true;
+        this.pos = 0;
+        this.dir = 1;
+        this.combo = 0;
+        this._reband();
+      }
+      return true;
+    }
+    stop() {
+      this.live = false;
+      this.target = null;
+      this.combo = 0;
+    }
+    _reband() {
+      this.band = 0.22 + Math.random() * 0.56;
+    }
+    update(dt) {
+      this.flash = Math.max(0, this.flash - dt * 3);
+      this.crit = Math.max(0, this.crit - dt * 2.4);
+      if (this.cool > 0) this.cool -= dt;
+      if (this.open > 0) this.open -= dt;
+      if (!this.live) return;
+      const t = this.target;
+      if (!t || !t.alive || Math.abs(t.x - this.game.crab.x) > 260) {
+        this.stop();
+        return;
+      }
+      this.pos += this.dir * this.speed * dt;
+      if (this.pos >= 1) {
+        this.pos = 1;
+        this.dir = -1;
+        this._reband();
+      } else if (this.pos <= 0) {
+        this.pos = 0;
+        this.dir = 1;
+        this._reband();
+      }
+    }
+    /**
+     * One swing. Returns what it was worth: `miss`, `hit` or `crit`, and the
+     * multiplier that goes with it.
+     */
+    strike() {
+      if (!this.live) return { kind: "none" };
+      if (this.open > 0) return { kind: "open" };
+      if (this.cool > 0) return { kind: "early" };
+      this.cool = 0.16;
+      const [lo, hi] = this.window;
+      const p = this.pos;
+      if (p < lo || p > hi) {
+        this.combo = 0;
+        this.open = OPEN_SECS;
+        this._reband();
+        return { kind: "miss" };
+      }
+      const off = Math.abs(p - this.band) / (this.width / 2);
+      const core = off <= CORE;
+      this.combo++;
+      this.best = Math.max(this.best, this.combo);
+      this.flash = 1;
+      if (core) this.crit = 1;
+      this._reband();
+      return { kind: core ? "crit" : "hit", mult: this.mult * (core ? 2.1 : 1), off };
+    }
+    toJSON() {
+      return { best: this.best };
+    }
+    fromJSON(d) {
+      if (d) this.best = d.best || 0;
+    }
+  };
+
+  // js/systems/taming.js
+  var LURES = {
+    bird: { bait: "berries", n: 3, tone: 1.9, notes: 5, name: "berries" },
+    reptile: { bait: "water", n: 14, tone: 0.8, notes: 3, name: "standing water" },
+    insect: { bait: "nectar", n: 2, tone: 2.4, notes: 4, name: "a flower in bloom" },
+    mammal: { bait: "shade", n: 1, tone: 1.2, notes: 4, name: "shade on your back" },
+    default: { bait: "berries", n: 2, tone: 1.4, notes: 4, name: "berries" }
+  };
+  var PHRASES = 4;
+  var HEAR_SECS = 0.42;
+  var WINDOW = 0.34;
+  var Taming = class {
+    constructor(game2) {
+      this.game = game2;
+      this.live = false;
+      this.target = null;
+      this.round = 0;
+      this.call = [];
+      this.said = [];
+      this.phase = "listen";
+      this.t = 0;
+      this.idx = 0;
+      this.score = 0;
+      this.wobble = 0;
+    }
+    lureFor(def3) {
+      return LURES[def3.clade] || LURES[def3.plan] || LURES.default;
+    }
+    /**
+     * Is this animal close enough to being willing? It has to have eaten what
+     * its species eats and stuck around long enough to trust you a little.
+     */
+    willing(c) {
+      return !!c && c.alive && !c.tamed && !c.hostile && c.trust >= 0.55;
+    }
+    /** Why it is not willing yet, in one line, for the prompt. */
+    why(c) {
+      if (!c) return "Nothing close enough.";
+      if (c.tamed) return "Already yours.";
+      if (c.hostile) return "That one is not going to sing with you.";
+      const l = this.lureFor(c.def);
+      if (c.trust < 0.55) return `Not yet. It wants ${l.name}, and time.`;
+      return null;
+    }
+    // -- the song -------------------------------------------------------------
+    begin(c) {
+      const why = this.why(c);
+      if (why) return { ok: false, why };
+      this.live = true;
+      this.target = c;
+      this.round = 0;
+      this.score = 0;
+      this.phase = "listen";
+      this._nextPhrase();
+      this.game.audio?.play("chirp", { pitch: this.lureFor(c.def).tone });
+      return { ok: true };
+    }
+    stop(won = false) {
+      const c = this.target;
+      this.live = false;
+      this.target = null;
+      this.phase = won ? "won" : "lost";
+      return c;
+    }
+    _nextPhrase() {
+      const l = this.lureFor(this.target.def);
+      const len = 2 + this.round;
+      this.call = [];
+      for (let i = 0; i < len; i++) this.call.push(Math.floor(Math.random() * l.notes));
+      this.said = [];
+      this.idx = -1;
+      this.t = 0;
+      this.phase = "listen";
+    }
+    /** How long the call takes to sing, so the UI can draw it as a strip. */
+    get callSecs() {
+      return this.call.length * HEAR_SECS;
+    }
+    /**
+     * You answer with a pitch: 0 is the lowest note it uses, `notes-1` the
+     * highest. Right note, roughly on the beat, and you are still in it.
+     */
+    answer(note) {
+      if (!this.live || this.phase !== "answer") return { ok: false };
+      const want = this.call[this.said.length];
+      const beat = this.said.length * HEAR_SECS;
+      const late = Math.abs(this.t - beat);
+      const right = note === want && late <= WINDOW;
+      this.said.push(note);
+      this.wobble = right ? 0 : 1;
+      const l = this.lureFor(this.target.def);
+      this.game.audio?.play("chirp", { pitch: l.tone * (0.8 + note * 0.16) });
+      if (!right) {
+        this.score = Math.max(0, this.score - 1);
+        this.game.audio?.play("deny");
+      } else {
+        this.score++;
+      }
+      if (this.said.length >= this.call.length) this._endPhrase();
+      return { ok: true, right };
+    }
+    _endPhrase() {
+      const clean = this.said.every((n, i) => n === this.call[i]);
+      const c = this.target;
+      if (clean) {
+        c.trust = clamp01(c.trust + 0.12);
+        this.game.fx?.spark(c.x, c.y - 10, "#ffe9a8", 10, 30);
+      } else {
+        c.trust = Math.max(0, c.trust - 0.06);
+        this.game.fx?.drift(c.x, c.y - 10, "#9a8a70", 2);
+      }
+      this.round++;
+      if (this.round >= PHRASES) {
+        const won = this.score >= this.call.length * 2;
+        const animal = this.stop(won);
+        if (won) this.game.onSungTame?.(animal);
+        else this.game.onSongLost?.(animal);
+        return;
+      }
+      this.phase = "gap";
+      this.t = 0;
+    }
+    update(dt) {
+      if (!this.live) return;
+      this.t += dt;
+      this.wobble = Math.max(0, this.wobble - dt * 2.5);
+      const c = this.target;
+      if (!c || !c.alive || Math.abs(c.x - this.game.crab.x) > 170) {
+        const animal = this.stop(false);
+        this.game.onSongLost?.(animal);
+        return;
+      }
+      const l = this.lureFor(c.def);
+      if (this.phase === "listen") {
+        const i = Math.floor(this.t / HEAR_SECS);
+        if (i !== this.idx && i < this.call.length) {
+          this.idx = i;
+          this.game.audio?.play("chirp", { pitch: l.tone * (0.8 + this.call[i] * 0.16) });
+          this.game.fx?.popup(c.x, c.y - 16 - this.call[i] * 3, ".", "#ffe9a8");
+        }
+        if (this.t >= this.callSecs + 0.25) {
+          this.phase = "answer";
+          this.t = 0;
+        }
+        return;
+      }
+      if (this.phase === "answer") {
+        const beat = this.said.length * HEAR_SECS;
+        if (this.t > beat + WINDOW + 0.18) this.answer(-1);
+        return;
+      }
+      if (this.phase === "gap" && this.t > 0.7) this._nextPhrase();
+    }
+  };
+
+  // js/systems/hive.js
+  var CHARGE_SECS = 1.35;
+  var SWEET = [0.62, 0.88];
+  var BURST = 1.25;
+  var Hive = class {
+    constructor(game2) {
+      this.game = game2;
+      this.charge = 0;
+      this.holding = false;
+      this.flight = null;
+      this.dream = 0;
+      this.pulse = 0;
+      this.pick = null;
+      this.t = 0;
+      this.refused = 0;
+    }
+    /** Everything on your nerve: puppets first, then the rest of the fleet. */
+    roster() {
+      const w = this.game.wildlife;
+      const out = w.fleet.filter((c) => c.alive);
+      if (this.game.mind?.owned) out.unshift(this.game.npc);
+      return out;
+    }
+    // -- the throw ------------------------------------------------------------
+    hold(on) {
+      if (on && !this.holding) {
+        this.charge = 0;
+        this.holding = true;
+      } else if (!on && this.holding) {
+        this.holding = false;
+        return this.release();
+      }
+      return null;
+    }
+    /** How far the arc reaches at the current charge. */
+    get reach() {
+      return lerp(26, 190, clamp01(this.charge / CHARGE_SECS));
+    }
+    get pressured() {
+      const k = this.charge / CHARGE_SECS;
+      return k >= SWEET[0] && k <= SWEET[1];
+    }
+    release() {
+      const e = this.game.economy;
+      const k = this.charge / CHARGE_SECS;
+      this.charge = 0;
+      if (e.parasites < 1) {
+        this.game.ui.say("No spore.", 2.5);
+        return { ok: false };
+      }
+      const c = this.game.crab;
+      const dir = c.facing || 1;
+      if (k > BURST) {
+        e.parasites--;
+        e.markDirty();
+        this.game.fx.ring(c.x, c.y - c.m.rx * 0.5, "#c98ade", 20);
+        this.game.fx.drift(c.x, c.y - c.m.rx * 0.6, "#c98ade", 8);
+        this.game.ui.say("It burst.", 2.5);
+        this.game.audio.play("hurt");
+        return { ok: false, burst: true };
+      }
+      e.parasites--;
+      e.markDirty();
+      const short = k < SWEET[0];
+      this.flight = {
+        x: c.x + dir * c.m.shellW * 0.42,
+        y: c.y - c.m.rx * 0.5,
+        vx: dir * this.reach * (short ? 0.55 : 1) * 1.1,
+        vy: -80 - this.reach * 0.35,
+        t: 0,
+        good: !short
+      };
+      this.game.audio.play("jet" in this.game.audio ? "jet" : "water", { pitch: 1.4 });
+      return { ok: true, good: !short };
+    }
+    /** Whether a spore that lands on this animal takes. */
+    willing(c) {
+      if (!c || !c.alive || c.tamed || c.puppet) return false;
+      return c.hp < c.hpMax * 0.45 || c.trust > 0.35 || c.mood === "feed";
+    }
+    whyNot(c) {
+      if (!c) return null;
+      if (c.hp < c.hpMax * 0.45) return null;
+      if (c.trust > 0.35) return null;
+      return "It threw it off. Wear it down, or feed it first.";
+    }
+    _land(x, y) {
+      const g = this.game;
+      g.fx.ring(x, y, "#c98ade", 22);
+      for (let i = 0; i < 16; i++) {
+        g.fx.drift(x + (Math.random() - 0.5) * 26, y - Math.random() * 12, "#c98ade", 1);
+      }
+      g.audio.play("water", { pitch: 0.7 });
+      const hit = g.wildlife.nearest(x, y, 34, (q) => q.alive && !q.puppet && !q.tamed);
+      if (!hit) return;
+      if (!this.willing(hit)) {
+        this.refused = 1;
+        hit.trust = Math.max(0, hit.trust - 0.2);
+        hit.mood = "flee";
+        g.fx.popup(hit.x, hit.y - 14, "no", "#c07a6a");
+        g.ui.say(this.whyNot(hit), 4);
+        return;
+      }
+      hit.puppet = true;
+      hit.tamed = true;
+      hit.trust = 1;
+      if (!g.wildlife.fleet.includes(hit)) g.wildlife.fleet.push(hit);
+      g.fx.ring(hit.x, hit.y - 10, "#6fd8ee", 18);
+      g.fx.popup(hit.x, hit.y - 16, hit.def.name, "#6fd8ee");
+      g.audio.play("discover");
+      g.economy.markDirty();
+    }
+    // -- the hive view --------------------------------------------------------
+    update(dt, inHive) {
+      this.t += dt;
+      this.dream = damp(this.dream, inHive ? 1 : 0, 9e-4, dt);
+      this.refused = Math.max(0, this.refused - dt);
+      if (inHive) {
+        this.pulse += dt * 0.55;
+        if (this.pulse > 1) this.pulse -= 1;
+      }
+      if (this.holding) this.charge += dt;
+      const f = this.flight;
+      if (f) {
+        f.t += dt;
+        f.vy += 420 * dt;
+        f.x += f.vx * dt;
+        f.y += f.vy * dt;
+        if (Math.random() < dt * 40) this.game.fx.drift(f.x, f.y, "#c98ade", 1);
+        const gy = this.game.terrain.surfaceY(f.x);
+        if (f.y >= gy || f.t > 3) {
+          this._land(f.x, Math.min(f.y, gy));
+          this.flight = null;
+        }
+      }
+      if (this.pick && (!this.pick.alive || !this.roster().includes(this.pick))) this.pick = null;
+    }
+    // -- drawing --------------------------------------------------------------
+    /** The arc, while you are charging, and the spore while it is in the air. */
+    drawAim(ctx, cam) {
+      const c = this.game.crab;
+      if (this.flight) {
+        const s = cam.worldToScreen(this.flight.x, this.flight.y);
+        const z = cam.zoom;
+        const g = ctx.createRadialGradient(s.x, s.y, 0, s.x, s.y, 6 * z);
+        g.addColorStop(0, "rgba(214,160,236,0.9)");
+        g.addColorStop(1, "rgba(201,138,222,0)");
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(s.x, s.y, 6 * z, 0, TAU);
+        ctx.fill();
+      }
+      if (!this.holding) return;
+      const dir = c.facing || 1;
+      const k = clamp01(this.charge / CHARGE_SECS);
+      const x0 = c.x + dir * c.m.shellW * 0.42, y0 = c.y - c.m.rx * 0.5;
+      const vx = dir * this.reach * 1.1, vy = -80 - this.reach * 0.35;
+      const good = this.pressured;
+      ctx.save();
+      for (let i = 1; i <= 16; i++) {
+        const t = i * 0.055;
+        const px = x0 + vx * t, py = y0 + vy * t + 210 * t * t;
+        const gy = this.game.terrain.surfaceY(px);
+        if (py > gy) break;
+        const s = cam.worldToScreen(px, py);
+        ctx.globalAlpha = 0.25 + (good ? 0.55 : 0.2) * (1 - i / 18);
+        ctx.fillStyle = good ? "#e8c0ff" : "#8a6e96";
+        const r = Math.max(1, Math.round(cam.zoom * (good ? 1.1 : 0.8)));
+        ctx.fillRect(Math.round(s.x), Math.round(s.y), r, r);
+      }
+      ctx.globalAlpha = 1;
+      ctx.restore();
+    }
+    /**
+     * The dream. Everything goes cold and slightly wrong, a ring travels out
+     * from you along the nerve, and every animal on that nerve is rimmed and
+     * strung back to your shell by a thread that breathes.
+     */
+    drawDream(ctx, cam, vw, vh) {
+      const k = this.dream;
+      if (k < 0.01) return;
+      const c = this.game.crab;
+      const s0 = cam.worldToScreen(c.x, c.y - c.m.rx * 0.4);
+      const t = this.t;
+      ctx.save();
+      ctx.globalCompositeOperation = "multiply";
+      ctx.globalAlpha = k * 0.55;
+      const grade = ctx.createLinearGradient(0, 0, 0, vh);
+      grade.addColorStop(0, "#5a7ec8");
+      grade.addColorStop(0.5, "#3f6ba8");
+      grade.addColorStop(1, "#24406e");
+      ctx.fillStyle = grade;
+      ctx.fillRect(0, 0, vw, vh);
+      ctx.restore();
+      ctx.save();
+      ctx.globalCompositeOperation = "screen";
+      ctx.globalAlpha = k * 0.22;
+      const lift = ctx.createRadialGradient(s0.x, s0.y, 0, s0.x, s0.y, Math.max(vw, vh) * 0.55);
+      lift.addColorStop(0, "#7fe2f4");
+      lift.addColorStop(1, "rgba(0,0,0,0)");
+      ctx.fillStyle = lift;
+      ctx.fillRect(0, 0, vw, vh);
+      ctx.restore();
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      for (let i = 0; i < 5; i++) {
+        const ph = t * (0.12 + i * 0.05) + i * 0.37;
+        const y = ph % 1 * (vh + 160) - 80;
+        const h = 26 + i * 12;
+        ctx.globalAlpha = k * 0.055;
+        const g2 = ctx.createLinearGradient(0, y - h, 0, y + h);
+        g2.addColorStop(0, "rgba(120,220,240,0)");
+        g2.addColorStop(0.5, "rgba(150,230,250,0.9)");
+        g2.addColorStop(1, "rgba(120,220,240,0)");
+        ctx.fillStyle = g2;
+        ctx.fillRect(0, y - h, vw, h * 2);
+      }
+      ctx.restore();
+      ctx.save();
+      for (let i = 0; i < 3; i++) {
+        const p = (this.pulse + i / 3) % 1;
+        const pr = p * Math.max(vw, vh) * 0.85;
+        ctx.globalAlpha = k * (1 - p) * (1 - p) * 0.5;
+        ctx.strokeStyle = "#a8f0ff";
+        ctx.lineWidth = 1 + (1 - p) * 2.5;
+        ctx.beginPath();
+        ctx.ellipse(s0.x, s0.y, pr, pr * 0.5, 0, 0, TAU);
+        ctx.stroke();
+      }
+      ctx.restore();
+      const list = this.roster();
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      for (const q of list) {
+        const s = cam.worldToScreen(q.x, q.y - 8);
+        const own = q === this.pick;
+        const beat = 0.6 + 0.4 * Math.sin(t * 3 + (q.uid || 0));
+        const sway = Math.sin(t * 2.1 + (q.uid || 0) * 1.7) * 16 * k;
+        const mx = (s0.x + s.x) / 2, my = (s0.y + s.y) / 2 + sway;
+        ctx.globalAlpha = k * (own ? 0.85 : 0.45);
+        ctx.strokeStyle = own ? "#ffe9a8" : "#7fd8ea";
+        ctx.lineWidth = own ? 2 : 1.2;
+        ctx.beginPath();
+        ctx.moveTo(s0.x, s0.y);
+        ctx.quadraticCurveTo(mx, my, s.x, s.y);
+        ctx.stroke();
+        const bt = (t * 0.8 + (q.uid || 0) * 0.31) % 1;
+        const bx = (1 - bt) * (1 - bt) * s0.x + 2 * (1 - bt) * bt * mx + bt * bt * s.x;
+        const by = (1 - bt) * (1 - bt) * s0.y + 2 * (1 - bt) * bt * my + bt * bt * s.y;
+        ctx.globalAlpha = k * 0.9;
+        ctx.fillStyle = own ? "#fff4d0" : "#bff2ff";
+        ctx.beginPath();
+        ctx.arc(bx, by, own ? 2.2 : 1.5, 0, TAU);
+        ctx.fill();
+        const r = (own ? 16 : 11) * cam.zoom * 0.5 * beat;
+        const hg = ctx.createRadialGradient(s.x, s.y, 0, s.x, s.y, r * 2.2);
+        hg.addColorStop(0, own ? "rgba(255,233,168,0.55)" : "rgba(127,216,234,0.42)");
+        hg.addColorStop(1, "rgba(0,0,0,0)");
+        ctx.globalAlpha = k;
+        ctx.fillStyle = hg;
+        ctx.beginPath();
+        ctx.arc(s.x, s.y, r * 2.2, 0, TAU);
+        ctx.fill();
+      }
+      ctx.restore();
+      const vig = ctx.createRadialGradient(
+        s0.x,
+        s0.y,
+        Math.min(vw, vh) * (0.18 + 0.02 * Math.sin(t * 1.3)),
+        s0.x,
+        s0.y,
+        Math.max(vw, vh) * 0.72
+      );
+      vig.addColorStop(0, "rgba(0,0,0,0)");
+      vig.addColorStop(1, `rgba(6,14,32,${0.52 * k})`);
+      ctx.fillStyle = vig;
+      ctx.fillRect(0, 0, vw, vh);
+      ctx.globalAlpha = 1;
+      ctx.lineWidth = 1;
+    }
+  };
+
   // js/systems/fx.js
   var MAX = 900;
   var WIND_PX = 34;
@@ -9834,6 +10387,50 @@ body {
         r: 1
       });
     }
+    /**
+     * Blood. It comes out in the direction the blow came from, arcs, and lands -
+     * and where it lands it stays, because a desert keeps what you spill on it.
+     * Insects bleed the wrong colour on purpose.
+     */
+    blood(x, y, dir = 1, power = 1, color = "#8e1f22") {
+      dir = Math.sign(dir) || 1;
+      const n = Math.round(6 + power * 12);
+      for (let i = 0; i < n; i++) {
+        const a = (Math.random() - 0.5) * 1.5;
+        const sp = (50 + Math.random() * 150) * power;
+        this._add({
+          k: "blood",
+          x,
+          y,
+          color,
+          vx: dir * Math.cos(a) * sp,
+          vy: Math.sin(a) * sp - 40 - Math.random() * 90,
+          life: 0.5 + Math.random() * 0.7,
+          t: 0,
+          r: 0.6 + Math.random() * 1.5,
+          grav: 420
+        });
+      }
+      for (let i = 0; i < Math.round(3 + power * 4); i++) {
+        this._add({
+          k: "gore",
+          x,
+          y,
+          color,
+          vx: dir * (10 + Math.random() * 50),
+          vy: -20 - Math.random() * 30,
+          life: 0.45 + Math.random() * 0.4,
+          t: 0,
+          r: 1 + Math.random() * 2.4
+        });
+      }
+    }
+    /** A stain, left where blood landed. It fades over a long time. */
+    stain(x, y, r, color) {
+      this.stains = this.stains || [];
+      if (this.stains.length > 90) this.stains.shift();
+      this.stains.push({ x, y, r, color, t: 0, life: 42 });
+    }
     ring(x, y, color = "#b6de8f", r = 14) {
       this._add({ k: "ring", x, y, r0: 2, r1: r, life: 0.5, t: 0, color });
     }
@@ -9854,29 +10451,20 @@ body {
         });
       }
     }
-    blood(x, y, n = 6) {
-      for (let i = 0; i < n; i++) {
-        const a = -Math.PI / 2 + (Math.random() - 0.5) * 2.4;
-        this._add({
-          k: "chip",
-          x,
-          y,
-          vx: Math.cos(a) * (20 + Math.random() * 45),
-          vy: Math.sin(a) * (20 + Math.random() * 45),
-          life: 0.5 + Math.random() * 0.5,
-          t: 0,
-          r: 1,
-          grav: 210,
-          settle: true
-        });
-      }
-    }
     popup(x, y, text, color = "#f4e2b4") {
       this._add({ k: "text", x, y, vx: 0, vy: -18, life: 1.25, t: 0, text, color });
     }
     // -- simulation -----------------------------------------------------------
     update(dt, weather) {
+      this.t = (this.t || 0) + dt;
       const t = this.game.terrain;
+      if (this.stains) {
+        for (let i = this.stains.length - 1; i >= 0; i--) {
+          const st = this.stains[i];
+          st.t += dt;
+          if (st.t >= st.life) this.stains.splice(i, 1);
+        }
+      }
       const wv = weather ? weather.windVec() : { x: 0.4, y: 0 };
       const wind = { x: wv.x * WIND_PX, y: 0 };
       const w = Math.abs(wind.x);
@@ -9927,6 +10515,20 @@ body {
             break;
           case "ring":
             break;
+          case "gore":
+            q.vy += 40 * dt;
+            q.vx *= Math.pow(0.3, dt);
+            q.r += dt * 7;
+            break;
+          case "blood": {
+            q.vy += (q.grav || 420) * dt;
+            const gy = this.game.terrain.surfaceY(q.x);
+            if (q.y >= gy && q.vy > 0) {
+              this.stain(q.x, gy, q.r * (1.4 + Math.random()), q.color);
+              q.t = q.life;
+            }
+            break;
+          }
           case "bug": {
             const gy = this.game.terrain.surfaceY(q.x);
             q.leg += dt * 22;
@@ -9995,9 +10597,64 @@ body {
       }
     }
     // -- drawing --------------------------------------------------------------
+    /**
+     * The air itself. Above a breeze the desert stops being still: sheets of
+     * grain go past in long streaks at three different speeds, and in a real
+     * storm a wall of it crosses the frame. Drawn in screen space over the
+     * world, because that is where you would see it from.
+     */
+    drawDust(ctx, cam, vw, vh, weather) {
+      const wv = weather ? weather.windVec() : { x: 0.4, y: 0 };
+      const sand = weather ? weather.sand || 0 : 0;
+      const w = Math.abs(wv.x);
+      const heavy = clamp01((w - 0.25) / 0.9) * (0.35 + sand * 1.4);
+      if (heavy < 0.02) return;
+      const dir = Math.sign(wv.x) || 1;
+      const t = this.t || 0;
+      ctx.save();
+      for (let L = 0; L < 3; L++) {
+        const speed = 160 + L * 240;
+        const n = Math.round((10 + L * 14) * heavy);
+        const alpha = (0.05 + L * 0.05) * heavy;
+        const len = 6 + L * 12;
+        ctx.globalAlpha = alpha;
+        ctx.fillStyle = L === 2 ? "#f4e2ba" : L === 1 ? "#dcc49a" : "#c8ab78";
+        for (let i = 0; i < n; i++) {
+          const seed = i * 97 + L * 311;
+          const yy = seed * 37 % 1e3 / 1e3 * vh;
+          const xx = (seed * 13 % 1e3 / 1e3 * (vw + 400) + dir * t * speed) % (vw + 400) - 200;
+          const x = dir > 0 ? xx : vw - xx;
+          const bob = Math.sin(t * 2 + seed) * 3;
+          ctx.fillRect(Math.round(x), Math.round(yy + bob), len, 1);
+        }
+      }
+      if (sand > 0.25) {
+        ctx.globalAlpha = (sand - 0.25) * 0.42;
+        const g = ctx.createLinearGradient(0, 0, 0, vh);
+        g.addColorStop(0, "rgba(214,178,120,0.5)");
+        g.addColorStop(0.6, "rgba(196,158,104,0.75)");
+        g.addColorStop(1, "rgba(160,124,78,0.85)");
+        ctx.fillStyle = g;
+        ctx.fillRect(0, 0, vw, vh);
+      }
+      ctx.globalAlpha = 1;
+      ctx.restore();
+    }
     draw(ctx, cam, layer = "near") {
       const z = cam.zoom;
       const b = cam.bounds(30);
+      if (layer === "far" && this.stains) {
+        for (const st of this.stains) {
+          if (st.x < b.x0 || st.x > b.x1) continue;
+          const s = cam.worldToScreen(st.x, st.y);
+          ctx.globalAlpha = 0.5 * (1 - st.t / st.life);
+          ctx.fillStyle = st.color;
+          ctx.beginPath();
+          ctx.ellipse(s.x, s.y, st.r * z, st.r * 0.42 * z, 0, 0, TAU);
+          ctx.fill();
+        }
+        ctx.globalAlpha = 1;
+      }
       for (const q of this.p) {
         if ((q.far ? "far" : "near") !== layer) continue;
         if (q.x < b.x0 || q.x > b.x1 || q.y < b.y0 || q.y > b.y1) continue;
@@ -10048,6 +10705,26 @@ body {
             ctx.fillRect(px - Math.round(w / 2) + (q.dir > 0 ? w - 1 : 0), py, 1, 1);
             break;
           }
+          case "blood": {
+            ctx.globalAlpha = a;
+            ctx.fillStyle = q.color;
+            const sp = Math.hypot(q.vx, q.vy);
+            const len = Math.max(1, Math.round(Math.min(5, sp / 60) * z));
+            const ang = Math.atan2(q.vy, q.vx);
+            ctx.save();
+            ctx.translate(s.x, s.y);
+            ctx.rotate(ang);
+            ctx.fillRect(0, 0, len, Math.max(1, Math.round(q.r * z * 0.7)));
+            ctx.restore();
+            break;
+          }
+          case "gore":
+            ctx.globalAlpha = a * 0.42;
+            ctx.fillStyle = q.color;
+            ctx.beginPath();
+            ctx.arc(s.x, s.y, q.r * z, 0, TAU);
+            ctx.fill();
+            break;
           case "grit":
             ctx.globalAlpha = a;
             ctx.fillStyle = Math.random() < 0.3 ? "#f0dcb2" : "#b9955f";
@@ -10823,18 +11500,18 @@ body {
     { id: "nocturne", name: "Night Eye", from: "Glasstail Gecko", desc: "A pupil that opens to almost the whole eye." },
     { id: "burrow", name: "Burrow Sense", from: "Quill Jerboa", desc: "Hearing water through two metres of sand." },
     { id: "wing", name: "Wing", from: "Glasswing", desc: "Flight, kept alive by something small enough to afford it." },
-    { id: "thornhide", name: "Thorn Hide", from: "Horned Pebbler", desc: "Scales grown into spines that comb dew into the mouth." },
+    { id: "thornhide", name: "Thorn Hide", from: "Horned Pebbler", desc: "Scales grown into spines that comb dew into the mouth.", icon: "shield", combat: { cd: 14, desc: "Spines out. Whatever hits you next takes it back." } },
     { id: "dusk", name: "Dusk Sight", from: "Sun Moth", desc: "Antennae that read a single molecule at a kilometre." },
-    { id: "lumen", name: "Lumen Organ", from: "Lantern Beetle", desc: "Cold light, made on purpose." },
-    { id: "bulwark", name: "Bulwark", from: "Ridgeback Grazer", desc: "Bone plate that grew because it had to." },
+    { id: "lumen", name: "Lumen Organ", from: "Lantern Beetle", desc: "Cold light, made on purpose.", icon: "bolt", combat: { cd: 10, desc: "Cold light, all at once. Anything looking at you flinches." } },
+    { id: "bulwark", name: "Bulwark", from: "Ridgeback Grazer", desc: "Bone plate that grew because it had to.", icon: "shield", combat: { cd: 16, desc: "Plate down. You take half for a while." } },
     { id: "watch", name: "Watcher's Eye", from: "Bone Heron", desc: "Stillness, then certainty." },
     { id: "ferrous", name: "Ferrous Sense", from: "Copper Scarab", desc: "Navigation by the polarisation of the sky." },
     { id: "song", name: "Song", from: "Salt Lark", desc: "The first new song in a thousand years." },
-    { id: "signal", name: "Signal Skin", from: "Ribbon Agama", desc: "Colour under nervous control, changing in seconds." },
-    { id: "apex", name: "Apex Nerve", from: "Salt Monitor", desc: "A reptile that caches food and comes back for it." },
+    { id: "signal", name: "Signal Skin", from: "Ribbon Agama", desc: "Colour under nervous control, changing in seconds.", icon: "burrow", combat: { cd: 11, desc: "The shell goes the colour of the sand and the animal loses you." } },
+    { id: "apex", name: "Apex Nerve", from: "Salt Monitor", desc: "A reptile that caches food and comes back for it.", icon: "saw", combat: { cd: 12, desc: "It knows where the joint is. Double damage on the next core hit." } },
     { id: "gut", name: "Ferment Gut", from: "Thorn Iguana", desc: "A stomach that turns ironwood into soil." },
     { id: "mimic", name: "Mimic Skin", from: "Ash Chameleon", desc: "Tunable photonic crystals instead of pigment." },
-    { id: "strike", name: "Strike Reflex", from: "Mirror Mantis", desc: "Fifty milliseconds from still to closed." },
+    { id: "strike", name: "Strike Reflex", from: "Mirror Mantis", desc: "Fifty milliseconds from still to closed.", icon: "claw", combat: { cd: 7, desc: "Fifty milliseconds from still to closed. The next strike lands whatever the gauge says." } },
     { id: "hearing", name: "Deep Hearing", from: "Dust Fennec", desc: "An insect moving under a hand-span of sand." }
   ];
   var GENE_BY_ID = Object.fromEntries(GENES.map((g) => [g.id, g]));
@@ -11585,6 +12262,42 @@ body {
       return !!f && this.water >= f.cost;
     }
     // -- save -----------------------------------------------------------------
+    /**
+     * What you can actually do in a fight, drawn from the genome rather than
+     * from a list: every expressed gene that carries a combat effect becomes a
+     * slot, and the slots come off their own cooldowns.
+     */
+    abilities() {
+      if (!this._abil) this._abil = /* @__PURE__ */ new Map();
+      const out = [];
+      for (const id of this.genes) {
+        const g = GENE_BY_ID[id];
+        if (!g || !g.combat) continue;
+        const st = this._abil.get(id) || { cool: 0 };
+        this._abil.set(id, st);
+        out.push({
+          id,
+          name: g.name,
+          desc: g.combat.desc || g.desc,
+          icon: g.icon || "bolt",
+          cd: g.combat.cd || 8,
+          cool: st.cool
+        });
+      }
+      return out;
+    }
+    /** Fire one, if it is off cooldown. */
+    useAbility(id) {
+      const list = this.abilities();
+      const a = list.find((x) => x.id === id);
+      if (!a || a.cool > 0) return null;
+      this._abil.get(id).cool = a.cd;
+      return a;
+    }
+    tickAbilities(dt) {
+      if (!this._abil) return;
+      for (const st of this._abil.values()) if (st.cool > 0) st.cool -= dt;
+    }
     toJSON() {
       return {
         water: this.water,
@@ -12720,7 +13433,9 @@ body {
     FLEE: "flee",
     HUNT: "hunt",
     ATTACK: "attack",
-    DEAD: "dead"
+    DEAD: "dead",
+    POUNCE: "pounce",
+    EAT: "eat"
   };
   var Creature = class {
     constructor(game2, def3, x) {
@@ -12754,6 +13469,14 @@ body {
       this.age = Math.random() * (def3.hp * 3);
       this.lifespan = (def3.hp * 9 + 240) * (0.75 + Math.random() * 0.5);
       this.breedT = 40 + Math.random() * 60;
+      this.jz = 0;
+      this.jv = 0;
+      this.squash = 0;
+      this.pounceT = 0;
+      this.bite = 0;
+      this.chew = 0;
+      this.stagger = 0;
+      this.hopT = 2 + Math.random() * 6;
       this.bob = 0;
       this.gait = Math.random() * TAU;
       this.sway = 0;
@@ -12827,8 +13550,17 @@ body {
       this.moodT += dt;
       this.hurtT = Math.max(0, this.hurtT - dt);
       this.atkT = Math.max(0, this.atkT - dt);
+      this.stagger = Math.max(0, this.stagger - dt);
+      this.bite = Math.max(0, this.bite - dt * 2.6);
+      this._air(dt, t);
       this.blink = Math.max(0, this.blink - dt);
       if (Math.random() < dt * 0.22) this.blink = 0.13;
+      if (this.stagger > 0) {
+        this.vx = damp(this.vx, 0, 2e-4, dt);
+        this.x += this.vx * dt;
+        this._settleFeet(dt, t);
+        return;
+      }
       this._think(dt, crab);
       if (this.onShell) {
         this._rideShell(dt, crab);
@@ -12885,6 +13617,41 @@ body {
         this.game.onObserved?.(this, dt);
       }
     }
+    /**
+     * Off the ground. Everything out here can leave it - a jerboa hops as its
+     * normal gait, a lizard pounces on what it is hunting, and anything at all
+     * jumps when it is startled - and everything that leaves it squashes on the
+     * way out and stretches at the top.
+     */
+    _air(dt, terr) {
+      if (this.jz > 0 || this.jv !== 0) {
+        this.jv -= 900 * dt * (this.flies ? 0 : 1);
+        this.jz += this.jv * dt;
+        if (this.jz <= 0) {
+          if (this.jv < -80) {
+            this.squash = -0.3;
+            this.game.fx?.dust(this.x, terr.surfaceY(this.x), 0.7 * this.S);
+          }
+          this.jz = 0;
+          this.jv = 0;
+        }
+        this.squash = damp(this.squash, this.jv > 40 ? 0.2 : 0, 8e-4, dt);
+      } else this.squash = damp(this.squash, 0, 9e-4, dt);
+    }
+    /** Leave the ground. `fwd` throws it forward as well as up. */
+    leap(power = 1, fwd = 0) {
+      if (this.jz > 0.5 || this.flies) return;
+      this.jv = 150 * power * (0.7 + this.S * 0.4);
+      this.squash = -0.26;
+      this.vx += fwd * this.def.speed * 1.4;
+      this.game.fx?.dust(this.x, this.game.terrain.surfaceY(this.x), 0.6 * this.S);
+    }
+    /** Keep the feet under it while it is not doing anything else. */
+    _settleFeet(dt, terr) {
+      if (this.flies || this.legless) return;
+      this._stepLegs(dt, terr);
+      this._rideFeet(dt, terr);
+    }
     /** Getting older, and sometimes getting on with it. */
     _live(dt) {
       this.age += dt;
@@ -12926,11 +13693,29 @@ body {
         }
         const reach = 22 + (crab ? crab.m.shellW * 0.28 : 0);
         if (ad < 240) {
+          const pouncing = ad > reach && ad < reach + 66 && this.jz <= 0.5 && !this.flies && !this.legless;
+          if (pouncing && this.pounceT <= 0 && Math.random() < dt * 1.3) {
+            this.pounceT = 0.42;
+            this.mood = MOOD.POUNCE;
+            this.moveTo = this.x;
+            return;
+          }
+          if (this.pounceT > 0) {
+            this.pounceT -= dt;
+            this.mood = MOOD.POUNCE;
+            this.moveTo = this.x;
+            if (this.pounceT <= 0) {
+              this.leap(1.25, -Math.sign(d));
+              this.game.audio?.play("growl", { pitch: 1.2 });
+            }
+            return;
+          }
           this.mood = ad < reach ? MOOD.ATTACK : MOOD.HUNT;
           this.moveTo = ad < reach ? this.x : crab.x - Math.sign(d) * (reach - 6);
           if (this.mood === MOOD.ATTACK && this.atkT <= 0) {
             this.atkT = 1.7;
             this.recoil = 0.9;
+            this.bite = 1;
             this.game.onCreatureAttack?.(this);
           }
         } else this._wander(dt);
@@ -12960,16 +13745,62 @@ body {
       }
       if (crab && ad < 130 && this.game.garden) {
         const appeal = this.game.attraction(this.def);
-        if (appeal > 0.2) {
+        const bait = this.game.baitFor?.(this.def) || 0;
+        const pull = appeal + bait;
+        if (pull > 0.2) {
           this.mood = ad > 30 ? MOOD.APPROACH : MOOD.FEED;
           this.moveTo = crab.x + (this.uid % 2 ? 24 : -24);
-          this.trust = clamp01(this.trust + dt * 0.1 * appeal);
+          this.trust = clamp01(this.trust + dt * (0.055 * appeal + 0.16 * bait));
+          if (this.mood === MOOD.FEED && this.trust > 0.5) {
+            this.moveTo = crab.x + (this.uid % 2 ? 22 : -22);
+            if (Math.random() < dt * 0.5) this.game.fx?.spark(this.x, this.y - 6, "#ffe9a8", 2, 12);
+          }
           return;
         }
       }
       this._wander(dt);
     }
+    /**
+     * Standing over something dead, taking it apart. Anything that eats meat
+     * will stop for a body, and while it is there it is not interested in you -
+     * which is the one reliable way to walk past a hunter.
+     */
+    _feedOn(kill, dt) {
+      this.mood = MOOD.EAT;
+      this.moveTo = kill.x + Math.sign(this.x - kill.x) * 6;
+      if (Math.abs(this.x - this.moveTo) > 5) return;
+      this.moveTo = this.x;
+      this.chew += dt;
+      if (this.chew > 0.5) {
+        this.chew = 0;
+        this.bite = 1;
+        this.game.fx?.blood(
+          kill.x,
+          kill.y - 6,
+          Math.sign(this.x - kill.x) || 1,
+          0.35,
+          kill.def.blood || "#8e1f22"
+        );
+        this.game.audio?.play("claw", { pitch: 0.7 + Math.random() * 0.3 });
+        kill.eaten = (kill.eaten || 0) + 1;
+        this.hp = Math.min(this.hpMax, this.hp + 1);
+      }
+    }
     _wander(dt) {
+      if (this.def.dmg > 0 && !this.tamed) {
+        const kill = this.game.wildlife?.nearestKill?.(this.x, 150);
+        if (kill) {
+          this._feedOn(kill, dt);
+          return;
+        }
+      }
+      if (!this.flies && !this.legless && this.def.hops) {
+        this.hopT -= dt;
+        if (this.hopT <= 0 && this.jz <= 0.5) {
+          this.hopT = 0.42 + Math.random() * 0.3;
+          this.leap(0.8, Math.sign(this.vx) || (Math.random() < 0.5 ? -1 : 1) * 0.5);
+        }
+      }
       if (this.mood === MOOD.BASK) {
         if (this.moodT > 5 + Math.random() * 6) {
           this.mood = MOOD.WANDER;
@@ -13059,9 +13890,16 @@ body {
     }
     hurt(n, fromX) {
       if (!this.alive) return;
+      const was = this.hp;
       this.hp -= n;
       this.hurtT = 0.28;
-      this.game.fx?.blood(this.x, this.y, 4);
+      const col = this.def.blood || (this.def.clade === "insect" || this.def.clade === "arachnid" ? "#c8d07a" : "#8e1f22");
+      const dir = fromX === void 0 ? 1 : Math.sign(this.x - fromX) || 1;
+      this.game.fx?.blood(this.x, this.y - 4, dir, this.hp <= 0 ? 1.8 : clamp(n / 8, 0.3, 1.2), col);
+      if (this.hp <= 0 && was > 0) {
+        this.game.cam?.shake(3);
+        this.game.fx?.ring(this.x, this.y - 4, col, 12);
+      }
       if (this.hp <= 0) {
         this.hp = 0;
         this.mood = MOOD.DEAD;
@@ -13078,12 +13916,14 @@ body {
       const rig = this.rig;
       const f = this.faceT < 0 ? -1 : 1;
       const fa = Math.max(0.04, Math.abs(this.faceT));
-      const s = cam.worldToScreen(this.x, this.y + this.bob);
+      const s = cam.worldToScreen(this.x, this.y + this.bob - (this.jz || 0));
       const z = cam.zoom;
       if (!this.flies && !this.onShell) this._shadow(ctx, cam);
       ctx.save();
       ctx.translate(Math.round(s.x * 2) / 2, Math.round(s.y * 2) / 2);
       ctx.scale(z, z);
+      const sq = (this.squash || 0) - (this.pounceT > 0 ? 0.22 : 0);
+      if (Math.abs(sq) > 4e-3) ctx.scale(1 - sq * 0.45, 1 + sq);
       if (!this.alive) {
         ctx.globalAlpha = Math.max(0, 1 - this.moodT / 4);
         ctx.rotate(clamp(this.moodT * 1.6, 0, 1) * 1.5 * f);
@@ -13212,6 +14052,45 @@ body {
       ctx.fillStyle = "#ffe9a8";
       ctx.fillRect(Math.round(s.x - 1), Math.round(s.y - 3 + Math.sin(t) * 1.5), 2, 4);
       ctx.globalAlpha = 1;
+    }
+    /**
+     * How far along you are with a wild animal, drawn on the animal. A ring
+     * that fills as it decides about you, and a note over it once it is willing
+     * - so a tame is something you can watch happen rather than a number in a
+     * panel you have to go and look at.
+     */
+    drawTame(ctx, cam) {
+      if (!this.alive || this.tamed || this.hostile || this.trust <= 0.04) return;
+      const s = cam.worldToScreen(this.x, this.y - this.rig.body.H * 1.55);
+      const z = cam.zoom;
+      const r = 5 * z;
+      const k = clamp01(this.trust);
+      const ready = k >= 0.55;
+      ctx.save();
+      ctx.globalAlpha = 0.45;
+      ctx.strokeStyle = "rgba(14,10,6,0.9)";
+      ctx.lineWidth = 2.2;
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, r, 0, TAU);
+      ctx.stroke();
+      ctx.globalAlpha = ready ? 0.95 : 0.75;
+      ctx.strokeStyle = ready ? "#ffe9a8" : "#8ec8d8";
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, r, -Math.PI / 2, -Math.PI / 2 + TAU * k);
+      ctx.stroke();
+      if (ready) {
+        const b = Math.sin(this.game.time * 3.4) * 1.4 * z;
+        ctx.globalAlpha = 0.9;
+        ctx.fillStyle = "#ffe9a8";
+        ctx.fillRect(Math.round(s.x - 0.5 * z), Math.round(s.y - 3 * z + b), Math.max(1, z), 3 * z);
+        ctx.beginPath();
+        ctx.ellipse(s.x - 1.2 * z, s.y + b, 1.4 * z, 1.1 * z, 0, 0, TAU);
+        ctx.fill();
+      }
+      ctx.restore();
+      ctx.globalAlpha = 1;
+      ctx.lineWidth = 1;
     }
   };
 
@@ -14074,6 +14953,7 @@ body {
       name: "Quill Jerboa",
       sci: "Jaculus spinifer",
       clade: "mammal",
+      hops: true,
       plan: "beast",
       tier: 1,
       scale: 0.6,
@@ -14436,6 +15316,22 @@ body {
     }
     get hostiles() {
       return this.list.filter((c) => c.hostile && c.alive);
+    }
+    /**
+     * The nearest fresh body. Anything that eats meat will cross a basin for
+     * one, and a body that has been picked over is no longer worth crossing for.
+     */
+    nearestKill(x, r = 150) {
+      let best = null, bd = r;
+      for (const c of this.list) {
+        if (c.alive || c.moodT > 26 || (c.eaten || 0) > 5) continue;
+        const d = Math.abs(c.x - x);
+        if (d < bd) {
+          bd = d;
+          best = c;
+        }
+      }
+      return best;
     }
     /** How much a species wants to live on the current shell, 0..1. */
     attraction(def3) {
@@ -15469,7 +16365,10 @@ body {
     dusk: "...1.../..111../.11111./1111111/......./1111111/......./......./.......",
     shade: "..111../.11111./1111111/......./..1.1../..1.1../..1.1../.11111./.......",
     weight: "..111../.11111./..1.1../.11111./1111111/1111111/.11111./......./.......",
-    clock: "..111../.1...1./1..1..1/1..11.1/1....11/.1...1./..111../......./......."
+    clock: "..111../.1...1./1..1..1/1..11.1/1....11/.1...1./..111../......./.......",
+    // the modes: an animal standing, an animal walking
+    crab: ".11111./1111111/1.1.1.1/1111111/.11111./1.1.1.1/1.1.1.1/......./.......",
+    crabwalk: ".11111./1111111/1.1.1.1/1111111/.11111./1..1..1/11...11/......./......."
   };
   function drawNodeIcon(ctx, name, cx, cy, color, scale = 1) {
     const rows = NODE[name];
@@ -17817,9 +18716,43 @@ body {
     { id: "build", icon: "build", name: "BUILD" }
   ];
   var MODES = [
-    { id: "direct", name: "WALK", desc: "You steer. A crab goes sideways." },
-    { id: "auto", name: "ROAM", desc: "The crab walks itself toward whatever is over the next dune.", skill: "stride" },
-    { id: "creature", name: "FLEET", desc: "Click one of your own and send it somewhere.", skill: "command" }
+    {
+      id: "direct",
+      name: "WALK",
+      glyph: "crab",
+      tint: "#e2b74a",
+      desc: "You steer. A crab goes sideways."
+    },
+    {
+      id: "auto",
+      name: "ROAM",
+      glyph: "crabwalk",
+      tint: "#9ad86a",
+      skill: "stride",
+      desc: "Click where you want to be and it walks itself there. It will not wander off on its own."
+    },
+    {
+      id: "hunt",
+      name: "HUNT",
+      glyph: "claw",
+      tint: "#e2564f",
+      desc: "The claw, on a timer. Hit the band for damage and the core for a great deal of it."
+    },
+    {
+      id: "spore",
+      name: "SPORE",
+      glyph: "jet",
+      tint: "#c98ade",
+      desc: "Hold to charge, release at pressure. A spore only takes in something willing."
+    },
+    {
+      id: "hive",
+      name: "HIVE",
+      glyph: "link",
+      tint: "#6fd8ee",
+      skill: "command",
+      desc: "Everything on your nerve, and the nerve itself. Click one and you are it."
+    }
   ];
   var UI = class {
     constructor(game2) {
@@ -17926,10 +18859,20 @@ body {
     cycleMode() {
       const avail = MODES.filter((m) => this.modeUnlocked(m.id));
       const i = avail.findIndex((m) => m.id === this.mode);
-      const next = avail[(i + 1) % avail.length];
-      this.mode = next.id;
+      this.setMode(avail[(i + 1) % avail.length].id);
+    }
+    setMode(id) {
+      if (this.mode === id) return;
+      const m = MODES.find((x) => x.id === id);
+      if (!m || !this.modeUnlocked(id)) return;
+      this.game.combat?.stop();
+      this.game.hive?.hold(false);
+      if (id !== "hive") this.game.hive && (this.game.hive.pick = null);
+      if (id !== "auto") this.game.roamTarget = null;
+      this.mode = id;
       this.selected = null;
-      this.say(`${next.name}: ${next.desc}`, 4);
+      this.say(`${m.name}: ${m.desc}`, 4);
+      this.game.audio?.play("ui");
     }
     // -- frame ----------------------------------------------------------------
     update(dt) {
@@ -18002,7 +18945,11 @@ body {
       if (this.placing && !this.buildOn) this.placing = null;
       if (this.placing) this._updatePlacing();
       this._updateDrag(dt);
-      if (this.mode === "creature" && !this.drawerOpen) this._updateCommand();
+      if (!this.drawerOpen && !this.paused) {
+        if (this.mode === "creature") this._updateCommand();
+        else if (this.mode === "auto") this._updateRoam();
+        else if (this.mode === "hive") this._updateHive();
+      }
       const b = this.game.economy.nutrients;
       this.bloomShown = damp(this.bloomShown, b, 0.05, dt);
     }
@@ -18218,6 +19165,45 @@ body {
         this.placing = null;
       }
     }
+    /**
+     * ROAM: a click anywhere in the desert is where you want to be, and it
+     * walks itself there. Nothing else. It will not pick its own destinations.
+     */
+    _updateRoam() {
+      const g = this.game;
+      if (!g.input.clicked || g.input.sy > this.game.renderer.vh - 34) return;
+      g.input.clicked = false;
+      const w = g.cam.screenToWorld(g.input.sx, g.input.sy);
+      g.roamTarget = w.x;
+      g.fx.ring(w.x, g.terrain.surfaceY(w.x), "#9ad86a", 14);
+      g.fx.spark(w.x, g.terrain.surfaceY(w.x) - 2, "#9ad86a", 8, 24);
+      g.audio?.play("ui");
+    }
+    /** HIVE: a click on one of yours takes it. A click on the ground sends it. */
+    _updateHive() {
+      const g = this.game;
+      if (!g.input.clicked) return;
+      const w = g.cam.screenToWorld(g.input.sx, g.input.sy);
+      const list = g.hive.roster();
+      let best = null, bd = 34;
+      for (const q of list) {
+        const d = Math.hypot(q.x - w.x, q.y - 8 - w.y);
+        if (d < bd) {
+          bd = d;
+          best = q;
+        }
+      }
+      if (best) {
+        g.input.clicked = false;
+        g.takeHive(best);
+        return;
+      }
+      if (g.hive.pick && g.hive.pick !== g.npc) {
+        g.input.clicked = false;
+        g.hive.pick.commanded = { x: w.x };
+        g.fx.spark(w.x, g.terrain.surfaceY(w.x), "#6fd8ee", 8, 22);
+      }
+    }
     _updateCommand() {
       const g = this.game;
       if (!g.input.clicked) return;
@@ -18255,10 +19241,287 @@ body {
       if (this.drawer > 5e-3) this._panel(ctx, W, H);
       else if (this.touchEnabled) this._touchControls(ctx, W, H);
       if (this.toast) this._toast(ctx, W, H);
+      if (this.game.taming?.live) this._songCard(ctx, W, H);
       if (this.drag) this._drawCarried(ctx, W, H);
       this._exitChip(ctx, W, H);
       if (this.paused) this._pauseCard(ctx, W, H);
       if (this.hover && !this.drag) this._tooltip(ctx, W, H);
+    }
+    /**
+     * The mode bar. Five of them down the left-hand edge - a glyph each, lit in
+     * its own colour when it is the one you are in - and then, beside it,
+     * whatever that mode actually gives you to press. Nothing here is a word you
+     * have to remember: the walking crab is roam, the claw is hunt, the jet is
+     * spore, the link is the hive.
+     */
+    _modeBar(ctx, W, H) {
+      const g = this.game;
+      const avail = MODES.filter((m) => this.modeUnlocked(m.id));
+      const S = 15, gap = 2;
+      const bx = 3;
+      const by = H - 26 - (avail.length - 1) * (S + gap);
+      avail.forEach((m, i) => {
+        const y = by + i * (S + gap);
+        const on = this.mode === m.id;
+        const hot = this._hit(bx, y, S, S);
+        drawPlate(ctx, bx, y, S, S, {
+          edge: on ? m.tint : "rgba(140,112,66,0.4)",
+          top: on ? "rgba(52,42,26,0.95)" : void 0,
+          rivets: false
+        });
+        if (on) {
+          ctx.fillStyle = m.tint;
+          ctx.fillRect(bx, y, 2, S);
+        }
+        drawGlyph(ctx, m.glyph, bx + S / 2 + 1, y + S / 2, {
+          color: on ? m.tint : hot ? "#d6ba8a" : "rgba(190,166,120,0.55)",
+          scale: 1
+        });
+        if (hot) {
+          this.hover = { title: m.name, body: `${m.desc}   (M cycles)` };
+          if (g.input.clicked) {
+            g.input.clicked = false;
+            this.setMode(m.id);
+          }
+        }
+      });
+      const ax = bx + S + 6, ay = H - 26;
+      if (this.mode === "hunt") this._huntBar(ctx, ax, ay, W, H);
+      else if (this.mode === "spore") this._sporeBar(ctx, ax, ay, W, H);
+      else if (this.mode === "hive") this._hiveBar(ctx, ax, ay, W, H);
+      else if (this.mode === "auto") this._roamBar(ctx, ax, ay, W, H);
+    }
+    /**
+     * The song. It sings a phrase at you as a row of blocks climbing and
+     * falling, and then you give it back on the number keys - and the row fills
+     * in under it as you do, green for right and red for wrong. Neither of you
+     * has words, so nothing here is a word.
+     */
+    _songCard(ctx, W, H) {
+      const t = this.game.taming;
+      const c = t.target;
+      if (!c) return;
+      const notes = t.lureFor(c.def).notes;
+      const cw = Math.min(190, W - 24);
+      const ch = 62;
+      const x = Math.round(W / 2 - cw / 2);
+      const y = Math.round(H * 0.62);
+      drawPlate(ctx, x, y, cw, ch);
+      drawText(ctx, c.def.name, x + 6, y + 4, { color: "#ffe9a8" });
+      drawText(ctx, `${t.round + 1}/4`, x + cw - 6, y + 4, { color: FAINT, align: "right" });
+      const gx = x + 8, gy = y + 16, gw = cw - 16, gh = 20;
+      const n = Math.max(1, t.call.length);
+      const bw = Math.floor(gw / n) - 2;
+      for (let i = 0; i < t.call.length; i++) {
+        const p = t.call[i];
+        const bh = Math.round((p + 1) / notes * gh);
+        const bx = gx + i * (bw + 2);
+        const sounding = t.phase === "listen" && t.idx === i;
+        ctx.fillStyle = sounding ? "#fff4d0" : "rgba(226,183,74,0.55)";
+        ctx.fillRect(bx, gy + gh - bh, bw, bh);
+        if (i < t.said.length) {
+          const right = t.said[i] === p;
+          ctx.fillStyle = right ? "rgba(140,220,130,0.9)" : "rgba(226,86,79,0.9)";
+          ctx.fillRect(bx, gy + gh + 3, bw, 3);
+        } else if (t.phase === "answer" && i === t.said.length) {
+          ctx.globalAlpha = 0.4 + 0.6 * Math.abs(Math.sin(this.t * 6));
+          ctx.fillStyle = "#9fe8d4";
+          ctx.fillRect(bx, gy + gh + 3, bw, 3);
+          ctx.globalAlpha = 1;
+        }
+      }
+      const ky = y + ch - 14;
+      for (let p = 0; p < notes; p++) {
+        const kx = x + 8 + p * 17;
+        const hot = this._hit(kx, ky, 15, 11);
+        const live = t.phase === "answer";
+        drawPlate(ctx, kx, ky, 15, 11, {
+          edge: live ? "rgba(160,130,78,0.6)" : "rgba(80,66,44,0.35)",
+          top: hot && live ? "rgba(66,52,30,0.95)" : void 0,
+          rivets: false
+        });
+        ctx.globalAlpha = live ? 1 : 0.45;
+        const bh2 = Math.round((p + 1) / notes * 7);
+        ctx.fillStyle = "#e2b74a";
+        ctx.fillRect(kx + 3, ky + 9 - bh2, 3, bh2);
+        drawText(ctx, `${p + 1}`, kx + 10, ky + 2, { color: DIM });
+        ctx.globalAlpha = 1;
+        if (hot && live && this.game.input.clicked) {
+          this.game.input.clicked = false;
+          t.answer(p);
+        }
+      }
+      const say = t.phase === "listen" ? "listen" : t.phase === "answer" ? "sing it back" : "...";
+      drawText(ctx, say, x + cw - 6, ky + 2, { color: FAINT, align: "right" });
+    }
+    /** A button that says what it is with a picture and a key. */
+    _actBtn(ctx, x, y, w, h, glyph, label, key2, opts = {}) {
+      const hot = this._hit(x, y, w, h);
+      const on = !!opts.on;
+      const dim = !!opts.dim;
+      drawPlate(ctx, x, y, w, h, {
+        edge: on ? opts.tint || "#e2b74a" : dim ? "rgba(90,74,50,0.35)" : "rgba(160,130,78,0.5)",
+        top: hot && !dim ? "rgba(66,52,30,0.95)" : void 0
+      });
+      ctx.globalAlpha = dim ? 0.45 : 1;
+      drawGlyph(ctx, glyph, x + 9, y + h / 2, { color: opts.tint || "#e2b74a", scale: 1 });
+      drawText(ctx, label, x + 17, y + 3, { color: dim ? DIM : INK });
+      if (key2) drawText(ctx, key2, x + w - 4, y + 3, { color: FAINT, align: "right" });
+      ctx.globalAlpha = 1;
+      if (hot && !dim) this.hover = opts.hover || null;
+      return hot && this.game.input.clicked;
+    }
+    /**
+     * Hunt: the strike gauge, the claw, and a row of whatever abilities your
+     * genome has actually grown.
+     */
+    _huntBar(ctx, x, y, W, H) {
+      const g = this.game;
+      const cb = g.combat;
+      const foe = cb.target || g.nearestHostile?.(g.crab.x, 150);
+      const w = 92;
+      if (cb.live) {
+        const gy = y - 16;
+        drawPlate(ctx, x, gy, w, 13);
+        const iw = w - 6, ix = x + 3, iy = gy + 3;
+        ctx.fillStyle = "rgba(12,8,5,0.9)";
+        ctx.fillRect(ix, iy, iw, 7);
+        const [lo, hi] = cb.window;
+        ctx.fillStyle = "rgba(226,86,79,0.42)";
+        ctx.fillRect(ix + iw * lo, iy, iw * (hi - lo), 7);
+        const cw = (hi - lo) * 0.34;
+        ctx.fillStyle = "rgba(255,214,120,0.75)";
+        ctx.fillRect(ix + iw * (cb.band - cw / 2), iy, iw * cw, 7);
+        ctx.fillStyle = cb.flash > 0 ? "#fff4d0" : "#f2e4c2";
+        ctx.fillRect(Math.round(ix + iw * cb.pos), iy - 1, 1, 9);
+        if (cb.combo > 0) {
+          drawText(
+            ctx,
+            `x${cb.mult.toFixed(1)}`,
+            x + w - 3,
+            gy - 9,
+            { color: "#ffd678", align: "right" }
+          );
+        }
+        if (cb.open > 0) drawText(ctx, "OPEN", x + 3, gy - 9, { color: "#e2564f" });
+      }
+      const label = cb.open > 0 ? "OPEN" : cb.live ? "STRIKE" : "NOTHING NEAR";
+      if (this._actBtn(ctx, x, y, w, 14, "claw", label, "Q", {
+        tint: "#e2564f",
+        dim: !cb.live || cb.open > 0,
+        hover: { title: "Strike", body: foe ? `${foe.def.name}. Land it on the band for damage and on the core for a great deal of it.` : "Nothing close enough to hit." }
+      })) {
+        g.input.clicked = false;
+        g.strike();
+      }
+      const abil = g.economy.abilities ? g.economy.abilities() : [];
+      let ax = x + w + 5;
+      abil.slice(0, 4).forEach((a, i) => {
+        const hot = this._hit(ax, y, 15, 14);
+        const ready = !a.cool || a.cool <= 0;
+        drawPlate(ctx, ax, y, 15, 14, { edge: ready ? "rgba(160,130,78,0.6)" : "rgba(80,66,44,0.4)" });
+        drawGlyph(ctx, a.icon || "bolt", ax + 8, y + 7, { color: ready ? "#e2b74a" : "#6b5a3c", scale: 1 });
+        if (!ready) {
+          ctx.fillStyle = "rgba(8,6,4,0.6)";
+          ctx.fillRect(ax + 1, y + 1, 13, 12 * clamp01(a.cool / (a.cd || 1)));
+        }
+        if (hot) {
+          this.hover = { title: a.name, body: ready ? a.desc : `${a.desc}
+
+Coming back.` };
+          if (ready && g.input.clicked) {
+            g.input.clicked = false;
+            g.useAbility(a.id);
+          }
+        }
+        ax += 17;
+      });
+    }
+    /** Spore: a charge bar that tells you where pressure is. */
+    _sporeBar(ctx, x, y, W, H) {
+      const g = this.game;
+      const hv = g.hive;
+      const w = 96;
+      const k = clamp01(hv.charge / 1.35);
+      const gy = y - 16;
+      drawPlate(ctx, x, gy, w, 13);
+      const iw = w - 6, ix = x + 3, iy = gy + 3;
+      ctx.fillStyle = "rgba(12,8,5,0.9)";
+      ctx.fillRect(ix, iy, iw, 7);
+      ctx.fillStyle = "rgba(201,138,222,0.40)";
+      ctx.fillRect(ix + iw * 0.62, iy, iw * 0.26, 7);
+      ctx.fillStyle = "rgba(226,86,79,0.5)";
+      ctx.fillRect(ix + iw * 0.93, iy, iw * 0.07, 7);
+      ctx.fillStyle = hv.pressured ? "#f0d4ff" : "#c98ade";
+      ctx.fillRect(ix, iy, Math.round(iw * Math.min(1, k)), 7);
+      drawText(
+        ctx,
+        `${g.economy.parasites}`,
+        x + w - 3,
+        gy - 9,
+        { color: "#c98ade", align: "right" }
+      );
+      const holding = hv.holding;
+      this._actBtn(ctx, x, y, w, 14, "jet", holding ? "RELEASE" : "HOLD TO CHARGE", "V", {
+        tint: "#c98ade",
+        dim: g.economy.parasites < 1,
+        hover: { title: "Spore", body: "Hold to build pressure, let go inside the band. Too long and it goes off on you - and it only takes in something already worn down, fed, or half trusting you." }
+      });
+    }
+    /** Hive: everything on your nerve, as a row you can click. */
+    _hiveBar(ctx, x, y, W, H) {
+      const g = this.game;
+      const list = g.hive.roster();
+      if (!list.length) {
+        drawPlate(ctx, x, y, 104, 14, { rivets: false });
+        drawText(ctx, "nothing on the nerve", x + 5, y + 3, { color: FAINT });
+        return;
+      }
+      let cx2 = x;
+      for (const q of list.slice(0, 8)) {
+        const on = g.hive.pick === q;
+        const hot = this._hit(cx2, y, 15, 14);
+        drawPlate(ctx, cx2, y, 15, 14, {
+          edge: on ? "#6fd8ee" : "rgba(120,150,160,0.4)",
+          top: hot ? "rgba(40,60,72,0.95)" : void 0
+        });
+        ctx.fillStyle = on ? "#9fe8f4" : q.hostile ? "#d88a7a" : "#8ec8d8";
+        ctx.fillRect(cx2 + 5, y + 4, 5, 5);
+        const hp = clamp01((q.hp ?? 1) / (q.hpMax ?? 1));
+        ctx.fillStyle = "rgba(10,20,24,0.8)";
+        ctx.fillRect(cx2 + 2, y + 11, 11, 1);
+        ctx.fillStyle = hp > 0.4 ? "#6fd8ee" : "#e2564f";
+        ctx.fillRect(cx2 + 2, y + 11, Math.round(11 * hp), 1);
+        if (hot) {
+          this.hover = {
+            title: q.name || q.def?.name || "One of yours",
+            body: on ? "You are this one. A / D walks it; click it again to let go." : "Click to be this one."
+          };
+          if (g.input.clicked) {
+            g.input.clicked = false;
+            g.takeHive(q);
+          }
+        }
+        cx2 += 17;
+      }
+    }
+    /** Roam: it does not move until you say where. */
+    _roamBar(ctx, x, y, W, H) {
+      const g = this.game;
+      const set = g.roamTarget !== null && g.roamTarget !== void 0;
+      const w = 104;
+      if (this._actBtn(ctx, x, y, w, 14, "point", set ? "WALKING THERE" : "CLICK A PLACE", null, {
+        tint: "#9ad86a",
+        on: set,
+        hover: { title: "Roam", body: set ? "On its way. Click somewhere else to change its mind, or press this to stop." : "Click anywhere in the desert and it walks itself there. It will not wander off on its own." }
+      })) {
+        g.input.clicked = false;
+        g.roamTarget = null;
+      }
+      if (set) {
+        const d = Math.abs(g.roamTarget - g.crab.x);
+        drawText(ctx, `${Math.round(d)}`, x + w + 5, y + 3, { color: FAINT });
+      }
     }
     /**
      * A line of text, on a slab, with a lit edge down one side. It slides up as
@@ -18565,19 +19828,9 @@ body {
         ctx.fillStyle = crab.hp > crab.hpMax * 0.35 ? "#c8425c" : "#e2564f";
         ctx.fillRect(x, y, Math.round(w * (crab.hp / crab.hpMax)), 4);
       }
-      const modeDef = MODES.find((m) => m.id === this.mode);
       if (this.buildOn) return;
+      this._modeBar(ctx, W, H);
       if (this.touchEnabled) return;
-      const mw = textWidth(modeDef.name) + 8;
-      drawPlate(ctx, 3, H - 22, mw, 11, { alpha: 0.85, rivets: false });
-      drawText(ctx, modeDef.name, 7, H - 20, { color: FAINT });
-      if (this._hit(4, H - 22, 34, 10)) {
-        this.hover = { title: modeDef.name, body: modeDef.desc + "   (M to switch)" };
-        if (this.game.input.clicked) {
-          this.game.input.clicked = false;
-          this.cycleMode();
-        }
-      }
       const hint = g.actionHint();
       if (hint && !this.touchEnabled) {
         drawText(ctx, hint, W / 2, H - 30, { color: INK, align: "center", outline: true, outlineColor: OUT });
@@ -20066,6 +21319,10 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
       this.mining = new Mining(this, this.seed);
       this.craft = new Craft(this);
       this.mind = new Mind(this);
+      this.combat = new Combat(this);
+      this.taming = new Taming(this);
+      this.hive = new Hive(this);
+      this.roamTarget = null;
       this.ui = new UI(this);
       this.seeds = { dustmoss: 3, saltgrass: 2 };
       this.research = {};
@@ -20669,7 +21926,7 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
             move = 0;
           }
         }
-        if (this.ui.mode === "auto" && Math.abs(move) < 0.05) move = this._autoWalk(sdt);
+        if (this.ui.mode === "auto" && Math.abs(move) < 0.05) move = this._roamWalk(sdt);
         if (play && (i.justPressed(" ") || i.justPressed("Space") || tapped)) {
           i.consumeKey(" ");
           i.consumeKey("Space");
@@ -20685,6 +21942,14 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
         if (play && i.justPressed("f")) this.callVess();
         if (play && i.justPressed("x")) this.infest();
         if (play && i.justPressed("k")) this.incubateBest();
+        if (play && this.taming.live && this.taming.phase === "answer") {
+          for (let n = 0; n < 5; n++) {
+            if (i.justPressed(String(n + 1))) {
+              i.consumeKey(String(n + 1));
+              this.taming.answer(n);
+            }
+          }
+        }
         if (play && i.justPressed("l")) this.lureVess();
         if (play && i.justPressed("v")) this.sprayVess();
         if (play && this.mind.owned) {
@@ -20700,7 +21965,25 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
           }
         }
         if (play) this.morse.update(sdt, i.key("t"));
-        if (play && i.justPressed("q")) this.attack();
+        if (play && i.justPressed("q")) {
+          if (this.ui.mode === "hunt" && this.combat.live) this.strike();
+          else this.attack();
+        }
+        if (play && this.ui.mode === "spore") this.hive.hold(i.key("v"));
+        else if (this.hive.holding) this.hive.hold(false);
+        if (play && this.ui.mode === "hive" && this.hive.pick) {
+          const p = this.hive.pick;
+          if (Math.abs(move) > 0.05) {
+            if (p === this.npc) {
+              p.driveX = move;
+              p.moveTo = void 0;
+            } else {
+              p.driveX = move;
+              p.puppet = true;
+            }
+            move = 0;
+          } else if (p.driveX) p.driveX = 0;
+        }
       }
       this.crab.update(sdt, {
         move,
@@ -20733,6 +22016,20 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
       this.mining.update(sdt);
       this.craft.update(sdt);
       this.mind.update(sdt);
+      this.combat.update(sdt);
+      this.economy.tickAbilities(sdt);
+      this.taming.update(sdt);
+      this.hive.update(sdt, this.ui.mode === "hive");
+      if (this.ui.mode === "hunt" && this.state === "play") {
+        const foe = this.wildlife.nearest(
+          this.crab.x,
+          this.crab.y,
+          150,
+          (q) => q.alive && q.hostile
+        );
+        if (foe) this.combat.engage(foe);
+        else this.combat.stop();
+      }
       const eco = this.economy;
       const up = 1 + eco.stat("upkeep");
       const g = this.garden.update(sdt, eco.water / Math.max(1e-3, up), this.weather);
@@ -20836,7 +22133,128 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
       this.letterbox = damp(this.letterbox, 1, 15e-4, dt);
     }
     // -- actions --------------------------------------------------------------
-    /** ROAM mode: the crab walks itself toward the next unvisited thing. */
+    /**
+     * ROAM: it walks to where you pointed and then it stops. It does not pick
+     * its own destinations any more - an animal that wanders off while you are
+     * reading a panel is an animal you have to go and find.
+     */
+    _roamWalk(dt) {
+      if (this.roamTarget === null || this.roamTarget === void 0) return 0;
+      const d = this.roamTarget - this.crab.x;
+      if (Math.abs(d) < 14) {
+        this.roamTarget = null;
+        this.fx.ring(this.crab.x, this.terrain.surfaceY(this.crab.x), "#9ad86a", 12);
+        return 0;
+      }
+      return clamp(d / 40, -1, 1);
+    }
+    /**
+     * Start singing at something. It has to be willing first - which means it
+     * has had what its species comes for and has stuck around long enough to
+     * half trust you - and then it is a conversation, not a purchase.
+     */
+    singTo(c) {
+      const res = this.taming.begin(c);
+      if (!res.ok) {
+        this.ui.say(res.why, 3.5);
+        this.audio.play("deny");
+        return false;
+      }
+      this.cam.cineTo(c.x, c.y - 16, Math.max(this.autoZoom(), 2.4), 0.8);
+      this.audio.play("uiBig");
+      return true;
+    }
+    onSungTame(c) {
+      if (!c) return;
+      c.tamed = true;
+      c.trust = 1;
+      if (!this.wildlife.fleet.includes(c)) this.wildlife.fleet.push(c);
+      this.fx.ring(c.x, c.y - 10, "#ffe9a8", 20);
+      this.fx.spark(c.x, c.y - 10, "#ffe9a8", 22, 50);
+      this.fx.popup(c.x, c.y - 20, c.def.name, "#ffe9a8");
+      this.audio.play("discover");
+      this.cam.cineCancel();
+      this.cam.followEntity(this.crab, false);
+      this.cam.targetZoom = this.autoZoom();
+      this.economy.markDirty();
+      this.npc.say(`It answered you. Do you have the faintest idea how rare that is.`, 6, 3);
+    }
+    onSongLost(c) {
+      this.cam.cineCancel();
+      this.cam.followEntity(this.crab, false);
+      this.cam.targetZoom = this.autoZoom();
+      if (!c) return;
+      this.fx.drift(c.x, c.y - 10, "#9a8a70", 4);
+      this.ui.say("It lost interest.", 3);
+      this.audio.play("deny");
+    }
+    /**
+     * Fire one of the things your genome grew. Each is a short window rather
+     * than a number: the animal does something for a few seconds and you make
+     * that window count.
+     */
+    useAbility(id) {
+      const a = this.economy.useAbility(id);
+      if (!a) {
+        this.audio.play("deny");
+        return false;
+      }
+      const c = this.crab;
+      this.buff = this.buff || {};
+      this.buff[id] = 6;
+      this.fx.ring(c.x, c.y - c.m.rx * 0.4, "#ffe9a8", 22);
+      this.fx.popup(c.x, c.y - c.m.rx, a.name, "#ffe9a8");
+      this.audio.play("uiBig");
+      this.cam.shake(2);
+      if (id === "lumen") {
+        for (const q of this.wildlife.hostiles) {
+          if (Math.abs(q.x - c.x) < 160) {
+            q.stagger = 0.7;
+            q.recoil = 1.4;
+          }
+        }
+        this.fx.ring(c.x, c.y - c.m.rx * 0.4, "#fff4d0", 48);
+      }
+      if (id === "strike") this.combat.band = this.combat.pos;
+      return true;
+    }
+    /** Where you told it to go, standing there waiting for it. */
+    _drawRoamMark(ctx, cam) {
+      if (this.roamTarget === null || this.roamTarget === void 0) return;
+      const x = this.roamTarget;
+      const y = this.terrain.surfaceY(x);
+      const s = cam.worldToScreen(x, y);
+      const z = cam.zoom;
+      const p = this.time * 1.4 % 1;
+      ctx.save();
+      ctx.globalAlpha = 0.55 * (1 - p) + 0.25;
+      ctx.strokeStyle = "#9ad86a";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.ellipse(s.x, s.y, (5 + p * 9) * z, (2 + p * 4) * z, 0, 0, TAU);
+      ctx.stroke();
+      ctx.globalAlpha = 0.85;
+      ctx.fillStyle = "#9ad86a";
+      ctx.fillRect(Math.round(s.x), Math.round(s.y - 9 * z), Math.max(1, Math.round(z)), Math.round(9 * z));
+      ctx.fillRect(Math.round(s.x), Math.round(s.y - 10 * z), Math.round(4 * z), Math.round(3 * z));
+      ctx.restore();
+      ctx.globalAlpha = 1;
+    }
+    /** Take one of yours, or put it back down. */
+    takeHive(q) {
+      if (this.hive.pick === q) {
+        this.hive.pick = null;
+        if (q.driveX !== void 0) q.driveX = 0;
+        this.ui.say("Back on its own.", 2);
+        return;
+      }
+      this.hive.pick = q;
+      this.cam.shake(1.5);
+      this.fx.ring(q.x, q.y - 8, "#6fd8ee", 16);
+      this.audio.play("uiBig");
+      this.ui.say(`${q.name || q.def?.name}. A / D.`, 3);
+    }
+    /** The old flat auto-walk, kept for the encounter hint. */
     _autoWalk(dt) {
       const cx = this.crab.x;
       if (!this._autoTarget || Math.abs(this._autoTarget - cx) < 26) {
@@ -20914,10 +22332,10 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
       const c = this.crab;
       const foe = this.wildlife.nearest(c.x, c.y, 44, (q) => q.hostile);
       if (foe) return `Strike ${foe.def.name}`;
-      const wildOne = this.wildlife.nearest(c.x, c.y, 40, (q) => !q.hostile && !q.tamed && q.trust > 0.45);
+      const wildOne = this.wildlife.nearest(c.x, c.y, 46, (q) => !q.hostile && !q.tamed);
       if (wildOne) {
-        const need = wildOne.def.tame;
-        return `Offer to ${wildOne.def.name} (${need.berries} berries, ${need.water} water)`;
+        const why = this.taming.why(wildOne);
+        return why ? `${wildOne.def.name}: ${why}` : `Sing with ${wildOne.def.name}`;
       }
       if (this.encounters.hint) return this.encounters.hint;
       if (Math.abs(this.npc.x - c.x) < 46) return "Talk to Dr. Vess";
@@ -21193,6 +22611,16 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
         this.attack();
         return;
       }
+      const sing = this.wildlife.nearest(
+        c.x,
+        c.y,
+        46,
+        (q) => q.alive && !q.hostile && !q.tamed && this.taming.willing(q)
+      );
+      if (sing) {
+        this.singTo(sing);
+        return;
+      }
       const wildOne = this.wildlife.nearest(c.x, c.y, 40, (q) => !q.hostile && !q.tamed && q.trust > 0.45);
       if (wildOne) {
         const res = this.wildlife.tryTame(wildOne);
@@ -21225,6 +22653,60 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
       const found = this.world.found.size;
       for (const l of VESS_LORE) if (found >= l.need) out.push(l.line);
       return out.slice(-6);
+    }
+    /**
+     * One timed swing. The gauge decides what it was worth: on the band it does
+     * damage, on the core it does a great deal of it and staggers the animal,
+     * and off it entirely you are stood there with the claw open.
+     */
+    strike() {
+      const res = this.combat.strike();
+      const c = this.crab;
+      if (res.kind === "none") {
+        this.ui.say("Nothing close enough.", 2);
+        return;
+      }
+      if (res.kind === "open") {
+        this.audio.play("deny");
+        return;
+      }
+      if (res.kind === "early") return;
+      c.clawOpen = 1;
+      this.attackT = 0.4;
+      const t = this.combat.target;
+      if (res.kind === "miss") {
+        this.audio.play("claw");
+        this.fx.dust(c.x + (c.facing || 1) * c.m.shellW * 0.5, c.y + c.standH * 0.6, 1.2);
+        this.fx.popup(c.x, c.y - c.m.rx, "wide", "#9a8a70");
+        return;
+      }
+      const dmg = this.economy.stat("dmg") * res.mult;
+      if (t && t.alive) {
+        t.hurt(dmg, c.x);
+        this.gore(t, res.kind === "crit" ? 1.6 : 0.8, c.x);
+        if (res.kind === "crit") {
+          t.stagger = 0.9;
+          t.vx += Math.sign(t.x - c.x) * 120;
+          this.cam.shake(6);
+          this.fx.popup(t.x, t.y - 18, `${Math.round(dmg)}!`, "#ffd678");
+          this.audio.play("hit", { pitch: 0.7 });
+        } else {
+          this.cam.shake(2.6);
+          this.fx.popup(t.x, t.y - 16, `${Math.round(dmg)}`, "#f2e4c2");
+          this.audio.play("hit");
+        }
+      }
+    }
+    /**
+     * Something bled. Gore is a spray of it in the direction it was hit from,
+     * and a stain that stays on the sand afterwards, because a desert keeps
+     * what you spill on it.
+     */
+    gore(c, power = 1, fromX = null) {
+      if (!c) return;
+      const dir = fromX === null ? Math.random() < 0.5 ? -1 : 1 : Math.sign(c.x - fromX) || 1;
+      const col = c.def.blood || (c.def.clade === "insect" || c.def.clade === "arachnid" ? "#c8d07a" : "#8e1f22");
+      this.fx.blood(c.x, c.y - 8, dir, power, col);
     }
     attack() {
       if (this.attackT > 0) return;
@@ -21289,6 +22771,29 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
       return def3.boonText || "Fixes nutrients.";
     }
     /** In plain words, what a creature is waiting for before it walks over. */
+    /**
+     * How strongly the thing this species actually comes for is on offer right
+     * now. Berries for the birds, standing water for the reptiles, a flower in
+     * bloom for the insects, shade for the small nocturnal things - each is
+     * something already on your back, so putting a bird's bait out means growing
+     * the plant a bird wants rather than buying a bird.
+     */
+    baitFor(def3) {
+      const l = this.taming.lureFor(def3);
+      const e = this.economy, gd = this.garden;
+      switch (l.bait) {
+        case "berries":
+          return clamp01(e.berries / Math.max(1, l.n)) * 0.9;
+        case "water":
+          return gd.pond >= 0.3 ? clamp01(gd.pond * 1.4) * 0.9 : 0;
+        case "nectar":
+          return clamp01(gd.bloom || gd.lushness * 1.6) * 0.8;
+        case "shade":
+          return clamp01((gd.lushness || 0) * 2.2) * 0.7;
+        default:
+          return 0;
+      }
+    }
     attractNeeds(def3) {
       if (!def3.attract) return "Comes on its own terms.";
       const e = this.economy;
@@ -21537,7 +23042,8 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
         relics: this.relics,
         mining: this.mining.toJSON(),
         craft: this.craft.toJSON(),
-        mind: this.mind.toJSON()
+        mind: this.mind.toJSON(),
+        combat: this.combat.toJSON()
       });
     }
     load(d) {
@@ -21565,6 +23071,7 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
         this.mining.fromJSON(d.mining);
         this.craft.fromJSON(d.craft);
         this.mind.fromJSON(d.mind);
+        this.combat.fromJSON(d.combat);
         this.relics = d.relics || {};
         if (d.mode) this.ui.mode = d.mode;
         this.economy.recomputeGenes();
@@ -21605,7 +23112,14 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
       if (this.sleep) this._drawSleep(ctx, cam);
       if (this.waking) this._drawWaking(ctx, cam);
       if (this._pee) this._drawStream(ctx, cam);
-      if (this.state === "play") this.mind.draw(ctx, cam);
+      if (this.state === "play") {
+        this.mind.draw(ctx, cam);
+        this.hive.drawAim(ctx, cam);
+        this._drawRoamMark(ctx, cam);
+        for (const q of this.wildlife.list) {
+          if (cam.isVisible(q.x, q.y, 40)) q.drawTame?.(ctx, cam);
+        }
+      }
       this.ui.drawGhost(ctx, cam);
       this.wildlife.draw(ctx, cam, "shell");
       if (this.state === "play") this.ui.drawCrop(ctx, cam);
@@ -21640,6 +23154,10 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
       r.composite(this.weather, this);
       const ui = r.ui;
       if (this.seaShowing) this.sea.overlay(ui, cam, r.vw, r.vh);
+      if (this.state === "play") {
+        this.fx.drawDust(ui, cam, r.vw, r.vh, this.weather);
+        this.hive.drawDream(ui, cam, r.vw, r.vh);
+      }
       if (this.state === "intro" || this.state === "burying") this._drawCutscene(ui, r);
       else if (this.state === "prologue") this._drawPrologue(ui, r);
       if (this.state !== "play" && this.state !== "dead") this._drawCine(ui, r);
