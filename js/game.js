@@ -15,8 +15,8 @@ import { biomeAt } from './world/biomes.js';
 import { World } from './world/landmarks.js';
 import { Crab } from './entities/crab.js';
 import { Archaeologist, Elder, POSE } from './entities/npc.js';
-import { frame, drawFrame } from './art/people.js';
 import { Morse } from './systems/talk.js';
+import { Pump } from './systems/pump.js';
 import { Green } from './systems/green.js';
 import { Digs, RELIC_BY_ID } from './systems/digs.js';
 import { Fx } from './systems/fx.js';
@@ -77,6 +77,7 @@ export class Game {
     this.world = new World(this, this.seed);
     this.npc = new Archaeologist(this, 62);
     this.morse = new Morse(this);
+    this.pump = new Pump(this);
     this.green = new Green(this);
     this.digs = new Digs(this, this.seed);
     this.ui = new UI(this);
@@ -159,7 +160,7 @@ export class Game {
     this.cam.followEntity(this.crab, false);
     this.cam.targetZoom = this.autoZoom();
     this.tutorial = 1;
-    this.ui.say('Hold SPACE, or hold the valve, to run the spring in your back.', 6);
+    this.ui.say('Tap SPACE, or the valve, in time with the gauge. The band is where the stroke lands.', 7);
   }
 
   say(who, text) { this.dialog = { who, text, t: 0 }; }
@@ -193,6 +194,11 @@ export class Game {
     let move = 0;
     // You cannot walk while you are stood on your own shell planting things.
     // It is your shell; you are on it; the legs are not available.
+    // the valve's tap is read every frame whether or not it can be used, so a
+    // press made while a panel was open does not fire when the panel closes
+    const tapped = this.ui.valveTapped;
+    this.ui.valveTapped = false;
+
     if (play && !this.ui.busy && !this.ui.building) {
       const ax = i.axis();
       move = ax.x;
@@ -203,12 +209,12 @@ export class Game {
         else { d.driveX = move; move = 0; }
       }
       if (this.ui.mode === 'auto' && Math.abs(move) < 0.05) move = this._autoWalk(sdt);
-      // the spring is held open, not tapped: the longer you hold it the harder
-      // it runs, and it spills over the lip when the basin cannot take any more
-      const wantPump = i.key(' ') || i.key('Space') || this.ui.valveHeld;
-      this.pumpHold = wantPump ? Math.min(1, (this.pumpHold || 0) + dt * 2.6)
-        : Math.max(0, (this.pumpHold || 0) - dt * 4);
-      if (this.pumpHold > 0) this.pumpTick(sdt);
+      // the spring is not a key you hold. It is a muscle with a rhythm, and
+      // every stroke either catches the chamber full or does not.
+      if (i.justPressed(' ') || i.justPressed('Space') || tapped) {
+        i.consumeKey(' '); i.consumeKey('Space');
+        this.pumpStroke();
+      }
       if (i.justPressed('e')) this.act();
       if (i.justPressed('r')) this.harvestAll();
       if (i.justPressed('f')) this.callVess();
@@ -226,8 +232,23 @@ export class Game {
       list: this.garden ? this.garden.list : 0,
     });
 
-    if (i.wheel && !this.ui.busy) this.cam.zoomBy(i.wheel, i.sx, i.sy);
-    if (i.dragging && !this.ui.busy && i.touchPan) this.cam.pan(i.dragDX, i.dragDY);
+    if (this.ui.building) {
+      // up on your own back, nothing moves: not you, not the view. The camera
+      // is pinned to the shell so a drag is a drag on a plant and a pinch is
+      // not a way to lose the thing you are planting on.
+      this.cam.cineCancel();
+      this.cam.free = false;
+      this.cam.freeT = 0;
+      this.cam.followEntity(this.crab);
+      i.wheel = 0;
+    } else {
+      if (i.wheel && !this.ui.busy) this.cam.zoomBy(i.wheel, i.sx, i.sy);
+      if (i.dragging && !this.ui.busy && i.touchPan) this.cam.pan(i.dragDX, i.dragDY);
+    }
+
+    this.pump.update(sdt);
+    this.pumpHold = this.pump.power;
+    if (this.pumpHold > 0.02) this.pumpTick(sdt);
 
     this.biome = biomeAt(this.crab.x);
     this.weather.update(sdt, this);
@@ -345,20 +366,9 @@ export class Game {
     this.crab.pumpT += dt * 9;
 
     const maxW = e.stat('waterMax');
-    const rate = e.stat('pumpGain') * 2.4 * push;
-    const before = e.water;
-    e.water = clamp(e.water + rate * dt, 0, maxW);
-    const took = e.water - before;
-    this.garden.pumpInto(0.10 * push * dt);
-
+    this.garden.pumpInto(0.05 * push * dt);
     const o = this.crab.shellWorldAB(this.crab.m.organ.a, this.crab.m.organ.b);
     this.fx.spring(o.x, o.y, o.nx, o.ny, 0.35 + push * 0.9);
-    this._pumpAcc = (this._pumpAcc || 0) + took;
-    if (this._pumpAcc >= 5) {
-      const n = Math.floor(this._pumpAcc);
-      this._pumpAcc -= n;
-      this.fx.popup(o.x, o.y - 8, `+${n}`, '#9de3ee');
-    }
     // the overflow: the tank is full, so it goes over the rim and down the shell
     if (e.water >= maxW - 0.01 && push > 0.4) {
       this.garden.pond = clamp(this.garden.pond + 0.22 * dt, 0, 1);
@@ -369,14 +379,39 @@ export class Game {
       }
     }
     this._pumpSfx = (this._pumpSfx || 0) - dt;
-    if (this._pumpSfx <= 0) { this._pumpSfx = 0.42; this.audio.play('water'); }
+    if (this._pumpSfx <= 0) { this._pumpSfx = 0.42; }
+  }
+
+  /**
+   * One stroke of the spring. The gauge decides how much of it landed; the
+   * water goes in here, and `pumpTick` handles the spray that follows it.
+   */
+  pumpStroke() {
+    const e = this.economy;
+    const push = this.pump.stroke();
+    if (push <= 0) return;
+    const maxW = e.stat('waterMax');
+    const before = e.water;
+    e.water = clamp(e.water + e.stat('pumpGain') * 3.1 * push, 0, maxW);
+    const took = e.water - before;
+    this.garden.pumpInto(0.06 * push);
+    const o = this.crab.shellWorldAB(this.crab.m.organ.a, this.crab.m.organ.b);
+    this.fx.spring(o.x, o.y, o.nx, o.ny, 0.5 + push * 0.5);
+    if (took >= 1) {
+      this.fx.popup(o.x, o.y - 8, `+${Math.round(took)}`,
+        this.pump.combo >= 4 ? '#cfe89a' : '#9de3ee');
+    }
+    this.crab.pump();
+    if (this.pump.combo > 0 && this.pump.combo % 5 === 0) {
+      this.fx.popup(o.x, o.y - 18, `${this.pump.combo} in a row`, '#e2d07a');
+    }
     if (this.tutorial === 1 && e.water > 70) {
       this.tutorial = 2; this.ui.say('Click yourself to climb onto your own back and plant something.', 7);
     }
   }
 
   /** Kept for the tutorial and for anything that wants a single tap. */
-  pump() { this.pumpHold = 1; this.pumpTick(0.2); }
+  pump() { this.pumpStroke(); }
 
   /** What E does right now, and what the prompt says. */
   actionHint() {
@@ -869,7 +904,7 @@ export class Game {
       taken: [...this.encounters.taken], tutorial: this.tutorial,
       world: this.world.toJSON(),
       research: this.research, mode: this.ui.mode, insc: this.readInscriptions,
-      morse: this.morse.toJSON(), green: this.green.toJSON(),
+      morse: this.morse.toJSON(), green: this.green.toJSON(), pump: this.pump.toJSON(),
       digs: this.digs.toJSON(), relics: this.relics,
     });
   }
@@ -892,6 +927,7 @@ export class Game {
       this.research = d.research || {};
       this.readInscriptions = d.insc || 0;
       this.morse.fromJSON(d.morse);
+      this.pump.fromJSON(d.pump);
       this.green.fromJSON(d.green);
       this.digs.fromJSON(d.digs);
       this.relics = d.relics || {};
@@ -1048,11 +1084,10 @@ export class Game {
 
   _drawSpeech(ctx, cam, who, code = false) {
     const s = cam.worldToScreen(who.x, who.y - 40);
-    // her face goes in the bubble: the sheet has eight close-ups and the whole
-    // point of a close-up is that you can see what she thinks of you
-    const port = !code && who.sheet && who.face !== undefined
-      ? frame(who.sheet, 'face', who.face) : null;
-    const pw = port ? Math.min(30, port.w) : 0;
+    // her face goes in the bubble, painted at four times her walking size:
+    // the whole point of a close-up is that you can see what she thinks of you
+    const port = !code && who.portrait ? who.portrait() : null;
+    const pw = port ? 30 : 0;
     const lines = wrapText(who.speech, 132 - (port ? pw + 4 : 0));
     const w = Math.max(...lines.map((l) => textWidth(l))) + 12 + (port ? pw + 4 : 0);
     const h = Math.max(lines.length * LINE_H + 8, port ? pw + 6 : 0);
@@ -1078,12 +1113,16 @@ export class Game {
 
     let tx = x + 6;
     if (port) {
-      const scale = pw / port.w;
+      const ph = Math.min(pw, h - 6);
       ctx.save();
       ctx.beginPath();
-      ctx.rect(x + 3, y + 3, pw, Math.min(pw, h - 6));
+      ctx.rect(x + 3, y + 3, pw, ph);
       ctx.clip();
-      drawFrame(ctx, who.sheet, 'face', who.face, x + 3 + pw / 2, y + 3 + pw / 2, false, scale);
+      ctx.fillStyle = 'rgba(30,22,14,0.9)';
+      ctx.fillRect(x + 3, y + 3, pw, ph);
+      // framed on the face rather than centred on the neck joint
+      ctx.drawImage(port.cv, Math.round(x + 3 + pw / 2 - port.ox),
+        Math.round(y + 3 + ph * 0.62 - port.oy + port.H * 0.66));
       ctx.restore();
       ctx.strokeStyle = 'rgba(226,200,150,0.25)';
       ctx.strokeRect(x + 2.5, y + 2.5, pw + 1, Math.min(pw, h - 6) + 1);

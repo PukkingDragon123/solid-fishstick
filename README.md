@@ -41,7 +41,7 @@ npm run build     # -> dist/crabden.html + dist/crabden.body.html
 |  | keyboard | touch |
 | --- | --- | --- |
 | scuttle | `A` / `D` or arrows | left thumbstick (drag anywhere in the lower-left) |
-| the spring | hold `Space` | hold the valve |
+| the spring | tap `Space` in time with the gauge | tap the valve in time with the gauge |
 | pick what is ripe | `R` | **PICK**, or tap the bead over a plant |
 | build on your own back | click yourself | tap yourself |
 | put a parasite on something | `X` | — |
@@ -52,7 +52,7 @@ npm run build     # -> dist/crabden.html + dist/crabden.body.html
 | map / fleet / field notes | `1` / `2` / `3` | **SHOP**, then a tab |
 | inside you | `G` | tap the orb |
 | control mode | `M` | **MODE** |
-| zoom / pan | wheel, drag | pinch, drag |
+| zoom / pan | wheel, drag (locked while you are on your own back) | pinch, drag (same) |
 | back out | `Esc` | the panel's X |
 
 A crab does not turn round to walk — but it does turn round. Reverse direction
@@ -69,10 +69,17 @@ The game autosaves every twenty seconds and reloads where you left off.
 **Water → plants → genes → evolution → more water — and the whole time, keep
 walking, because the only thing out here worth having is over the next dune.**
 
-1. **Pump.** The spring is a valve you **hold open**, not a button you tap.
-   Water goes into the tank, then into the stone basin behind your crest, and
-   when neither can take any more it comes over the lip and down your shell as
-   a waterfall onto the sand you are standing on.
+1. **Pump.** The spring is a muscle with a rhythm, not a key you hold. A needle
+   sweeps a bore and a band marks where the chamber is actually full: tap on
+   the band and the stroke lands, tap on the middle of it and it lands
+   perfectly, tap anywhere else and you have wasted a stroke. Land them in a
+   row and the spring runs harder — and the band narrows, the needle speeds up,
+   and past six in a row it **stutters**, reversing without warning, because
+   the better you get the less margin you are given. Hammering does not work:
+   a chamber has to refill between strokes, and a second push too soon breaks
+   the chain. Water goes into the tank, then into the stone basin behind your
+   crest, and when neither can take any more it comes over the lip and down your
+   shell as a waterfall onto the sand you are standing on.
 2. **Plant.** Click yourself to climb onto your own back, then **drag a seed
    out of the rail and drop it on a bed**. It goes in as a seed and does
    nothing at all until it has taken up water — the ring round it fills as the
@@ -165,8 +172,11 @@ to send it. The last two unlock in the tree.
 There is no shop and there is no build button. **Click the animal** and the
 camera comes in on the shell, the seeds come out down the side, and you are up
 on your own back — which is where planting something on your own back ought to
-happen. You cannot walk while you are up there; it is your shell, you are
-standing on it, and the legs are not available.
+happen. **Nothing moves while you are up there.** Not you: it is your shell,
+you are standing on it, and the legs are not available. Not the view either —
+the camera is nailed to the shell, so a drag is a drag on a plant and a pinch
+is not a way to lose the thing you were placing. The spring is shut too; you
+are not running anything from up there.
 
 The rail shows what you can carry, what you are carrying, and a grid of seeds
 and structures. Pick one and the card at the bottom says what it costs, **what
@@ -383,17 +393,32 @@ the spine, insects walk an alternating tripod, reptiles bask.
 
 ### Dr. Vess
 
-She is the one hand-drawn thing here, and all of her is used now — the walk
-cycles, the ten working poses, the **eight facial close-ups** that go in her
-speech bubbles depending on what she is saying, and the **row of props** that
-gets scattered on the ground wherever she sets up to dig. `tools/sheets.mjs` takes the sheets in
-`assets/`, keys out the background, slices every animation row into frames,
-downsamples them and snaps the result to one median-cut palette — which is what
-lets a drawn character stand next to procedural art without either looking out
-of place, and buries the artefacts of how the sheet was made. The atlas is
-rendered at **twice** the height she actually occupies in the basin and drawn at
-half scale, so she is the same size as before but made of twice as many pixels.
-Idle, walk, sit, talk, command, wander, dig, and eight facial expressions.
+She is painted, not drawn. `js/art/personart.js` builds her the same way the
+crab is built — height fields, material ramps, one light and a hard outline —
+and hands back a **rig in pieces**: skull, jaw, ear, nose and one eye you can
+read; hair tied back with strands pulling loose downwind; a felt hat with a
+brim and a crown; goggles that sit on the band or come down over the eye; a
+coat over a shirt, cut away down the front, with a bandolier of sample vials
+and a belt; a satchel; four limb bones, and a boot that is its own part.
+
+Because she is in pieces, she is **posed rather than flipped through**.
+`js/entities/npc.js` is a skeleton: a pose is a set of joint targets — how far
+she is folded, how far the spine leans, where each shoulder and elbow sits, and
+what is in the near hand — and everything between poses is damped, so she never
+snaps, she settles. Her feet are planted in world space and solved with the
+same two-bone IK the crab's legs use, so she stands on slopes, tucks her feet
+under her when she crouches over a dig, and swings a leg through rather than
+sliding. The boot stays flat whatever the shin above it is doing.
+
+The face is the same painter with a `mood` argument, which moves the brow, the
+eyelid and the mouth and nothing else, because at this size nothing else reads.
+Eight of them, baked on demand at four times her walking scale, are what goes
+in her speech bubbles. Her kit — bedroll, canteen, lantern, survey peg, skull,
+spoil heap, pick, brush — is painted the same way and scattered on the ground
+wherever she sets up to dig.
+
+Nothing in the game is a photograph of a sprite sheet any more, which is also
+why the whole build is 40% smaller than it was.
 
 She does three things now. On the ground she works — wanders, crouches, digs,
 writes. **Follow** and she keeps pace behind you. **Get on** (once you are big
@@ -436,16 +461,14 @@ reads back anything else you spell letter by letter.
 ### Layout
 
 ```
-assets/      the two character sheets, as uploaded
-tools/       sheets.mjs - slices and downsamples them into js/art/people.js
 js/
-  art/       crabart floraart faunaart buildart people (generated)
+  art/       crabart crabpose personart floraart faunaart buildart anatomy
   core/      camera input save
   data/      flora fauna progress lore
   entities/  crab creature npc
   lib/       math font audio palette
   render/    pixel renderer backdrop
-  systems/   garden economy wildlife encounters fx
+  systems/   garden economy wildlife encounters green digs talk pump fx
   ui/        ui icons tree
   world/     terrain biomes weather landmarks
 ```
@@ -459,6 +482,7 @@ js/
 | ![Waking up](docs/shot-01-waking.png) | ![The first garden](docs/shot-02-first-garden.png) |
 | ![Build mode](docs/shot-05-drawer.png) | ![The map](docs/shot-06-notes.png) |
 | ![Your genome](docs/shot-04-tree.png) | ![Night](docs/shot-08-night.png) |
+| ![Dr. Vess at a dig](docs/shot-09-vess.png) | ![Water](docs/shot-07-water.png) |
 
 ---
 
@@ -466,9 +490,18 @@ js/
 
 Runs at 60fps from 320×200 up to 4K, on desktop and on a phone. Tested against
 landscape phone, portrait phone and tablet profiles with real touch events.
+
+On a narrow screen the HUD is a different layout rather than the same one
+squeezed: the place name takes whatever room is left, the day count and the
+"places found" line drop, the thumbstick grows and gets chevrons, and the
+buttons lay themselves out along the bottom from the valve leftwards, wrapping
+up a row rather than ever landing on the stick or on the spring — and a button
+only exists when there is something to press. Up on your own back the rail owns
+most of a phone screen, so the readouts collapse to one line, the stick and the
+action buttons go away entirely, and the only thing left is **CLIMB DOWN**.
 Save data lives in `localStorage` under `crabden.save.v1`; clearing it starts a
 new run.
 
-The two character sheets in `assets/` were supplied for this project; everything
-else in the game — every plant, every animal, the crab, the terrain, the sky,
-the font and the sound — is generated at runtime from code.
+Everything in the game — every plant, every animal, the crab, Dr. Vess, the
+terrain, the sky, the font and the sound — is generated at runtime from code.
+There are no image files.

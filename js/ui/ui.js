@@ -70,6 +70,7 @@ export class UI {
     this.stickZone = null;
     this.mode = 'direct';
     this.valveHeld = false;
+    this.valveTapped = false;
     this.selected = null;        // a commanded creature
     this.t = 0;
     this.bloomShown = 0;
@@ -246,7 +247,12 @@ export class UI {
       const want = clamp(g.renderer.vh * 0.42 / Math.max(18, g.crab.m.rx * 2.2), 2.2, 6);
       g.cam.targetZoom = clamp(want, g.cam.minZoom, g.cam.maxZoom);
       this.buildScroll = 0;
-      this.say('You climb onto your own back. Esc to get down.', 4);
+      // the world stops here: the camera is nailed to the shell and stays
+      g.cam.cineCancel();
+      g.cam.free = false;
+      g.cam.freeT = 0;
+      g.cam.followEntity(g.crab);
+      this.say('You climb onto your own back. Nothing moves until you get down.', 4);
       g.audio?.play('uiBig');
     } else {
       if (this.savedZoom) g.cam.targetZoom = this.savedZoom;
@@ -414,9 +420,13 @@ export class UI {
     else if (this.touchEnabled) this._touchControls(ctx, W, H);
 
     if (this.toast) {
-      const lines = wrapText(this.toast, Math.min(220, W - 40));
+      // on a phone the toast has to clear the stick, the buttons and the valve
+      const lines = wrapText(this.toast, Math.min(220, W - (this.touchEnabled ? 96 : 40)));
       const w = Math.max(...lines.map((l) => textWidth(l))) + 4;
-      const y = H - (this.touchEnabled ? 96 : 46) - (lines.length - 1) * LINE_H;
+      // on a phone there is no clear band at the bottom, so a toast sits in
+      // the sky instead of over the animal
+      const y = this.touchEnabled ? Math.round(H * 0.30)
+        : H - 46 - (lines.length - 1) * LINE_H;
       lines.forEach((l, i) => drawText(ctx, l, W / 2, y + i * LINE_H,
         { color: INK, align: 'center', outline: true, outlineColor: OUT }));
     }
@@ -451,6 +461,15 @@ export class UI {
     // the build rail owns the left edge while it is out, so the readouts move
     // over rather than sitting underneath it and stealing its taps
     const L = this.buildOn ? this.railW(W) + 6 : 5;
+
+    // on a phone the build rail takes most of the width, so the readouts
+    // collapse to one line rather than fighting it for room
+    if (this.buildOn && W < 320) {
+      drawText(ctx, `${Math.round(e.water)} water   ${Math.round(e.nutrients)} growth`,
+        W - 5, 4, { color: INK, align: 'right', outline: true, outlineColor: OUT });
+      this._pumpStub(ctx, W, H);
+      return;
+    }
 
     // water: a moulted shell with the water actually in it
     const sh = drawShell(ctx, L, 4, e.water / maxW, this.t);
@@ -494,14 +513,19 @@ export class UI {
       { color: INK, align: 'center', outline: true, outlineColor: OUT });
     if (this._hit(fx, 16, 26, 22)) this.hover = { title: 'Fruit', body: 'What your mature plants set. Animals will come a long way for it.' };
 
-    // place, weather, and a clock you can actually read at a glance
-    const label = `${g.biome.name}   ${g.weather.label()}`;
+    // place, weather, and a clock you can actually read at a glance. On a
+    // phone there is no room for all of it across the top, so the place name
+    // gets the space that is left and the rest moves down.
+    const narrow = W < 320;
+    const room = W - (L + 96) - 10;
+    const label = narrow ? ellipsize(g.biome.name, Math.max(40, room))
+      : `${g.biome.name}   ${g.weather.label()}`;
     drawText(ctx, label, W - 6, 5, { color: DIM, align: 'right', outline: true, outlineColor: OUT });
-    this._clock(ctx, W - 15, 25);
-    this._compass(ctx, W, H);
+    this._clock(ctx, W - 15, narrow ? 22 : 25);
+    if (!narrow) this._compass(ctx, W, H);
 
     // the gene orb: the way into the tree
-    const ox = W - 32, oy = 48;
+    const ox = W - 32, oy = narrow ? 42 : 48;
     const ready = this._treeReady();
     drawOrb(ctx, ox, oy, this.t, ready ? 0.5 + Math.sin(this.t * 3) * 0.5 : 0);
     drawText(ctx, `${e.genes.size}`, ox + 15, oy + 32,
@@ -516,7 +540,7 @@ export class UI {
     if (fleet.length) {
       for (let i = 0; i < Math.min(9, fleet.length); i++) {
         const c = fleet[i];
-        const cx = W - 8 - (i + 1) * 8, cy = 80;
+        const cx = W - 8 - (i + 1) * 8, cy = oy + 32;
         ctx.fillStyle = c === this.selected ? '#ffe9a8'
           : c.onShell ? 'rgba(140,196,104,0.95)' : 'rgba(226,183,74,0.9)';
         ctx.fillRect(cx, cy, 6, 6);
@@ -574,8 +598,10 @@ export class UI {
       }
     }
 
-    // the spring: a valve you hold open, not a button you tap
-    this._pumpButton(ctx, W, H);
+    // the spring: a valve you stroke. Not while you are up on your own back,
+    // because up there you are not running anything.
+    if (!this.buildOn) this._pumpButton(ctx, W, H);
+    else this.valveRect = null;
 
     // health, only when it is not full
     const crab = g.crab;
@@ -590,6 +616,9 @@ export class UI {
     // mode + prompts
     const modeDef = MODES.find((m) => m.id === this.mode);
     if (this.buildOn) return;
+    // on touch the mode is a button of its own, and the label would sit under
+    // the thumbstick
+    if (this.touchEnabled) return;
     drawText(ctx, modeDef.name, 6, H - 20, { color: FAINT, outline: true, outlineColor: OUT });
     if (this._hit(4, H - 22, 34, 10)) {
       this.hover = { title: modeDef.name, body: modeDef.desc + '   (M to switch)' };
@@ -601,7 +630,7 @@ export class UI {
       drawText(ctx, hint, W / 2, H - 30, { color: INK, align: 'center', outline: true, outlineColor: OUT });
     }
     if (!this.touchEnabled) {
-      drawText(ctx, 'A/D move   SPACE spring   R pick   E dig   X parasite   click yourself to build   G inside',
+      drawText(ctx, 'A/D move   SPACE stroke the spring   R pick   E dig   X parasite   click yourself to build   G inside',
         W / 2, H - 10, { color: FAINT, align: 'center', outline: true, outlineColor: OUT });
     }
     if (this.selected) {
@@ -610,9 +639,21 @@ export class UI {
     }
   }
 
+  /** Nothing but the escape hatch, while the rail owns a narrow screen. */
+  _pumpStub(ctx, W, H) {
+    if (!this.touchEnabled) return;
+    const bw = 62, bh = 24, x = W - bw - 6, y = H - bh - 6;
+    this.buttons.push({ x, y, w: bw, h: bh, key: 'Escape' });
+    ctx.fillStyle = 'rgba(46,34,22,0.92)';
+    ctx.fillRect(x, y, bw, bh);
+    ctx.strokeStyle = 'rgba(214,186,138,0.55)';
+    ctx.strokeRect(x + 0.5, y + 0.5, bw - 1, bh - 1);
+    drawText(ctx, 'CLIMB DOWN', x + bw / 2, y + (bh - 7) / 2, { color: INK, align: 'center' });
+  }
+
   /**
    * The pump. It is a valve in your own shell, so it is drawn as one, and it
-   * behaves like one: hold it and it runs, let go and it shuts.
+   * behaves like one: every tap is one stroke of the muscle behind it.
    */
   _pumpButton(ctx, W, H) {
     const g = this.game;
@@ -621,12 +662,24 @@ export class UI {
     const hold = g.pumpHold || 0;
     const hot = this._hit(x, y, size, size);
     const i = g.input;
+    this.valveRect = { x, y, w: size, h: size };
+    // on a touchscreen the valve is a real button, so a finger on it is not
+    // stolen by whatever else is near the corner
+    if (this.touchEnabled && g.state === 'play' && !this.drawerOpen) {
+      this.buttons.push({ x: x - 4, y: y - 4, w: size + 8, h: size + 8, key: ' ' });
+    }
 
-    // held with a finger or the mouse as well as with the key; the game loop
-    // does the actual pumping so both routes ramp and decay the same way
-    if (hot && i.down && !this.drawerOpen && g.state === 'play') this._valveDown = true;
-    if (!i.down) this._valveDown = false;
-    this.valveHeld = this._valveDown;
+    // one tap of the valve is one stroke of the spring, the same as one press
+    // of the key. The rising edge is what counts, so hammering it works.
+    const live = hot && i.down && !this.drawerOpen && g.state === 'play';
+    if (live && !this._valveDown) this.valveTapped = true;
+    if (hot && i.clicked && g.state === 'play' && !this.drawerOpen) {
+      i.clicked = false;
+      this.valveTapped = true;
+    }
+    this._valveDown = live;
+    this.valveHeld = live;
+    if (hot) this.hover = { title: 'The spring', body: 'Tap on the band. A stroke that lands pushes water; a chain of them pushes a lot more.' };
 
     // water: the valve throws it, it arcs, it lands, it runs off the button
     this.spray = this.spray || [];
@@ -698,13 +751,80 @@ export class UI {
     ctx.globalAlpha = 1;
     const e = g.economy;
     const full = e.water >= e.stat('waterMax') - 0.5;
-    drawText(ctx, full ? 'SPILLING' : 'HOLD', x + size / 2, y + size + 1, {
+    drawText(ctx, full ? 'SPILLING' : 'STROKE', x + size / 2, y + size + 1, {
       color: full ? '#9de3ee' : hold > 0 ? '#9de3ee' : FAINT,
       align: 'center', outline: true, outlineColor: OUT,
     });
-    if (hot) {
-      this.hover = { title: 'The spring', body: 'Hold to run it. It fills the tank, then the basin, then it goes over the side.' };
+    this._pumpGauge(ctx, W, H, x + size / 2, y - 10);
+  }
+
+  /**
+   * The stroke gauge. A needle sweeping a bore, and a band where the chamber
+   * is actually full. Land a stroke inside it and the spring pushes; land them
+   * in a row and it pushes much harder - while the band narrows and the needle
+   * speeds up, so a chain is something you have to keep earning.
+   */
+  _pumpGauge(ctx, W, H, cx, by) {
+    const p = this.game.pump;
+    if (!p || p.open < 0.01) return;
+    const a = clamp01(p.open);
+    const w = Math.min(140, Math.max(96, Math.round(W * 0.28)));
+    const h = 13;
+    const sh = p.shake > 0 ? Math.round(Math.sin(p.shake * 40) * p.shake * 2) : 0;
+    const x = Math.round(clamp(cx - w / 2, 4, W - w - 4)) + sh;
+    const y = Math.round(by - h);
+
+    ctx.globalAlpha = a;
+    // the bore
+    ctx.fillStyle = 'rgba(10,14,18,0.90)';
+    ctx.fillRect(x, y, w, h);
+    ctx.strokeStyle = 'rgba(150,208,220,0.45)';
+    ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+    for (let i = 1; i < 8; i++) {
+      ctx.fillStyle = 'rgba(150,208,220,0.14)';
+      ctx.fillRect(Math.round(x + (w * i) / 8), y + h - 4, 1, 3);
     }
+
+    // the band: where the chamber is full
+    const half = p.band / 2;
+    const b0 = Math.round(x + clamp01(p.centre - half) * w);
+    const b1 = Math.round(x + clamp01(p.centre + half) * w);
+    const pulse = 0.6 + 0.4 * Math.sin(this.t * 5);
+    ctx.globalAlpha = a * 0.35;
+    ctx.fillStyle = '#6fbf6a';
+    ctx.fillRect(b0, y + 2, b1 - b0, h - 4);
+    // and the sweet middle of it
+    const c0 = Math.round(x + clamp01(p.centre - half * 0.34) * w);
+    const c1 = Math.round(x + clamp01(p.centre + half * 0.34) * w);
+    ctx.globalAlpha = a * (0.55 + pulse * 0.3);
+    ctx.fillStyle = '#cfe89a';
+    ctx.fillRect(c0, y + 2, Math.max(1, c1 - c0), h - 4);
+
+    // the needle
+    const nx = Math.round(x + clamp01(p.pos) * w);
+    ctx.globalAlpha = a;
+    ctx.fillStyle = '#f6fbff';
+    ctx.fillRect(nx - 1, y + 1, 2, h - 2);
+    ctx.globalAlpha = a * 0.4;
+    ctx.fillStyle = '#9de3ee';
+    ctx.fillRect(nx - 3, y + 1, 6, h - 2);
+
+    // the chain, as pips under the bore
+    ctx.globalAlpha = a;
+    for (let i = 0; i < Math.min(12, p.combo); i++) {
+      ctx.fillStyle = i >= 8 ? '#e2d07a' : '#cfe89a';
+      ctx.fillRect(x + 1 + i * 5, y + h + 2, 3, 2);
+    }
+    if (p.combo > 0) {
+      drawText(ctx, `x${p.mult.toFixed(2)}`, x + w - 1, y - 9,
+        { color: '#cfe89a', align: 'right', outline: true, outlineColor: OUT });
+    }
+    if (p.flash) {
+      ctx.globalAlpha = a * clamp01(p.flash.t / 0.7);
+      drawText(ctx, p.flash.text, x + w / 2 - 14, y - 9,
+        { color: p.flash.colour, align: 'center', outline: true, outlineColor: OUT });
+    }
+    ctx.globalAlpha = 1;
   }
 
   /**
@@ -1122,7 +1242,7 @@ export class UI {
       }
     }
 
-    drawText(ctx, 'esc to climb down', inX, 2, { color: FAINT });
+    if (!this.touchEnabled) drawText(ctx, 'esc to climb down', inX, 2, { color: FAINT });
     if (this._hit(inX, 0, inW, 9) && g.input.clicked) { g.input.clicked = false; this.toggleBuild(); }
     ctx.globalAlpha = 1;
   }
@@ -1542,46 +1662,87 @@ export class UI {
 
   // -- touch ----------------------------------------------------------------
 
+  /**
+   * The controls you actually get on a phone. A thumbstick big enough to find
+   * without looking, and a column of buttons on the other side that only
+   * exist when there is something to press - a row of dead dashes teaches you
+   * nothing and eats the space the spring needs.
+   */
   _touchControls(ctx, W, H) {
-    const R = 26;
+    const g = this.game;
+    const narrow = W < 320;
+    // up on the shell nothing moves and nothing acts, so none of this exists
+    if (this.buildOn) { this.stickZone = null; this.stick = null; return; }
+    const R = narrow ? 30 : 27;
     // in build mode the rail owns the left edge, so the stick steps aside
     const off = this.buildOn ? this.railW(W) + 4 : 0;
-    const sx = 6 + off, sy = H - 2 * R - 8;
-    this.stickZone = { x: off, y: H - 2 * R - 16, w: 2 * R + 22, h: 2 * R + 16 };
+    const sx = 8 + off, sy = H - 2 * R - 10;
+    this.stickZone = { x: off, y: H - 2 * R - 20, w: 2 * R + 26, h: 2 * R + 20 };
     const cx = this.stick ? this.stick.ox : sx + R;
     const cy = this.stick ? this.stick.oy : sy + R;
-    ctx.globalAlpha = this.stick ? 0.5 : 0.26;
+    // the ring, with a groove so it reads as a thing rather than a circle
+    ctx.globalAlpha = this.stick ? 0.55 : 0.30;
     ctx.strokeStyle = INK;
-    ctx.lineWidth = 1.5;
+    ctx.lineWidth = 2;
     ctx.beginPath(); ctx.arc(cx, cy, R, 0, TAU); ctx.stroke();
-    ctx.globalAlpha = this.stick ? 0.6 : 0.22;
+    ctx.globalAlpha = this.stick ? 0.22 : 0.12;
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.arc(cx, cy, R - 5, 0, TAU); ctx.stroke();
+    // two chevrons, because this stick only goes two ways
+    ctx.globalAlpha = 0.30;
     ctx.fillStyle = INK;
+    for (const d of [-1, 1]) {
+      const ax = cx + d * (R - 7);
+      ctx.beginPath();
+      ctx.moveTo(ax + d * 3, cy);
+      ctx.lineTo(ax - d * 2, cy - 4);
+      ctx.lineTo(ax - d * 2, cy + 4);
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.globalAlpha = this.stick ? 0.75 : 0.30;
     const dx = this.stick ? clamp(this.stick.x - this.stick.ox, -R, R) : 0;
-    ctx.beginPath(); ctx.arc(cx + dx, cy, this.stick ? 9 : 8, 0, TAU); ctx.fill();
+    ctx.beginPath(); ctx.arc(cx + dx, cy, this.stick ? 11 : 10, 0, TAU); ctx.fill();
     ctx.globalAlpha = 1;
 
-    const add = (x, y, w, h, label, key) => {
-      this.buttons.push({ x, y, w, h, key });
-      ctx.globalAlpha = 0.78;
-      ctx.fillStyle = 'rgba(52,40,26,0.9)';
-      ctx.fillRect(x, y, w, h);
-      ctx.strokeStyle = 'rgba(214,186,138,0.4)';
-      ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+    // the buttons: only the live ones, stacked up the right edge above the
+    // valve so a thumb never has to cross the spring to reach them
+    // laid out along the bottom, right to left from the valve, wrapping up a
+    // row rather than ever landing on the stick or on the spring
+    const bw = narrow ? 58 : 52, bh = narrow ? 26 : 23;
+    const v = this.valveRect;
+    const rightEdge = (v ? v.x : W - 6) - 8;
+    const leftEdge = (this.stickZone ? this.stickZone.x + this.stickZone.w : 0) + 6;
+    const bottom = H - bh - 6;
+    let bx = rightEdge - bw;
+    let by = bottom;
+    const add = (label, key, colour) => {
+      if (bx < leftEdge) { bx = rightEdge - bw; by -= bh + 5; }
+      this.buttons.push({ x: bx, y: by, w: bw, h: bh, key });
+      const hot = this._hit(bx, by, bw, bh);
+      ctx.globalAlpha = hot ? 0.95 : 0.80;
+      ctx.fillStyle = 'rgba(46,34,22,0.92)';
+      ctx.fillRect(bx, by, bw, bh);
+      ctx.fillStyle = 'rgba(88,66,42,0.9)';
+      ctx.fillRect(bx, by, bw, 2);
+      ctx.strokeStyle = colour || 'rgba(214,186,138,0.55)';
+      ctx.strokeRect(bx + 0.5, by + 0.5, bw - 1, bh - 1);
       ctx.globalAlpha = 1;
-      drawText(ctx, label, x + w / 2, y + (h - 7) / 2, { color: INK, align: 'center' });
-      if (this._hit(x, y, w, h) && this.game.input.clicked) {
+      drawText(ctx, label, bx + bw / 2, by + (bh - 7) / 2,
+        { color: colour || INK, align: 'center' });
+      if (hot && this.game.input.clicked) {
         this.game.input.clicked = false;
         if (key) this.game.input.pulseVirtual(key);
       }
+      bx -= bw + 6;
     };
-    const bw = 44, bh = 19;
-    add(W - bw * 2 - 10, H - bh - 6, bw, bh, this.game.garden.ripeCount ? 'PICK' : '-', 'r');
-    add(W - bw - 6, H - bh * 2 - 11, bw, bh, 'MODE', 'm');
-    add(W - bw * 2 - 10, H - bh * 2 - 11, bw, bh, this.game.actionHint() ? 'ACT' : '-', 'e');
-    const hint = this.game.actionHint();
+    const hint = g.actionHint();
+    if (g.garden.ripeCount) add(`PICK ${g.garden.ripeCount}`, 'r', '#cfe89a');
+    if (hint) add('ACT', 'e');
+    add('MODE', 'm');
     if (hint) {
-      drawText(ctx, hint, W - bw - 12 - 30, H - bh * 2 - 22,
-        { color: INK, align: 'center', outline: true, outlineColor: OUT });
+      drawText(ctx, hint, rightEdge, by - 10,
+        { color: INK, align: 'right', outline: true, outlineColor: OUT });
     }
   }
 

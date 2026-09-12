@@ -2,15 +2,13 @@
 // fixed-ish timestep running until the tab goes away.
 
 import { Game } from './game.js';
-import { loadPeople } from './art/people.js';
 
 const canvas = document.getElementById('game');
 const boot = document.getElementById('boot');
 
 let game;
 
-// the character atlases are decoded before the first frame so nothing pops in
-loadPeople().then(start).catch(start);
+start();
 
 function start() {
   try {
