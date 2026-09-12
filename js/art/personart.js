@@ -55,6 +55,9 @@ const BASE = {
     diffuse: 0.72, rim: 0.30, spec: 0.22, ao: 0.15, normalScale: 0.58, outline: '#0c0705' },
   paper: { ramp: ['#544f45', '#6d675a', '#868070', '#9f9887', '#b7b09e', '#cfc8b6', '#e4dece', '#f6f2e6'],
     diffuse: 0.84, rim: 0.20, ao: 0.08, normalScale: 0.4, outline: '#2a2620' },
+  // what the eye goes when the spore is in it: a cold blue that lights itself
+  spore: { ramp: ['#06202c', '#0a3244', '#0f4a60', '#16667e', '#20889c', '#35aebd', '#68d6e2', '#b4f2f8'],
+    diffuse: 0.34, rim: 0.90, spec: 0.9, ao: 0.02, normalScale: 0.5, outline: '#04141c' },
 };
 
 /**
@@ -338,9 +341,17 @@ function paintHead(K, far, kind, opts = {}) {
       continue;
     }
     p.ellipse(X(ex), Y(-0.35), ew, eh, { mat: 'paper', dome: 1.5 * u, tint: 0.32 });
-    p.ellipse(X(ex + 0.22), Y(-0.28), ew * 0.62, eh * 0.84, { mat: 'eye', dome: 1.7 * u, tint: -0.04 });
-    p.ellipse(X(ex - 0.18), Y(-0.72), ew * 0.32, eh * 0.28,
-      { mat: 'eye', mask: true, dome: 1.7 * u, tint: 0.80 });
+    if (opts.spore) {
+      // the iris fills with it, and lights from behind
+      p.ellipse(X(ex + 0.1), Y(-0.30), ew * 0.86, eh * 0.92,
+        { mat: 'spore', dome: 1.7 * u, tint: 0.30, emissive: 0.9 });
+      p.ellipse(X(ex + 0.1), Y(-0.30), ew * 0.46, eh * 0.50,
+        { mat: 'spore', mask: true, dome: 1.7 * u, tint: 0.85, emissive: 1 });
+    } else {
+      p.ellipse(X(ex + 0.22), Y(-0.28), ew * 0.62, eh * 0.84, { mat: 'eye', dome: 1.7 * u, tint: -0.04 });
+      p.ellipse(X(ex - 0.18), Y(-0.72), ew * 0.32, eh * 0.28,
+        { mat: 'eye', mask: true, dome: 1.7 * u, tint: 0.80 });
+    }
     // the upper lash, which is what gives an eye this size any weight
     p.capsule(X(ex) - ew, Y(-1.0), X(ex) + ew * 0.9, Y(-1.05), 0.5 * u, 0.42 * u,
       { mat: 'hair', dome: 0.5 * u, tint: 0.02 });
@@ -718,12 +729,12 @@ export function buildPerson(kind = 'vess', K = 1) {
     props: paintProps(K, kind),
     arm: {
       near: {
-        upper: bone(5.8, 1.9, 1.6, 'shirt', false, { bow: 0.5 * K, shade: -0.16 }),
-        lower: bone(5.4, 1.5, 1.2, 'skin', false, { bow: -0.35 * K, hand: true, sleeve: true }),
+        upper: bone(5.8, 1.9, 1.6, 'shirt', false, { bow: -0.45 * K, shade: -0.16 }),
+        lower: bone(5.4, 1.5, 1.2, 'skin', false, { bow: 0.30 * K, hand: true, sleeve: true }),
       },
       far: {
-        upper: bone(5.8, 1.9, 1.6, 'shirt', true, { bow: 0.5 * K, shade: -0.16 }),
-        lower: bone(5.4, 1.5, 1.2, 'skin', true, { bow: -0.35 * K, hand: true, sleeve: true }),
+        upper: bone(5.8, 1.9, 1.6, 'shirt', true, { bow: -0.45 * K, shade: -0.16 }),
+        lower: bone(5.4, 1.5, 1.2, 'skin', true, { bow: 0.30 * K, hand: true, sleeve: true }),
       },
     },
     leg: {
@@ -743,10 +754,10 @@ export function buildPerson(kind = 'vess', K = 1) {
   // heads are baked the first time a face is worn, which is cheap enough that
   // she can change expression in the world and not only in a speech bubble
   const heads = new Map();
-  rig.headFor = (mood = 0, goggles = false, bare = false) => {
-    const k = `${mood}:${goggles ? 1 : 0}:${bare ? 1 : 0}`;
+  rig.headFor = (mood = 0, goggles = false, bare = false, spore = false) => {
+    const k = `${mood}:${goggles ? 1 : 0}:${bare ? 1 : 0}:${spore ? 1 : 0}`;
     let v = heads.get(k);
-    if (!v) { v = paintHead(K, false, kind, { mood, goggles, noHat: bare }); heads.set(k, v); }
+    if (!v) { v = paintHead(K, false, kind, { mood, goggles, noHat: bare, spore }); heads.set(k, v); }
     return v;
   };
   rig.head = rig.headFor(0, false);
@@ -776,11 +787,11 @@ const portraits = new Map();
  * with the mood baked in - which is the sheet's own facial-expression row,
  * made on demand instead of stored.
  */
-export function portrait(kind, mood = 0, K = 2.6) {
-  const key = `${kind}:${mood}:${K}`;
+export function portrait(kind, mood = 0, K = 2.6, spore = false) {
+  const key = `${kind}:${mood}:${K}:${spore ? 1 : 0}`;
   let v = portraits.get(key);
   if (!v) {
-    v = paintHead(K, false, kind, { mood, goggles: mood === 2 });
+    v = paintHead(K, false, kind, { mood, goggles: mood === 2, spore });
     portraits.set(key, v);
   }
   return v;

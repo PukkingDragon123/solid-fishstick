@@ -10,6 +10,7 @@ import { clamp, clamp01, lerp, damp, TAU, easeOutCubic } from '../lib/math.js';
 import * as Save from '../core/save.js';
 import { drawText, textWidth, wrapText, ellipsize, LINE_H } from '../lib/font.js';
 import { FLORA, FLORA_BY_ID, NEEDS_TEXT, NEEDS_ICON } from '../data/flora.js';
+import { ITEM_BY_ID, STATIONS } from '../data/craft.js';
 import { FAUNA, FAUNA_BY_ID, CLADES, OBSERVE_STEPS } from '../data/fauna.js';
 import { BUILDINGS, BUILD_BY_ID, GENES, GENE_BY_ID, SKILL_BY_ID } from '../data/progress.js';
 import { buildPlant } from '../art/floraart.js';
@@ -30,6 +31,7 @@ const TABS = [
   { id: 'map', icon: 'map', name: 'MAP', sub: 'the basin, and what is left standing in it' },
   { id: 'fleet', icon: 'fauna', name: 'FLEET', sub: 'what lives on you, and where it is' },
   { id: 'codex', icon: 'codex', name: 'FIELD', sub: "Dr. Vess's notes - you have to be with her to read them" },
+  { id: 'craft', icon: 'build', name: 'BENCH', sub: 'her bag, and what her hands can make out of it' },
 ];
 
 // and build mode has its own two, down the side
@@ -183,7 +185,14 @@ export class UI {
     }
     if (i.justPressed('g')) { i.consumeKey('g'); this._openTree(); }
     if (i.justPressed('m')) { i.consumeKey('m'); this.cycleMode(); }
-    const keys = ['1', '2', '3'];
+    // B is the bench, because that is the one you reach for most once she is
+    // yours, and it should not be a number you have to remember
+    if (i.justPressed('b')) {
+      i.consumeKey('b');
+      if (this.drawerOpen && this.tab === 'craft') this.drawerOpen = false;
+      else { this.drawerOpen = true; this.tab = 'craft'; this.scroll = 0; this.pick = null; }
+    }
+    const keys = ['1', '2', '3', '4'];
     keys.forEach((k, n) => {
       if (i.justPressed(k)) {
         i.consumeKey(k);
@@ -1273,11 +1282,12 @@ export class UI {
 
     const bodyY = inY + 26, bodyH = inH - 26;
     const tab = TABS.find((t) => t.id === this.tab) || TABS[0];
-    if (this.tab === 'codex' || this.tab === 'map') {
+    if (this.tab === 'codex' || this.tab === 'map' || this.tab === 'craft') {
       drawText(ctx, tab.sub, inX, bodyY - 4, { color: FAINT });
       ctx.save();
       ctx.beginPath(); ctx.rect(inX, bodyY + 6, inW, bodyH - 6); ctx.clip();
       if (this.tab === 'map') this._mapTab(ctx, inX, bodyY + 6, inW, bodyH - 6);
+      else if (this.tab === 'craft') this._craftTab(ctx, inX, bodyY + 6, inW, bodyH - 6);
       else this._codexTab(ctx, inX, bodyY + 6, inW, bodyH - 6);
       ctx.restore();
       ctx.globalAlpha = 1;
@@ -1290,6 +1300,88 @@ export class UI {
     this._fleetTab(ctx, inX, bodyY + 6, inW, bodyH - 6);
     ctx.restore();
     ctx.globalAlpha = 1;
+  }
+
+  /**
+   * The bench. Her bag along the top, the recipe tree under it, and every
+   * card says in icons what it needs and whether she has it - so you can read
+   * the whole tree without a word of explanation.
+   */
+  _craftTab(ctx, x, y, w, h) {
+    const g = this.game;
+    const craft = g.craft;
+    const owned = g.mind.owned;
+
+    // ---- the bag ----------------------------------------------------------
+    const bag = craft.list();
+    drawText(ctx, 'IN HER PACK', x, y, { color: '#e2b74a' });
+    let bx = x, by = y + 11;
+    if (!bag.length) {
+      drawText(ctx, 'Nothing. Put her on a seam.', x, by, { color: FAINT });
+      by += 11;
+    }
+    for (const e of bag) {
+      const cw = 30;
+      if (bx + cw > x + w) { bx = x; by += 14; }
+      drawPlate(ctx, bx, by, cw - 2, 12, { rivets: false });
+      drawGlyph(ctx, e.def.icon, bx + 6, by + 6, { color: e.def.tint, scale: 1 });
+      drawText(ctx, `${e.n}`, bx + cw - 5, by + 3, { color: INK, align: 'right' });
+      if (this._hit(bx, by, cw - 2, 12)) {
+        this.hover = { title: `${e.def.name} x${e.n}`, body: e.def.desc };
+      }
+      bx += cw;
+    }
+    by += 18;
+
+    // ---- what is being made right now -------------------------------------
+    if (craft.job) {
+      const out = ITEM_BY_ID[craft.job.r.out[0]];
+      drawText(ctx, `making ${out.name}`, x, by, { color: '#9fe8d4' });
+      drawGauge(ctx, x, by + 10, w - 8, 4, craft.progress, '#9fe8d4');
+      by += 22;
+    }
+
+    // ---- the tree ---------------------------------------------------------
+    drawText(ctx, 'SHE CAN MAKE', x, by, { color: '#e2b74a' });
+    by += 12;
+    const list = craft.recipes();
+    for (const { r, why } of list) {
+      const out = ITEM_BY_ID[r.out[0]];
+      const rowH = 20;
+      if (by > y + h - 4) break;
+      const hot = this._hit(x, by, w - 6, rowH - 2);
+      const can = !why && owned && !craft.job;
+      drawPlate(ctx, x, by, w - 6, rowH - 2, {
+        top: can && hot ? 'rgba(66,52,30,0.95)' : undefined,
+        edge: can ? 'rgba(180,146,86,0.6)' : 'rgba(90,74,50,0.35)',
+      });
+      ctx.globalAlpha = can ? 1 : 0.5;
+      drawGlyph(ctx, out.icon, x + 9, by + 9, { color: out.tint, scale: 1 });
+      drawText(ctx, `${out.name}${r.out[1] > 1 ? ` x${r.out[1]}` : ''}`, x + 18, by + 2,
+        { color: can ? INK : DIM });
+      // what it takes, as chips
+      let cx2 = x + 18;
+      for (const [id, n] of r.need) {
+        const d = ITEM_BY_ID[id];
+        const short = craft.count(id) < n;
+        drawGlyph(ctx, d.icon, cx2 + 3, by + 14, { color: short ? '#c07a6a' : d.tint, scale: 1 });
+        drawText(ctx, `${n}`, cx2 + 9, by + 11, { color: short ? '#c07a6a' : FAINT });
+        cx2 += 17;
+      }
+      drawText(ctx, STATIONS[r.at].name, x + w - 12, by + 11, { color: FAINT, align: 'right' });
+      ctx.globalAlpha = 1;
+      if (hot) {
+        this.hover = { title: out.name, body: why ? `${out.desc}\n\n${why}.`
+          : owned ? out.desc : `${out.desc}\n\nShe has to be yours to make it.` };
+        if (can && this.game.input.clicked) {
+          this.game.input.clicked = false;
+          const res = craft.start(r.id);
+          if (res.ok) { this.game.audio.play('ui'); this.game.npc.setPose('write'); }
+          else { this.say(res.why, 3); this.game.audio.play('deny'); }
+        }
+      }
+      by += rowH;
+    }
   }
 
   /** How wide the build rail is, which several other things need to know. */

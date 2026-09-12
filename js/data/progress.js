@@ -184,6 +184,13 @@ export const EVO_BY_ID = Object.fromEntries(EVOLUTIONS.map((e) => [e.id, e]));
 // Buildings sit in shell plots alongside plants.
 
 export const BUILDINGS = [
+  // the two she works at. They are cheap, because the whole tree is behind them
+  { id: 'kiln', name: 'Kiln', kind: 'hut', w: 13, h: 13, cost: 55, nut: 5,
+    effect: {}, desc: 'A salt-brick fire box. Ore goes in, bar comes out - if you '
+      + 'have somebody with hands to work it.' },
+  { id: 'bench', name: 'Work Bench', kind: 'crate', w: 16, h: 10, cost: 70, nut: 8,
+    effect: {}, desc: 'A slab and a vice, bolted to your back. Everything past a '
+      + 'bar of metal is made here.' },
   { id: 'cistern', name: 'Cistern', kind: 'tank', w: 14, h: 12, cost: 60, nut: 6,
     effect: { waterMax: 70 }, desc: 'A sealed stone tank. Holds water you would otherwise lose.' },
   { id: 'windcatcher', name: 'Windcatcher', kind: 'tower', w: 12, h: 22, cost: 90, nut: 12,

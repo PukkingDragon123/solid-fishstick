@@ -54,6 +54,10 @@ npm run build     # -> dist/crabden.html + dist/crabden.body.html
 | inside you | `G` | tap the orb |
 | control mode | `M` | **MODE** |
 | zoom / pan | wheel, drag (locked while you are on your own back) | pinch, drag (same) |
+| lure her in | `L` | — |
+| spray the spore | `V` (again to let her go) | — |
+| her pick, once she is yours | `E` | — |
+| her bench | `B` | **SHOP**, then BENCH |
 | pause / back out | `Esc`, or the chip in the top-right corner | the same chip |
 
 The chip in the corner is the only button that is always in the same place. It
@@ -185,6 +189,62 @@ ripens, and the shape of the whole loop the first time you pick. Each beat fires
 once, and growing is something you can watch happen — the husk splits on a ring
 of light, every stage up **springs** the plant with an overshoot that settles,
 and a mature one goes off with a ring and its name.
+
+### Hands
+
+**You have claws the size of a door and no thumbs.** That is the whole problem,
+and there is exactly one solution to it walking around the basin.
+
+It takes three steps, on purpose, so none of it happens by accident. **Lure**:
+put an artefact on the ground in front of you — she has been wrong about a rock
+for eleven years and she cannot walk past one — and she comes over and crouches
+down over it, which is the only time her head is low enough and still enough to
+reach. **Spray**: a spore, at close range, while she is down. There is a beat
+where she knows. **And then her eye goes blue and stays blue**, and she stops
+talking, because there is nothing left in there doing the talking.
+
+While you have her she does what you point her at and nothing else. She walks
+on your keys. She swings a pick. She works the bench. Press `V` again and you
+let her go, and she comes round a hundred metres away having lost an hour, and
+says so.
+
+### Mining
+
+Under the basin are **seams**, and they are deterministic — the same seed puts
+the same copper in the same place for ever. Shell hash near the top, salt sheets
+under it, then silica, then the copper that was dissolved in the sea when it
+dried, then amber, and at the bottom iron, where the water was deepest and
+stayed longest. A seam you have not reached yet shows as a **glint in the
+ground** that brightens as your hole gets near it, so the desert tells you where
+to dig instead of making you guess.
+
+Every swing takes a bite out of the ground whether or not there is anything
+under it, so getting down to a deep seam is the work. Once a seam is open it
+takes hits, cracks a little more with each one, and then breaks.
+
+The ladder closes, so nothing needs a pick made out of itself: **her trowel gets
+everything down to copper**, copper buys the **copper pick**, and the copper pick
+is what opens **iron and amber**. The iron pick is not a gate — it is just
+faster, and it drops an extra lump.
+
+### Crafting, and a base on your back
+
+The bag is hers, because she is the one with hands. The tree is three tiers and
+it runs **through the garden**: ore melts into bar at the **kiln**, bar becomes
+part at the **bench**, part becomes the thing that goes on your back — and the
+kiln and the bench are both things you build on your own shell. So the loop is:
+mine, refine on the animal, build on the animal, mine deeper.
+
+Grit and salt press into **bricks** by hand; shell winds into **spool**. Copper
+and iron go to **bars** at the kiln, silica and salt to **glass**. At the bench:
+**gears** out of copper, **pipe** out of iron, **pane** out of glass, and then
+the two picks and the **spore sprayer** that made all of it possible in the
+first place. Every card in the panel shows what it needs as icons, greyed with a
+reason when she cannot make it yet.
+
+| | |
+| --- | --- |
+| ![Hers no longer](docs/shot-15-owned.png) | ![The bench](docs/shot-16-bench.png) |
 
 ### Your genome
 
@@ -581,7 +641,14 @@ reads back anything else you spell letter by letter.
 ### The rest
 
 - **Terrain** is a heightfield over X, baked into 256px chunks, with a live
-  deformation map that footsteps push down and wind pulls back up.
+  deformation map. Sand is a fluid in no hurry: it **slumps**, so a pit with a
+  sharp edge pulls its neighbours in and what you dig becomes a cone rather than
+  a slot, and it **fills** on the wind — but the rate falls off with depth, so a
+  footprint is gone in a minute and a three-metre mine shaft is still there when
+  you come back. Break ground anywhere and **something that was living in it
+  comes out**: beetles and grubs that land running, scuttle along the surface,
+  and go back under a little way off. The desert looks empty because everything
+  in it is underneath.
 - **Parallax** is three layers with real aerial perspective: each layer is
   painted into a scratch canvas and hazed toward the sky colour with
   `source-atop`, so distance desaturates the buttes without washing the sky.

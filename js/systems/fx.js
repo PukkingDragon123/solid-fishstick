@@ -140,6 +140,19 @@ export class Fx {
   }
 
   /** A ring going out from a point: something happened exactly here. */
+  /**
+   * Something that was living in the sand, leaving. It comes out running, it
+   * runs along the surface rather than through the air, and it goes down
+   * again a little way off - which is why the desert looks empty.
+   */
+  bug(x, y, dir = 1, kind = 0) {
+    this._add({
+      k: 'bug', x, y, vx: dir * (34 + Math.random() * 46), vy: -18 - Math.random() * 26,
+      life: 1.1 + Math.random() * 1.4, t: 0, dir, leg: Math.random() * TAU,
+      kind: kind < 0.34 ? 0 : kind < 0.7 ? 1 : 2, r: 1,
+    });
+  }
+
   ring(x, y, color = '#b6de8f', r = 14) {
     this._add({ k: 'ring', x, y, r0: 2, r1: r, life: 0.5, t: 0, color });
   }
@@ -220,6 +233,19 @@ export class Fx {
           break;
         case 'ring':
           break;
+        case 'bug': {
+          // it falls to the sand, then scuttles along it in a hurry
+          const gy = this.game.terrain.surfaceY(q.x);
+          q.leg += dt * 22;
+          if (q.y < gy - 0.5) { q.vy += 380 * dt; } else {
+            q.y = gy;
+            q.vy = 0;
+            q.vx = lerp(q.vx, q.dir * (28 + q.kind * 14), 1 - Math.pow(0.5, dt));
+            // and dives back under near the end of its life
+            if (q.t > q.life * 0.72) q.vx *= Math.pow(0.02, dt);
+          }
+          break;
+        }
         case 'grit':
           // a thrown grain: gravity, and it stops when it hits the sand
           q.vy += (q.grav || 260) * dt;
@@ -312,6 +338,26 @@ export class Fx {
           ctx.beginPath();
           ctx.ellipse(s.x, s.y, lerp(q.r0, q.r1, k) * z, lerp(q.r0, q.r1, k) * 0.45 * z, 0, 0, TAU);
           ctx.stroke();
+          break;
+        }
+        case 'bug': {
+          // three of them, and all three are two pixels and some legs
+          const COL = ['#3a2a18', '#5a3a1c', '#2c3a20'];
+          const px = Math.round(s.x), py = Math.round(s.y);
+          const w = Math.max(1, Math.round(z * (q.kind === 2 ? 2.4 : 1.8)));
+          const h = Math.max(1, Math.round(z * 1.2));
+          ctx.globalAlpha = a * (q.t > q.life * 0.72 ? 0.5 : 1);
+          // legs first, under the body
+          ctx.fillStyle = 'rgba(20,14,8,0.85)';
+          for (let L = -1; L <= 1; L++) {
+            const kick = Math.sin(q.leg + L * 2.1) * z;
+            ctx.fillRect(px + L * Math.round(z), py + h, 1, Math.max(1, Math.round(z * 0.8 + kick * 0.3)));
+          }
+          ctx.fillStyle = COL[q.kind];
+          ctx.fillRect(px - Math.round(w / 2), py, w, h);
+          // a shell shine, which is what makes a beetle a beetle
+          ctx.fillStyle = 'rgba(220,200,150,0.5)';
+          ctx.fillRect(px - Math.round(w / 2) + (q.dir > 0 ? w - 1 : 0), py, 1, 1);
           break;
         }
         case 'grit':

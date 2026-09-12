@@ -64,7 +64,8 @@ export class Terrain {
       const k = 1 - clamp01(Math.abs(dx) / radius);
       if (k <= 0) continue;
       const cur = this.sand.get(i) || 0;
-      this.sand.set(i, clamp(cur + depth * k * k, -14, 16));
+      // a pit can go a long way down now, because somebody is mining in it
+      this.sand.set(i, clamp(cur + depth * k * k, -20, 52));
     }
   }
 
@@ -73,11 +74,42 @@ export class Terrain {
     return Math.atan2(this.baseY(x + e) - this.baseY(x - e), e * 2);
   }
 
+  /**
+   * Sand is a fluid that is in no hurry. Two things happen to it every frame.
+   *
+   * It **slumps**: a pit with a sharp edge pulls its neighbours in, so what
+   * you dig turns into a cone rather than staying a slot, and a pile spreads
+   * out rather than standing up. That is the part that makes ground feel like
+   * ground rather than like a dent in a sheet.
+   *
+   * And it **fills**, on the wind - but a footprint goes in minutes and a
+   * three-metre pit does not, so the rate falls off with how deep the hole is.
+   * Dig somewhere and it is still there when you come back.
+   */
   update(dt, wind = 0.3) {
-    // sand creeps back: wind fills holes and flattens piles
-    const relax = Math.pow(0.55, dt * (0.5 + wind));
+    if (!this.sand.size) return;
+    const slump = clamp01(dt * (1.1 + wind * 0.8));
+    const moved = [];
     for (const [i, v] of this.sand) {
-      const nv = v * relax;
+      const l = this.sand.get(i - 1) || 0;
+      const r = this.sand.get(i + 1) || 0;
+      // only the difference beyond what sand will hold as a slope runs away
+      const hold = 1.6;
+      let flow = 0;
+      if (v - l > hold) flow += (v - l - hold) * 0.5;
+      if (v - r > hold) flow += (v - r - hold) * 0.5;
+      if (flow !== 0) moved.push([i, flow * slump]);
+    }
+    for (const [i, f] of moved) {
+      this.sand.set(i, (this.sand.get(i) || 0) - f);
+      this.sand.set(i - 1, (this.sand.get(i - 1) || 0) + f * 0.5);
+      this.sand.set(i + 1, (this.sand.get(i + 1) || 0) + f * 0.5);
+    }
+
+    for (const [i, v] of this.sand) {
+      // deep holes are slow to fill; a footprint is gone almost at once
+      const deep = 1 / (1 + Math.abs(v) * 0.32);
+      const nv = v * Math.pow(0.55, dt * (0.5 + wind) * deep);
       if (Math.abs(nv) < 0.06) this.sand.delete(i);
       else this.sand.set(i, nv);
     }

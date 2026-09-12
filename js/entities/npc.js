@@ -27,31 +27,33 @@ export const POSE = {
  *
  *   crouch  0 standing, 1 folded right down over the ground
  *   lean    forward tilt of the spine, in radians
- *   armN/F  [shoulder, elbow] angles for the near and far arm
+ *   armN/F  [shoulder angle, elbow flex] for the near and far arm. Flex is
+ *           never negative: it bends the forearm forward, the way an arm
+ *           does, and the poser subtracts it from the shoulder.
  *   tool    what is in the near hand
  *   swing   how much the arms swing with the walk
  */
 const POSES = {
-  idle: { crouch: 0, lean: 0.04, armN: [1.42, 0.30], armF: [1.50, 0.26], swing: 0.25 },
-  idleFront: { crouch: 0, lean: 0, armN: [1.36, 0.44], armF: [1.44, 0.40], swing: 0.2, face: 0.35 },
-  idleBack: { crouch: 0, lean: -0.05, armN: [1.50, 0.20], armF: [1.56, 0.18], swing: 0.2, face: -0.4 },
-  walk: { crouch: 0.04, lean: 0.12, armN: [1.30, 0.42], armF: [1.30, 0.42], swing: 1 },
-  wander: { crouch: 0.02, lean: 0.08, armN: [1.38, 0.34], armF: [1.40, 0.30], swing: 0.8 },
-  crouch: { crouch: 0.72, lean: 0.46, armN: [0.62, 0.92], armF: [0.86, 0.70], tool: 'brush', swing: 0 },
-  dig: { crouch: 0.80, lean: 0.54, armN: [0.40, 1.10], armF: [0.92, 0.66], tool: 'trowel', swing: 0, work: 1 },
-  write: { crouch: 0.05, lean: 0.20, armN: [0.74, 1.26], armF: [0.98, 1.12], tool: 'pencil', hold: 'notebook', swing: 0 },
-  point: { crouch: 0, lean: 0.02, armN: [-0.34, 0.06], armF: [1.46, 0.28], swing: 0 },
-  drink: { crouch: 0.02, lean: -0.06, armN: [0.20, 1.44], armF: [1.48, 0.26], tool: 'canteen', swing: 0 },
-  wave: { crouch: 0, lean: 0.02, armN: [-0.90, 0.55], armF: [1.46, 0.28], swing: 0, work: 0.6 },
-  sit: { crouch: 1, lean: 0.16, armN: [0.90, 0.96], armF: [1.06, 0.88], swing: 0, sit: 1 },
-  talk: { crouch: 0, lean: 0.06, armN: [0.96, 0.86], armF: [1.20, 0.62], swing: 0, work: 0.5 },
-  tired: { crouch: 0.30, lean: 0.42, armN: [1.18, 0.72], armF: [1.26, 0.66], swing: 0 },
-  survey: { crouch: 0, lean: -0.04, armN: [0.22, 1.30], armF: [1.44, 0.30], tool: 'lens', swing: 0 },
-  measure: { crouch: 0.10, lean: 0.22, armN: [0.30, 0.70], armF: [0.50, 0.80], tool: 'peg', swing: 0 },
-  rest: { crouch: 0.94, lean: 0.24, armN: [1.00, 0.80], armF: [1.14, 0.74], swing: 0, sit: 1 },
+  idle: { crouch: 0, lean: 0.04, armN: [1.42, 0.16], armF: [1.50, 0.14], swing: 0.25 },
+  idleFront: { crouch: 0, lean: 0, armN: [1.36, 0.14], armF: [1.44, 0.12], swing: 0.2, face: 0.35 },
+  idleBack: { crouch: 0, lean: -0.05, armN: [1.50, 0.11], armF: [1.56, 0.10], swing: 0.2, face: -0.4 },
+  walk: { crouch: 0.04, lean: 0.12, armN: [1.44, 0.26], armF: [1.44, 0.26], swing: 1 },
+  wander: { crouch: 0.02, lean: 0.08, armN: [1.44, 0.20], armF: [1.46, 0.18], swing: 0.8 },
+  crouch: { crouch: 0.72, lean: 0.46, armN: [0.62, 0.28], armF: [0.86, 0.34], tool: 'brush', swing: 0 },
+  dig: { crouch: 0.80, lean: 0.54, armN: [0.40, 0.22], armF: [0.92, 0.40], tool: 'trowel', swing: 0, work: 1 },
+  write: { crouch: 0.05, lean: 0.20, armN: [0.74, 0.84], armF: [0.98, 0.92], tool: 'pencil', hold: 'notebook', swing: 0 },
+  point: { crouch: 0, lean: 0.02, armN: [-0.34, 0.02], armF: [1.46, 0.18], swing: 0 },
+  drink: { crouch: 0.02, lean: -0.06, armN: [0.20, 1.24], armF: [1.48, 0.16], tool: 'canteen', swing: 0 },
+  wave: { crouch: 0, lean: 0.02, armN: [-0.90, 0.42], armF: [1.46, 0.18], swing: 0, work: 0.6 },
+  sit: { crouch: 1, lean: 0.16, armN: [0.90, 0.66], armF: [1.06, 0.58], swing: 0, sit: 1 },
+  talk: { crouch: 0, lean: 0.06, armN: [0.96, 0.72], armF: [1.20, 0.52], swing: 0, work: 0.5 },
+  tired: { crouch: 0.30, lean: 0.42, armN: [1.18, 0.20], armF: [1.26, 0.18], swing: 0 },
+  survey: { crouch: 0, lean: -0.04, armN: [0.22, 1.23], armF: [1.44, 0.18], tool: 'lens', swing: 0 },
+  measure: { crouch: 0.10, lean: 0.22, armN: [0.30, 0.42], armF: [0.50, 0.50], tool: 'peg', swing: 0 },
+  rest: { crouch: 0.94, lean: 0.24, armN: [1.00, 0.54], armF: [1.14, 0.50], swing: 0, sit: 1 },
   // both arms straight up, spine back: the shape a person makes when the rock
   // they have been sitting on turns out to be an animal
-  shock: { crouch: 0.16, lean: -0.14, armN: [-1.30, -0.30], armF: [-1.46, -0.26], swing: 0 },
+  shock: { crouch: 0.16, lean: -0.14, armN: [-1.30, 0.26], armF: [-1.46, 0.22], swing: 0 },
 };
 
 const CAMP_ITEMS = ['bedroll', 'canteen', 'lantern', 'peg', 'skull', 'spoil', 'pick', 'brush'];
@@ -119,7 +121,7 @@ export class Person {
     return (Math.abs(t.length * 7) % 3);
   }
 
-  portrait() { return portrait(this.kind, this.face); }
+  portrait() { return portrait(this.kind, this.face, 2.6, (this.game.mind?.blue || 0) > 0.35); }
 
   setPose(p) { if (this.pose !== p) { this.pose = p; this.animT = 0; } this.poseT = 0; }
 
@@ -149,10 +151,18 @@ export class Person {
     }
 
     let want = 0;
-    if (this.moveTo !== undefined) {
+    // Driven directly - which only happens while the spore has her - beats
+    // anything she was walking towards on her own.
+    if (this.driveX) {
+      want = clamp(this.driveX, -1, 1);
+      this.moveTo = undefined;
+      this.setPose(POSE.WALK);
+    } else if (this.moveTo !== undefined) {
       const d = this.moveTo - this.x;
       if (Math.abs(d) > 4) { want = Math.sign(d); this.setPose(POSE.WALK); }
       else if (this.pose === POSE.WALK) { this.setPose(POSE.IDLE); this.moveTo = undefined; }
+    } else if (this.mode === 'owned' && this.pose === POSE.WALK) {
+      this.setPose(POSE.IDLE);
     }
     this.vx = damp(this.vx, want * this.speed, 0.0004, dt);
     this.x += this.vx * dt;
@@ -467,9 +477,14 @@ export class Person {
     // phase the feet are: the near foot is furthest FORWARD at step 0, which
     // is exactly when the near arm should be furthest BACK. (A sine here put
     // the arm a quarter cycle out and made her look like she was wading.)
-    const sw = swing * Math.cos((this.step + (side > 0 ? 0 : 0.5)) * TAU) * 0.55;
+    const sw = swing * Math.cos((this.step + (side > 0 ? 0 : 0.5)) * TAU) * 0.40;
     const A = a0 + lean + sw;
-    const B = A + a1 + Math.abs(sw) * 0.3;
+    // An elbow flexes the forearm FORWARD, toward the body's front - it does
+    // not keep rotating the same way the shoulder did. `a1` is how flexed it
+    // is, never which way, so it comes off the shoulder angle rather than
+    // being added to it. Added, the forearm swung back past vertical and the
+    // whole arm read as being on backwards.
+    const B = A - a1 - Math.abs(sw) * 0.22;
     const u = art.upper, l = art.lower;
     ctx.save();
     ctx.translate(sh.x, sh.y);
@@ -533,7 +548,9 @@ export class Person {
       + (this.speech ? Math.sin(this.t * 5.5) * 0.035 : 0)
       + (P.work ? Math.sin(this.animT * 4.0) * 0.05 : 0);
     const goggles = P.tool === 'lens' || P.tool === 'canteen';
-    const art = rig.headFor(this.face | 0, goggles, !!this.hatOff);
+    // the spore shows in exactly one place, and it is the place you look
+    const blue = this.game.mind ? this.game.mind.blue : 0;
+    const art = rig.headFor(this.face | 0, goggles, !!this.hatOff, blue > 0.35);
     ctx.save();
     ctx.translate(neck.x, neck.y + breath);
     ctx.rotate(tilt);
@@ -554,7 +571,7 @@ export class Archaeologist extends Person {
   constructor(game, x) {
     super(game, 'vess', x, { name: 'Dr. Vess', speed: 46, K: 1 });
     this.idleT = 0;
-    this.mode = 'work';           // work | follow | ride
+    this.mode = 'work';           // work | follow | ride | owned
     this.rideT = 0;
     this.climb = 0;
     this.chatT = 6;
@@ -628,6 +645,10 @@ export class Archaeologist extends Person {
     super.update(dt);
     // during the opening the script owns her: no idle rota, no small talk
     if (this.game.state === 'intro') return;
+    // and while the spore has her she has no small talk and no rota either -
+    // she does what she is pointed at and nothing else, which is most of what
+    // makes it read as wrong
+    if (this.mode === 'owned') return;
     this._chatter(dt);
 
     if (this.mode === 'follow') return;

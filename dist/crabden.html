@@ -4252,17 +4252,46 @@ body {
         const k = 1 - clamp01(Math.abs(dx) / radius);
         if (k <= 0) continue;
         const cur = this.sand.get(i) || 0;
-        this.sand.set(i, clamp(cur + depth * k * k, -14, 16));
+        this.sand.set(i, clamp(cur + depth * k * k, -20, 52));
       }
     }
     /** Slope in radians, for standing the crab on the surface. */
     slope(x, e = 7) {
       return Math.atan2(this.baseY(x + e) - this.baseY(x - e), e * 2);
     }
+    /**
+     * Sand is a fluid that is in no hurry. Two things happen to it every frame.
+     *
+     * It **slumps**: a pit with a sharp edge pulls its neighbours in, so what
+     * you dig turns into a cone rather than staying a slot, and a pile spreads
+     * out rather than standing up. That is the part that makes ground feel like
+     * ground rather than like a dent in a sheet.
+     *
+     * And it **fills**, on the wind - but a footprint goes in minutes and a
+     * three-metre pit does not, so the rate falls off with how deep the hole is.
+     * Dig somewhere and it is still there when you come back.
+     */
     update(dt, wind = 0.3) {
-      const relax = Math.pow(0.55, dt * (0.5 + wind));
+      if (!this.sand.size) return;
+      const slump = clamp01(dt * (1.1 + wind * 0.8));
+      const moved = [];
       for (const [i, v] of this.sand) {
-        const nv = v * relax;
+        const l = this.sand.get(i - 1) || 0;
+        const r = this.sand.get(i + 1) || 0;
+        const hold = 1.6;
+        let flow = 0;
+        if (v - l > hold) flow += (v - l - hold) * 0.5;
+        if (v - r > hold) flow += (v - r - hold) * 0.5;
+        if (flow !== 0) moved.push([i, flow * slump]);
+      }
+      for (const [i, f] of moved) {
+        this.sand.set(i, (this.sand.get(i) || 0) - f);
+        this.sand.set(i - 1, (this.sand.get(i - 1) || 0) + f * 0.5);
+        this.sand.set(i + 1, (this.sand.get(i + 1) || 0) + f * 0.5);
+      }
+      for (const [i, v] of this.sand) {
+        const deep = 1 / (1 + Math.abs(v) * 0.32);
+        const nv = v * Math.pow(0.55, dt * (0.5 + wind) * deep);
         if (Math.abs(nv) < 0.06) this.sand.delete(i);
         else this.sand.set(i, nv);
       }
@@ -5685,6 +5714,16 @@ body {
       ao: 0.08,
       normalScale: 0.4,
       outline: "#2a2620"
+    },
+    // what the eye goes when the spore is in it: a cold blue that lights itself
+    spore: {
+      ramp: ["#06202c", "#0a3244", "#0f4a60", "#16667e", "#20889c", "#35aebd", "#68d6e2", "#b4f2f8"],
+      diffuse: 0.34,
+      rim: 0.9,
+      spec: 0.9,
+      ao: 0.02,
+      normalScale: 0.5,
+      outline: "#04141c"
     }
   };
   var ELDER = {
@@ -6056,14 +6095,31 @@ body {
         continue;
       }
       p.ellipse(X(ex), Y(-0.35), ew, eh, { mat: "paper", dome: 1.5 * u, tint: 0.32 });
-      p.ellipse(X(ex + 0.22), Y(-0.28), ew * 0.62, eh * 0.84, { mat: "eye", dome: 1.7 * u, tint: -0.04 });
-      p.ellipse(
-        X(ex - 0.18),
-        Y(-0.72),
-        ew * 0.32,
-        eh * 0.28,
-        { mat: "eye", mask: true, dome: 1.7 * u, tint: 0.8 }
-      );
+      if (opts.spore) {
+        p.ellipse(
+          X(ex + 0.1),
+          Y(-0.3),
+          ew * 0.86,
+          eh * 0.92,
+          { mat: "spore", dome: 1.7 * u, tint: 0.3, emissive: 0.9 }
+        );
+        p.ellipse(
+          X(ex + 0.1),
+          Y(-0.3),
+          ew * 0.46,
+          eh * 0.5,
+          { mat: "spore", mask: true, dome: 1.7 * u, tint: 0.85, emissive: 1 }
+        );
+      } else {
+        p.ellipse(X(ex + 0.22), Y(-0.28), ew * 0.62, eh * 0.84, { mat: "eye", dome: 1.7 * u, tint: -0.04 });
+        p.ellipse(
+          X(ex - 0.18),
+          Y(-0.72),
+          ew * 0.32,
+          eh * 0.28,
+          { mat: "eye", mask: true, dome: 1.7 * u, tint: 0.8 }
+        );
+      }
       p.capsule(
         X(ex) - ew,
         Y(-1),
@@ -6650,12 +6706,12 @@ body {
       props: paintProps(K, kind),
       arm: {
         near: {
-          upper: bone(5.8, 1.9, 1.6, "shirt", false, { bow: 0.5 * K, shade: -0.16 }),
-          lower: bone(5.4, 1.5, 1.2, "skin", false, { bow: -0.35 * K, hand: true, sleeve: true })
+          upper: bone(5.8, 1.9, 1.6, "shirt", false, { bow: -0.45 * K, shade: -0.16 }),
+          lower: bone(5.4, 1.5, 1.2, "skin", false, { bow: 0.3 * K, hand: true, sleeve: true })
         },
         far: {
-          upper: bone(5.8, 1.9, 1.6, "shirt", true, { bow: 0.5 * K, shade: -0.16 }),
-          lower: bone(5.4, 1.5, 1.2, "skin", true, { bow: -0.35 * K, hand: true, sleeve: true })
+          upper: bone(5.8, 1.9, 1.6, "shirt", true, { bow: -0.45 * K, shade: -0.16 }),
+          lower: bone(5.4, 1.5, 1.2, "skin", true, { bow: 0.3 * K, hand: true, sleeve: true })
         }
       },
       leg: {
@@ -6671,11 +6727,11 @@ body {
     };
     rig.satchel = rig.pack;
     const heads = /* @__PURE__ */ new Map();
-    rig.headFor = (mood = 0, goggles = false, bare = false) => {
-      const k = `${mood}:${goggles ? 1 : 0}:${bare ? 1 : 0}`;
+    rig.headFor = (mood = 0, goggles = false, bare = false, spore = false) => {
+      const k = `${mood}:${goggles ? 1 : 0}:${bare ? 1 : 0}:${spore ? 1 : 0}`;
       let v = heads.get(k);
       if (!v) {
-        v = paintHead(K, false, kind, { mood, goggles, noHat: bare });
+        v = paintHead(K, false, kind, { mood, goggles, noHat: bare, spore });
         heads.set(k, v);
       }
       return v;
@@ -6695,11 +6751,11 @@ body {
     return rig;
   }
   var portraits = /* @__PURE__ */ new Map();
-  function portrait(kind, mood = 0, K = 2.6) {
-    const key2 = `${kind}:${mood}:${K}`;
+  function portrait(kind, mood = 0, K = 2.6, spore = false) {
+    const key2 = `${kind}:${mood}:${K}:${spore ? 1 : 0}`;
     let v = portraits.get(key2);
     if (!v) {
-      v = paintHead(K, false, kind, { mood, goggles: mood === 2 });
+      v = paintHead(K, false, kind, { mood, goggles: mood === 2, spore });
       portraits.set(key2, v);
     }
     return v;
@@ -6727,26 +6783,26 @@ body {
     SHOCK: "shock"
   };
   var POSES = {
-    idle: { crouch: 0, lean: 0.04, armN: [1.42, 0.3], armF: [1.5, 0.26], swing: 0.25 },
-    idleFront: { crouch: 0, lean: 0, armN: [1.36, 0.44], armF: [1.44, 0.4], swing: 0.2, face: 0.35 },
-    idleBack: { crouch: 0, lean: -0.05, armN: [1.5, 0.2], armF: [1.56, 0.18], swing: 0.2, face: -0.4 },
-    walk: { crouch: 0.04, lean: 0.12, armN: [1.3, 0.42], armF: [1.3, 0.42], swing: 1 },
-    wander: { crouch: 0.02, lean: 0.08, armN: [1.38, 0.34], armF: [1.4, 0.3], swing: 0.8 },
-    crouch: { crouch: 0.72, lean: 0.46, armN: [0.62, 0.92], armF: [0.86, 0.7], tool: "brush", swing: 0 },
-    dig: { crouch: 0.8, lean: 0.54, armN: [0.4, 1.1], armF: [0.92, 0.66], tool: "trowel", swing: 0, work: 1 },
-    write: { crouch: 0.05, lean: 0.2, armN: [0.74, 1.26], armF: [0.98, 1.12], tool: "pencil", hold: "notebook", swing: 0 },
-    point: { crouch: 0, lean: 0.02, armN: [-0.34, 0.06], armF: [1.46, 0.28], swing: 0 },
-    drink: { crouch: 0.02, lean: -0.06, armN: [0.2, 1.44], armF: [1.48, 0.26], tool: "canteen", swing: 0 },
-    wave: { crouch: 0, lean: 0.02, armN: [-0.9, 0.55], armF: [1.46, 0.28], swing: 0, work: 0.6 },
-    sit: { crouch: 1, lean: 0.16, armN: [0.9, 0.96], armF: [1.06, 0.88], swing: 0, sit: 1 },
-    talk: { crouch: 0, lean: 0.06, armN: [0.96, 0.86], armF: [1.2, 0.62], swing: 0, work: 0.5 },
-    tired: { crouch: 0.3, lean: 0.42, armN: [1.18, 0.72], armF: [1.26, 0.66], swing: 0 },
-    survey: { crouch: 0, lean: -0.04, armN: [0.22, 1.3], armF: [1.44, 0.3], tool: "lens", swing: 0 },
-    measure: { crouch: 0.1, lean: 0.22, armN: [0.3, 0.7], armF: [0.5, 0.8], tool: "peg", swing: 0 },
-    rest: { crouch: 0.94, lean: 0.24, armN: [1, 0.8], armF: [1.14, 0.74], swing: 0, sit: 1 },
+    idle: { crouch: 0, lean: 0.04, armN: [1.42, 0.16], armF: [1.5, 0.14], swing: 0.25 },
+    idleFront: { crouch: 0, lean: 0, armN: [1.36, 0.14], armF: [1.44, 0.12], swing: 0.2, face: 0.35 },
+    idleBack: { crouch: 0, lean: -0.05, armN: [1.5, 0.11], armF: [1.56, 0.1], swing: 0.2, face: -0.4 },
+    walk: { crouch: 0.04, lean: 0.12, armN: [1.44, 0.26], armF: [1.44, 0.26], swing: 1 },
+    wander: { crouch: 0.02, lean: 0.08, armN: [1.44, 0.2], armF: [1.46, 0.18], swing: 0.8 },
+    crouch: { crouch: 0.72, lean: 0.46, armN: [0.62, 0.28], armF: [0.86, 0.34], tool: "brush", swing: 0 },
+    dig: { crouch: 0.8, lean: 0.54, armN: [0.4, 0.22], armF: [0.92, 0.4], tool: "trowel", swing: 0, work: 1 },
+    write: { crouch: 0.05, lean: 0.2, armN: [0.74, 0.84], armF: [0.98, 0.92], tool: "pencil", hold: "notebook", swing: 0 },
+    point: { crouch: 0, lean: 0.02, armN: [-0.34, 0.02], armF: [1.46, 0.18], swing: 0 },
+    drink: { crouch: 0.02, lean: -0.06, armN: [0.2, 1.24], armF: [1.48, 0.16], tool: "canteen", swing: 0 },
+    wave: { crouch: 0, lean: 0.02, armN: [-0.9, 0.42], armF: [1.46, 0.18], swing: 0, work: 0.6 },
+    sit: { crouch: 1, lean: 0.16, armN: [0.9, 0.66], armF: [1.06, 0.58], swing: 0, sit: 1 },
+    talk: { crouch: 0, lean: 0.06, armN: [0.96, 0.72], armF: [1.2, 0.52], swing: 0, work: 0.5 },
+    tired: { crouch: 0.3, lean: 0.42, armN: [1.18, 0.2], armF: [1.26, 0.18], swing: 0 },
+    survey: { crouch: 0, lean: -0.04, armN: [0.22, 1.23], armF: [1.44, 0.18], tool: "lens", swing: 0 },
+    measure: { crouch: 0.1, lean: 0.22, armN: [0.3, 0.42], armF: [0.5, 0.5], tool: "peg", swing: 0 },
+    rest: { crouch: 0.94, lean: 0.24, armN: [1, 0.54], armF: [1.14, 0.5], swing: 0, sit: 1 },
     // both arms straight up, spine back: the shape a person makes when the rock
     // they have been sitting on turns out to be an animal
-    shock: { crouch: 0.16, lean: -0.14, armN: [-1.3, -0.3], armF: [-1.46, -0.26], swing: 0 }
+    shock: { crouch: 0.16, lean: -0.14, armN: [-1.3, 0.26], armF: [-1.46, 0.22], swing: 0 }
   };
   var CAMP_ITEMS = ["bedroll", "canteen", "lantern", "peg", "skull", "spoil", "pick", "brush"];
   var TURN_SECS = 0.26;
@@ -6807,7 +6863,7 @@ body {
       return Math.abs(t.length * 7) % 3;
     }
     portrait() {
-      return portrait(this.kind, this.face);
+      return portrait(this.kind, this.face, 2.6, (this.game.mind?.blue || 0) > 0.35);
     }
     setPose(p) {
       if (this.pose !== p) {
@@ -6846,7 +6902,11 @@ body {
         } else if (this.shoved > 0) this.shoved = 0;
       }
       let want = 0;
-      if (this.moveTo !== void 0) {
+      if (this.driveX) {
+        want = clamp(this.driveX, -1, 1);
+        this.moveTo = void 0;
+        this.setPose(POSE.WALK);
+      } else if (this.moveTo !== void 0) {
         const d = this.moveTo - this.x;
         if (Math.abs(d) > 4) {
           want = Math.sign(d);
@@ -6855,6 +6915,8 @@ body {
           this.setPose(POSE.IDLE);
           this.moveTo = void 0;
         }
+      } else if (this.mode === "owned" && this.pose === POSE.WALK) {
+        this.setPose(POSE.IDLE);
       }
       this.vx = damp(this.vx, want * this.speed, 4e-4, dt);
       this.x += this.vx * dt;
@@ -7126,9 +7188,9 @@ body {
     _arm(ctx, art, sh, a0, a1, lean, side, tool) {
       const rig = this.rig;
       const swing = (POSES[this.pose] || POSES.idle).swing || 0;
-      const sw = swing * Math.cos((this.step + (side > 0 ? 0 : 0.5)) * TAU) * 0.55;
+      const sw = swing * Math.cos((this.step + (side > 0 ? 0 : 0.5)) * TAU) * 0.4;
       const A = a0 + lean + sw;
-      const B = A + a1 + Math.abs(sw) * 0.3;
+      const B = A - a1 - Math.abs(sw) * 0.22;
       const u = art.upper, l = art.lower;
       ctx.save();
       ctx.translate(sh.x, sh.y);
@@ -7183,7 +7245,8 @@ body {
       const P = POSES[this.pose] || POSES.idle;
       const tilt = lean * 0.4 + this.b.look * 0.22 + (this.speech ? Math.sin(this.t * 5.5) * 0.035 : 0) + (P.work ? Math.sin(this.animT * 4) * 0.05 : 0);
       const goggles = P.tool === "lens" || P.tool === "canteen";
-      const art = rig.headFor(this.face | 0, goggles, !!this.hatOff);
+      const blue = this.game.mind ? this.game.mind.blue : 0;
+      const art = rig.headFor(this.face | 0, goggles, !!this.hatOff, blue > 0.35);
       ctx.save();
       ctx.translate(neck.x, neck.y + breath);
       ctx.rotate(tilt);
@@ -7270,6 +7333,7 @@ body {
       }
       super.update(dt);
       if (this.game.state === "intro") return;
+      if (this.mode === "owned") return;
       this._chatter(dt);
       if (this.mode === "follow") return;
       this.idleT -= dt;
@@ -8866,6 +8930,716 @@ body {
     }
   };
 
+  // js/data/craft.js
+  var ITEMS = [
+    // -- raw, straight out of the ground --------------------------------------
+    {
+      id: "grit",
+      name: "Grit",
+      icon: "spade",
+      tint: "#c2a271",
+      tier: 0,
+      desc: "Coarse sand with the salt still in it. Everything starts here."
+    },
+    {
+      id: "saltcake",
+      name: "Salt Cake",
+      icon: "comb",
+      tint: "#e6e2d4",
+      tier: 0,
+      desc: "The sea left this lying in sheets. It cuts, it preserves, and it makes glass behave."
+    },
+    {
+      id: "silica",
+      name: "Silica",
+      icon: "well",
+      tint: "#bfe0e4",
+      tier: 0,
+      desc: "White sand, almost nothing else in it. Melts clear."
+    },
+    {
+      id: "copperore",
+      name: "Copper Ore",
+      icon: "link",
+      tint: "#c97a4a",
+      tier: 0,
+      desc: "Green-crusted lumps in a seam. It was in the water once."
+    },
+    {
+      id: "ironore",
+      name: "Iron Ore",
+      icon: "shield",
+      tint: "#8d7a70",
+      tier: 0,
+      desc: "Heavier than it looks, and rusted through before anyone dug it up."
+    },
+    {
+      id: "shellchip",
+      name: "Shell Chip",
+      icon: "nest",
+      tint: "#e4d6b4",
+      tier: 0,
+      desc: "A piece of something that lived here when there was a here to live in."
+    },
+    {
+      id: "amberchunk",
+      name: "Raw Amber",
+      icon: "egg",
+      tint: "#e0a93a",
+      tier: 0,
+      desc: "Resin from a tree that has been gone a thousand years."
+    },
+    // -- refined --------------------------------------------------------------
+    {
+      id: "copperbar",
+      name: "Copper Bar",
+      icon: "load",
+      tint: "#e08a4a",
+      tier: 1,
+      desc: "Soft, and it takes an edge badly, but it takes one."
+    },
+    {
+      id: "ironbar",
+      name: "Iron Bar",
+      icon: "load",
+      tint: "#b0a49c",
+      tier: 1,
+      desc: "A bar of it will outlast everyone who has ever handled it."
+    },
+    {
+      id: "glass",
+      name: "Glass",
+      icon: "well",
+      tint: "#9fe8d4",
+      tier: 1,
+      desc: "Silica and salt, held over a fire until it gives up."
+    },
+    {
+      id: "brick",
+      name: "Salt Brick",
+      icon: "burrow",
+      tint: "#d8cdb2",
+      tier: 1,
+      desc: "Grit and salt, pressed and dried. It will do until it rains."
+    },
+    // -- parts ----------------------------------------------------------------
+    {
+      id: "gearset",
+      name: "Gear Set",
+      icon: "comb",
+      tint: "#d2a768",
+      tier: 2,
+      desc: "Teeth cut into copper. Something in the ruins was full of these."
+    },
+    {
+      id: "pipe",
+      name: "Pipe",
+      icon: "tank",
+      tint: "#b0a49c",
+      tier: 2,
+      desc: "Iron rolled round a rod. Water goes in one end."
+    },
+    {
+      id: "pane",
+      name: "Pane",
+      icon: "shade",
+      tint: "#9fe8d4",
+      tier: 2,
+      desc: "Flat glass. You can put the sun through it or keep it out."
+    },
+    {
+      id: "spool",
+      name: "Spool",
+      icon: "graft",
+      tint: "#c3bb8d",
+      tier: 2,
+      desc: "Wound shell fibre. Holds anything to anything."
+    },
+    // -- tools she carries ----------------------------------------------------
+    {
+      id: "pickcopper",
+      name: "Copper Pick",
+      icon: "hammer",
+      tint: "#e08a4a",
+      tier: 2,
+      tool: "pick",
+      power: 1,
+      desc: "A pick. It will break sandstone and shell."
+    },
+    {
+      id: "pickiron",
+      name: "Iron Pick",
+      icon: "hammer",
+      tint: "#c6ccd4",
+      tier: 3,
+      tool: "pick",
+      power: 2,
+      desc: "A better pick. It will break anything down there."
+    },
+    {
+      id: "sprayer",
+      name: "Spore Sprayer",
+      icon: "jet",
+      tint: "#c98ade",
+      tier: 2,
+      tool: "spray",
+      power: 1,
+      desc: "A pipe, a bladder and a pane. It puts a cloud where you point it."
+    }
+  ];
+  var ITEM_BY_ID = Object.fromEntries(ITEMS.map((i) => [i.id, i]));
+  var ORES = [
+    { id: "grit", hits: 1, need: 0, depth: [0, 8], weight: 34, colour: "#c2a271" },
+    { id: "shellchip", hits: 2, need: 0, depth: [2, 14], weight: 18, colour: "#e4d6b4" },
+    { id: "saltcake", hits: 2, need: 0, depth: [6, 20], weight: 16, colour: "#e6e2d4" },
+    { id: "silica", hits: 3, need: 0, depth: [10, 26], weight: 12, colour: "#bfe0e4" },
+    { id: "copperore", hits: 4, need: 0, depth: [12, 30], weight: 11, colour: "#c97a4a" },
+    { id: "amberchunk", hits: 4, need: 1, depth: [16, 34], weight: 3, colour: "#e0a93a" },
+    { id: "ironore", hits: 6, need: 1, depth: [20, 40], weight: 6, colour: "#8d7a70" }
+  ];
+  var RECIPES = [
+    // hand
+    { id: "brick", at: "hand", out: ["brick", 1], need: [["grit", 3], ["saltcake", 1]], secs: 1.2 },
+    { id: "spool", at: "hand", out: ["spool", 1], need: [["shellchip", 3]], secs: 1 },
+    // fire
+    { id: "copperbar", at: "fire", out: ["copperbar", 1], need: [["copperore", 3]], secs: 2.2 },
+    { id: "ironbar", at: "fire", out: ["ironbar", 1], need: [["ironore", 4]], secs: 3 },
+    { id: "glass", at: "fire", out: ["glass", 2], need: [["silica", 3], ["saltcake", 1]], secs: 2 },
+    // bench
+    { id: "gearset", at: "bench", out: ["gearset", 1], need: [["copperbar", 2]], secs: 2 },
+    { id: "pipe", at: "bench", out: ["pipe", 1], need: [["ironbar", 2]], secs: 2.4 },
+    { id: "pane", at: "bench", out: ["pane", 1], need: [["glass", 2]], secs: 1.6 },
+    {
+      id: "pickcopper",
+      at: "bench",
+      out: ["pickcopper", 1],
+      need: [["copperbar", 2], ["spool", 1]],
+      secs: 2.6
+    },
+    {
+      id: "pickiron",
+      at: "bench",
+      out: ["pickiron", 1],
+      need: [["ironbar", 3], ["spool", 1], ["gearset", 1]],
+      secs: 3.4
+    },
+    {
+      id: "sprayer",
+      at: "bench",
+      out: ["sprayer", 1],
+      need: [["pipe", 1], ["pane", 1], ["spool", 2]],
+      secs: 3
+    }
+  ];
+  var RECIPE_BY_ID = Object.fromEntries(RECIPES.map((r) => [r.id, r]));
+  var STATIONS = {
+    hand: { name: "By hand", build: null },
+    fire: { name: "Kiln", build: "kiln" },
+    bench: { name: "Bench", build: "bench" }
+  };
+
+  // js/systems/mining.js
+  var CELL5 = 46;
+  var REACH = 16;
+  var BITE = 3.4;
+  var TOTAL_W = ORES.reduce((t, o) => t + o.weight, 0);
+  var Mining = class {
+    constructor(game2, seed) {
+      this.game = game2;
+      this.seed = String(seed);
+      this.spent = /* @__PURE__ */ new Set();
+      this.dug = /* @__PURE__ */ new Map();
+      this.chipped = /* @__PURE__ */ new Map();
+      this.shimmer = 0;
+    }
+    // -- the seams ------------------------------------------------------------
+    /**
+     * What is in this cell, or null. The weighting is what makes a basin feel
+     * like a basin: mostly grit and shell near the top, and iron almost never.
+     */
+    seamAt(ci) {
+      if (this.spent.has(ci)) return null;
+      const r = mulberry32((hashStr(this.seed + "seam") ^ ci * 374761393) >>> 0);
+      if (r() > 0.62) return null;
+      let roll = r() * TOTAL_W;
+      let ore = ORES[0];
+      for (const o of ORES) {
+        roll -= o.weight;
+        if (roll <= 0) {
+          ore = o;
+          break;
+        }
+      }
+      const depth = lerp(ore.depth[0], ore.depth[1], r());
+      return {
+        ci,
+        x: ci * CELL5 + CELL5 * (0.25 + r() * 0.5),
+        depth,
+        ore,
+        // a seam is a cluster of lumps, drawn and broken as one
+        lumps: 3 + Math.floor(r() * 4),
+        seed: r() * TAU,
+        hits: ore.hits
+      };
+    }
+    /** Every seam close enough to matter, nearest first. */
+    near(x, radius = 150) {
+      const out = [];
+      const c0 = Math.floor((x - radius) / CELL5), c1 = Math.floor((x + radius) / CELL5);
+      for (let ci = c0; ci <= c1; ci++) {
+        const s = this.seamAt(ci);
+        if (s && Math.abs(s.x - x) <= radius) out.push(s);
+      }
+      return out.sort((a, b) => Math.abs(a.x - x) - Math.abs(b.x - x));
+    }
+    /** How deep the hole at this point is, counting the ones either side of it. */
+    holeAt(x) {
+      let d = 0;
+      const ci = Math.floor(x / CELL5);
+      for (let c = ci - 1; c <= ci + 1; c++) {
+        const h = this.dug.get(c);
+        if (!h) continue;
+        const fall = 1 - Math.abs(c * CELL5 + CELL5 / 2 - x) / (CELL5 * 1.6);
+        if (fall > 0) d = Math.max(d, h * fall);
+      }
+      return d;
+    }
+    /** A seam is workable once the hole over it has reached it. */
+    exposed(s) {
+      return this.holeAt(s.x) >= s.depth - 2;
+    }
+    /**
+     * One swing. It takes a bite out of the ground whatever happens - that is
+     * how you get down to anything - and if there is a seam in reach and the
+     * pick is good enough for it, the seam takes a hit as well.
+     *
+     * Returns what came loose, so the caller can decide what to do about it.
+     */
+    swing(x, power = 1) {
+      const ci = Math.floor(x / CELL5);
+      const was = this.dug.get(ci) || 0;
+      const deep = Math.min(46, was + BITE * (0.7 + power * 0.4));
+      this.dug.set(ci, deep);
+      this.game.terrain.deform?.(x, 1.4 + power * 0.5, REACH);
+      const out = { grit: 0, drops: {}, broke: null, blocked: null, deep };
+      if (Math.random() < 0.45) out.drops.grit = (out.drops.grit || 0) + 1;
+      const s = this.near(x, REACH)[0];
+      if (!s) return out;
+      if (!this.exposed(s)) {
+        out.blocked = Math.round(s.depth - this.holeAt(s.x));
+        return out;
+      }
+      if (power < s.ore.need) {
+        out.blocked = -1;
+        return out;
+      }
+      const hit = (this.chipped.get(s.ci) || 0) + 1;
+      this.chipped.set(s.ci, hit);
+      if (hit >= s.hits) {
+        this.spent.add(s.ci);
+        this.chipped.delete(s.ci);
+        const n = 2 + Math.floor(Math.random() * 3) + (power > s.ore.need ? 1 : 0);
+        out.drops[s.ore.id] = (out.drops[s.ore.id] || 0) + n;
+        out.broke = s;
+      } else {
+        out.cracked = s;
+      }
+      return out;
+    }
+    update(dt) {
+      this.shimmer += dt;
+    }
+    // -- drawing --------------------------------------------------------------
+    /**
+     * Seams you have not reached yet show as a faint glint in the ground, so
+     * the desert tells you where to dig instead of making you guess. Once the
+     * hole reaches one it is drawn properly: lumps of ore in a bed of rock,
+     * cracked a little more with every hit it has taken.
+     */
+    draw(ctx, cam) {
+      const b = cam.bounds(80);
+      const z = cam.zoom;
+      for (const s of this.near((b.x0 + b.x1) / 2, (b.x1 - b.x0) / 2 + 60)) {
+        const gy = this.game.terrain.surfaceY(s.x);
+        const hole = this.holeAt(s.x);
+        const open = hole >= s.depth - 2;
+        const top = cam.worldToScreen(s.x, gy + s.depth);
+        if (!open) {
+          const near = clamp01(1 - (s.depth - hole) / 34);
+          const a = (0.1 + near * 0.42) * (0.6 + 0.4 * Math.sin(this.shimmer * 2.4 + s.seed));
+          ctx.globalAlpha = a;
+          ctx.fillStyle = s.ore.colour;
+          for (let i = 0; i < 3; i++) {
+            const px = top.x + Math.cos(s.seed + i * 2.1) * 3 * z;
+            const py = top.y + Math.sin(s.seed + i * 2.1) * 2 * z;
+            ctx.fillRect(Math.round(px), Math.round(py), Math.max(1, Math.round(z)), Math.max(1, Math.round(z)));
+          }
+          ctx.globalAlpha = 1;
+          continue;
+        }
+        const hit = this.chipped.get(s.ci) || 0;
+        ctx.save();
+        ctx.translate(Math.round(top.x), Math.round(top.y));
+        ctx.scale(z, z);
+        ctx.fillStyle = "rgba(42,30,20,0.92)";
+        ctx.beginPath();
+        ctx.ellipse(0, 0, 7.5, 5, 0, 0, TAU);
+        ctx.fill();
+        for (let i = 0; i < s.lumps; i++) {
+          const a = s.seed + i * (TAU / s.lumps);
+          const lx = Math.cos(a) * 3.6, ly = Math.sin(a) * 2.4;
+          const r = 1.5 + i * 7 % 3 * 0.4;
+          ctx.fillStyle = s.ore.colour;
+          ctx.beginPath();
+          ctx.ellipse(lx, ly, r, r * 0.85, 0, 0, TAU);
+          ctx.fill();
+          ctx.fillStyle = "rgba(255,255,255,0.34)";
+          ctx.fillRect(Math.round(lx - r * 0.4), Math.round(ly - r * 0.6), 1, 1);
+        }
+        if (hit > 0) {
+          ctx.strokeStyle = "rgba(16,10,6,0.75)";
+          ctx.lineWidth = 0.6;
+          for (let i = 0; i < hit; i++) {
+            const a = s.seed * 2 + i * 1.7;
+            ctx.beginPath();
+            ctx.moveTo(Math.cos(a) * 1.2, Math.sin(a) * 0.8);
+            ctx.lineTo(Math.cos(a) * 6.5, Math.sin(a) * 4.2);
+            ctx.stroke();
+          }
+        }
+        ctx.restore();
+      }
+    }
+    toJSON() {
+      return { spent: [...this.spent], dug: [...this.dug], chipped: [...this.chipped] };
+    }
+    fromJSON(d) {
+      if (!d) return;
+      this.spent = new Set(d.spent || []);
+      this.dug = new Map(d.dug || []);
+      this.chipped = new Map(d.chipped || []);
+    }
+  };
+
+  // js/systems/craft.js
+  var Craft = class {
+    constructor(game2) {
+      this.game = game2;
+      this.bag = /* @__PURE__ */ new Map();
+      this.job = null;
+      this.made = /* @__PURE__ */ new Set();
+    }
+    // -- the bag --------------------------------------------------------------
+    count(id) {
+      return this.bag.get(id) || 0;
+    }
+    add(id, n = 1) {
+      if (!ITEM_BY_ID[id] || n <= 0) return 0;
+      this.bag.set(id, this.count(id) + n);
+      return n;
+    }
+    take(id, n = 1) {
+      const have = this.count(id);
+      if (have < n) return false;
+      if (have === n) this.bag.delete(id);
+      else this.bag.set(id, have - n);
+      return true;
+    }
+    /** Everything in the bag, ordered the way the tree is, for the panel. */
+    list() {
+      return [...this.bag.entries()].map(([id, n]) => ({ def: ITEM_BY_ID[id], n })).filter((e) => e.def).sort((a, b) => a.def.tier - b.def.tier || a.def.name.localeCompare(b.def.name));
+    }
+    /** The best pick she is carrying, as a power. Nothing means bare hands. */
+    get pickPower() {
+      let best = 0;
+      for (const [id] of this.bag) {
+        const d = ITEM_BY_ID[id];
+        if (d && d.tool === "pick") best = Math.max(best, d.power);
+      }
+      return best;
+    }
+    has(id) {
+      return this.count(id) > 0;
+    }
+    // -- the bench ------------------------------------------------------------
+    /**
+     * A station is available if the build it needs is standing on the shell.
+     * `hand` is always available, because hands are what she is for.
+     */
+    stationUp(at) {
+      const st = STATIONS[at];
+      if (!st) return false;
+      if (!st.build) return true;
+      return this.game.garden.plots.some((p) => p.build && p.build.def.id === st.build);
+    }
+    /** Why this cannot be made, or null if it can. */
+    blocked(r) {
+      if (!this.stationUp(r.at)) return `needs the ${STATIONS[r.at].name.toLowerCase()}`;
+      for (const [id, n] of r.need) {
+        if (this.count(id) < n) return `needs ${n} ${ITEM_BY_ID[id].name}`;
+      }
+      return null;
+    }
+    canMake(r) {
+      return !this.blocked(r);
+    }
+    /** Everything, with its reason, so the panel can grey rather than hide. */
+    recipes() {
+      return RECIPES.map((r) => ({ r, why: this.blocked(r) }));
+    }
+    /**
+     * Start making something. It takes time and she has to stand still doing
+     * it, which is what stops the bench being a vending machine.
+     */
+    start(id) {
+      const r = RECIPE_BY_ID[id];
+      if (!r) return { ok: false, why: "No such thing." };
+      const why = this.blocked(r);
+      if (why) return { ok: false, why };
+      if (this.job) return { ok: false, why: "Already making something." };
+      for (const [need, n] of r.need) this.take(need, n);
+      this.job = { r, t: 0 };
+      return { ok: true };
+    }
+    update(dt) {
+      const j = this.job;
+      if (!j) return;
+      j.t += dt;
+      if (j.t < j.r.secs) return;
+      this.job = null;
+      this.add(j.r.out[0], j.r.out[1]);
+      this.made.add(j.r.id);
+      this.game.onCrafted?.(j.r);
+    }
+    get progress() {
+      return this.job ? Math.min(1, this.job.t / this.job.r.secs) : 0;
+    }
+    toJSON() {
+      return { bag: [...this.bag], made: [...this.made] };
+    }
+    fromJSON(d) {
+      if (!d) return;
+      this.bag = new Map(d.bag || []);
+      this.made = new Set(d.made || []);
+    }
+  };
+
+  // js/systems/mind.js
+  var LURE_RANGE = 22;
+  var SPRAY_RANGE = 60;
+  var DOSE_SECS = 2.6;
+  var Mind = class {
+    constructor(game2) {
+      this.game = game2;
+      this.stage = "free";
+      this.bait = null;
+      this.doseT = 0;
+      this.blue = 0;
+      this.cloud = 0;
+      this.cloudX = 0;
+      this.cloudY = 0;
+      this.work = null;
+      this.workT = 0;
+    }
+    get npc() {
+      return this.game.npc;
+    }
+    get owned() {
+      return this.stage === "owned";
+    }
+    // -- step one: the lure ---------------------------------------------------
+    /**
+     * Put bait down. Anything she has not catalogued will do, and you have a
+     * pack full of things nobody has catalogued.
+     */
+    lure(x) {
+      if (this.stage !== "free") return { ok: false, why: "She is already coming." };
+      const relic = Object.keys(this.game.relics || {}).find((k) => this.game.relics[k] > 0);
+      if (!relic) return { ok: false, why: "Nothing she would cross a desert for. Dig something up." };
+      this.game.relics[relic]--;
+      if (!this.game.relics[relic]) delete this.game.relics[relic];
+      this.bait = { x, y: this.game.terrain.surfaceY(x), t: 0, id: relic };
+      this.stage = "lured";
+      const n = this.npc;
+      n.mode = "free";
+      n.keepAway = false;
+      n.moveTo = x + 12;
+      n.say("Hold on. That should not be lying on the surface.", 4, 5);
+      this.game.fx?.spark(x, this.bait.y - 3, "#e2b74a", 10, 26);
+      return { ok: true };
+    }
+    /** Is she down over the bait with her head where you can reach it? */
+    get ready() {
+      if (this.stage !== "lured" || !this.bait) return false;
+      const n = this.npc;
+      return Math.abs(n.x - this.bait.x) < LURE_RANGE && n.pose === POSE.CROUCH;
+    }
+    // -- step two: the spray --------------------------------------------------
+    spray() {
+      if (this.stage === "owned") return { ok: false, why: "She is already yours." };
+      if (this.stage === "dosing") return { ok: false, why: "It is already in her." };
+      const e = this.game.economy;
+      if (e.parasites < 1) return { ok: false, why: "No spore. Grow a mindcap and pick it." };
+      const n = this.npc;
+      const d = Math.abs(n.x - this.game.crab.x);
+      if (d > SPRAY_RANGE + this.game.crab.m.shellW * 0.5) {
+        return { ok: false, why: "Too far. She has to be right up against you." };
+      }
+      if (!this.ready) return { ok: false, why: "Not while she is standing. Put bait down and wait." };
+      e.parasites--;
+      e.markDirty();
+      this.stage = "dosing";
+      this.doseT = 0;
+      this.cloud = 1;
+      this.cloudX = n.x;
+      this.cloudY = n.y - 12;
+      this.game.audio?.play("water", { pitch: 0.6 });
+      this.game.fx?.ring(n.x, n.y - 12, "#c98ade", 14);
+      n.say("...what is that. What is that smell -", 3, 11);
+      return { ok: true };
+    }
+    // -- step three: hers no longer -------------------------------------------
+    release() {
+      if (this.stage !== "owned") return;
+      this.stage = "free";
+      this.work = null;
+      const n = this.npc;
+      n.mode = "follow";
+      n.keepAway = true;
+      n.moveTo = void 0;
+      n.setPose(POSE.IDLE);
+      n.say("...I have lost an hour. Again.", 5, 10);
+    }
+    // -- what she does while you have her -------------------------------------
+    /** Send her at the nearest seam and let her work it. */
+    order(kind, x) {
+      if (!this.owned) return { ok: false, why: "She is not yours." };
+      this.work = { kind, x };
+      this.workT = 0;
+      const n = this.npc;
+      if (kind === "mine") {
+        n.moveTo = x;
+        n.say("", 0);
+      }
+      return { ok: true };
+    }
+    update(dt) {
+      const n = this.npc;
+      const g = this.game;
+      if (this.cloud > 0) this.cloud = Math.max(0, this.cloud - dt * 0.5);
+      if (this.stage === "lured" && this.bait) {
+        this.bait.t += dt;
+        if (Math.abs(n.x - this.bait.x) < LURE_RANGE) {
+          n.moveTo = void 0;
+          if (n.pose !== POSE.CROUCH) {
+            n.setPose(POSE.CROUCH);
+            n.setFacing(Math.sign(this.bait.x - n.x) || 1);
+          }
+          if (this.bait.t > 22) {
+            this.stage = "free";
+            this.bait = null;
+            n.setPose(POSE.IDLE);
+            n.mode = "follow";
+            n.keepAway = true;
+            n.say("Nothing. Wind must have turned it over.", 4, 4);
+          }
+        }
+      }
+      if (this.stage === "dosing") {
+        this.doseT += dt;
+        const k = clamp01(this.doseT / DOSE_SECS);
+        this.blue = k;
+        if (this.doseT > 0.5 && this.doseT - dt <= 0.5) n.setPose(POSE.TIRED);
+        if (Math.random() < dt * 14) {
+          g.fx?.drift(n.x + (Math.random() - 0.5) * 10, n.y - 14 - Math.random() * 8, "#c98ade", 1);
+        }
+        if (k >= 1) {
+          this.stage = "owned";
+          this.blue = 1;
+          this.bait = null;
+          n.mode = "owned";
+          n.keepAway = false;
+          n.setPose(POSE.IDLE);
+          n.say("", 0);
+          g.fx?.ring(n.x, n.y - 14, "#6fd8ee", 18);
+          g.audio?.play("discover");
+          g.onOwned?.();
+        }
+        return;
+      }
+      if (this.stage !== "owned") {
+        this.blue = damp(this.blue, 0, 0.02, dt);
+        return;
+      }
+      this.blue = 1;
+      const w = this.work;
+      if (!w) return;
+      this.workT += dt;
+      if (w.kind === "mine") {
+        const d = w.x - n.x;
+        if (Math.abs(d) > 10) {
+          n.moveTo = w.x;
+          return;
+        }
+        n.moveTo = void 0;
+        if (n.pose !== POSE.DIG) n.setPose(POSE.DIG);
+        if (this.workT > 0.66) {
+          this.workT = 0;
+          g.mineSwing(n.x + (n.facing || 1) * 8);
+        }
+      }
+    }
+    // -- drawing --------------------------------------------------------------
+    /** The bait on the ground, and the cloud if it is still hanging about. */
+    draw(ctx, cam) {
+      if (this.bait) {
+        const s = cam.worldToScreen(this.bait.x, this.bait.y - 2);
+        const z = cam.zoom;
+        const pulse = 0.6 + 0.4 * Math.sin(this.bait.t * 3.4);
+        ctx.save();
+        ctx.translate(Math.round(s.x), Math.round(s.y));
+        ctx.scale(z, z);
+        ctx.globalAlpha = 0.35 * pulse;
+        ctx.fillStyle = "#e2b74a";
+        ctx.beginPath();
+        ctx.ellipse(0, 0, 6, 2.4, 0, 0, TAU);
+        ctx.fill();
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = "#b79a5e";
+        ctx.beginPath();
+        ctx.ellipse(0, -1.6, 3.2, 2.2, 0.3, 0, TAU);
+        ctx.fill();
+        ctx.fillStyle = "#e4d6b4";
+        ctx.fillRect(-1, -2.6, 2, 1);
+        ctx.restore();
+      }
+      if (this.cloud > 0.01) {
+        const s = cam.worldToScreen(this.cloudX, this.cloudY);
+        const z = cam.zoom;
+        const r = lerp(6, 26, 1 - this.cloud) * z;
+        const g = ctx.createRadialGradient(s.x, s.y, 0, s.x, s.y, r);
+        g.addColorStop(0, `rgba(201,138,222,${0.42 * this.cloud})`);
+        g.addColorStop(1, "rgba(201,138,222,0)");
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(s.x, s.y, r, 0, TAU);
+        ctx.fill();
+      }
+    }
+    toJSON() {
+      return { stage: this.stage === "dosing" ? "free" : this.stage };
+    }
+    fromJSON(d) {
+      if (!d) return;
+      this.stage = d.stage === "owned" ? "owned" : "free";
+      this.blue = this.stage === "owned" ? 1 : 0;
+      if (this.stage === "owned") {
+        this.npc.mode = "owned";
+        this.npc.keepAway = false;
+      }
+    }
+  };
+
   // js/systems/fx.js
   var MAX = 900;
   var WIND_PX = 34;
@@ -9040,6 +9814,26 @@ body {
       }
     }
     /** A ring going out from a point: something happened exactly here. */
+    /**
+     * Something that was living in the sand, leaving. It comes out running, it
+     * runs along the surface rather than through the air, and it goes down
+     * again a little way off - which is why the desert looks empty.
+     */
+    bug(x, y, dir = 1, kind = 0) {
+      this._add({
+        k: "bug",
+        x,
+        y,
+        vx: dir * (34 + Math.random() * 46),
+        vy: -18 - Math.random() * 26,
+        life: 1.1 + Math.random() * 1.4,
+        t: 0,
+        dir,
+        leg: Math.random() * TAU,
+        kind: kind < 0.34 ? 0 : kind < 0.7 ? 1 : 2,
+        r: 1
+      });
+    }
     ring(x, y, color = "#b6de8f", r = 14) {
       this._add({ k: "ring", x, y, r0: 2, r1: r, life: 0.5, t: 0, color });
     }
@@ -9133,6 +9927,19 @@ body {
             break;
           case "ring":
             break;
+          case "bug": {
+            const gy = this.game.terrain.surfaceY(q.x);
+            q.leg += dt * 22;
+            if (q.y < gy - 0.5) {
+              q.vy += 380 * dt;
+            } else {
+              q.y = gy;
+              q.vy = 0;
+              q.vx = lerp(q.vx, q.dir * (28 + q.kind * 14), 1 - Math.pow(0.5, dt));
+              if (q.t > q.life * 0.72) q.vx *= Math.pow(0.02, dt);
+            }
+            break;
+          }
           case "grit":
             q.vy += (q.grav || 260) * dt;
             if (q.y > this.game.terrain.surfaceY(q.x) && q.vy > 0) {
@@ -9222,6 +10029,23 @@ body {
             ctx.beginPath();
             ctx.ellipse(s.x, s.y, lerp(q.r0, q.r1, k) * z, lerp(q.r0, q.r1, k) * 0.45 * z, 0, 0, TAU);
             ctx.stroke();
+            break;
+          }
+          case "bug": {
+            const COL = ["#3a2a18", "#5a3a1c", "#2c3a20"];
+            const px = Math.round(s.x), py = Math.round(s.y);
+            const w = Math.max(1, Math.round(z * (q.kind === 2 ? 2.4 : 1.8)));
+            const h = Math.max(1, Math.round(z * 1.2));
+            ctx.globalAlpha = a * (q.t > q.life * 0.72 ? 0.5 : 1);
+            ctx.fillStyle = "rgba(20,14,8,0.85)";
+            for (let L = -1; L <= 1; L++) {
+              const kick2 = Math.sin(q.leg + L * 2.1) * z;
+              ctx.fillRect(px + L * Math.round(z), py + h, 1, Math.max(1, Math.round(z * 0.8 + kick2 * 0.3)));
+            }
+            ctx.fillStyle = COL[q.kind];
+            ctx.fillRect(px - Math.round(w / 2), py, w, h);
+            ctx.fillStyle = "rgba(220,200,150,0.5)";
+            ctx.fillRect(px - Math.round(w / 2) + (q.dir > 0 ? w - 1 : 0), py, 1, 1);
             break;
           }
           case "grit":
@@ -10453,6 +11277,29 @@ body {
   ];
   var EVO_BY_ID = Object.fromEntries(EVOLUTIONS.map((e) => [e.id, e]));
   var BUILDINGS = [
+    // the two she works at. They are cheap, because the whole tree is behind them
+    {
+      id: "kiln",
+      name: "Kiln",
+      kind: "hut",
+      w: 13,
+      h: 13,
+      cost: 55,
+      nut: 5,
+      effect: {},
+      desc: "A salt-brick fire box. Ore goes in, bar comes out - if you have somebody with hands to work it."
+    },
+    {
+      id: "bench",
+      name: "Work Bench",
+      kind: "crate",
+      w: 16,
+      h: 10,
+      cost: 70,
+      nut: 8,
+      effect: {},
+      desc: "A slab and a vice, bolted to your back. Everything past a bar of metal is made here."
+    },
     {
       id: "cistern",
       name: "Cistern",
@@ -13855,7 +14702,7 @@ body {
   ];
 
   // js/systems/encounters.js
-  var CELL5 = 340;
+  var CELL6 = 340;
   var KINDS2 = [
     { id: "relic", name: "Buried Relic", w: 0.2, verb: "Excavate" },
     { id: "wildpatch", name: "Wild Patch", w: 0.22, verb: "Harvest" },
@@ -13894,7 +14741,7 @@ body {
           break;
         }
       }
-      const x = ci * CELL5 + CELL5 * (0.25 + r() * 0.5);
+      const x = ci * CELL6 + CELL6 * (0.25 + r() * 0.5);
       const biome = biomeAt(x);
       const poi = {
         id: `${ci}`,
@@ -13912,9 +14759,9 @@ body {
       this.cells.set(key2, poi);
       return poi;
     }
-    near(x, radius = CELL5) {
+    near(x, radius = CELL6) {
       const out = [];
-      const c0 = Math.floor((x - radius) / CELL5), c1 = Math.floor((x + radius) / CELL5);
+      const c0 = Math.floor((x - radius) / CELL6), c1 = Math.floor((x + radius) / CELL6);
       for (let ci = c0; ci <= c1; ci++) {
         const p = this.cell(ci);
         if (p && Math.abs(p.x - x) <= radius) out.push(p);
@@ -14026,7 +14873,7 @@ body {
     draw(ctx, cam) {
       const t = this.game.terrain;
       const z = cam.zoom;
-      for (const p of this.near(cam.rx, cam.vw / z + CELL5)) {
+      for (const p of this.near(cam.rx, cam.vw / z + CELL6)) {
         const taken = this.isTaken(p);
         const art = this._sprite(p);
         if (!art) continue;
@@ -16962,7 +17809,8 @@ body {
   var TABS = [
     { id: "map", icon: "map", name: "MAP", sub: "the basin, and what is left standing in it" },
     { id: "fleet", icon: "fauna", name: "FLEET", sub: "what lives on you, and where it is" },
-    { id: "codex", icon: "codex", name: "FIELD", sub: "Dr. Vess's notes - you have to be with her to read them" }
+    { id: "codex", icon: "codex", name: "FIELD", sub: "Dr. Vess's notes - you have to be with her to read them" },
+    { id: "craft", icon: "build", name: "BENCH", sub: "her bag, and what her hands can make out of it" }
   ];
   var BUILD_TABS = [
     { id: "flora", icon: "flora", name: "SEED" },
@@ -17122,7 +17970,17 @@ body {
         i.consumeKey("m");
         this.cycleMode();
       }
-      const keys = ["1", "2", "3"];
+      if (i.justPressed("b")) {
+        i.consumeKey("b");
+        if (this.drawerOpen && this.tab === "craft") this.drawerOpen = false;
+        else {
+          this.drawerOpen = true;
+          this.tab = "craft";
+          this.scroll = 0;
+          this.pick = null;
+        }
+      }
+      const keys = ["1", "2", "3", "4"];
       keys.forEach((k, n) => {
         if (i.justPressed(k)) {
           i.consumeKey(k);
@@ -18255,13 +19113,14 @@ body {
       }
       const bodyY = inY + 26, bodyH = inH - 26;
       const tab = TABS.find((t) => t.id === this.tab) || TABS[0];
-      if (this.tab === "codex" || this.tab === "map") {
+      if (this.tab === "codex" || this.tab === "map" || this.tab === "craft") {
         drawText(ctx, tab.sub, inX, bodyY - 4, { color: FAINT });
         ctx.save();
         ctx.beginPath();
         ctx.rect(inX, bodyY + 6, inW, bodyH - 6);
         ctx.clip();
         if (this.tab === "map") this._mapTab(ctx, inX, bodyY + 6, inW, bodyH - 6);
+        else if (this.tab === "craft") this._craftTab(ctx, inX, bodyY + 6, inW, bodyH - 6);
         else this._codexTab(ctx, inX, bodyY + 6, inW, bodyH - 6);
         ctx.restore();
         ctx.globalAlpha = 1;
@@ -18275,6 +19134,96 @@ body {
       this._fleetTab(ctx, inX, bodyY + 6, inW, bodyH - 6);
       ctx.restore();
       ctx.globalAlpha = 1;
+    }
+    /**
+     * The bench. Her bag along the top, the recipe tree under it, and every
+     * card says in icons what it needs and whether she has it - so you can read
+     * the whole tree without a word of explanation.
+     */
+    _craftTab(ctx, x, y, w, h) {
+      const g = this.game;
+      const craft = g.craft;
+      const owned = g.mind.owned;
+      const bag = craft.list();
+      drawText(ctx, "IN HER PACK", x, y, { color: "#e2b74a" });
+      let bx = x, by = y + 11;
+      if (!bag.length) {
+        drawText(ctx, "Nothing. Put her on a seam.", x, by, { color: FAINT });
+        by += 11;
+      }
+      for (const e of bag) {
+        const cw = 30;
+        if (bx + cw > x + w) {
+          bx = x;
+          by += 14;
+        }
+        drawPlate(ctx, bx, by, cw - 2, 12, { rivets: false });
+        drawGlyph(ctx, e.def.icon, bx + 6, by + 6, { color: e.def.tint, scale: 1 });
+        drawText(ctx, `${e.n}`, bx + cw - 5, by + 3, { color: INK, align: "right" });
+        if (this._hit(bx, by, cw - 2, 12)) {
+          this.hover = { title: `${e.def.name} x${e.n}`, body: e.def.desc };
+        }
+        bx += cw;
+      }
+      by += 18;
+      if (craft.job) {
+        const out = ITEM_BY_ID[craft.job.r.out[0]];
+        drawText(ctx, `making ${out.name}`, x, by, { color: "#9fe8d4" });
+        drawGauge(ctx, x, by + 10, w - 8, 4, craft.progress, "#9fe8d4");
+        by += 22;
+      }
+      drawText(ctx, "SHE CAN MAKE", x, by, { color: "#e2b74a" });
+      by += 12;
+      const list = craft.recipes();
+      for (const { r, why } of list) {
+        const out = ITEM_BY_ID[r.out[0]];
+        const rowH = 20;
+        if (by > y + h - 4) break;
+        const hot = this._hit(x, by, w - 6, rowH - 2);
+        const can = !why && owned && !craft.job;
+        drawPlate(ctx, x, by, w - 6, rowH - 2, {
+          top: can && hot ? "rgba(66,52,30,0.95)" : void 0,
+          edge: can ? "rgba(180,146,86,0.6)" : "rgba(90,74,50,0.35)"
+        });
+        ctx.globalAlpha = can ? 1 : 0.5;
+        drawGlyph(ctx, out.icon, x + 9, by + 9, { color: out.tint, scale: 1 });
+        drawText(
+          ctx,
+          `${out.name}${r.out[1] > 1 ? ` x${r.out[1]}` : ""}`,
+          x + 18,
+          by + 2,
+          { color: can ? INK : DIM }
+        );
+        let cx2 = x + 18;
+        for (const [id, n] of r.need) {
+          const d = ITEM_BY_ID[id];
+          const short = craft.count(id) < n;
+          drawGlyph(ctx, d.icon, cx2 + 3, by + 14, { color: short ? "#c07a6a" : d.tint, scale: 1 });
+          drawText(ctx, `${n}`, cx2 + 9, by + 11, { color: short ? "#c07a6a" : FAINT });
+          cx2 += 17;
+        }
+        drawText(ctx, STATIONS[r.at].name, x + w - 12, by + 11, { color: FAINT, align: "right" });
+        ctx.globalAlpha = 1;
+        if (hot) {
+          this.hover = { title: out.name, body: why ? `${out.desc}
+
+${why}.` : owned ? out.desc : `${out.desc}
+
+She has to be yours to make it.` };
+          if (can && this.game.input.clicked) {
+            this.game.input.clicked = false;
+            const res = craft.start(r.id);
+            if (res.ok) {
+              this.game.audio.play("ui");
+              this.game.npc.setPose("write");
+            } else {
+              this.say(res.why, 3);
+              this.game.audio.play("deny");
+            }
+          }
+        }
+        by += rowH;
+      }
     }
     /** How wide the build rail is, which several other things need to know. */
     railW(W) {
@@ -19114,6 +20063,9 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
       this.sea = new Sea(this);
       this.green = new Green(this);
       this.digs = new Digs(this, this.seed);
+      this.mining = new Mining(this, this.seed);
+      this.craft = new Craft(this);
+      this.mind = new Mind(this);
       this.ui = new UI(this);
       this.seeds = { dustmoss: 3, saltgrass: 2 };
       this.research = {};
@@ -19349,6 +20301,51 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
       ctx.fillRect(0, 0, this.renderer.vw, this.renderer.vh);
       ctx.globalAlpha = 1;
     }
+    /**
+     * Waking up. Sand runs off the shell in sheets, the way it does off anything
+     * that has been buried and has just decided not to be, and the whole animal
+     * carries a slow warm rim on the breath before it goes anywhere. Both are
+     * drawn rather than simulated: this happens once, and it wants to look right
+     * once.
+     */
+    _drawWaking(ctx, cam) {
+      const k = clamp01(this.waking || 0);
+      if (k <= 2e-3) return;
+      const c = this.crab;
+      const z = cam.zoom;
+      const gy = this.terrain.surfaceY(c.x);
+      const n = Math.round(10 + k * 22);
+      for (let i = 0; i < n; i++) {
+        const ph = i * 0.83 + this.time * (1.4 + i % 4 * 0.5);
+        const u = ph % 1;
+        const wx = c.x + (i * 37 % 100 / 100 - 0.5) * c.m.rx * 2;
+        const wy = lerp(c.y - c.m.rx * 0.22, gy + 2, u * u);
+        const s = cam.worldToScreen(wx, wy);
+        ctx.globalAlpha = (0.14 + 0.5 * k) * (1 - u) * (0.5 + 0.5 * Math.sin(ph * 3));
+        ctx.fillStyle = i % 5 === 0 ? "#f2dcae" : "#cdae7c";
+        ctx.fillRect(
+          Math.round(s.x),
+          Math.round(s.y),
+          Math.max(1, Math.round(z * 0.8)),
+          Math.max(1, Math.round(z * (1 + u * 2)))
+        );
+      }
+      if (k > 0.4) {
+        const b = Math.sin(this.time * 1.5) * 0.5 + 0.5;
+        const s = cam.worldToScreen(c.x, c.y - c.m.rx * 0.42);
+        const g = ctx.createRadialGradient(s.x, s.y, 0, s.x, s.y, c.m.rx * 1.5 * z);
+        g.addColorStop(0, `rgba(255,232,180,${0.1 * (k - 0.4) * 1.6 * b})`);
+        g.addColorStop(1, "rgba(255,232,180,0)");
+        ctx.fillStyle = g;
+        ctx.fillRect(
+          s.x - c.m.rx * 1.6 * z,
+          s.y - c.m.rx * 1.6 * z,
+          c.m.rx * 3.2 * z,
+          c.m.rx * 3.2 * z
+        );
+      }
+      ctx.globalAlpha = 1;
+    }
     /** A thousand years later, and someone has walked into the basin. */
     startWake() {
       this.state = "intro";
@@ -19415,13 +20412,45 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
             this.audio.play("water");
             N("The first water to touch this animal in a thousand years is not, strictly, rain.");
           } },
+          // ---- the wake itself. Four beats, and not one of them is the
+          // eruption: the eye, the breath, the sand, and only then the animal.
           { at: 30.4, run: () => {
             this._pee = 0;
-            this.crab.blink = 0.5;
-            this.cam.shake(3);
+            this.shot(c.x - 4, c.y - 18, this.autoZoom() * 2.9, 1.4, { z: 0.012 });
+            this.waking = 1e-3;
             N("It has been waiting a very long time for that.");
           } },
-          { at: 33, run: () => {
+          { at: 31.8, run: () => {
+            this.crab.blink = 1;
+            this.waking = 0.35;
+            this.audio.play("drip", { pitch: 0.5 });
+            this.fx.drift(c.x - 8, c.y - 16, "#d8c49a", 3);
+            N("");
+          } },
+          { at: 33.4, run: () => {
+            this.waking = 0.7;
+            this.audio.play("growl", { pitch: 0.42 });
+            this.cam.shake(1.6);
+            this.buryTarget = 0.44;
+            for (let i = 0; i < 14; i++) {
+              this.fx.drift(
+                c.x + (Math.random() - 0.5) * this.crab.m.rx * 1.7,
+                c.y - 6 - Math.random() * 10,
+                "#e0c99c",
+                1
+              );
+            }
+            N("Something under the sand takes a breath.");
+          } },
+          { at: 35, run: () => {
+            this.waking = 1;
+            this.shot(c.x + 12, c.y - 18, this.autoZoom() * 1.5, 1.1, { z: -0.012 });
+            this.cam.shake(3);
+            this.terrain.deform(c.x, 2.4, 34);
+            this.audio.play("hit", { pitch: 0.5 });
+            N("");
+          } },
+          { at: 36.4, run: () => {
             this.shot(c.x, c.y - 20, this.autoZoom() * 0.95, 0.7, { z: -0.02 });
             this.cam.shake(9);
             this.terrain.deform(c.x, 6, 40);
@@ -19430,38 +20459,38 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
             npc.setFacing(-1);
             this.buryTarget = 0;
           } },
-          { at: 33.6, run: () => {
+          { at: 37, run: () => {
             npc.startle(1.25);
             this.cam.shake(4);
             N("");
           } },
-          { at: 34.3, run: () => {
+          { at: 37.7, run: () => {
             npc.moveTo = c.x + 108;
             npc.setPose(POSE.WALK);
             V("NOT A ROCK. NOT A ROCK. THAT IS NOT A ROCK -", 8);
           } },
-          { at: 37, run: () => {
+          { at: 40.4, run: () => {
             npc.moveTo = void 0;
             npc.setPose(POSE.IDLE);
             npc.setFacing(-1);
             this.shot(c.x + 34, c.y - 14, this.autoZoom() * 1.25, 1.8, { z: 4e-3 });
             V("...you are awake.", 2);
           } },
-          { at: 39.8, run: () => {
+          { at: 43.2, run: () => {
             npc.setPose(POSE.TALK);
             V("Oh. Oh, that is what the water table was for. It was never the rainfall. It was you.", 3);
           } },
-          { at: 44, run: () => V("You lay down in a sea and the sea kept coming, because you were in it.", 5) },
-          { at: 48.2, run: () => {
+          { at: 47.4, run: () => V("You lay down in a sea and the sea kept coming, because you were in it.", 5) },
+          { at: 51.6, run: () => {
             npc.setPose(POSE.POINT);
             V("There is a spring in your back. I can hear it from here and it is the loudest thing in this desert.", 3);
           } },
-          { at: 52.4, run: () => {
+          { at: 55.8, run: () => {
             npc.setPose(POSE.TALK);
             V("So get up. Walk. Put it back.", 6);
           } },
-          { at: 55.6, run: () => V("I have eleven years of notes, one canteen, and absolutely nothing else to do.", 1) },
-          { at: 59, run: () => this.endIntro() }
+          { at: 59, run: () => V("I have eleven years of notes, one canteen, and absolutely nothing else to do.", 1) },
+          { at: 62.4, run: () => this.endIntro() }
         ],
         i: 0
       };
@@ -19480,6 +20509,14 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
     }
     say(who, text) {
       this.dialog = { who, text, t: 0 };
+    }
+    /**
+     * The sea only exists in the two states that own it. Asking the sea whether
+     * it is active is not enough on its own: if anything ever leaves it running,
+     * this keeps it off the desert anyway.
+     */
+    get seaShowing() {
+      return this.sea.active && (this.state === "prologue" || this.state === "burying");
     }
     /**
      * A shot, not a camera move. Frame it, and then keep drifting - a held shot
@@ -19554,22 +20591,46 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
         case 6:
           say("That is the whole of it. Water, plants, genes, you. Walk east and I will keep up.", 6);
           break;
+        case 7:
+          this.ui.say("E swings her pick. B opens the bench.", 6);
+          break;
         default:
           break;
       }
     }
-    skipIntro() {
+    /**
+     * Everything the opening turns on, turned off again. There are three ways
+     * out of the opening - skipping it, finishing it, and loading a save over
+     * the top of it - and all three have to leave the world in the same state.
+     * Loading did not, which is why a reloaded desert still had a sea in it.
+     */
+    clearCutscene() {
       this.sea.stop();
+      this.cut = null;
+      this.dialog = null;
+      this.card = null;
+      this.drift = null;
+      this.fade = 0;
+      this.fadeWant = 0;
+      this.letterbox = 0;
       this.sleep = 0;
+      this.waking = 0;
       this.buried = 0;
       this.buryTarget = 0;
+      this._pee = 0;
+      this.ocean = null;
       this.npc.hidden = false;
       this.npc.hatOff = null;
+      this.cam.cineCancel();
+    }
+    skipIntro() {
+      this.clearCutscene();
       this.weather.hour = 9.4;
       this.endIntro();
       this.npc.x = this.crab.x + 130;
       this.npc.facing = -1;
       this.npc.faceT = -1;
+      this.npc.turnT = 1;
     }
     // -- loop -----------------------------------------------------------------
     update(dt) {
@@ -19624,6 +20685,20 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
         if (play && i.justPressed("f")) this.callVess();
         if (play && i.justPressed("x")) this.infest();
         if (play && i.justPressed("k")) this.incubateBest();
+        if (play && i.justPressed("l")) this.lureVess();
+        if (play && i.justPressed("v")) this.sprayVess();
+        if (play && this.mind.owned) {
+          if (Math.abs(move) > 0.05) {
+            this.npc.moveTo = void 0;
+            this.npc.driveX = move;
+            this.mind.work = null;
+            move = 0;
+          } else this.npc.driveX = 0;
+          if (i.justPressed("e")) {
+            i.consumeKey("e");
+            this.mind.order("mine", this.npc.x + (this.npc.facing || 1) * 8);
+          }
+        }
         if (play) this.morse.update(sdt, i.key("t"));
         if (play && i.justPressed("q")) this.attack();
       }
@@ -19655,6 +20730,9 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
       this.green.update(sdt, this.weather);
       this.green.tick(sdt);
       this.digs.update(sdt);
+      this.mining.update(sdt);
+      this.craft.update(sdt);
+      this.mind.update(sdt);
       const eco = this.economy;
       const up = 1 + eco.stat("upkeep");
       const g = this.garden.update(sdt, eco.water / Math.max(1e-3, up), this.weather);
@@ -19895,6 +20973,101 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
       this.teach(5);
     }
     /** Ask her to come along, get on, or get off. */
+    /**
+     * Put bait down in front of you. She cannot walk past an artefact lying on
+     * the surface - eleven years of nothing has seen to that - so it is the one
+     * reliable way to get her head down and still.
+     */
+    lureVess() {
+      const x = this.crab.x + (this.crab.facing || 1) * (this.crab.m.shellW * 0.5 + 16);
+      const res = this.mind.lure(x);
+      if (!res.ok) {
+        this.ui.say(res.why, 3);
+        this.audio.play("deny");
+        return false;
+      }
+      this.audio.play("ui");
+      return true;
+    }
+    /** The cloud. Close range, while she is down over the bait. */
+    sprayVess() {
+      if (this.mind.owned) {
+        this.mind.release();
+        this.ui.say("Let her go.", 2.5);
+        return true;
+      }
+      const res = this.mind.spray();
+      if (!res.ok) {
+        this.ui.say(res.why, 3.5);
+        this.audio.play("deny");
+        return false;
+      }
+      return true;
+    }
+    /**
+     * One swing of her pick. It takes a bite out of the ground whatever
+     * happens, and if there is a seam under it that her pick can touch, the
+     * seam gives something up.
+     */
+    mineSwing(x) {
+      const n = this.npc;
+      const power = this.craft.pickPower;
+      const res = this.mining.swing(x, power);
+      const gy = this.terrain.surfaceY(x);
+      this.fx.digBurst(x, gy, 0.55 + power * 0.2, false);
+      this.audio.play("hit", { pitch: 0.9 + Math.random() * 0.25 });
+      this.cam.shake(1.1);
+      this.shakeOutBugs(x, 0.7);
+      if (res.blocked === -1 && !this._softSaid) {
+        this._softSaid = 1;
+        n.say("This wants a better pick than the one you gave me.", 4, 4);
+        return res;
+      }
+      let got = 0;
+      for (const [id, n2] of Object.entries(res.drops)) {
+        this.craft.add(id, n2);
+        got += n2;
+        const d = ITEM_BY_ID[id];
+        if (d) this.fx.popup(x, gy - 10 - got * 3, `+${n2} ${d.name}`, d.tint);
+      }
+      if (res.broke) {
+        this.fx.ring(x, gy + res.broke.depth, res.broke.ore.colour, 14);
+        this.fx.spark(x, gy + res.broke.depth, res.broke.ore.colour, 16, 44);
+        this.audio.play("pickup", { pitch: 1.2 });
+      } else if (res.cracked) {
+        this.fx.spark(x, gy + res.cracked.depth, res.cracked.ore.colour, 5, 22);
+      }
+      this.economy.markDirty();
+      return res;
+    }
+    /**
+     * Break ground anywhere and something that was living in it comes out. The
+     * desert looks empty because everything in it is underneath.
+     */
+    shakeOutBugs(x, power = 1) {
+      const gy = this.terrain.surfaceY(x);
+      const n = Math.random() < 0.42 * power ? 1 + Math.floor(Math.random() * 3) : 0;
+      for (let i = 0; i < n; i++) {
+        this.fx.bug(
+          x + (Math.random() - 0.5) * 16,
+          gy - 1,
+          Math.random() < 0.5 ? -1 : 1,
+          Math.random()
+        );
+      }
+      if (n) this.audio.play("chirp", { pitch: 1.5 + Math.random() * 0.5 });
+    }
+    onCrafted(r) {
+      const out = ITEM_BY_ID[r.out[0]];
+      const n = this.npc;
+      this.fx.popup(n.x, n.y - 26, `${out.name} x${r.out[1]}`, out.tint);
+      this.fx.spark(n.x, n.y - 20, out.tint, 12, 30);
+      this.audio.play("uiBig");
+    }
+    onOwned() {
+      this.ui.say("Hers no longer.", 3);
+      this.teach(7);
+    }
     callVess() {
       const npc = this.npc;
       const near = Math.abs(npc.x - this.crab.x) < 90;
@@ -20361,11 +21534,15 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
         green: this.green.toJSON(),
         pump: this.pump.toJSON(),
         digs: this.digs.toJSON(),
-        relics: this.relics
+        relics: this.relics,
+        mining: this.mining.toJSON(),
+        craft: this.craft.toJSON(),
+        mind: this.mind.toJSON()
       });
     }
     load(d) {
       try {
+        this.clearCutscene();
         this.crab.setStage(d.stage || "hatchling");
         this.crab.x = d.x || 0;
         this.crab.snapToGround();
@@ -20385,6 +21562,9 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
         this.pump.fromJSON(d.pump);
         this.green.fromJSON(d.green);
         this.digs.fromJSON(d.digs);
+        this.mining.fromJSON(d.mining);
+        this.craft.fromJSON(d.craft);
+        this.mind.fromJSON(d.mind);
         this.relics = d.relics || {};
         if (d.mode) this.ui.mode = d.mode;
         this.economy.recomputeGenes();
@@ -20407,22 +21587,25 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
       this.backdrop.drawLayer(ctx, cam, this.weather, "far", this.terrain);
       this.backdrop.drawLayer(ctx, cam, this.weather, "mid", this.terrain);
       this.backdrop.drawLayer(ctx, cam, this.weather, "near", this.terrain);
-      if (this.sea.active) this.sea.drawColumn(ctx, cam, r.vw, r.vh);
+      if (this.seaShowing) this.sea.drawColumn(ctx, cam, r.vw, r.vh);
       this.world.drawProps(ctx, cam);
       this.terrain.draw(ctx, cam);
       this.world.drawWater(ctx, cam);
       this.terrain.drawSand(ctx, cam);
       this.green.drawGround(ctx, cam, this.terrain);
       this.world.drawScatter(ctx, cam, "far");
-      if (this.sea.active) this.sea.drawReef(ctx, cam, true);
+      if (this.seaShowing) this.sea.drawReef(ctx, cam, true);
       this.encounters.draw(ctx, cam);
+      if (this.state === "play") this.mining.draw(ctx, cam);
       this.fx.draw(ctx, cam, "far");
       this.wildlife.draw(ctx, cam, "ground");
       if (!this.npc.riding && !this.npc.hidden) this.npc.draw(ctx, cam);
       this._drawCrab(ctx, cam);
       if (this.npc.riding && !this.npc.hidden) this.npc.draw(ctx, cam);
       if (this.sleep) this._drawSleep(ctx, cam);
+      if (this.waking) this._drawWaking(ctx, cam);
       if (this._pee) this._drawStream(ctx, cam);
+      if (this.state === "play") this.mind.draw(ctx, cam);
       this.ui.drawGhost(ctx, cam);
       this.wildlife.draw(ctx, cam, "shell");
       if (this.state === "play") this.ui.drawCrop(ctx, cam);
@@ -20430,7 +21613,7 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
       this.world.drawScatter(ctx, cam, "near");
       this._drawGreenPlants(ctx, cam);
       this._drawDigs(ctx, cam);
-      if (this.sea.active) {
+      if (this.seaShowing) {
         this.sea.drawReef(ctx, cam, false);
         this.sea.drawSwimmers(ctx, cam);
       }
@@ -20456,7 +21639,7 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
       r.drawWeatherOverlay(this.weather, this);
       r.composite(this.weather, this);
       const ui = r.ui;
-      if (this.sea.active) this.sea.overlay(ui, cam, r.vw, r.vh);
+      if (this.seaShowing) this.sea.overlay(ui, cam, r.vw, r.vh);
       if (this.state === "intro" || this.state === "burying") this._drawCutscene(ui, r);
       else if (this.state === "prologue") this._drawPrologue(ui, r);
       if (this.state !== "play" && this.state !== "dead") this._drawCine(ui, r);
