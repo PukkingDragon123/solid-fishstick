@@ -618,6 +618,17 @@ export class Archaeologist extends Person {
         'Left, right, left. Sideways. Always sideways.',
         'From up here I can see three of my old survey pegs. All wrong.');
     }
+    // if something is hanging about that will not come aboard, she says why -
+    // in a bubble, with the name of the thing it is waiting for
+    const shy = g.wildlife.list.find((c) => c.alive && !c.tamed && !c.hostile
+      && Math.abs(c.x - g.crab.x) < 220 && g.wildlife.attraction(c.def) < 0.45);
+    if (shy && shy.def.attract) {
+      const need = shy.def.attract;
+      const missing = (need.genes || []).filter((k) => !g.genes.has(k));
+      if (missing.length) lines.push(`That ${shy.def.name.toLowerCase()} is waiting for ${missing[0]}. Grow something that makes it.`);
+      else if (need.pond && g.garden.pond < need.pond) lines.push(`That ${shy.def.name.toLowerCase()} wants standing water on you. Keep pumping.`);
+      else if (need.lush) lines.push(`That ${shy.def.name.toLowerCase()} wants a greener back than that.`);
+    }
     if (g.garden.ripeCount) lines.push('Something on your back is ready. I can smell it from here.');
     if (g.garden.overload > 0) lines.push('You are carrying too much. I say that as a person you are also carrying.');
     if (g.garden.listed) lines.push('You are leaning. Move something.');

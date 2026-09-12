@@ -198,7 +198,54 @@ export class Game {
     if (t > 2.0 && !this._drainOn) { this._drainOn = 1; this.sea.beginDrain(); }
     if (t > 3.4 && t < 3.6) this.say('narrator', 'And the sea, as it turned out, was in a hurry.');
     if (t > 8.0 && t < 8.2) this.say('narrator', 'Coast. Lagoon. Salt pan. Dust.');
-    if (t > 12.4) { this.dialog = null; this.startWake(); }
+
+    // ---- and then the long part, which is a held shot of it sleeping ------
+    if (t > 12.0) {
+      if (!this._sleepOn) {
+        this._sleepOn = 1;
+        this.dialog = null;
+        this.cam.cineTo(this.crab.x, this.terrain.surfaceY(this.crab.x) - 10,
+          this.autoZoom() * 2.1, 3.0);
+        this.say('narrator', 'It did not dream. There was nothing down there to dream about.');
+      }
+      // night goes over it, again and again, faster than it can notice
+      const k = clamp01((t - 12.5) / 9.0);
+      this.weather.hour = (18 + k * 62) % 24;
+      this.sleep = k;
+      if (t > 16.5 && t < 16.7) this.say('narrator', 'Sand went over it. Then more sand. Then a desert.');
+      if (t > 20.4 && t < 20.6) this.say('narrator', 'A thousand years is not a long time to something that was not counting.');
+    }
+    if (t > 23.5) { this.dialog = null; this.sleep = 0; this.startWake(); }
+  }
+
+  /**
+   * The held shot. Sand drifts across the mound in the wind, the light wheels
+   * over it far too fast, and the only thing moving on the animal is a breath
+   * you would miss if you were not watching for it.
+   */
+  _drawSleep(ctx, cam) {
+    const k = this.sleep || 0;
+    if (k <= 0.001) return;
+    const c = this.crab;
+    const gy = this.terrain.surfaceY(c.x);
+    const z = cam.zoom;
+    // sand going past, low and fast
+    for (let i = 0; i < 46; i++) {
+      const ph = i * 0.7;
+      const u = ((this.time * (0.25 + (i % 5) * 0.08) + i * 0.21) % 1);
+      const wx = c.x - 180 + u * 360;
+      const wy = gy - 2 - ((i * 7) % 26) * (0.3 + Math.sin(this.time * 0.6 + ph) * 0.2);
+      const s = cam.worldToScreen(wx, wy);
+      ctx.globalAlpha = 0.10 + 0.22 * Math.sin(u * Math.PI);
+      ctx.fillStyle = i % 6 === 0 ? '#f2dcae' : '#d8bb84';
+      ctx.fillRect(Math.round(s.x), Math.round(s.y), Math.max(1, Math.round(z * 0.7)), 1);
+    }
+    // the years themselves are the light: the day/night cycle is running far
+    // too fast overhead, and all this adds is the flicker of it going past
+    ctx.globalAlpha = 0.05 + 0.05 * Math.sin(this.time * 9);
+    ctx.fillStyle = '#ffe9c0';
+    ctx.fillRect(0, 0, this.renderer.vw, this.renderer.vh);
+    ctx.globalAlpha = 1;
   }
 
   /** A thousand years later, and someone has walked into the basin. */
@@ -235,7 +282,7 @@ export class Game {
         { at: 16.0, run: () => V('What I do not have is water. Which is, apparently, the only part anybody funds.', 12) },
         { at: 19.6, run: () => { npc.facing = 1; npc.setPose(POSE.SIT); V('Eleven years. Nobody is watching. Nobody has been watching for a thousand years.', 7); } },
         { at: 23.0, run: () => { this.cam.cineTo(c.x + 10, c.y - 16, this.autoZoom() * 1.7, 1.6); N('...'); } },
-        { at: 24.8, run: () => { this._pee = 1; this.audio.play('water'); N('The first water to touch this animal in a thousand years is not, strictly, rain.'); } },
+        { at: 24.8, run: () => { this._pee = 1; this._peeT = 0; this.audio.play('water'); N('The first water to touch this animal in a thousand years is not, strictly, rain.'); } },
         { at: 28.4, run: () => { this._pee = 0; this.crab.blink = 0.5; this.cam.shake(3); N('It has been waiting a very long time for that.'); } },
         { at: 31.0, run: () => {
           this.cam.shake(9);
@@ -267,14 +314,40 @@ export class Game {
     this.cam.cineCancel();
     this.cam.followEntity(this.crab, false);
     this.cam.targetZoom = this.autoZoom();
-    this.tutorial = 1;
-    this.ui.say('Tap SPACE, or the valve, in time with the gauge. The band is where the stroke lands.', 7);
+    // she walks with you while she is teaching you
+    this.npc.mode = 'follow';
+    this.npc.keepAway = true;
+    this.tutorial = 0;
+    this.teach(1);
   }
 
   say(who, text) { this.dialog = { who, text, t: 0 }; }
 
+  /**
+   * The tutorial is Dr. Vess. There are no instruction cards: she walks with
+   * you for the first few minutes and tells you what to do next, one step at a
+   * time, in the same speech bubble she says everything else in. Each step
+   * fires once, in order, and only when you have actually reached it.
+   */
+  teach(step) {
+    if (this.state !== 'play') return;
+    if ((this.tutorial || 0) >= step) return;
+    this.tutorial = step;
+    const say = (text, mood) => { this.npc.say(text, 6.5, mood); };
+    switch (step) {
+      case 1: say('Your back is a spring. Tap in time with the band - the middle of it pays double.', 10); break;
+      case 2: say('Good. Now get up on yourself: tap your own shell.', 3); break;
+      case 3: say('Drag a seed out and drop it on a bed. It is your back, you can put it where you like.', 5); break;
+      case 4: say('It is a seed until it has drunk. Run the spring again and it will come up.', 0); break;
+      case 5: say('There. When the bead shows, take it - nothing on you pays out on its own.', 13); break;
+      case 6: say('That is the whole of it. Water, plants, genes, you. Walk east and I will keep up.', 6); break;
+      default: break;
+    }
+  }
+
   skipIntro() {
     this.sea.stop();
+    this.sleep = 0;
     this.buried = 0;
     this.buryTarget = 0;
     this.npc.hidden = false;
@@ -290,6 +363,9 @@ export class Game {
 
   update(dt) {
     this.time += dt;
+    // how long you have actually been playing, which is what the control hints
+    // fade against - a cutscene does not count as practice
+    if (this.state === 'play') this.playT = (this.playT || 0) + dt;
     const i = this.input;
     const slow = this.state === 'dead' ? 0.3 : 1;
     const sdt = dt * slow;
@@ -305,6 +381,9 @@ export class Game {
         this.skipIntro();
       }
     }
+
+    // paused: the world stops, the card does not
+    if (this.ui.paused) return;
 
     const play = this.state === 'play';
     // you can walk in the prologue: it is a place, not a film
@@ -536,9 +615,7 @@ export class Game {
     if (this.pump.combo > 0 && this.pump.combo % 5 === 0) {
       this.fx.popup(o.x, o.y - 18, `${this.pump.combo} in a row`, '#e2d07a');
     }
-    if (this.tutorial === 1 && e.water > 70) {
-      this.tutorial = 2; this.ui.say('Click yourself to climb onto your own back and plant something.', 7);
-    }
+    if (e.water > 70) this.teach(2);
   }
 
   /** Kept for the tutorial and for anything that wants a single tap. */
@@ -567,18 +644,15 @@ export class Game {
       const soon = this.garden.plots
         .filter((p) => p.plant && p.plant.stage >= 3)
         .sort((a, b) => b.plant.ripe - a.plant.ripe)[0];
-      if (!soon) this.ui.say('Nothing on your back is grown yet.');
+      if (!soon) this.ui.say('Nothing grown yet.', 2);
       else {
         const why = this.garden.blockedText(soon.plant.def);
-        this.ui.say(why ? `${soon.plant.def.name} ${why}.` : 'Nothing is ripe yet.');
+        this.ui.say(why ? `${soon.plant.def.name} ${why}.` : 'Not ripe yet.', 2);
       }
       return 0;
     }
     let total = 0;
     for (const plot of ready) total += this.harvestPlot(plot, true);
-    this.ui.say(ready.length > 1
-      ? `Picked ${ready.length}. +${total} nutrients.`
-      : `+${total} nutrients.`, 3);
     return total;
   }
 
@@ -597,15 +671,17 @@ export class Game {
     this.fx.spark(w.x, w.y - 3, res.parasite ? '#c98ade' : '#e2f0a8', 14, 44);
     this.audio.play('pickup', { pitch: 0.9 + Math.random() * 0.3 });
     this.cam.shake(1.2);
-    if (!quiet) this.ui.say(res.msg, 2.4);
+    this.teach(6);
     return res.amount;
   }
 
   /** A plant coming ready is worth noticing without being nagged about. */
   onRipe(plot, pl) {
     const w = this.garden.plotWorld(plot);
-    this.fx.spark(w.x, w.y - 4, '#ffe9a8', 8, 26);
+    this.fx.ring(w.x, w.y - 4, '#ffe9a8', 13);
+    this.fx.spark(w.x, w.y - 4, '#ffe9a8', 10, 30);
     this.audio.play('chirp', { pitch: 1.25 });
+    this.teach(5);
   }
 
   /** Ask her to come along, get on, or get off. */
@@ -779,9 +855,8 @@ export class Game {
     this.economy.markDirty();
     // nothing forbids overloading yourself; you are just told what you did
     const g = this.garden;
-    if (g.load > g.capacity) this.ui.say('You are carrying more than you can carry.', 4);
-    else if (g.listed) this.ui.say(`Your shell is listing ${g.trim > 0 ? 'right' : 'left'}.`, 4);
-    if (this.tutorial === 2) { this.tutorial = 3; this.ui.say('It grows while you walk. Keep the water up.', 5); }
+    if (g.load > g.capacity) this.ui.say('Overloaded.', 2.5);
+    this.teach(3);
     return { ok: true, msg: `${def.name} planted.` };
   }
 
@@ -863,11 +938,34 @@ export class Game {
     }
   }
 
-  /** A seed on your back has taken up enough water to start. */
+  /**
+   * A seed on your back has taken up enough water to start. This is the first
+   * thing in the game that is properly yours, so it gets a moment: the husk
+   * splits, a ring goes out, and something green comes up out of it.
+   */
   onGerminate(plot, pl) {
     const w = this.garden.plotWorld(plot);
-    this.fx.spark(w.x, w.y - 2, '#b6de8f', 9, 26);
+    this.fx.ring(w.x, w.y - 1, '#b6de8f', 16);
+    this.fx.spark(w.x, w.y - 2, '#cfe89a', 14, 34);
+    this.fx.drift(w.x, w.y - 5, '#dff0c0', 3);
+    this.fx.popup(w.x, w.y - 10, pl.def.name, '#b6de8f');
     this.audio.play('grow', { pitch: 1.2 });
+    pl.pop = 1;
+    this.teach(4);
+  }
+
+  /** Every stage up is a small pop, so growing is something you can see. */
+  onPlantGrew(plot, pl) {
+    const w = this.garden.plotWorld(plot);
+    this.fx.spark(w.x, w.y - 3, '#cfe89a', 6, 22);
+    this.audio.play('grow', { pitch: 0.9 + pl.stage * 0.12, vol: 0.5 });
+    pl.pop = 1;
+    if (pl.stage >= 3) {
+      this.economy.recomputeGenes();
+      this.fx.ring(w.x, w.y - 4, '#b6de8f', 15);
+      this.fx.spark(w.x, w.y - 4, '#b6de8f', 12, 32);
+      this.fx.popup(w.x, w.y - 12, 'mature', '#b6de8f');
+    }
   }
 
   attraction(def) { return this.wildlife.attraction(def) * this.economy.stat('attract'); }
@@ -910,27 +1008,19 @@ export class Game {
     for (const step of OBSERVE_STEPS) {
       if (before < step && after >= step) {
         const n = OBSERVE_STEPS.indexOf(step);
-        this.ui.say(`Vess writes down a note on the ${c.def.name.toLowerCase()}.`, 3.2);
+        this.fx.popup(this.npc.x, this.npc.y - 26, 'noted', '#e2b74a');
         this.npc.say(c.def.notes[n] || '...', 6);
         this.audio.play('discover');
       }
     }
   }
 
-  onGene(g) { this.ui.say(`New gene expressed: ${g.name}.`, 5); this.economy.markDirty(); }
+  onGene(g) { this.ui.say(g.name, 3); this.economy.markDirty(); }
   onTamed(c) { this.economy.markDirty(); }
   onBoard() {}
   onSkill(s) { this.economy.markDirty(); }
-  onEvolve(e) { this.ui.say(`${e.name}. Something in you unfolds.`, 6); this.economy.markDirty(); }
+  onEvolve(e) { this.ui.say(e.name, 3.5); this.economy.markDirty(); }
   onBuilt() { this.economy.markDirty(); }
-  onPlantGrew(plot, pl) {
-    if (pl.stage >= 3) {
-      this.economy.recomputeGenes();
-      const w = this.garden.plotWorld(plot);
-      this.fx.spark(w.x, w.y - 4, '#b6de8f', 10, 30);
-      this.ui.say(`${pl.def.name} is mature.`, 3.5);
-    }
-  }
   /**
    * Something died. It is not a failure state - it is what happens - and what
    * it leaves behind goes into the ground for whoever comes next.
@@ -947,11 +1037,11 @@ export class Game {
     if (cause === 'age') {
       this.fx.drift(c.x, c.y - 4, '#c6bea7', 3);
       if (mine) {
-        this.ui.say(`${c.name} has died of old age.`, 4.5);
+        this.fx.popup(c.x, c.y - 12, c.name, '#c6bea7');
         this.npc.say(this._eulogy(c), 6);
       }
     } else if (mine) {
-      this.ui.say(`${c.name} is dead.`, 4);
+      this.fx.popup(c.x, c.y - 12, c.name, '#d08a7a');
     }
     // a body in the sand is a fossil in a thousand years, and the ground it
     // lies in is richer tomorrow
@@ -978,15 +1068,15 @@ export class Game {
     baby.born = true;
     this.wildlife.fleet.push(baby);
     this.fx.spark(c.x, c.y - 6, '#ffe9a8', 12, 30);
-    this.ui.say(`${c.def.name} has bred on your shell.`, 4.5);
+    this.fx.popup(c.x, c.y - 10, `${c.def.name} hatched`, '#ffe9a8');
     this.economy.markDirty();
   }
 
   onFirstSighting(def) {
-    if (!def.hostile) this.ui.say(`${def.name} - first sighting.`, 4);
+    if (!def.hostile) this.ui.say(`${def.name} - new`, 3);
   }
   onAmbush(def, n) {
-    this.ui.say(n > 1 ? `${def.name}s! ${n} of them, out of the sand.` : `${def.name}! Out of the sand.`, 4);
+    this.ui.say(n > 1 ? `${def.name} x${n}!` : `${def.name}!`, 2.5);
     this.cam.shake(5);
   }
   /** Walking into a named place is the point of walking. */
@@ -998,10 +1088,11 @@ export class Game {
       spire: 'The wind has been working on this for a very long time.',
       wreck: 'A hull. Kilometres from any sea, and the sea was yours.',
     }[lm.kind] || '';
-    this.ui.say(`${lm.name} - ${kindLine}`, 6);
+    this.ui.say(lm.name, 4);
+    // she is the one who gets to be wordy about a place
     this.npc.say(lm.kind === 'oasis'
-      ? `Water. Mark it: ${lm.name}. That is eleven years of survey undone in an afternoon.`
-      : `${lm.name}. I have this on the map as a dot and nothing else.`, 6);
+      ? `Water. Mark it: ${lm.name}. Eleven years of survey undone in an afternoon.`
+      : `${lm.name}. ${kindLine}`, 6);
     this.audio.play('discover');
     this.cam.shake(2);
     if (lm.kind === 'oasis') {
@@ -1020,7 +1111,7 @@ export class Game {
   }
 
   onNewDay() {}
-  onDusk() { this.ui.say('The light is going.', 3); }
+  onDusk() {}
   onDawn() {}
   onWeather() {}
 
@@ -1103,6 +1194,7 @@ export class Game {
     if (!this.npc.riding && !this.npc.hidden) this.npc.draw(ctx, cam);
     this._drawCrab(ctx, cam);
     if (this.npc.riding && !this.npc.hidden) this.npc.draw(ctx, cam);
+    if (this.sleep) this._drawSleep(ctx, cam);
     if (this._pee) this._drawStream(ctx, cam);
     this.ui.drawGhost(ctx, cam);
     this.wildlife.draw(ctx, cam, 'shell');
@@ -1235,29 +1327,48 @@ export class Game {
     const hit = c.shellWorldAB(0.1, 0.5);
     const b = cam.worldToScreen(hit.x, hit.y);
     const mx = (a.x + b.x) / 2, my = Math.min(a.y, b.y) - 10 * cam.zoom;
+    // it starts and stops the way it would: a splutter, then a steady arc
+    this._peeT = (this._peeT || 0) + 1 / 60;
+    const run = clamp01(this._peeT * 2.2) * (0.72 + 0.28 * Math.sin(this.time * 1.3));
     const wob = Math.sin(this.time * 9) * 1.2 * cam.zoom;
+    const lift = (1 - run) * 10 * cam.zoom;
+    const bx = lerp(a.x, b.x, run), by = lerp(a.y, b.y, run);
     ctx.lineCap = 'round';
-    for (const [col, w] of [['rgba(120,92,20,0.55)', 3.4], ['#d8b43c', 2.2], ['#f6e58a', 1.0]]) {
+    for (const [col, w] of [['rgba(96,72,14,0.55)', 4.0], ['#c79f2c', 2.6], ['#e9cf5c', 1.6], ['#fbf3b4', 0.7]]) {
       ctx.strokeStyle = col;
-      ctx.lineWidth = Math.max(1, w * cam.zoom * 0.6);
+      ctx.lineWidth = Math.max(1, w * cam.zoom * 0.55);
       ctx.beginPath();
       ctx.moveTo(a.x, a.y);
-      ctx.quadraticCurveTo(mx + wob, my, b.x, b.y);
+      ctx.quadraticCurveTo(mx + wob, my + lift, bx, by);
       ctx.stroke();
     }
-    // droplets coming off the arc, and the patch where it lands
-    for (let i = 0; i < 5; i++) {
-      const t = ((this.time * 1.6 + i * 0.2) % 1);
+    // beads running along it, and a spatter coming off where it lands
+    for (let i = 0; i < 7; i++) {
+      const t = ((this.time * 1.9 + i * 0.14) % 1) * run;
       const u = 1 - t;
       const x = u * u * a.x + 2 * u * t * (mx + wob) + t * t * b.x;
-      const y = u * u * a.y + 2 * u * t * my + t * t * b.y;
-      ctx.fillStyle = '#f6e58a';
+      const y = u * u * a.y + 2 * u * t * (my + lift) + t * t * b.y;
+      ctx.globalAlpha = 0.5 + 0.5 * Math.sin(t * Math.PI);
+      ctx.fillStyle = i % 3 ? '#f6e58a' : '#fffbd8';
       ctx.fillRect(Math.round(x), Math.round(y), 2, 2);
     }
-    ctx.globalAlpha = 0.5 + 0.3 * Math.sin(this.time * 7);
-    ctx.fillStyle = '#c9a233';
+    if (run > 0.9) {
+      for (let i = 0; i < 5; i++) {
+        const a2 = -Math.PI * (0.15 + Math.random() * 0.7);
+        const d = (3 + Math.random() * 9) * cam.zoom;
+        ctx.globalAlpha = 0.5 * Math.random();
+        ctx.fillStyle = '#f6e58a';
+        ctx.fillRect(Math.round(b.x + Math.cos(a2) * d), Math.round(b.y + Math.sin(a2) * d * 0.6), 1, 1);
+      }
+      // and it steams, because the shell has been in the sun for a thousand years
+      if (Math.random() < 0.3) this.fx.mist(hit.x, hit.y - 2, 0.6, 9);
+    }
+    // the wet patch, spreading
+    const patch = clamp01(this._peeT * 0.5);
+    ctx.globalAlpha = (0.35 + 0.25 * Math.sin(this.time * 7)) * patch;
+    ctx.fillStyle = '#b8902a';
     ctx.beginPath();
-    ctx.ellipse(b.x, b.y, 5 * cam.zoom, 2 * cam.zoom, 0, 0, TAU);
+    ctx.ellipse(b.x, b.y, (3 + patch * 6) * cam.zoom, (1.2 + patch * 2) * cam.zoom, 0, 0, TAU);
     ctx.fill();
     ctx.globalAlpha = 1;
   }

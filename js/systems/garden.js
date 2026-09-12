@@ -242,6 +242,8 @@ export class Garden {
       pl.health = clamp01(pl.health + (pl.thirst > 0.7 ? -dt * 0.09 : dt * 0.06)
         - (heavySide ? dt * 0.05 * (Math.abs(trim) - 0.42) * 3 : 0));
 
+      if (pl.pop > 0) pl.pop = Math.max(0, pl.pop - dt * 1.7);
+
       if (pl.stage < GROW_STAGES - 1) {
         const rate = (1 - pl.thirst * 0.8) * (0.6 + this.pond * 0.7) * (pl.def.growBoost || 1)
           * (1 - over * 0.55);
@@ -363,7 +365,11 @@ export class Garden {
         const wilt = 1 - pl.thirst * 0.22;
         const art = buildPlant(pl.def, pl.stage, pl.variant,
           this.plantScale(crab) * scale, plot.b < -0.05 ? 0.30 : 0);
-        ctx.scale(wilt, wilt);
+        // a stage-up springs the plant: overshoot, then settle
+        const k = pl.pop || 0;
+        const bx = 1 + Math.sin(k * Math.PI) * 0.26 * k;
+        const by = 1 + Math.sin(k * Math.PI) * 0.34 * k - k * k * 0.10;
+        ctx.scale(wilt * bx, wilt * by);
         ctx.drawImage(art.cv, -art.ox, -art.oy);
         if (pl.thirst > 0.75 && Math.random() < 0.02) {
           const w = this.plotWorld(plot);

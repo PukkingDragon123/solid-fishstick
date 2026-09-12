@@ -320,16 +320,19 @@ export class TreeScreen {
         this.manual = true;
         this.target.x += ax.x * 260 * dt; this.target.y += ax.y * 260 * dt;
       }
-      if (this.manual) {
-        this.target.x = clamp(this.target.x, -900, 900);
-        this.target.y = clamp(this.target.y, -900, 900);
+      this.target.x = clamp(this.target.x, -1100, 1100);
+      this.target.y = clamp(this.target.y, -1100, 1100);
+      // a way back to the middle, for when you have wandered off it
+      if (i.justPressed('c') || i.justPressed('Home')) {
+        i.consumeKey('c'); i.consumeKey('Home');
+        this._frame(vw, vh);
+        this.manual = false;
       }
       if (i.justPressed('Escape') || i.justPressed('Tab') || i.justPressed('g')) {
         i.consumeKey('Escape'); i.consumeKey('Tab'); i.consumeKey('g');
         this.close();
       }
     }
-    if (!this.manual) this._frame(vw, vh);
     this.cam.x = damp(this.cam.x, this.target.x, 0.0006, dt);
     this.cam.y = damp(this.cam.y, this.target.y, 0.0006, dt);
     this.cam.z = damp(this.cam.z, this.target.z, 0.0006, dt);
@@ -670,7 +673,7 @@ export class TreeScreen {
 
     const S = plate.width;
     ctx.save();
-    ctx.translate(vw * 0.80 - this.cam.x * 0.012, vh * 0.22 - this.cam.y * 0.012);
+    ctx.translate(vw * 0.80, vh * 0.22);
     ctx.rotate(this.t * 0.0045);
     ctx.globalAlpha = fade;
     ctx.drawImage(plate, -S / 2, -S / 2);
@@ -678,12 +681,11 @@ export class TreeScreen {
 
     for (let layer = 0; layer < 4; layer++) {
       const n = 110 - layer * 24;
-      const par = 0.02 + layer * 0.05;
       for (let i = 0; i < n; i++) {
         const h1 = Math.sin(i * 12.9898 + layer * 3.7) * 43758.5453;
         const h2 = Math.sin(i * 78.233 + layer * 1.3) * 43758.5453;
-        const sx = (((h1 - Math.floor(h1)) * vw - this.cam.x * par) % vw + vw) % vw;
-        const sy = (((h2 - Math.floor(h2)) * vh - this.cam.y * par) % vh + vh) % vh;
+        const sx = (((h1 - Math.floor(h1)) * vw) % vw + vw) % vw;
+        const sy = (((h2 - Math.floor(h2)) * vh) % vh + vh) % vh;
         const tw = 0.4 + 0.6 * Math.sin(this.t * (0.5 + layer * 0.4) + i * 1.7);
         const X = Math.round(sx), Y = Math.round(sy);
         ctx.globalAlpha = fade * (0.15 + layer * 0.20) * (0.5 + tw * 0.5);
@@ -761,8 +763,9 @@ export class TreeScreen {
     const k = Math.min((vw * 0.97) / pl.w, (vh * 0.84) / pl.h, cap);
     const breathe = 1 + Math.sin(this.t * 0.55) * 0.008;
     const kk = k * breathe;
-    const px = clamp(-this.cam.x * 0.055 * this.cam.z, -vw * 0.14, vw * 0.14);
-    const py = clamp(-this.cam.y * 0.055 * this.cam.z, -vh * 0.12, vh * 0.12);
+    // the animal does not slide about when you pan: you are inside it, and
+    // panning moves the genome, not you
+    const px = 0, py = 0;
     const w = pl.w * kk, h = pl.h * kk;
     // centred on the animal's bounding box, not on its hip line, or the shell
     // walks off the top of the screen
@@ -1384,8 +1387,8 @@ export class TreeScreen {
     drawText(ctx, `${open}/${total} grown   ${e.genes.size}/${GENES.length} genes`, vw - 6, 3,
       { color: 'rgba(200,226,210,0.7)', align: 'right' });
 
-    drawText(ctx, this.manual ? 'drag to look   scroll to zoom   esc to wake up' : 'esc to wake up',
-      vw / 2, vh - 10, { color: 'rgba(200,226,210,0.42)', align: 'center' });
+    drawText(ctx, 'drag  ·  scroll  ·  C centres  ·  esc', vw / 2, vh - 10,
+      { color: 'rgba(200,226,210,0.38)', align: 'center' });
 
     if (hover) this._card(ctx, hover.n, hover.p, vw, vh);
     if (this.toast) {
@@ -1497,7 +1500,6 @@ export class TreeScreen {
         this.say(arm ? `${n.data.name}. ${arm.name.toLowerCase()} grows.` : `${n.data.name}.`);
         this._sap(n.id);
         this.game.audio?.play('grow');
-        if (!this.manual) this._frame(this.game.renderer.vw, this.game.renderer.vh);
       } else {
         this.say(st === 'locked' ? 'Nothing has reached that far yet.'
           : `Not enough. ${n.data.cost - Math.floor(e.nutrients)} nutrients short.`);
@@ -1509,7 +1511,6 @@ export class TreeScreen {
       this.say(`${n.data.name}. Something in you unfolds.`);
       this._sap(n.id);
       this.game.audio?.play('evolve');
-      if (!this.manual) this._frame(this.game.renderer.vw, this.game.renderer.vh);
     } else if (st === 'genes') {
       this.say('Missing genes: ' + e.missingGenes(n.data.genes).map((g) => GENE_BY_ID[g]?.name || g).join(', '));
       this.game.audio?.play('deny');

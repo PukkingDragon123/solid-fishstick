@@ -178,6 +178,11 @@ const HARVEST = {
 };
 
 /** What a condition wants, in words, for the tooltip and the ripeness pip. */
+/** The pictogram for each condition, drawn instead of the sentence. */
+export const NEEDS_ICON = {
+  sun: 'sun', dusk: 'dusk', night: 'moon', shade: 'shade', pond: 'drop', fleet: 'nest',
+};
+
 export const NEEDS_TEXT = {
   sun: 'ripens in daylight',
   dusk: 'ripens at dusk and dawn',

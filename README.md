@@ -54,7 +54,12 @@ npm run build     # -> dist/crabden.html + dist/crabden.body.html
 | inside you | `G` | tap the orb |
 | control mode | `M` | **MODE** |
 | zoom / pan | wheel, drag (locked while you are on your own back) | pinch, drag (same) |
-| back out | `Esc` | the panel's X |
+| pause / back out | `Esc`, or the chip in the top-right corner | the same chip |
+
+The chip in the corner is the only button that is always in the same place. It
+is a **back arrow** while you are inside something and a **pause** while you are
+not, and pausing stops the world and gives you sound, a fresh run, and the way
+out.
 
 A crab does not turn round to walk — but it does turn round. Reverse direction
 and the animal **pivots**: it goes edge-on, comes back out the other way, and
@@ -150,6 +155,16 @@ walking, because the only thing out here worth having is over the next dune.**
 5. **Evolve.** Evolutions cost nutrients *and* a specific set of genes. Growing
    from juvenile to adult to ancient makes the shell bigger, the basin deeper,
    and the garden on your back larger in every sense.
+
+**Nobody explains this in a wall of text.** Dr. Vess teaches it, one line at a
+time, in her speech bubble, and only when you are actually standing in front of
+the thing: the spring the first time you look at it, your own back the first
+time you have water to spend, the bed the first time you are up there, the
+germination the first time a seed drinks, the bead the first time something
+ripens, and the shape of the whole loop the first time you pick. Each beat fires
+once, and growing is something you can watch happen — the husk splits on a ring
+of light, every stage up **springs** the plant with an overshoot that settles,
+and a mature one goes off with a ring and its name.
 
 ### Your genome
 
@@ -524,6 +539,13 @@ reads back anything else you spell letter by letter.
   you spend; fruit is a sprig of fruit; your genome is an orb. All four are
   painted by the same height-field painter as the world, so the readouts are
   lit by the same sun as the desert behind them.
+- **The game is quiet.** What a plant costs, what it pays, how long it takes and
+  what it needs are **chips with icons** — a drop, a fruit, a clock, a weight, a
+  sun or a moon — not sentences. A death, a hatching and a note taken are
+  **popups over the thing they happened to**, not banners. The controls are five
+  **keycaps** along the bottom that fade out once you have been playing a few
+  minutes, and come back if you reach for them. What is left of the writing is
+  spoken: Dr. Vess says it, in her bubble, with her face doing the work.
 
 ### Layout
 

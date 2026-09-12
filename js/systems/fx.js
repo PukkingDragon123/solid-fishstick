@@ -139,6 +139,11 @@ export class Fx {
     }
   }
 
+  /** A ring going out from a point: something happened exactly here. */
+  ring(x, y, color = '#b6de8f', r = 14) {
+    this._add({ k: 'ring', x, y, r0: 2, r1: r, life: 0.5, t: 0, color });
+  }
+
   spark(x, y, color = '#ffe9a8', n = 6, power = 40) {
     for (let i = 0; i < n; i++) {
       const a = Math.random() * TAU;
@@ -212,6 +217,8 @@ export class Fx {
           q.vx = lerp(q.vx, wind.x * 0.5, 1 - Math.pow(0.2, dt));
           q.vy = lerp(q.vy, -3, 1 - Math.pow(0.3, dt));
           q.r += dt * 5;
+          break;
+        case 'ring':
           break;
         case 'grit':
           // a thrown grain: gravity, and it stops when it hits the sand
@@ -297,6 +304,16 @@ export class Fx {
           ctx.fillStyle = '#e8d3ad';
           ctx.beginPath(); ctx.arc(s.x, s.y, q.r * z, 0, TAU); ctx.fill();
           break;
+        case 'ring': {
+          const k = clamp01(q.t / q.life);
+          ctx.globalAlpha = (1 - k) * 0.85;
+          ctx.strokeStyle = q.color;
+          ctx.lineWidth = Math.max(1, (1 - k) * 2 * z);
+          ctx.beginPath();
+          ctx.ellipse(s.x, s.y, lerp(q.r0, q.r1, k) * z, lerp(q.r0, q.r1, k) * 0.45 * z, 0, 0, TAU);
+          ctx.stroke();
+          break;
+        }
         case 'grit':
           ctx.globalAlpha = a;
           ctx.fillStyle = Math.random() < 0.3 ? '#f0dcb2' : '#b9955f';

@@ -7,13 +7,14 @@
 // when you want it and is not there when you do not.
 
 import { clamp, clamp01, lerp, damp, TAU, easeOutCubic } from '../lib/math.js';
+import * as Save from '../core/save.js';
 import { drawText, textWidth, wrapText, ellipsize, LINE_H } from '../lib/font.js';
-import { FLORA, FLORA_BY_ID, NEEDS_TEXT } from '../data/flora.js';
+import { FLORA, FLORA_BY_ID, NEEDS_TEXT, NEEDS_ICON } from '../data/flora.js';
 import { FAUNA, FAUNA_BY_ID, CLADES, OBSERVE_STEPS } from '../data/fauna.js';
 import { BUILDINGS, BUILD_BY_ID, GENES, GENE_BY_ID, SKILL_BY_ID } from '../data/progress.js';
 import { buildPlant } from '../art/floraart.js';
 import { buildStructure } from '../art/buildart.js';
-import { drawShell, drawBloom, drawSprig, drawOrb, drawTab, drawPanel, drawGlyph, drawValve, drawGauge } from './icons.js';
+import { drawShell, drawBloom, drawSprig, drawOrb, drawTab, drawPanel, drawGlyph, drawValve, drawGauge, drawNodeIcon } from './icons.js';
 import { TreeScreen } from './tree.js';
 import { WORLD_NOTES, ERAS } from '../data/lore.js';
 import { biomeAt } from '../world/biomes.js';
@@ -49,6 +50,7 @@ export class UI {
     this.tree = new TreeScreen(game);
     this.drawer = 0;             // 0 closed, 1 fully open
     this.drawerOpen = false;
+    this.paused = false;
     this.tab = 'flora';
     this.scroll = 0;
     this.pick = null;            // the item shown in the detail pane
@@ -78,7 +80,7 @@ export class UI {
     this._installTouch();
   }
 
-  say(text, secs = 3.6) { this.toast = text; this.toastT = secs; }
+  say(text, secs = 3.6) { this.toast = text; this.toastT = secs; this.toastMax = secs; }
 
   // -- on-screen controls ---------------------------------------------------
 
@@ -157,6 +159,11 @@ export class UI {
     if (this.toastT > 0) { this.toastT -= dt; if (this.toastT <= 0) this.toast = null; }
     this.drawer = damp(this.drawer, this.drawerOpen ? 1 : 0, 0.0009, dt);
 
+    if (this.paused) {
+      if (i.justPressed('Escape')) { i.consumeKey('Escape'); this.paused = false; }
+      return;
+    }
+
     const inTree = this.tree.update(dt, this.game.renderer.vw, this.game.renderer.vh);
     if (this.tree.diving) return;
 
@@ -166,10 +173,7 @@ export class UI {
     if (i.justPressed('Tab')) { i.consumeKey('Tab'); this.toggleBuild(); }
     if (i.justPressed('Escape')) {
       i.consumeKey('Escape');
-      if (this.placing) { this.placing = null; this.say('Cancelled.'); }
-      else if (this.drawerOpen) this.drawerOpen = false;
-      else if (this.buildOn) this.toggleBuild();
-      else if (this.driving) this.release();
+      this.back();
     }
     // clicking the animal itself is how you get onto its back
     if (!this.buildOn && !this.drawerOpen && !this.placing && !this.driving
@@ -236,6 +240,24 @@ export class UI {
    * the side. Everything you can do to your own back happens here, on your
    * own back, rather than in a shop.
    */
+  /** One step out of whatever you are in. The exit chip does this too. */
+  back() {
+    if (this.paused) { this.paused = false; return true; }
+    if (this.placing) { this.placing = null; this.say('Cancelled.'); return true; }
+    if (this.drawerOpen) { this.drawerOpen = false; return true; }
+    if (this.buildOn) { this.toggleBuild(); return true; }
+    if (this.driving) { this.release(); return true; }
+    if (this.tree.diving) { this.tree.close(); return true; }
+    this.paused = true;
+    this.game.audio?.play('ui');
+    return true;
+  }
+
+  /** Is there anything to back out of? Decides what the chip looks like. */
+  get nested() {
+    return !!(this.placing || this.drawerOpen || this.buildOn || this.driving || this.tree.diving);
+  }
+
   toggleBuild() {
     const g = this.game;
     if (!this.buildOn && g.state !== 'play') return;
@@ -410,7 +432,7 @@ export class UI {
       this.tree.draw(ctx, W, H);
       // the world's chrome goes as soon as the dive takes hold, so nothing is
       // floating over the top of you while you fall into yourself
-      if (this.tree.dive > 0.14) return;
+      if (this.tree.dive > 0.14) { this._exitChip(ctx, W, H); return; }
     }
 
     this._hud(ctx, W, H);
@@ -419,19 +441,113 @@ export class UI {
     if (this.drawer > 0.005) this._panel(ctx, W, H);
     else if (this.touchEnabled) this._touchControls(ctx, W, H);
 
-    if (this.toast) {
-      // on a phone the toast has to clear the stick, the buttons and the valve
-      const lines = wrapText(this.toast, Math.min(220, W - (this.touchEnabled ? 96 : 40)));
-      const w = Math.max(...lines.map((l) => textWidth(l))) + 4;
-      // on a phone there is no clear band at the bottom, so a toast sits in
-      // the sky instead of over the animal
-      const y = this.touchEnabled ? Math.round(H * 0.30)
-        : H - 46 - (lines.length - 1) * LINE_H;
-      lines.forEach((l, i) => drawText(ctx, l, W / 2, y + i * LINE_H,
-        { color: INK, align: 'center', outline: true, outlineColor: OUT }));
-    }
+    if (this.toast) this._toast(ctx, W, H);
     if (this.drag) this._drawCarried(ctx, W, H);
+    this._exitChip(ctx, W, H);
+    if (this.paused) this._pauseCard(ctx, W, H);
     if (this.hover && !this.drag) this._tooltip(ctx, W, H);
+  }
+
+  /**
+   * A line of text, on a slab, with a lit edge down one side. It slides up as
+   * it arrives and thins out as it goes, so it reads as a thing that happened
+   * rather than a label that is always on.
+   */
+  _toast(ctx, W, H) {
+    const lines = wrapText(this.toast, Math.min(220, W - (this.touchEnabled ? 96 : 40)));
+    const tw = Math.max(...lines.map((l) => textWidth(l)));
+    const max = this.toastMax || 3.6;
+    const inK = clamp01((max - this.toastT) / 0.18);
+    const out = clamp01(this.toastT / 0.5);
+    const a = Math.min(inK, out);
+    const bw = tw + 14, bh = lines.length * LINE_H + 7;
+    const bx = Math.round(W / 2 - bw / 2);
+    // on a phone there is no clear band at the bottom, so it sits in the sky
+    const by = Math.round((this.touchEnabled ? H * 0.30 : H - 50)
+      - (lines.length - 1) * LINE_H) + Math.round((1 - inK) * 5);
+    ctx.save();
+    ctx.globalAlpha = a;
+    ctx.fillStyle = 'rgba(14,11,8,0.80)';
+    ctx.fillRect(bx, by, bw, bh);
+    ctx.fillStyle = 'rgba(226,183,74,0.85)';
+    ctx.fillRect(bx, by, 2, bh);
+    ctx.strokeStyle = 'rgba(214,186,138,0.28)';
+    ctx.strokeRect(bx + 0.5, by + 0.5, bw - 1, bh - 1);
+    lines.forEach((l, i) => drawText(ctx, l, W / 2 + 1, by + 4 + i * LINE_H,
+      { color: INK, align: 'center' }));
+    ctx.restore();
+  }
+
+  /**
+   * The way out. One chip, top right, always there: an arrow while you are
+   * inside something, and a pair of bars when you are not - which is the only
+   * button in the game that is always in the same place.
+   */
+  _exitChip(ctx, W, H) {
+    const s = 16;
+    const x = W - s - 3, y = 3;
+    const hot = this._hit(x - 2, y - 2, s + 4, s + 4);
+    const nest = this.nested;
+    ctx.globalAlpha = hot ? 1 : 0.62;
+    ctx.fillStyle = 'rgba(16,12,8,0.85)';
+    ctx.fillRect(x, y, s, s);
+    ctx.strokeStyle = hot ? 'rgba(242,228,194,0.9)' : 'rgba(214,186,138,0.45)';
+    ctx.strokeRect(x + 0.5, y + 0.5, s - 1, s - 1);
+    ctx.fillStyle = hot ? '#f2e4c2' : '#d6ba8a';
+    const cx = x + s / 2, cy = y + s / 2;
+    if (nest) {
+      // a left-pointing arrow: out of this, back to that
+      for (let i = 0; i < 4; i++) ctx.fillRect(cx - 4 + i, cy - i, 1, i * 2 + 1);
+      ctx.fillRect(cx - 1, cy - 1, 6, 2);
+    } else {
+      ctx.fillRect(cx - 3, cy - 4, 2, 8);
+      ctx.fillRect(cx + 1, cy - 4, 2, 8);
+    }
+    ctx.globalAlpha = 1;
+    if (hot) {
+      this.hover = { title: nest ? 'Back' : 'Pause', body: 'esc' };
+      if (this.game.input.clicked) { this.game.input.clicked = false; this.back(); }
+    }
+  }
+
+  /** Paused. Three words and three buttons. */
+  _pauseCard(ctx, W, H) {
+    const g = this.game;
+    ctx.fillStyle = 'rgba(8,6,4,0.72)';
+    ctx.fillRect(0, 0, W, H);
+    const w = 120, h = 78;
+    const x = Math.round((W - w) / 2), y = Math.round((H - h) / 2);
+    drawPanel(ctx, x, y, w, h, { title: 'PAUSED' });
+    const rows = [
+      ['RESUME', () => { this.paused = false; }],
+      [g.audio.enabled ? 'SOUND ON' : 'SOUND OFF', () => {
+        g.audio.setMuted(g.audio.enabled);
+        g.settings.muted = !g.audio.enabled;
+        Save.writeSettings?.(g.settings);
+      }],
+      [this._confirmNew ? 'SURE? START OVER' : 'NEW RUN', () => {
+        if (!this._confirmNew) { this._confirmNew = 1; return; }
+        this._confirmNew = 0;
+        this.paused = false;
+        g.reset();
+      }],
+    ];
+    rows.forEach(([label, run], i) => {
+      const bh = 16, bx = x + 8, by = y + 16 + i * (bh + 4), bw = w - 16;
+      const hot = this._hit(bx, by, bw, bh);
+      this.buttons.push({ x: bx, y: by, w: bw, h: bh });
+      ctx.fillStyle = hot ? 'rgba(96,74,44,0.95)' : 'rgba(44,34,22,0.92)';
+      ctx.fillRect(bx, by, bw, bh);
+      ctx.strokeStyle = 'rgba(214,186,138,0.4)';
+      ctx.strokeRect(bx + 0.5, by + 0.5, bw - 1, bh - 1);
+      drawText(ctx, label, bx + bw / 2, by + 4,
+        { color: i === 2 && this._confirmNew ? '#e08c9c' : INK, align: 'center' });
+      if (hot && this.game.input.clicked) {
+        this.game.input.clicked = false;
+        g.audio?.play('ui');
+        run();
+      }
+    });
   }
 
   /** The thing in your claw while you are carrying it to a bed. */
@@ -475,7 +591,7 @@ export class UI {
     const sh = drawShell(ctx, L, 4, e.water / maxW, this.t);
     drawText(ctx, `${Math.round(e.water)}`, L + sh.w / 2, 4 + sh.h - 1,
       { color: INK, align: 'center', outline: true, outlineColor: OUT });
-    if (this._hit(L, 4, sh.w, sh.h)) this.hover = { title: 'Spring', body: `${Math.round(e.water)} of ${Math.round(maxW)} water. Hold space to run it.` };
+    if (this._hit(L, 4, sh.w, sh.h)) this.hover = { title: 'Spring', body: `${Math.round(e.water)} / ${Math.round(maxW)}` };
 
     // nutrients: a flower that blooms as you bank them and sheds when you spend
     const stage = clamp(Math.round(Math.pow(clamp01(this.bloomShown / 260), 0.62) * 8), 0, 8);
@@ -485,7 +601,7 @@ export class UI {
     drawText(ctx, `${Math.round(e.nutrients)}`, bx + 17, 4 + sh.h - 1,
       { color: INK, align: 'center', outline: true, outlineColor: OUT });
     if (this._hit(bx, 2, 34, 40)) {
-      this.hover = { title: 'Growth', body: `${Math.round(e.nutrients)} nutrients. The flower opens as you bank them and drops a leaf when you spend.` };
+      this.hover = { title: 'Growth', body: `${Math.round(e.nutrients)} banked` };
     }
 
     // parasites, when you have any: a thing you keep, not a thing you spend
@@ -511,7 +627,7 @@ export class UI {
     drawSprig(ctx, fx, 16, e.berries);
     drawText(ctx, `${e.berries}`, fx + 13, 4 + sh.h - 1,
       { color: INK, align: 'center', outline: true, outlineColor: OUT });
-    if (this._hit(fx, 16, 26, 22)) this.hover = { title: 'Fruit', body: 'What your mature plants set. Animals will come a long way for it.' };
+    if (this._hit(fx, 16, 26, 22)) this.hover = { title: 'Fruit', body: 'Fruit. Animals walk a long way for it.' };
 
     // place, weather, and a clock you can actually read at a glance. On a
     // phone there is no room for all of it across the top, so the place name
@@ -520,7 +636,7 @@ export class UI {
     const room = W - (L + 96) - 10;
     const label = narrow ? ellipsize(g.biome.name, Math.max(40, room))
       : `${g.biome.name}   ${g.weather.label()}`;
-    drawText(ctx, label, W - 6, 5, { color: DIM, align: 'right', outline: true, outlineColor: OUT });
+    drawText(ctx, label, W - 24, 5, { color: DIM, align: 'right', outline: true, outlineColor: OUT });
     this._clock(ctx, W - 15, narrow ? 22 : 25);
     if (!narrow) this._compass(ctx, W, H);
 
@@ -593,7 +709,7 @@ export class UI {
       drawText(ctx, `${ripe} ready   R`, rx0 + 15, ry0 + 3,
         { color: '#cfe89a', outline: true, outlineColor: OUT });
       if (this._hit(rx0, ry0, 70, 12)) {
-        this.hover = { title: 'Ready to pick', body: 'Nothing pays out on its own. Press R, or tap the bead over a plant.' };
+        this.hover = { title: 'Ready to pick', body: 'R, or tap the bead.' };
         if (g.input.clicked) { g.input.clicked = false; g.harvestAll(); }
       }
     }
@@ -629,15 +745,51 @@ export class UI {
     if (hint && !this.touchEnabled) {
       drawText(ctx, hint, W / 2, H - 30, { color: INK, align: 'center', outline: true, outlineColor: OUT });
     }
-    if (!this.touchEnabled) {
-      drawText(ctx, 'A/D move   SPACE stroke the spring   R pick   E dig   X parasite   click yourself to build   G inside',
-        W / 2, H - 10, { color: FAINT, align: 'center', outline: true, outlineColor: OUT });
-    }
+    if (!this.touchEnabled) this._keys(ctx, W, H);
     if (this.selected) {
-      drawText(ctx, `${this.selected.name} - click where to send it`, W / 2, H - 42,
+      drawText(ctx, `${this.selected.name} - where?`, W / 2, H - 42,
         { color: '#ffe9a8', align: 'center', outline: true, outlineColor: OUT });
     }
   }
+
+  /**
+   * The controls, as keycaps rather than a sentence. Five of them, centred,
+   * each a cut key with one word under it - and they go quiet once you have
+   * been playing a while, because by then you know.
+   */
+  _keys(ctx, W, H) {
+    const caps = [['A D', 'walk'], ['SPC', 'spring'], ['R', 'pick'],
+      ['E', 'dig'], ['M', 'mode']];
+    // it fades out over the first few minutes; hovering the row brings it back
+    const age = this.game.playT || 0;
+    const near = this._hit(0, H - 16, W, 16);
+    const a = near ? 1 : clamp01(1.3 - Math.max(0, age - 100) / 90);
+    if (a < 0.04) return;
+    const capW = caps.map(([k]) => Math.max(11, textWidth(k) + 6));
+    const wordW = caps.map(([, t]) => textWidth(t));
+    const gap = 4, pad = 11;
+    const total = capW.reduce((t, w, i) => t + w + gap + wordW[i], 0) + pad * (caps.length - 1);
+    let x = Math.round(W / 2 - total / 2);
+    const y = H - 14;
+    ctx.save();
+    ctx.globalAlpha = Math.min(1, a);
+    caps.forEach(([k, word], i) => {
+      const w = capW[i];
+      ctx.fillStyle = 'rgba(14,11,8,0.66)';
+      ctx.fillRect(x, y, w, 11);
+      ctx.fillStyle = 'rgba(226,183,74,0.30)';
+      ctx.fillRect(x, y + 10, w, 1);
+      ctx.strokeStyle = 'rgba(214,186,138,0.32)';
+      ctx.strokeRect(x + 0.5, y + 0.5, w - 1, 10);
+      drawText(ctx, k, x + w / 2, y + 2, { color: '#e6d5ad', align: 'center' });
+      x += w + gap;
+      drawText(ctx, word, x, y + 2,
+        { color: 'rgba(196,172,128,0.92)', outline: true, outlineColor: OUT });
+      x += wordW[i] + pad;
+    });
+    ctx.restore();
+  }
+
 
   /** Nothing but the escape hatch, while the rail owns a narrow screen. */
   _pumpStub(ctx, W, H) {
@@ -679,7 +831,7 @@ export class UI {
     }
     this._valveDown = live;
     this.valveHeld = live;
-    if (hot) this.hover = { title: 'The spring', body: 'Tap on the band. A stroke that lands pushes water; a chain of them pushes a lot more.' };
+    if (hot) this.hover = { title: 'The spring', body: 'Tap on the band. Chains pay more.' };
 
     // water: the valve throws it, it arcs, it lands, it runs off the button
     this.spray = this.spray || [];
@@ -885,7 +1037,7 @@ export class UI {
   _compass(ctx, W, H) {
     const g = this.game;
     const lm = g.world.nextUnfound(g.crab.x);
-    drawText(ctx, `${g.world.found.size} places found`, W - 6, 38,
+    drawText(ctx, `${g.world.found.size} found`, W - 6, 38,
       { color: FAINT, align: 'right', outline: true, outlineColor: OUT });
     if (!lm) return;
     const d = lm.x - g.crab.x;
@@ -1215,17 +1367,40 @@ export class UI {
       const afford = isB ? g.economy.canBuild(def.id) : g.economy.water >= def.cost;
       drawText(ctx, ellipsize(def.name, inW - 4), inX + 2, cy + 2, { color: unlock.ok ? INK : FAINT });
       if (!unlock.ok) {
-        wrapText(unlock.why, inW - 4).slice(0, 3).forEach((l, i) =>
-          drawText(ctx, l, inX + 2, cy + 12 + i * LINE_H, { color: '#e2b74a' }));
+        // locked: one lock glyph and one short line, and Vess explains the rest
+        drawNodeIcon(ctx, 'link', inX + 7, cy + 20, '#e2b74a', 1);
+        wrapText(unlock.why, inW - 20).slice(0, 2).forEach((l, i) =>
+          drawText(ctx, l, inX + 15, cy + 14 + i * LINE_H, { color: '#e2b74a' }));
       } else {
-        drawText(ctx, isB ? `${def.cost}w ${def.nut}n` : `${def.cost} water`, inX + 2, cy + 12,
-          { color: afford ? '#5fc6d8' : '#e08c9c' });
-        if (!isB) {
-          drawText(ctx, `+${def.pay} every ${Math.round(def.ripen)}s`, inX + 2, cy + 21, { color: '#8cc468' });
-          const need = def.needs ? (NEEDS_TEXT[def.needs] || '') : `weighs ${def.mass.toFixed(1)}`;
-          drawText(ctx, ellipsize(need, inW - 4), inX + 2, cy + 30, { color: FAINT });
+        // what it is, as pictograms: what it costs, what it pays, how long it
+        // takes and what it wants before it will pay at all
+        const chips = isB
+          ? [['drop', `${def.cost}`, afford ? '#5fc6d8' : '#e08c9c'],
+            ['leaf', `${def.nut}`, '#cfe89a']]
+          : [['drop', `${def.cost}`, afford ? '#5fc6d8' : '#e08c9c'],
+            ['fruit', `+${def.pay}`, '#8cc468'],
+            ['clock', `${Math.round(def.ripen)}s`, 'rgba(214,186,138,0.8)'],
+            ['weight', def.mass.toFixed(1), 'rgba(214,186,138,0.6)']];
+        if (!isB && def.needs) chips.push([NEEDS_ICON[def.needs] || 'sun', '', '#e2b74a']);
+        let chx = inX + 2, row = 0;
+        for (const [icon, label, col] of chips) {
+          const lw = label ? textWidth(label) : 0;
+          const cw = 10 + (label ? lw + 2 : 0);
+          if (chx + cw > inX + inW - 2) { chx = inX + 2; row++; }
+          const chy = cy + 13 + row * 12;
+          ctx.fillStyle = 'rgba(0,0,0,0.30)';
+          ctx.fillRect(chx - 1, chy - 1, cw + 2, 11);
+          drawNodeIcon(ctx, icon, chx + 4, chy + 4, col, 1);
+          if (label) drawText(ctx, label, chx + 10, chy + 1, { color: col });
+          if (this._hit(chx - 1, chy - 1, cw + 2, 11)) {
+            this.hover = def.needs && icon === NEEDS_ICON[def.needs]
+              ? { title: def.name, body: NEEDS_TEXT[def.needs] }
+              : { title: def.name, body: `${def.cost} water  ·  pays ${def.pay} every ${Math.round(def.ripen)}s  ·  weighs ${def.mass.toFixed(1)}` };
+          }
+          chx += cw + 3;
         }
         const bh = 14, by = H - 20;
+
         const hot = this._hit(inX, by, inW, bh);
         ctx.fillStyle = !afford ? 'rgba(60,38,34,0.9)' : hot ? '#8cc468' : 'rgba(74,110,52,0.95)';
         ctx.fillRect(inX, by, inW, bh);
@@ -1365,7 +1540,7 @@ export class UI {
     const held = g.wildlife.list.filter((c) => c.puppet);
     const all = fleet.concat(held.filter((c) => !fleet.includes(c)));
     if (!all.length) {
-      wrapText('Nothing lives on you yet. Grow something worth the walk, then get close and offer it fruit and water.', w - 4)
+      wrapText('Nothing lives on you yet.', w - 4)
         .forEach((l, i) => drawText(ctx, l, x, y + 6 + i * LINE_H, { color: FAINT }));
       return;
     }
@@ -1386,11 +1561,14 @@ export class UI {
       drawText(ctx, ellipsize(c.name, w - 60), x + 6, by + 3, { color: INK });
       drawText(ctx, puppet ? 'RIDDEN' : c.onShell ? 'aboard' : 'out there', x + w - 4, by + 3,
         { color: puppet ? '#d79ae8' : c.onShell ? '#b6de8f' : DIM, align: 'right' });
-      drawText(ctx, ellipsize(c.def.ability || c.def.role || '', w - 8), x + 6, by + 13, { color: FAINT });
       const d = Math.round(Math.abs(c.x - g.crab.x) / 10);
-      drawText(ctx, `${d}m away`, x + 6, by + 23, { color: FAINT });
-      drawText(ctx, on ? 'DRIVING' : 'click to drive', x + w - 4, by + 23,
-        { color: on ? '#ffe9a8' : FAINT, align: 'right' });
+      drawNodeIcon(ctx, 'step', x + 10, by + 20, FAINT, 1);
+      drawText(ctx, `${d}m`, x + 16, by + 17, { color: FAINT });
+      if (on) {
+        drawText(ctx, 'DRIVING', x + w - 4, by + 17, { color: '#ffe9a8', align: 'right' });
+      } else {
+        drawNodeIcon(ctx, 'point', x + w - 8, by + 20, FAINT, 1);
+      }
       if (hot) {
         this.hover = { title: c.name, body: c.def.desc };
         if (g.input.clicked) {
@@ -1624,6 +1802,44 @@ export class UI {
     this.scroll = clamp(this.scroll, 0, Math.max(0, total - h + 30));
   }
 
+  /**
+   * What a species is waiting for, drawn as the things themselves: a gene orb
+   * for every gene it needs, a leaf for how green your back has to be, a drop
+   * for how much standing water. Filled means you have it. No sentence.
+   */
+  _wantRow(ctx, f, x, y, w) {
+    const g = this.game;
+    const need = f.attract;
+    if (!need) return y;
+    let cx = x;
+    const chip = (icon, ok, label, tip) => {
+      const lw = label ? textWidth(label) : 0;
+      const cw = 11 + (label ? lw + 2 : 0);
+      if (cx + cw > x + w) { cx = x; y += 12; }
+      ctx.fillStyle = ok ? 'rgba(70,96,48,0.55)' : 'rgba(56,42,28,0.6)';
+      ctx.fillRect(cx, y, cw, 11);
+      drawNodeIcon(ctx, icon, cx + 5, y + 5, ok ? '#cfe89a' : 'rgba(190,170,130,0.45)', 1);
+      if (label) drawText(ctx, label, cx + 11, y + 2, { color: ok ? '#cfe89a' : FAINT });
+      if (this._hit(cx, y, cw, 11)) this.hover = { title: f.name, body: tip };
+      cx += cw + 3;
+    };
+    for (const gene of need.genes || []) {
+      const have = g.genes.has(gene);
+      chip('link', have, GENE_BY_ID[gene] ? GENE_BY_ID[gene].name.slice(0, 7) : gene,
+        have ? 'You are expressing this.' : 'Grow something that expresses this gene.');
+    }
+    if (need.lush) {
+      const ok = g.garden.lushness >= need.lush;
+      chip('leaf', ok, `${Math.round(need.lush * 100)}%`,
+        `Your shell has to be ${Math.round(need.lush * 100)}% grown over.`);
+    }
+    if (need.pond) {
+      const ok = g.garden.pond >= need.pond;
+      chip('drop', ok, `${Math.round(need.pond * 100)}%`, 'It wants standing water in your basin.');
+    }
+    return y + 11;
+  }
+
   _codexEntry(ctx, x, y, w, h) {
     const g = this.game;
     const f = FAUNA_BY_ID[this.codexPick];
@@ -1638,7 +1854,9 @@ export class UI {
     drawText(ctx, f.sci, x, ry, { color: FAINT }); ry += 12;
     const obs = g.research[f.id] || 0;
     const level = OBSERVE_STEPS.filter((s) => obs >= s).length;
-    drawText(ctx, `${f.clade}   observed ${Math.round(obs)}s`, x, ry, { color: '#e2b74a' }); ry += 12;
+    drawText(ctx, `${f.clade}   ${Math.round(obs)}s`, x, ry, { color: '#e2b74a' }); ry += 12;
+    // what it wants, as things rather than as a sentence
+    ry = this._wantRow(ctx, f, x, ry, w) + 4;
     wrapText(f.desc, w).forEach((l) => { drawText(ctx, l, x, ry, { color: DIM }); ry += LINE_H; });
     ry += 6;
     f.notes.forEach((n, i) => {
