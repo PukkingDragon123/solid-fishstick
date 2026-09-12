@@ -6516,9 +6516,6 @@ body {
       this._settle(dt);
       this._air(dt, t);
       this._walkFeet(dt, t);
-      if (Math.abs(this.vx) > 24 && Math.random() < dt * 5) {
-        this.game.fx?.footPuff(this.x, this.y, Math.abs(this.vx) * 0.4, false);
-      }
     }
     /** Ease the body towards whatever the current pose asks for. */
     _settle(dt) {
@@ -6597,51 +6594,71 @@ body {
       this.game.audio?.play("hurt", { pitch: 1.6 });
     }
     /**
-     * Feet. Each one holds its ground until the hip has walked too far past it,
-     * then swings to a new plant. Exactly the way the crab does it, with two
-     * legs instead of eight.
+     * The gait. Feet are driven by one phase rather than by how far they have
+     * drifted from a home position: at any moment one foot is planted and the
+     * other is swinging past it, and they swap every half cycle. That swap is
+     * the whole difference between walking and skating, and the phase advances
+     * with distance covered rather than with time, so the feet never slide.
      */
     _walkFeet(dt, terr) {
-      const stride = 11 * this.rig.K;
+      const K = this.rig.K;
+      const stride = 13 * K;
+      const spd = Math.abs(this.vx);
+      const moving = spd > 5;
+      const tuck = 1 - this.b.crouch * 0.62;
       if (this.jz > 0.5) {
         for (let i = 0; i < 2; i++) {
           const f = this.feet[i];
           f.air = 0;
-          f.x = damp(f.x, this.x + (i === 0 ? 1 : -1) * stride * 0.22, 1e-4, dt);
+          f.x = damp(f.x, this.x + (i === 0 ? 1 : -1) * stride * 0.2, 1e-4, dt);
           f.y = damp(f.y, this.y - this.jz * 0.55, 1e-4, dt);
           f.plant = f.x;
         }
         return;
       }
-      const moving = Math.abs(this.vx) > 6;
-      const P = POSES[this.pose] || POSES.idle;
+      if (moving) this.step = (this.step + spd * dt / (stride * 2)) % 1;
+      else this.step = (this.step + dt * 0.35) % 1;
+      const dir = Math.sign(this.vx) || this.facing || 1;
       for (let i = 0; i < 2; i++) {
         const f = this.feet[i];
-        const tuck = 1 - this.b.crouch * 0.62;
-        const lead = (this.vx * 0.16 + (i === 0 ? 1 : -1) * stride * (moving ? 0.45 : 0.3)) * tuck;
-        const home = this.x + lead;
-        if (f.air > 0) {
-          f.air -= dt / 0.24;
-          const k = clamp01(1 - f.air);
-          f.x = lerp(f.from, f.plant, k);
-          f.y = terr.surfaceY(f.x) - Math.sin(k * Math.PI) * 4.5 * this.rig.K;
-          if (f.air <= 0) {
-            f.air = 0;
-            f.x = f.plant;
-            f.y = terr.surfaceY(f.x);
-          }
-        } else if (Math.abs(f.x - home) > stride * (P.sit ? 0.5 : 0.62) * (1 - this.b.crouch * 0.4)) {
-          const other = this.feet[1 - i];
-          if (other.air <= 0) {
-            f.from = f.x;
-            f.plant = home + Math.sign(home - f.x) * stride * 0.3;
-            f.air = 1;
-          }
+        const p = (this.step + i * 0.5) % 1;
+        const swinging = moving && p >= 0.5;
+        if (!moving) {
+          const tx = this.x + (i === 0 ? 1 : -1) * stride * 0.22 * tuck;
+          f.x = damp(f.x, tx, 2e-3, dt);
+          f.y = damp(f.y, terr.surfaceY(f.x), 6e-4, dt);
+          f.plant = f.x;
+          f.air = 0;
+          f.sw = false;
+          continue;
+        }
+        if (swinging && !f.sw) {
+          f.from = f.x;
+          f.to = this.x + dir * stride * 0.62 * tuck + this.vx * 0.09;
+          f.sw = true;
+        } else if (!swinging && f.sw) {
+          f.sw = false;
+          f.x = f.to ?? f.x;
+          f.plant = f.x;
+          this._land(f, terr);
+        }
+        if (swinging) {
+          const k = (p - 0.5) * 2;
+          const e = k * k * (3 - 2 * k);
+          f.x = lerp(f.from, f.to, e);
+          f.air = Math.sin(k * Math.PI) * 5.2 * K;
+          f.y = terr.surfaceY(f.x) - f.air;
         } else {
-          f.y = damp(f.y, terr.surfaceY(f.x), 5e-4, dt);
+          f.air = 0;
+          f.x = f.plant;
+          f.y = terr.surfaceY(f.x);
         }
       }
-      this.step = moving ? (this.step + dt * Math.abs(this.vx) * 0.09) % 1 : damp(this.step, 0, 0.02, dt);
+    }
+    /** A boot going down: a little dust, and a sound if she is moving. */
+    _land(f, terr) {
+      if (Math.abs(this.vx) < 16) return;
+      this.game.fx?.footPuff(f.x, terr.surfaceY(f.x), Math.abs(this.vx) * 0.35, false);
     }
     // -------------------------------------------------------------------------
     draw(ctx, cam) {
@@ -6888,13 +6905,13 @@ body {
         this.idleT = hold * (0.7 + Math.random() * 0.7);
         if (pose === POSE.WANDER) this.moveTo = this.x + (Math.random() - 0.5) * 90;
         if (pose === POSE.DIG) {
-          this.game.fx?.dust(this.x + this.facing * 6, this.y, 1.2);
+          this.game.fx?.digBurst(this.x + this.facing * 6, this.y, 0.8, false);
           this._setUpCamp();
         }
         if (pose === POSE.SURVEY) this.facing = Math.random() < 0.5 ? -1 : 1;
       }
       if (this.pose === POSE.DIG && Math.random() < dt * 2.2) {
-        this.game.fx?.dust(this.x + this.facing * 6, this.y, 0.8);
+        this.game.fx?.digBurst(this.x + this.facing * 6, this.y, 0.45, false);
       }
     }
     /** Drop her kit around wherever she has decided to work. */
@@ -7246,726 +7263,937 @@ body {
     }
   };
 
-  // js/art/crabpose.js
+  // js/art/seaart.js
+  var LIGHT4 = { lightX: -0.4, lightY: -0.78, lightZ: 0.5, ambient: 0.46, dither: 0.7 };
+  var MATS2 = withMaterials({
+    coralPink: {
+      ramp: ["#4a1b2c", "#67273c", "#85354c", "#a2465c", "#bc5d70", "#d17a88", "#e29ca4", "#f0c2c4"],
+      diffuse: 0.8,
+      rim: 0.34,
+      ao: 0.12,
+      normalScale: 0.6,
+      outline: "#2a0e1a"
+    },
+    coralGold: {
+      ramp: ["#4a3410", "#664819", "#846024", "#a17a32", "#bb9645", "#d0b263", "#e2cd8c", "#f2e6bd"],
+      diffuse: 0.82,
+      rim: 0.3,
+      ao: 0.11,
+      normalScale: 0.58,
+      outline: "#2b1d08"
+    },
+    coralTeal: {
+      ramp: ["#0e3a3c", "#16514f", "#216a63", "#2f8479", "#439d8e", "#5eb5a4", "#83ccbc", "#b2e4d7"],
+      diffuse: 0.8,
+      rim: 0.36,
+      ao: 0.11,
+      normalScale: 0.6,
+      outline: "#06211f"
+    },
+    coralViolet: {
+      ramp: ["#2c1c46", "#402860", "#55377a", "#6b4894", "#845dab", "#9e79c0", "#b99bd4", "#d7c4e8"],
+      diffuse: 0.78,
+      rim: 0.38,
+      ao: 0.12,
+      normalScale: 0.6,
+      outline: "#180e28"
+    },
+    weed: {
+      ramp: ["#123322", "#1b4830", "#265e3e", "#33754d", "#438d5d", "#57a672", "#77c08e", "#a3dab2"],
+      diffuse: 0.8,
+      rim: 0.34,
+      ao: 0.1,
+      normalScale: 0.5,
+      outline: "#0a1d13"
+    },
+    scaleSilver: {
+      ramp: ["#20303c", "#2f4553", "#425c6c", "#587687", "#7191a1", "#8fadba", "#b2c9d2", "#dceaef"],
+      diffuse: 0.72,
+      rim: 0.52,
+      spec: 0.7,
+      ao: 0.08,
+      normalScale: 0.55,
+      outline: "#101a22"
+    },
+    scaleGold: {
+      ramp: ["#4b3208", "#6b470e", "#8c5f17", "#ac7a22", "#c69633", "#dab353", "#ead184", "#f7ecc2"],
+      diffuse: 0.76,
+      rim: 0.48,
+      spec: 0.6,
+      ao: 0.09,
+      normalScale: 0.55,
+      outline: "#2a1c05"
+    },
+    scaleBlue: {
+      ramp: ["#12253f", "#1a355a", "#244878", "#315d95", "#4276b0", "#5a92c6", "#7fb2d9", "#b0d5ea"],
+      diffuse: 0.74,
+      rim: 0.5,
+      spec: 0.65,
+      ao: 0.08,
+      normalScale: 0.55,
+      outline: "#08111f"
+    },
+    jelly: {
+      ramp: ["#2a2140", "#3a2f58", "#4c3f72", "#60528c", "#7768a4", "#9184bc", "#b0a6d2", "#d6cfe8"],
+      diffuse: 0.55,
+      rim: 0.85,
+      spec: 0.7,
+      ao: 0.05,
+      normalScale: 0.4,
+      outline: "#1a1328"
+    }
+  });
   var cache5 = /* @__PURE__ */ new Map();
-  function cv2(w, h) {
-    const cv = document.createElement("canvas");
-    cv.width = Math.max(1, Math.ceil(w));
-    cv.height = Math.max(1, Math.ceil(h));
-    const c = cv.getContext("2d");
-    c.imageSmoothingEnabled = false;
-    return { cv, c };
-  }
-  function seg(ctx, s, x, y, a) {
-    ctx.save();
-    ctx.translate(x, y);
-    ctx.rotate(a);
-    ctx.drawImage(s.cv, -s.ox, -s.oy);
-    ctx.restore();
-  }
-  function stance(m, def3, standH) {
-    const sp = Math.abs(def3.spread || 0.6);
-    return {
-      x: def3.side * m.rx * (1.05 + sp * 0.78),
-      y: standH - (def3.depth || 0) * m.rx * 0.3
+  var bake2 = (p, ox, oy, outline = "#14101a", extra = {}) => ({
+    cv: p.resolve(MATS2, { ...LIGHT4, outline: 1, outlineColor: outline }),
+    ox,
+    oy,
+    ...extra
+  });
+  var CORAL_MATS = ["coralPink", "coralGold", "coralTeal", "coralViolet"];
+  function paintBranch(S, rng4, mat) {
+    const H = 22 * S, W = 20 * S;
+    const p = new Painter(Math.ceil(W) + 10, Math.ceil(H) + 10);
+    const cx = p.w / 2, base = p.h - 5;
+    const grow = (x, y, a, len, r, depth) => {
+      const nx = x + Math.cos(a) * len, ny = y + Math.sin(a) * len;
+      p.capsule(x, y, nx, ny, r, r * 0.72, { mat, dome: r * 0.9, tint: -0.04 + depth * 0.05 });
+      if (depth >= 3 || r < 0.9 * S) {
+        p.ellipse(nx, ny, r * 0.9, r * 0.9, { mat, dome: r, tint: 0.16 });
+        return;
+      }
+      const n = rng4() < 0.35 ? 3 : 2;
+      for (let i = 0; i < n; i++) {
+        const spread = (i - (n - 1) / 2) * (0.5 + rng4() * 0.35);
+        grow(
+          nx,
+          ny,
+          a + spread + (rng4() - 0.5) * 0.2,
+          len * (0.68 + rng4() * 0.2),
+          r * 0.7,
+          depth + 1
+        );
+      }
     };
+    grow(cx, base, -Math.PI / 2 + (rng4() - 0.5) * 0.3, 6 * S, 2.6 * S, 0);
+    p.grain(mat, { freq: 0.9 / S, amp: 0.18, seed: 11 });
+    p.speckle(mat, { density: 0.08, amp: 0.3, seed: 5 });
+    return bake2(p, cx, base, "#20101c");
   }
-  function drawLegs(ctx, rig, m, standH, far, phase) {
-    for (const def3 of rig.sockets.legs) {
-      if (!!def3.far !== far) continue;
-      const art = far ? rig.legArt.far : rig.legArt.near;
-      const l1 = art.coxa.len, l2 = art.femur.len, l3 = art.tibia.len;
-      const f = stance(m, def3, standH);
-      const sw = Math.sin(phase + def3.order * 0.9 + (def3.side > 0 ? 0 : 1.7)) * m.rx * 0.02;
-      const lx = f.x + sw, ly = f.y;
-      const side = def3.side;
-      const ankX = lx - side * l3 * 0.4;
-      const ankY = ly - l3 * 0.8;
-      const sol = ik2(def3.x, def3.y, ankX, ankY, l1, l2, side);
-      seg(ctx, art.coxa, def3.x, def3.y, sol.a1);
-      seg(ctx, art.femur, sol.kx, sol.ky, sol.a2);
-      const fx = sol.kx + Math.cos(sol.a2) * l2, fy = sol.ky + Math.sin(sol.a2) * l2;
-      seg(ctx, art.tibia, fx, fy, Math.atan2(ly - fy, lx - fx));
+  function paintFan(S, rng4, mat) {
+    const H = 20 * S, W = 22 * S;
+    const p = new Painter(Math.ceil(W) + 10, Math.ceil(H) + 10);
+    const cx = p.w / 2, base = p.h - 5;
+    p.capsule(cx, base, cx, base - H * 0.28, 1.8 * S, 1.5 * S, { mat, dome: 1.6 * S });
+    const ribs = 9;
+    const tips = [];
+    for (let i = 0; i < ribs; i++) {
+      const u = i / (ribs - 1);
+      const a = -Math.PI / 2 + (u - 0.5) * 1.5;
+      const len = H * (0.52 + Math.sin(u * Math.PI) * 0.34);
+      const x1 = cx + Math.cos(a) * len, y1 = base - H * 0.24 + Math.sin(a) * len;
+      p.curve([
+        { x: cx, y: base - H * 0.24 },
+        { x: cx + Math.cos(a) * len * 0.55 + (rng4() - 0.5) * 2, y: base - H * 0.24 + Math.sin(a) * len * 0.5 },
+        { x: x1, y: y1 }
+      ], 1.3 * S, 0.55 * S, { mat, dome: 1.1 * S, steps: 8, tint: 0.02 });
+      tips.push({ x: x1, y: y1 });
     }
-  }
-  function drawClaws(ctx, rig, open) {
-    for (const side of [-1, 1]) {
-      const art = side > 0 ? rig.claw.near : rig.claw.far;
-      const so = rig.sockets.claws.find((q) => q.side === side);
-      const raise = open * 0.5;
-      ctx.save();
-      ctx.translate(so.x, so.y);
-      ctx.scale(side, 1);
-      const a1 = 0.92 - raise * 0.62;
-      const ex = Math.cos(a1) * art.arm.len, ey = Math.sin(a1) * art.arm.len;
-      const a2 = a1 - 1.1 - raise * 0.34;
-      const fx = ex + Math.cos(a2) * art.fore.len, fy = ey + Math.sin(a2) * art.fore.len;
-      const a3 = a2 + 0.18 - raise * 0.22;
-      seg(ctx, art.arm, 0, 0, a1);
-      seg(ctx, art.fore, ex, ey, a2);
-      ctx.save();
-      ctx.translate(fx, fy);
-      ctx.rotate(a3);
-      ctx.drawImage(art.palm.cv, -art.palm.ox, -art.palm.oy);
-      ctx.save();
-      ctx.translate(art.hinge.x, art.hinge.y);
-      ctx.rotate(-0.28 - open * 0.55);
-      ctx.drawImage(art.dactyl.cv, -art.dactyl.ox, -art.dactyl.oy);
-      ctx.restore();
-      ctx.restore();
-      ctx.restore();
-    }
-  }
-  function drawFace(ctx, rig, m) {
-    const mo = rig.sockets.mouth;
-    if (rig.mouth) {
-      ctx.save();
-      ctx.translate(mo.x, mo.y);
-      ctx.drawImage(rig.mouth.cv, -rig.mouth.ox, -rig.mouth.oy);
-      ctx.restore();
-    }
-    const art = rig.eye;
-    for (const e of rig.sockets.eyes) {
-      const a = -Math.PI / 2 + e.side * 0.34 - 0.036;
-      ctx.save();
-      ctx.translate(e.x, e.y);
-      ctx.rotate(a);
-      ctx.drawImage(art.cv, -art.ox, -art.oy);
-      ctx.restore();
-      const r = art.r;
-      const ex = e.x + Math.cos(a) * art.globe, ey = e.y + Math.sin(a) * art.globe;
-      ctx.fillStyle = "rgba(246,242,248,0.95)";
-      ctx.fillRect(
-        Math.round(ex - r * 0.34),
-        Math.round(ey - r * 0.36),
-        Math.max(1, Math.round(r * 0.42)),
-        Math.max(1, Math.round(r * 0.42))
-      );
-    }
-  }
-  function paintPose(ctx, rig, m, standH, phase) {
-    drawLegs(ctx, rig, m, standH, true, phase);
-    ctx.drawImage(rig.body.cv, -rig.body.ox, -rig.body.oy);
-    drawLegs(ctx, rig, m, standH, false, phase);
-    drawFace(ctx, rig, m);
-    drawClaws(ctx, rig, 0.34);
-  }
-  function alphaBounds(c, w, h) {
-    const d = c.getImageData(0, 0, w, h).data;
-    let x0 = w, y0 = h, x1 = -1, y1 = -1;
-    for (let y = 0; y < h; y++) {
-      for (let x = 0; x < w; x++) {
-        if (d[(y * w + x) * 4 + 3] > 8) {
-          if (x < x0) x0 = x;
-          if (x > x1) x1 = x;
-          if (y < y0) y0 = y;
-          if (y > y1) y1 = y;
-        }
+    for (let i = 1; i < ribs; i++) {
+      const a = tips[i - 1], b = tips[i];
+      for (const k of [0.45, 0.75]) {
+        p.capsule(
+          lerp(cx, a.x, k),
+          lerp(base - H * 0.24, a.y, k),
+          lerp(cx, b.x, k),
+          lerp(base - H * 0.24, b.y, k),
+          0.5 * S,
+          0.5 * S,
+          { mat, dome: 0.5 * S, tint: -0.05 }
+        );
       }
     }
-    if (x1 < 0) return { x0: 0, y0: 0, x1: w - 1, y1: h - 1 };
-    return { x0, y0, x1, y1 };
+    p.speckle(mat, { density: 0.1, amp: 0.34, seed: 9 });
+    return bake2(p, cx, base, "#20101c");
   }
-  function crabPlates(stage = "adult", sc = 3) {
-    const key2 = stage + ":" + sc;
-    if (cache5.has(key2)) return cache5.get(key2);
-    const rig = buildCrab(stage);
-    const m = rig.m;
-    const standH = m.faceH * 0.9 + m.shellW * 0.13;
-    const phase = 0.6;
-    const W = Math.ceil((m.rx * 5 + m.w) * sc);
-    const H = Math.ceil((standH * 2.6 + m.h) * sc);
-    const a = cv2(W, H);
-    const ax = Math.round(W / 2), ay = Math.round(H * 0.46);
-    a.c.save();
-    a.c.translate(ax, ay);
-    a.c.scale(sc, sc);
-    paintPose(a.c, rig, m, standH, phase);
-    a.c.restore();
-    const b = alphaBounds(a.c, W, H);
-    const pad = 2;
-    const w = b.x1 - b.x0 + 1 + pad * 2, h = b.y1 - b.y0 + 1 + pad * 2;
-    const ox = ax - b.x0 + pad, oy = ay - b.y0 + pad;
-    const body = cv2(w, h);
-    body.c.drawImage(a.cv, b.x0 - pad, b.y0 - pad, w, h, 0, 0, w, h);
-    const mask = cv2(w, h);
-    mask.c.drawImage(body.cv, 0, 0);
-    mask.c.globalCompositeOperation = "source-in";
-    mask.c.fillStyle = "#ffffff";
-    mask.c.fillRect(0, 0, w, h);
-    const rimW = Math.max(1, Math.round(sc * 0.8));
-    const rim = cv2(w + rimW * 2, h + rimW * 2);
-    for (let i = 0; i < 8; i++) {
-      const th = i / 8 * TAU;
-      rim.c.drawImage(
-        mask.cv,
-        rimW + Math.round(Math.cos(th) * rimW),
-        rimW + Math.round(Math.sin(th) * rimW)
+  function paintBrain(S, rng4, mat) {
+    const W = 18 * S, H = 12 * S;
+    const p = new Painter(Math.ceil(W) + 10, Math.ceil(H) + 10);
+    const cx = p.w / 2, base = p.h - 5;
+    p.ellipse(cx, base - H * 0.45, W * 0.5, H * 0.55, { mat, dome: W * 0.42, tint: 0.02 });
+    for (let i = 0; i < 7; i++) {
+      const y = base - H * 0.2 - i * H * 0.11;
+      const w = W * 0.46 * Math.sqrt(Math.max(0, 1 - Math.pow((i - 1.6) / 5.2, 2)));
+      p.curve(
+        [{ x: cx - w, y }, { x: cx + (rng4() - 0.5) * 4 * S, y: y - 1.4 * S }, { x: cx + w, y }],
+        0.7 * S,
+        0.7 * S,
+        { mat, mask: true, dome: -1 * S, steps: 8, tint: -0.28 }
       );
     }
-    rim.c.globalCompositeOperation = "destination-out";
-    rim.c.drawImage(mask.cv, rimW, rimW);
-    const fill = cv2(w, h);
-    {
-      const g = fill.c.createRadialGradient(ox, oy - m.ry * sc, 0, ox, oy, Math.max(w, h) * 0.62);
-      g.addColorStop(0, "#1a1526");
-      g.addColorStop(0.42, "#0e0b16");
-      g.addColorStop(1, "#05050a");
-      fill.c.fillStyle = g;
-      fill.c.fillRect(0, 0, w, h);
-      fill.c.globalCompositeOperation = "destination-in";
-      fill.c.drawImage(mask.cv, 0, 0);
-    }
-    const ghost = cv2(w, h);
-    ghost.c.drawImage(body.cv, 0, 0);
-    ghost.c.globalCompositeOperation = "color";
-    ghost.c.fillStyle = "#3f8fa8";
-    ghost.c.fillRect(0, 0, w, h);
-    ghost.c.globalCompositeOperation = "destination-in";
-    ghost.c.drawImage(mask.cv, 0, 0);
-    const glow = cv2(w, h);
-    glow.c.drawImage(mask.cv, 0, 0);
-    glow.c.globalCompositeOperation = "source-in";
-    {
-      const g = glow.c.createRadialGradient(ox, oy - m.ry * sc, 0, ox, oy, Math.max(w, h) * 0.55);
-      g.addColorStop(0, "#4e7f8c");
-      g.addColorStop(0.5, "#22404c");
-      g.addColorStop(1, "#0d1a22");
-      glow.c.fillStyle = g;
-      glow.c.fillRect(0, 0, w, h);
-    }
-    rim.c.globalCompositeOperation = "source-in";
-    rim.c.fillStyle = "#aff0fb";
-    rim.c.fillRect(0, 0, rim.cv.width, rim.cv.height);
-    const s0 = rig.shellSurface(0, 0);
-    const out = {
-      stage,
-      sc,
-      m,
-      rig,
-      w,
-      h,
-      ox,
-      oy,
-      body: body.cv,
-      ghost: ghost.cv,
-      mask: mask.cv,
-      fill: fill.cv,
-      glow: glow.cv,
-      rim: rim.cv,
-      rimOx: ox + rimW,
-      rimOy: oy + rimW,
-      // anchor-relative sprite coordinates of useful landmarks
-      shell: { x: s0.x, y: s0.y },
-      standH,
-      // half-extents of the whole animal in sprite pixels, from the anchor
-      ext: { l: ox / sc, r: (w - ox) / sc, t: oy / sc, b: (h - oy) / sc }
-    };
-    cache5.set(key2, out);
-    return out;
+    p.grain(mat, { freq: 1.1 / S, amp: 0.2, seed: 17 });
+    return bake2(p, cx, base, "#20101c");
   }
+  function paintTubes(S, rng4, mat) {
+    const W = 16 * S, H = 20 * S;
+    const p = new Painter(Math.ceil(W) + 10, Math.ceil(H) + 10);
+    const cx = p.w / 2, base = p.h - 5;
+    const n = 3 + Math.floor(rng4() * 3);
+    for (let i = 0; i < n; i++) {
+      const dx = (i - (n - 1) / 2) * 3.6 * S + (rng4() - 0.5) * 2;
+      const h = H * (0.45 + rng4() * 0.5);
+      const r = (1.5 + rng4() * 0.9) * S;
+      p.capsule(
+        cx + dx,
+        base,
+        cx + dx + (rng4() - 0.5) * 3,
+        base - h,
+        r,
+        r * 0.92,
+        { mat, dome: r * 0.95, tint: -0.02 + i * 0.03 }
+      );
+      p.ellipse(
+        cx + dx + (rng4() - 0.5) * 3,
+        base - h,
+        r * 0.62,
+        r * 0.42,
+        { mat, mask: true, dome: -r * 0.8, tint: -0.34 }
+      );
+    }
+    p.grain(mat, { freq: 1 / S, amp: 0.16, seed: 23 });
+    return bake2(p, cx, base, "#20101c");
+  }
+  function paintAnemone(S, rng4, mat) {
+    const W = 16 * S, H = 14 * S;
+    const p = new Painter(Math.ceil(W) + 10, Math.ceil(H) + 10);
+    const cx = p.w / 2, base = p.h - 5;
+    p.ellipse(cx, base - H * 0.12, W * 0.26, H * 0.16, { mat, dome: W * 0.2, tint: -0.06 });
+    const n = 12;
+    for (let i = 0; i < n; i++) {
+      const a = -Math.PI / 2 + (i / (n - 1) - 0.5) * 2.4;
+      const len = H * (0.45 + rng4() * 0.4);
+      const bend = (rng4() - 0.5) * 0.8;
+      p.curve(
+        [
+          { x: cx, y: base - H * 0.16 },
+          { x: cx + Math.cos(a + bend) * len * 0.5, y: base - H * 0.16 + Math.sin(a) * len * 0.55 },
+          { x: cx + Math.cos(a + bend * 2) * len, y: base - H * 0.16 + Math.sin(a) * len }
+        ],
+        0.9 * S,
+        0.35 * S,
+        { mat, dome: 0.9 * S, steps: 7, tint: 0.1 }
+      );
+    }
+    return bake2(p, cx, base, "#20101c");
+  }
+  function paintWeed(S, rng4) {
+    const H = 26 * S, W = 14 * S;
+    const p = new Painter(Math.ceil(W * 2) + 10, Math.ceil(H) + 10);
+    const cx = p.w / 2, base = p.h - 5;
+    const n = 7 + Math.floor(rng4() * 6);
+    for (let i = 0; i < n; i++) {
+      const dx = (rng4() - 0.5) * W * 0.7;
+      const h = H * (0.45 + rng4() * 0.55);
+      const bend = (rng4() - 0.5) * W * 0.8;
+      p.curve(
+        [
+          { x: cx + dx, y: base },
+          { x: cx + dx + bend * 0.4, y: base - h * 0.55 },
+          { x: cx + dx + bend, y: base - h }
+        ],
+        1.3 * S,
+        0.35 * S,
+        { mat: "weed", dome: 1.1 * S, steps: 9, tint: -0.08 + i % 3 * 0.07 }
+      );
+    }
+    p.grain("weed", { freq: 1 / S, amp: 0.16, seed: 29 });
+    return bake2(p, cx, base, "#0a1d13");
+  }
+  function paintUrchin(S, rng4) {
+    const R = 5 * S;
+    const p = new Painter(Math.ceil(R * 4) + 8, Math.ceil(R * 4) + 8);
+    const cx = p.w / 2, base = p.h - 4;
+    for (let i = 0; i < 22; i++) {
+      const a = -Math.PI + i / 21 * Math.PI;
+      const len = R * (1.3 + rng4() * 0.9);
+      p.capsule(
+        cx,
+        base - R * 0.5,
+        cx + Math.cos(a) * len,
+        base - R * 0.5 + Math.sin(a) * len,
+        0.7 * S,
+        0.25 * S,
+        { mat: "coralViolet", dome: 0.6 * S, tint: -0.1 }
+      );
+    }
+    p.ellipse(cx, base - R * 0.5, R, R * 0.82, { mat: "coralViolet", dome: R * 0.8, tint: 0.06 });
+    return bake2(p, cx, base, "#160c1e");
+  }
+  function paintStar(S, rng4) {
+    const R = 6 * S;
+    const p = new Painter(Math.ceil(R * 2.6) + 8, Math.ceil(R * 1.8) + 8);
+    const cx = p.w / 2, base = p.h - 4;
+    for (let i = 0; i < 5; i++) {
+      const a = -Math.PI + i / 4 * Math.PI;
+      p.capsule(
+        cx,
+        base - R * 0.22,
+        cx + Math.cos(a) * R,
+        base - R * 0.22 + Math.sin(a) * R * 0.55,
+        1.5 * S,
+        0.7 * S,
+        { mat: "coralGold", dome: 1.2 * S, tint: 0.04 }
+      );
+    }
+    p.ellipse(cx, base - R * 0.22, R * 0.42, R * 0.3, { mat: "coralGold", dome: R * 0.35, tint: 0.1 });
+    p.speckle("coralGold", { density: 0.16, amp: 0.4, seed: 3 });
+    return bake2(p, cx, base, "#241804");
+  }
+  function paintShell(S, rng4) {
+    const W = 7 * S;
+    const p = new Painter(Math.ceil(W * 2) + 8, Math.ceil(W * 1.6) + 8);
+    const cx = p.w / 2, base = p.h - 4;
+    p.ellipse(cx, base - W * 0.28, W * 0.55, W * 0.42, { mat: "petalWhite", dome: W * 0.4, tint: 0.04 });
+    for (let i = 0; i < 6; i++) {
+      const a = -Math.PI + i / 5 * Math.PI;
+      p.capsule(
+        cx,
+        base - W * 0.06,
+        cx + Math.cos(a) * W * 0.5,
+        base - W * 0.06 + Math.sin(a) * W * 0.42,
+        0.5 * S,
+        0.4 * S,
+        { mat: "petalWhite", mask: true, dome: 0.4 * S, tint: -0.2 }
+      );
+    }
+    return bake2(p, cx, base, "#2a2620");
+  }
+  function paintCrablet(S, rng4) {
+    const W = 9 * S, H = 6 * S;
+    const p = new Painter(Math.ceil(W * 2.4) + 8, Math.ceil(H * 2.4) + 8);
+    const cx = p.w / 2, base = p.h - 4;
+    const mat = rng4() < 0.5 ? "coralPink" : "coralGold";
+    for (const side of [-1, 1]) {
+      for (let i = 0; i < 3; i++) {
+        const t = i / 2;
+        const a = -0.3 - t * 0.7;
+        p.capsule(
+          cx + side * W * 0.22,
+          base - H * 0.5,
+          cx + side * (W * 0.5 + t * W * 0.32),
+          base - H * 0.5 + Math.sin(a) * -H * 0.1 + H * 0.5,
+          0.75 * S,
+          0.4 * S,
+          { mat, dome: 0.7 * S, tint: -0.12 }
+        );
+      }
+      p.capsule(
+        cx + side * W * 0.3,
+        base - H * 0.62,
+        cx + side * W * 0.64,
+        base - H * 0.88,
+        1 * S,
+        0.8 * S,
+        { mat, dome: 0.9 * S, tint: 0.04 }
+      );
+      p.ellipse(cx + side * W * 0.72, base - H * 0.96, 1.5 * S, 1.1 * S, { mat, dome: 1.2 * S, tint: 0.12 });
+    }
+    p.ellipse(cx, base - H * 0.62, W * 0.46, H * 0.42, { mat, dome: W * 0.34, tint: 0.06 });
+    for (const side of [-1, 1]) {
+      p.ellipse(
+        cx + side * W * 0.14,
+        base - H * 0.86,
+        0.8 * S,
+        0.9 * S,
+        { mat: "eye", dome: 0.8 * S, tint: 0.1 }
+      );
+    }
+    p.grain(mat, { freq: 1.2 / S, amp: 0.16, seed: 7 });
+    return bake2(p, cx, base, "#20101c");
+  }
+  function paintFish(kind, S, rng4) {
+    const spec = {
+      dart: { L: 9, H: 3.2, mat: "scaleSilver", fin: 0.5, stripe: 0 },
+      reef: { L: 10, H: 5.6, mat: "scaleGold", fin: 1, stripe: 3 },
+      blue: { L: 12, H: 4.4, mat: "scaleBlue", fin: 0.8, stripe: 1 },
+      big: { L: 22, H: 8.5, mat: "scaleSilver", fin: 1.1, stripe: 0 }
+    }[kind] || { L: 10, H: 4, mat: "scaleSilver", fin: 0.8, stripe: 0 };
+    const L = spec.L * S, H = spec.H * S;
+    const mat = spec.mat;
+    const body = new Painter(Math.ceil(L * 2.2) + 10, Math.ceil(H * 3.2) + 10);
+    const bx = body.w * 0.44, by = body.h / 2;
+    body.field(bx - L * 0.6, by - H, bx + L * 0.6, by + H, (x, y) => {
+      const u = (x - (bx - L * 0.52)) / L;
+      if (u < 0 || u > 1) return null;
+      const half = H * 0.5 * Math.sin(Math.pow(u, 0.62) * Math.PI) * (1.05 - u * 0.25);
+      const d = (y - by) / Math.max(0.4, half);
+      if (Math.abs(d) > 1) return null;
+      const dz = Math.sqrt(clamp01(1 - d * d));
+      return { h: dz * H * 0.42, tint: -0.05 + (d < -0.2 ? 0.12 : 0) + (d > 0.4 ? -0.1 : 0) };
+    }, { mat });
+    body.poly([
+      { x: bx - L * 0.16, y: by - H * 0.42 },
+      { x: bx + L * 0.06, y: by - H * (0.5 + spec.fin * 0.42) },
+      { x: bx + L * 0.24, y: by - H * 0.36 }
+    ], { mat, dome: 0.9 * S, tint: 0.08 });
+    body.poly([
+      { x: bx - L * 0.04, y: by + H * 0.3 },
+      { x: bx + L * 0.1, y: by + H * (0.42 + spec.fin * 0.34) },
+      { x: bx + L * 0.22, y: by + H * 0.26 }
+    ], { mat, dome: 0.8 * S, tint: -0.06 });
+    body.ellipse(
+      bx - L * 0.12,
+      by + H * 0.14,
+      L * 0.1,
+      H * 0.2,
+      { mat, dome: 0.8 * S, rot: 0.5, tint: 0.14 }
+    );
+    body.ellipse(
+      bx - L * 0.38,
+      by - H * 0.1,
+      Math.max(0.8, 0.9 * S),
+      Math.max(0.8, 0.9 * S),
+      { mat: "eye", dome: 1.1 * S, tint: 0.1 }
+    );
+    body.capsule(
+      bx - L * 0.26,
+      by - H * 0.26,
+      bx - L * 0.28,
+      by + H * 0.24,
+      0.45 * S,
+      0.45 * S,
+      { mat, mask: true, dome: 0.5 * S, tint: -0.22 }
+    );
+    for (let i = 0; i < spec.stripe; i++) {
+      const u = 0.1 + i * 0.22;
+      body.capsule(
+        bx - L * 0.4 + u * L,
+        by - H * 0.5,
+        bx - L * 0.46 + u * L,
+        by + H * 0.45,
+        0.9 * S,
+        0.9 * S,
+        { mat, mask: true, dome: 0.6 * S, tint: -0.26 }
+      );
+    }
+    body.grain(mat, { freq: 1.4 / S, amp: 0.12, seed: 13 });
+    const tail = new Painter(Math.ceil(L * 0.9) + 8, Math.ceil(H * 2.4) + 8);
+    const tx = 4, ty = tail.h / 2;
+    tail.poly(
+      [
+        { x: tx, y: ty },
+        { x: tx + L * 0.34, y: ty - H * (0.55 + spec.fin * 0.4) },
+        { x: tx + L * 0.24, y: ty },
+        { x: tx + L * 0.34, y: ty + H * (0.55 + spec.fin * 0.4) }
+      ],
+      { mat, dome: 0.9 * S, tint: 0.02 }
+    );
+    return {
+      body: bake2(body, bx, by, "#0d141a", { L, H }),
+      tail: bake2(tail, tx, ty, "#0d141a"),
+      joint: { x: L * 0.5, y: 0 },
+      L,
+      H
+    };
+  }
+  function paintJelly(S) {
+    const R = 7 * S;
+    const p = new Painter(Math.ceil(R * 2.6) + 8, Math.ceil(R * 5) + 8);
+    const cx = p.w / 2, cy = R + 4;
+    p.ellipse(cx, cy, R, R * 0.78, { mat: "jelly", dome: R * 0.9, tint: 0.05 });
+    p.ellipse(cx, cy + R * 0.4, R * 0.9, R * 0.3, { mat: "jelly", mask: true, dome: -R * 0.4, tint: -0.2 });
+    for (let i = 0; i < 7; i++) {
+      const dx = (i - 3) * R * 0.25;
+      p.curve(
+        [
+          { x: cx + dx, y: cy + R * 0.5 },
+          { x: cx + dx * 1.6, y: cy + R * 1.6 },
+          { x: cx + dx * 0.7, y: cy + R * 2.9 }
+        ],
+        0.6 * S,
+        0.25 * S,
+        { mat: "jelly", dome: 0.5 * S, steps: 8, tint: 0.16 }
+      );
+    }
+    return bake2(p, cx, cy, "#1a1328", { R });
+  }
+  function reefArt(kind, S = 1, seed = 0) {
+    const k = `${kind}:${S.toFixed(2)}:${seed}`;
+    let v = cache5.get(k);
+    if (v) return v;
+    const rng4 = mulberry32(seed * 2654435761 >>> 0);
+    const PALETTE = {
+      branch: ["coralPink", "coralGold", "coralPink", "coralTeal"],
+      fan: ["coralTeal", "coralViolet", "coralGold"],
+      brain: ["coralGold", "coralTeal", "coralGold"],
+      tubes: ["coralViolet", "coralTeal", "coralGold"],
+      anemone: ["coralPink", "coralViolet", "coralTeal"]
+    }[kind] || CORAL_MATS;
+    const mat = PALETTE[Math.floor(rng4() * PALETTE.length)];
+    switch (kind) {
+      case "branch":
+        v = paintBranch(S, rng4, mat);
+        break;
+      case "fan":
+        v = paintFan(S, rng4, mat);
+        break;
+      case "brain":
+        v = paintBrain(S, rng4, mat);
+        break;
+      case "tubes":
+        v = paintTubes(S, rng4, mat);
+        break;
+      case "anemone":
+        v = paintAnemone(S, rng4, mat);
+        break;
+      case "weed":
+        v = paintWeed(S, rng4);
+        break;
+      case "urchin":
+        v = paintUrchin(S, rng4);
+        break;
+      case "star":
+        v = paintStar(S, rng4);
+        break;
+      case "shell":
+        v = paintShell(S, rng4);
+        break;
+      case "crablet":
+        v = paintCrablet(S, rng4);
+        break;
+      default:
+        v = paintBrain(S, rng4, mat);
+        break;
+    }
+    cache5.set(k, v);
+    return v;
+  }
+  function fishArt(kind, S = 1) {
+    const k = `fish:${kind}:${S.toFixed(2)}`;
+    let v = cache5.get(k);
+    if (!v) {
+      v = paintFish(kind, S, mulberry32(99));
+      cache5.set(k, v);
+    }
+    return v;
+  }
+  function jellyArt(S = 1) {
+    const k = `jelly:${S.toFixed(2)}`;
+    let v = cache5.get(k);
+    if (!v) {
+      v = paintJelly(S);
+      cache5.set(k, v);
+    }
+    return v;
+  }
+  var REEF_KINDS = ["branch", "fan", "brain", "tubes", "anemone", "weed", "weed", "branch", "fan"];
+  var FLOOR_KINDS = ["urchin", "star", "shell"];
+  var FISH_KINDS = ["dart", "reef", "blue"];
 
-  // js/render/ocean.js
-  var T_LAND = 3.2;
-  var T_DIG = 4.4;
-  var T_BURIED = 9;
-  var T_DRAIN = 11;
-  var T_DRY = 20.5;
-  var T_END = 23;
-  var OceanIntro = class {
+  // js/systems/sea.js
+  var CELL2 = 90;
+  var DEPTH = 150;
+  var DRAIN_SECS = 9;
+  var Sea = class {
     constructor(game2) {
       this.game = game2;
+      this.on = false;
       this.t = 0;
-      this.done = false;
-      this.rng = mulberry32(846353);
-      this._build();
+      this.drain = 0;
+      this.draining = false;
+      this.fish = [];
+      this.jellies = [];
+      this.bubbles = [];
+      this.cells = /* @__PURE__ */ new Map();
+      this.yearShow = 0;
     }
     get active() {
-      return !this.done;
+      return this.on;
     }
-    /** 0 while the sea is whole, 1 once it has gone. */
-    get drain() {
-      return smoothstep(clamp01((this.t - T_DRAIN) / (T_DRY - T_DRAIN)));
+    /** How much of the underwater treatment is still applied. */
+    get wet() {
+      return this.on ? 1 - smoothstep(clamp01(this.drain * 1.15)) : 0;
     }
-    /** 1 once the animal is under the sand. */
-    get bury() {
-      return clamp01((this.t - T_DIG) / (T_BURIED - T_DIG));
-    }
-    /** How far through the handover to the desert we are. */
-    get handover() {
-      return clamp01((this.t - T_DRY) / (T_END - T_DRY));
-    }
-    _build() {
-      const r = this.rng;
-      this.kelp = [];
-      for (let i = 0; i < 26; i++) {
-        this.kelp.push({
-          x: r(),
-          h: 0.3 + r() * 0.5,
-          w: 1 + r() * 2.2,
-          ph: r() * TAU,
-          sp: 0.5 + r() * 0.7,
-          hue: r(),
-          leaves: 4 + Math.floor(r() * 5),
-          lean: (r() - 0.5) * 0.5
+    start() {
+      this.on = true;
+      this.t = 0;
+      this.drain = 0;
+      this.draining = false;
+      this.fish.length = 0;
+      this.jellies.length = 0;
+      this.bubbles.length = 0;
+      const cx = this.game.crab.x;
+      for (let i = 0; i < 40; i++) this._spawnFish(cx + (Math.random() - 0.5) * 900);
+      for (let i = 0; i < 4; i++) {
+        this.jellies.push({
+          x: cx + (Math.random() - 0.5) * 800,
+          y: -60 - Math.random() * 90,
+          ph: Math.random() * TAU,
+          sp: 0.5 + Math.random() * 0.5,
+          s: 0.7 + Math.random() * 0.7
         });
       }
-      this.shoals = [];
-      for (let i = 0; i < 3; i++) {
-        const n = 14 + Math.floor(r() * 12);
-        const fish = [];
-        for (let k = 0; k < n; k++) {
-          fish.push({ dx: (r() - 0.5) * 0.16, dy: (r() - 0.5) * 0.09, ph: r() * TAU, s: 0.7 + r() * 0.7 });
-        }
-        this.shoals.push({
-          fish,
-          y: 0.18 + r() * 0.44,
-          sp: 0.035 + r() * 0.05,
-          dir: r() < 0.5 ? -1 : 1,
-          off: r(),
-          amp: 0.05 + r() * 0.06,
-          hue: r()
-        });
-      }
-      this.motes = [];
-      for (let i = 0; i < 150; i++) {
-        this.motes.push({ x: r(), y: r(), s: 0.4 + r() * 1.3, ph: r() * TAU, sp: 0.2 + r() * 0.6 });
-      }
-      this.bed = [];
-      for (let i = 0; i < 9; i++) this.bed.push({ x: r(), w: 0.1 + r() * 0.22, h: r() * 0.05 });
-      this.rocks = [];
-      for (let i = 0; i < 14; i++) {
-        this.rocks.push({ x: r(), w: 0.01 + r() * 0.035, h: 8e-3 + r() * 0.03, k: r() });
-      }
-      this.puffs = [];
     }
-    update(dt) {
-      if (this.done) return;
-      this.t += dt;
-      if (this.t > T_DIG && this.t < T_BURIED && Math.random() < dt * 26) {
-        this.puffs.push({
-          x: 0.5 + (Math.random() - 0.5) * 0.22,
-          y: 0.7 + (Math.random() - 0.5) * 0.04,
-          r: 0.01 + Math.random() * 0.02,
-          t: 0,
-          life: 2.2 + Math.random() * 2.2,
-          vx: (Math.random() - 0.5) * 0.03,
-          vy: -6e-3 - Math.random() * 0.012
-        });
-      }
-      for (let i = this.puffs.length - 1; i >= 0; i--) {
-        const p = this.puffs[i];
-        p.t += dt;
-        p.x += p.vx * dt;
-        p.y += p.vy * dt;
-        p.vx *= 0.99;
-        p.vy *= 0.99;
-        if (p.t > p.life) this.puffs.splice(i, 1);
-      }
-      if (this.t > T_END) this.done = true;
+    stop() {
+      this.on = false;
+    }
+    beginDrain() {
+      this.draining = true;
+    }
+    /** Where the surface is, in world Y. It walks down as the sea goes. */
+    level(x = this.game.crab.x) {
+      const g = this.game.terrain.surfaceY(x);
+      return g - DEPTH * (1 - this.drain) + this.drain * 40;
+    }
+    _spawnFish(x) {
+      const kind = FISH_KINDS[Math.floor(Math.random() * FISH_KINDS.length)];
+      const g = this.game.terrain.surfaceY(x);
+      this.fish.push({
+        kind,
+        x,
+        y: g - 20 - Math.random() * (DEPTH - 40),
+        dir: Math.random() < 0.5 ? -1 : 1,
+        sp: 16 + Math.random() * 30,
+        s: 0.55 + Math.random() * 0.6,
+        ph: Math.random() * TAU,
+        bob: 3 + Math.random() * 7,
+        turn: 2 + Math.random() * 6,
+        school: Math.random() < 0.6
+      });
     }
     // -------------------------------------------------------------------------
-    /** Where the seabed is at x (0..1), in screen pixels. */
-    _bedY(x, vh) {
-      let y = 0.755;
-      for (const b of this.bed) {
-        const d = Math.abs(x - b.x) / b.w;
-        if (d < 1) y -= b.h * (1 - d * d) * (3 - 2 * d) * 0.5;
+    update(dt) {
+      if (!this.on) return;
+      this.t += dt;
+      if (this.draining) {
+        this.drain = Math.min(1, this.drain + dt / DRAIN_SECS);
+        this.yearShow = 1;
+        if (this.drain >= 1) {
+          this.draining = false;
+          this.on = false;
+        }
       }
-      return y * vh;
+      const cam = this.game.cam;
+      const b = cam.bounds(260);
+      const wet = this.wet;
+      for (let i = this.fish.length - 1; i >= 0; i--) {
+        const f = this.fish[i];
+        f.x += f.dir * f.sp * dt * (0.6 + wet * 0.4);
+        f.ph += dt * (2 + f.sp * 0.06);
+        const ground = this.game.terrain.surfaceY(f.x);
+        const top = this.level(f.x);
+        f.y = clamp(f.y + Math.sin(f.ph * 0.4) * f.bob * dt, top + 10, ground - 8);
+        f.turn -= dt;
+        if (f.turn <= 0) {
+          f.turn = 3 + Math.random() * 7;
+          if (Math.random() < 0.4) f.dir *= -1;
+        }
+        if (f.x < b.x0 - 120 || f.x > b.x1 + 120) {
+          f.dir *= -1;
+          f.x = clamp(f.x, b.x0 - 110, b.x1 + 110);
+        }
+        if (wet < 0.25 && Math.random() < dt * 2) this.fish.splice(i, 1);
+      }
+      while (this.fish.length < 40 && wet > 0.3) this._spawnFish(Math.random() < 0.5 ? b.x0 - 80 : b.x1 + 80);
+      for (const j of this.jellies) {
+        j.ph += dt * j.sp;
+        j.y -= (6 + Math.sin(j.ph) * 8) * dt;
+        j.x += Math.sin(j.ph * 0.3) * 5 * dt;
+        const top = this.level(j.x);
+        if (j.y < top + 16) j.y = this.game.terrain.surfaceY(j.x) - 30;
+      }
+      if (wet > 0.2 && Math.random() < dt * 8) {
+        const x = lerp(b.x0, b.x1, Math.random());
+        this.bubbles.push({
+          x,
+          y: this.game.terrain.surfaceY(x) - 2,
+          r: 0.4 + Math.random() * 0.9,
+          sp: 12 + Math.random() * 22,
+          ph: Math.random() * TAU,
+          t: 0
+        });
+      }
+      for (let i = this.bubbles.length - 1; i >= 0; i--) {
+        const u = this.bubbles[i];
+        u.t += dt;
+        u.y -= u.sp * dt;
+        u.x += Math.sin(u.t * 3 + u.ph) * 6 * dt;
+        if (u.y < this.level(u.x) + 2 || u.t > 12) this.bubbles.splice(i, 1);
+      }
     }
-    /** The waterline, which starts above the screen and ends below the bed. */
-    _waterY(vh) {
-      const d = this.drain;
-      return lerp(-vh * 0.1, vh * 1.06, d * d * (3 - 2 * d));
+    /** Bubbles off a point, for digging and for anything that moves fast. */
+    puff(x, y, n = 8) {
+      if (!this.on) return;
+      for (let i = 0; i < n; i++) {
+        this.bubbles.push({
+          x: x + (Math.random() - 0.5) * 10,
+          y: y + (Math.random() - 0.5) * 6,
+          r: 0.4 + Math.random() * 1.1,
+          sp: 16 + Math.random() * 30,
+          ph: Math.random() * TAU,
+          t: 0
+        });
+      }
     }
-    draw(ctx, vw, vh) {
-      const t = this.t;
-      const wy = this._waterY(vh);
-      const dr = this.drain;
-      this._sky(ctx, vw, vh, wy, dr);
-      if (wy < vh) {
+    // -- the reef, placed on the ground ---------------------------------------
+    _cell(ci) {
+      let c = this.cells.get(ci);
+      if (c) return c;
+      const rng4 = mulberry32(hashStr("reef:" + ci));
+      const items = [];
+      const n = 3 + Math.floor(rng4() * 4);
+      for (let i = 0; i < n; i++) {
+        const x = (ci + rng4()) * CELL2;
+        const big = rng4() < 0.55;
+        const size = big ? 0.9 + rng4() * 1.1 : 0.5 + rng4() * 0.55;
+        items.push({
+          x,
+          kind: big ? REEF_KINDS[Math.floor(rng4() * REEF_KINDS.length)] : FLOOR_KINDS[Math.floor(rng4() * FLOOR_KINDS.length)],
+          s: size,
+          seed: Math.floor(rng4() * 9999),
+          flip: rng4() < 0.5,
+          sway: rng4() * TAU,
+          // anything big enough to hide you goes behind you
+          far: size > 1.15 || rng4() < 0.45
+        });
+      }
+      if (rng4() < 0.5) {
+        items.push({
+          x: (ci + rng4()) * CELL2,
+          kind: "crablet",
+          s: 0.4 + rng4() * 0.35,
+          seed: Math.floor(rng4() * 9999),
+          flip: rng4() < 0.5,
+          sway: rng4() * TAU,
+          walk: 6 + rng4() * 10,
+          far: false
+        });
+      }
+      c = items;
+      this.cells.set(ci, c);
+      if (this.cells.size > 200) this.cells.clear();
+      return c;
+    }
+    near(x0, x1) {
+      const out = [];
+      for (let ci = Math.floor(x0 / CELL2); ci <= Math.ceil(x1 / CELL2); ci++) {
+        for (const it of this._cell(ci)) if (it.x >= x0 && it.x <= x1) out.push(it);
+      }
+      return out;
+    }
+    /** Everything growing on the bottom. `far` is the layer behind the animal. */
+    drawReef(ctx, cam, far) {
+      const wet = this.wet;
+      if (wet <= 0.02) return;
+      const b = cam.bounds(90);
+      const z = cam.zoom;
+      for (const it of this.near(b.x0, b.x1)) {
+        if (!!it.far !== far) continue;
+        let x = it.x;
+        if (it.walk) x += Math.sin(this.t * 0.5 + it.sway) * it.walk;
+        const y = this.game.terrain.surfaceY(x);
+        const s = cam.worldToScreen(x, y);
+        const art = reefArt(it.kind, Math.max(0.35, it.s * (far ? 0.8 : 1)), it.seed);
+        const sway = Math.sin(this.t * 0.8 + it.sway) * 0.05 * wet;
         ctx.save();
-        ctx.beginPath();
-        ctx.rect(0, Math.max(0, wy), vw, vh - Math.max(0, wy));
-        ctx.clip();
-        this._water(ctx, vw, vh, wy, dr);
+        ctx.globalAlpha = wet * (far ? 0.72 : 1);
+        ctx.translate(Math.round(s.x), Math.round(s.y));
+        ctx.scale(z * (it.flip ? -1 : 1), z);
+        if (!it.walk) ctx.rotate(sway);
+        ctx.drawImage(art.cv, -art.ox, -art.oy);
         ctx.restore();
       }
-      this._bed(ctx, vw, vh, wy, dr);
-      this._crab(ctx, vw, vh, wy);
-      if (wy < vh) {
+      ctx.globalAlpha = 1;
+    }
+    /** The swimmers, and the bubbles going up past them. */
+    drawSwimmers(ctx, cam) {
+      const wet = this.wet;
+      if (wet <= 0.02) return;
+      const z = cam.zoom;
+      for (const f of this.fish) {
+        const s = cam.worldToScreen(f.x, f.y);
+        if (s.x < -40 || s.x > this.game.renderer.vw + 40) continue;
+        const art = fishArt(f.kind, Math.max(0.4, f.s));
+        const beat = Math.sin(f.ph * 2.4) * 0.5;
         ctx.save();
-        ctx.beginPath();
-        ctx.rect(0, Math.max(0, wy), vw, vh - Math.max(0, wy));
-        ctx.clip();
-        this._silt(ctx, vw, vh);
-        this._surface(ctx, vw, vh, wy);
+        ctx.globalAlpha = wet;
+        ctx.translate(Math.round(s.x), Math.round(s.y));
+        ctx.scale(z * f.dir, z);
+        ctx.rotate(Math.sin(f.ph * 0.7) * 0.12);
+        ctx.save();
+        ctx.translate(art.joint.x, art.joint.y);
+        ctx.rotate(beat * 0.5);
+        ctx.drawImage(art.tail.cv, -art.tail.ox, -art.tail.oy);
+        ctx.restore();
+        ctx.drawImage(art.body.cv, -art.body.ox, -art.body.oy);
         ctx.restore();
       }
-      if (t > T_DRAIN - 0.4 && t < T_DRY + 1.6) this._years(ctx, vw, vh);
-    }
-    /** Above the waterline: first a bright surface, later a desert sky. */
-    _sky(ctx, vw, vh, wy, dr) {
-      const g = ctx.createLinearGradient(0, 0, 0, Math.max(1, wy));
-      if (dr < 0.5) {
-        g.addColorStop(0, "#bfe9f2");
-        g.addColorStop(1, "#6fc4d6");
-      } else {
-        const k = (dr - 0.5) * 2;
-        g.addColorStop(0, k > 0.5 ? "#7fb4d8" : "#9fd0e0");
-        g.addColorStop(1, k > 0.5 ? "#e6c898" : "#bfd8d2");
+      for (const j of this.jellies) {
+        const s = cam.worldToScreen(j.x, j.y);
+        const art = jellyArt(Math.max(0.4, j.s));
+        const pulse = 1 + Math.sin(j.ph) * 0.1;
+        ctx.save();
+        ctx.globalAlpha = wet * 0.8;
+        ctx.translate(Math.round(s.x), Math.round(s.y));
+        ctx.scale(z * pulse, z / pulse);
+        ctx.drawImage(art.cv, -art.ox, -art.oy);
+        ctx.restore();
       }
-      ctx.fillStyle = g;
-      ctx.fillRect(0, 0, vw, Math.max(0, wy));
-      if (dr > 0.25) {
-        const a = clamp01((dr - 0.25) / 0.5);
-        const sx = vw * 0.72, sy = vh * 0.18;
-        const rg = ctx.createRadialGradient(sx, sy, 0, sx, sy, vh * 0.5);
-        rg.addColorStop(0, `rgba(255,244,206,${0.55 * a})`);
-        rg.addColorStop(0.3, `rgba(255,226,158,${0.2 * a})`);
-        rg.addColorStop(1, "rgba(255,220,150,0)");
-        ctx.fillStyle = rg;
-        ctx.fillRect(0, 0, vw, Math.max(0, wy));
-        ctx.fillStyle = `rgba(255,250,228,${0.9 * a})`;
+      for (const u of this.bubbles) {
+        const s = cam.worldToScreen(u.x, u.y);
+        const r = Math.max(1, u.r * z);
+        ctx.globalAlpha = wet * 0.55;
+        ctx.strokeStyle = "#dff6ff";
+        ctx.lineWidth = 1;
         ctx.beginPath();
-        ctx.arc(sx, sy, vh * 0.035, 0, TAU);
-        ctx.fill();
+        ctx.arc(s.x, s.y, r, 0, TAU);
+        ctx.stroke();
+        ctx.globalAlpha = wet * 0.35;
+        ctx.fillStyle = "#bfeaf6";
+        ctx.fillRect(Math.round(s.x - r * 0.3), Math.round(s.y - r * 0.5), 1, 1);
       }
+      ctx.globalAlpha = 1;
     }
-    /** Thirty metres of water, with the light coming down through it. */
-    _water(ctx, vw, vh, wy, dr) {
-      const top = wy, depth = vh - wy;
-      const g = ctx.createLinearGradient(0, top, 0, vh);
-      g.addColorStop(0, "#4fb2c6");
-      g.addColorStop(0.35, "#1d7f9c");
-      g.addColorStop(0.75, "#0d4c68");
-      g.addColorStop(1, "#07303f");
-      ctx.fillStyle = g;
-      ctx.fillRect(0, top, vw, vh - top);
+    // -- the water itself ------------------------------------------------------
+    /**
+     * Everything that makes it read as water rather than as a blue filter: the
+     * column above the ground painted out, the light coming down through it in
+     * shafts, a net of caustics crawling over whatever the light lands on, the
+     * surface seen from underneath, and silt hanging in between.
+     */
+    /**
+     * The column: everything above the seabed is water, so the desert sky and
+     * the far dunes are painted out of the frame entirely. This happens *before*
+     * the reef and the animal are drawn, because they are in the water, not
+     * behind it - which is the whole difference between a sea and a blue filter.
+     */
+    drawColumn(ctx, cam, vw, vh) {
+      const wet = this.wet;
+      if (wet <= 0.01) return;
+      const terr = this.game.terrain;
+      const surfW = cam.worldToScreen(cam.x, this.level(cam.x)).y;
+      const col = ctx.createLinearGradient(0, Math.min(surfW, 0), 0, vh);
+      col.addColorStop(0, `rgba(120,212,226,${0.94 * wet})`);
+      col.addColorStop(0.4, `rgba(38,140,168,${0.97 * wet})`);
+      col.addColorStop(1, `rgba(12,74,102,${0.99 * wet})`);
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      for (let x = 0; x <= vw; x += 6) {
+        const w = cam.screenToWorld(x, 0).x;
+        ctx.lineTo(x, cam.worldToScreen(w, terr.surfaceY(w)).y);
+      }
+      ctx.lineTo(vw, 0);
+      ctx.closePath();
+      ctx.clip();
+      ctx.fillStyle = col;
+      ctx.fillRect(0, 0, vw, vh);
       ctx.globalCompositeOperation = "lighter";
-      for (let i = 0; i < 7; i++) {
-        const ph = i * 1.7;
-        const x = vw * ((i + 0.5) / 7) + Math.sin(this.t * 0.22 + ph) * vw * 0.03;
-        const lean = Math.sin(this.t * 0.17 + ph) * 0.1 + 0.08;
-        const w0 = vw * 0.016, w1 = vw * (0.05 + i % 3 * 0.015);
-        const a = (0.05 + 0.035 * (0.5 + 0.5 * Math.sin(this.t * 0.5 + ph))) * (1 - dr * 0.7);
-        const gg = ctx.createLinearGradient(x, top, x + depth * lean, vh);
-        gg.addColorStop(0, `rgba(210,246,255,${a})`);
-        gg.addColorStop(0.6, `rgba(150,220,240,${a * 0.4})`);
-        gg.addColorStop(1, "rgba(120,200,225,0)");
-        ctx.fillStyle = gg;
+      for (let i = 0; i < 6; i++) {
+        const ph = i * 1.9;
+        const x = vw * ((i + 0.5) / 6) + Math.sin(this.t * 0.2 + ph) * vw * 0.04;
+        const lean = Math.sin(this.t * 0.15 + ph) * 0.12 + 0.06;
+        const a = (0.07 + 0.04 * (0.5 + 0.5 * Math.sin(this.t * 0.5 + ph))) * wet;
+        const g = ctx.createLinearGradient(x, surfW, x + vh * lean, vh);
+        g.addColorStop(0, `rgba(224,252,255,${a})`);
+        g.addColorStop(1, "rgba(150,220,240,0)");
+        ctx.fillStyle = g;
         ctx.beginPath();
-        ctx.moveTo(x - w0, top);
-        ctx.lineTo(x + w0, top);
-        ctx.lineTo(x + depth * lean + w1, vh);
-        ctx.lineTo(x + depth * lean - w1, vh);
+        ctx.moveTo(x - vw * 0.012, surfW);
+        ctx.lineTo(x + vw * 0.012, surfW);
+        ctx.lineTo(x + vh * lean + vw * 0.05, vh);
+        ctx.lineTo(x + vh * lean - vw * 0.05, vh);
         ctx.closePath();
         ctx.fill();
       }
       ctx.globalCompositeOperation = "source-over";
-      this._kelp(ctx, vw, vh, 0, dr);
-      this._shoals(ctx, vw, vh, dr);
-      this._kelp(ctx, vw, vh, 1, dr);
+      ctx.restore();
     }
     /**
-     * Kelp. Each strand is a chain of segments that lags behind the one below
-     * it, so the whole thing rolls rather than wags, and it browns and folds
-     * over as the water goes.
+     * And everything that hangs between you and what you are looking at: the
+     * depth wash, caustics crawling over the sand, silt, the surface seen from
+     * underneath, and - while the sea is leaving - the years.
      */
-    _kelp(ctx, vw, vh, near, dr) {
-      for (const k of this.kelp) {
-        if ((k.hue > 0.5 ? 1 : 0) !== near) continue;
-        const x0 = k.x * vw;
-        const base = this._bedY(k.x, vh);
-        const wy = this._waterY(vh);
-        const dry = clamp01((wy - (base - k.h * vh)) / (k.h * vh * 0.9));
-        const len = k.h * vh * (1 - dry * 0.55);
-        const segs = 9;
-        ctx.lineCap = "round";
-        let px = x0, py = base;
-        for (let i = 1; i <= segs; i++) {
-          const u = i / segs;
-          const sway = Math.sin(this.t * k.sp + k.ph - u * 2.2) * (10 + u * 26) * (1 - dr * 0.6);
-          const fall = dry * u * u * 46 * (k.lean < 0 ? -1 : 1);
-          const nx = x0 + sway * u + k.lean * u * 30 + fall;
-          const ny = base - len * u;
-          const lit = 0.35 + u * 0.5;
-          ctx.strokeStyle = dry > 0.5 ? `rgba(${Math.round(120 + lit * 60)},${Math.round(96 + lit * 40)},${Math.round(52 + lit * 24)},0.95)` : `rgba(${Math.round(24 + lit * 40)},${Math.round(78 + lit * 70)},${Math.round(52 + lit * 40)},0.95)`;
-          ctx.lineWidth = k.w * (1 - u * 0.45) * (near ? 1.5 : 1);
-          ctx.beginPath();
-          ctx.moveTo(px, py);
-          ctx.lineTo(nx, ny);
-          ctx.stroke();
-          if (i % 2 === 0 && i < segs) {
-            const bl = 5 + u * 9;
-            const side = i % 4 === 0 ? 1 : -1;
-            ctx.lineWidth = Math.max(1, k.w * 0.7);
-            ctx.beginPath();
-            ctx.moveTo(nx, ny);
-            ctx.quadraticCurveTo(nx + side * bl, ny + 1, nx + side * bl * 1.5, ny + bl * 0.55);
-            ctx.stroke();
-          }
-          px = nx;
-          py = ny;
-        }
-      }
-    }
-    /** Shoals: a cloud of darts holding formation around a moving centre. */
-    _shoals(ctx, vw, vh, dr) {
-      if (dr > 0.55) return;
-      const a = 1 - clamp01(dr / 0.55);
-      for (const s of this.shoals) {
-        const u = (s.off + this.t * s.sp * s.dir + 2) % 1;
-        const cx = u * (vw * 1.3) - vw * 0.15;
-        const cy = s.y * vh + Math.sin(this.t * 0.5 + s.off * 6) * s.amp * vh;
-        for (const f of s.fish) {
-          const fx = cx + f.dx * vw + Math.sin(this.t * 2.2 + f.ph) * 3;
-          const fy = cy + f.dy * vh + Math.cos(this.t * 1.8 + f.ph) * 2.5;
-          if (fx < -10 || fx > vw + 10) continue;
-          const L = 3.2 * f.s, H = 1.3 * f.s;
-          const d = s.dir;
-          ctx.globalAlpha = a * (0.55 + 0.45 * f.s);
-          ctx.fillStyle = s.hue > 0.6 ? "#e9d9a8" : s.hue > 0.3 ? "#bcd8e0" : "#8fb8c4";
-          ctx.beginPath();
-          ctx.ellipse(fx, fy, L, H, 0, 0, TAU);
-          ctx.fill();
-          ctx.beginPath();
-          ctx.moveTo(fx - d * L, fy);
-          ctx.lineTo(fx - d * L * 2, fy - H * 1.3);
-          ctx.lineTo(fx - d * L * 2, fy + H * 1.3);
-          ctx.closePath();
-          ctx.fill();
-          const tw = Math.sin(this.t * 3.4 + f.ph);
-          if (tw > 0.86) {
-            ctx.globalAlpha = a;
-            ctx.fillStyle = "#fbfdff";
-            ctx.fillRect(Math.round(fx - L * 0.3), Math.round(fy - H * 0.5), Math.max(1, L * 0.6), 1);
-          }
-        }
-      }
+    overlay(ctx, cam, vw, vh) {
+      const wet = this.wet;
+      if (wet <= 0.01) return;
+      const terr = this.game.terrain;
+      const z = cam.zoom;
+      const surfW = cam.worldToScreen(cam.x, this.level(cam.x)).y;
+      ctx.globalAlpha = 0.2 * wet;
+      ctx.fillStyle = "#1c7a96";
+      ctx.fillRect(0, 0, vw, vh);
       ctx.globalAlpha = 1;
-    }
-    /** The seabed: ripples, rocks, and caustics crawling over all of it. */
-    _bed(ctx, vw, vh, wy, dr) {
-      const step = 3;
-      const paint = (dry) => {
-        for (let x = 0; x < vw; x += step) {
-          const y = this._bedY(x / vw, vh);
-          const g = ctx.createLinearGradient(0, y, 0, vh);
-          if (dry) {
-            g.addColorStop(0, "#e2c288");
-            g.addColorStop(1, "#a07f52");
-          } else {
-            g.addColorStop(0, "#a9906a");
-            g.addColorStop(1, "#3d3a30");
-          }
-          ctx.fillStyle = g;
-          ctx.fillRect(x, y, step + 1, vh - y);
-        }
-      };
-      paint(false);
-      if (wy > 0) {
-        ctx.save();
-        ctx.beginPath();
-        ctx.rect(0, 0, vw, wy);
-        ctx.clip();
-        paint(true);
-        ctx.restore();
-        ctx.globalAlpha = 0.25;
-        ctx.fillStyle = "#8a7350";
-        ctx.fillRect(0, Math.round(wy), vw, 3);
-        ctx.globalAlpha = 1;
+      ctx.globalCompositeOperation = "lighter";
+      for (let i = 0; i < 54; i++) {
+        const sx = ((i * 37 + Math.sin(this.t * 0.5 + i) * 14) % vw + vw) % vw;
+        const w = cam.screenToWorld(sx, 0).x;
+        const gy = cam.worldToScreen(w, terr.surfaceY(w)).y;
+        const y = gy + (i % 5 - 1) * 3 * z + Math.sin(this.t * 1.1 + i * 2.3) * 3;
+        const ww = (8 + Math.sin(this.t * 1.7 + i) * 6) * z * 0.6;
+        ctx.globalAlpha = wet * 0.3 * (0.4 + 0.6 * (0.5 + 0.5 * Math.sin(this.t * 2.1 + i * 1.3)));
+        ctx.fillStyle = "#d8f8ff";
+        ctx.fillRect(Math.round(sx - ww / 2), Math.round(y), Math.max(2, ww), 1);
       }
+      ctx.globalCompositeOperation = "source-over";
+      ctx.globalAlpha = 1;
       for (let i = 0; i < 90; i++) {
-        const u = (i * 0.0139 + 0.03) % 1;
-        const y = this._bedY(u, vh) + i % 7 * (vh * 0.014) + vh * 0.012;
-        if (y > vh) continue;
-        const wet = y > wy;
-        ctx.globalAlpha = wet ? 0.16 : 0.12;
-        ctx.fillStyle = wet ? "#d8c49a" : "#f2dcae";
-        ctx.fillRect(u * vw - 12, Math.round(y), 24 + i % 5 * 8, 1);
+        const h1 = Math.sin(i * 12.9898) * 43758.5453;
+        const h2 = Math.sin(i * 78.233) * 43758.5453;
+        const px = (((h1 - Math.floor(h1)) * vw - cam.x * z * 0.3 - this.t * 2) % vw + vw) % vw;
+        const py = (((h2 - Math.floor(h2)) * vh - this.t * 5 - cam.y * z * 0.3) % vh + vh) % vh;
+        ctx.globalAlpha = wet * (0.1 + 0.18 * (0.5 + 0.5 * Math.sin(this.t * 1.4 + i)));
+        ctx.fillStyle = i % 7 === 0 ? "#eafaff" : "#a9d6e4";
+        ctx.fillRect(Math.round(px), Math.round(py), 1, 1);
       }
       ctx.globalAlpha = 1;
-      for (const r of this.rocks) {
-        const x = r.x * vw, y = this._bedY(r.x, vh);
-        const w = r.w * vw, h = r.h * vh;
-        const wet = y > wy;
-        ctx.fillStyle = wet ? r.k > 0.6 ? "#7a5a6c" : "#4e5a52" : "#8a7355";
-        ctx.beginPath();
-        ctx.ellipse(x, y, w, h, 0, Math.PI, TAU);
-        ctx.fill();
-        if (wet && r.k > 0.6) {
-          ctx.strokeStyle = "rgba(196,108,124,0.9)";
-          ctx.lineWidth = Math.max(1, w * 0.16);
-          for (let i = 0; i < 4; i++) {
-            const fx = x + (i - 1.5) * w * 0.4;
-            ctx.beginPath();
-            ctx.moveTo(fx, y - h * 0.6);
-            ctx.lineTo(fx + (i % 2 ? 2 : -2), y - h * 1.9);
-            ctx.stroke();
-          }
-        }
-      }
-      if (wy < vh) {
+      if (surfW > -30 && surfW < vh) {
         ctx.save();
         ctx.beginPath();
-        ctx.rect(0, Math.max(0, wy), vw, vh);
-        ctx.clip();
-        ctx.globalCompositeOperation = "lighter";
-        const a = 0.16 * (1 - dr * 0.8);
-        for (let i = 0; i < 40; i++) {
-          const u = (i / 40 + Math.sin(this.t * 0.5 + i) * 0.02) % 1;
-          const x = u * vw;
-          const y = this._bedY(u, vh) + Math.sin(this.t * 1.1 + i * 2.3) * vh * 0.02 + vh * 0.02;
-          const w = 10 + Math.sin(this.t * 1.7 + i) * 7;
-          ctx.globalAlpha = a * (0.4 + 0.6 * (0.5 + 0.5 * Math.sin(this.t * 2.1 + i * 1.3)));
-          ctx.fillStyle = "#cdf4ff";
-          ctx.fillRect(Math.round(x - w / 2), Math.round(y), Math.max(2, w), 1);
-          ctx.fillRect(Math.round(x - w / 3), Math.round(y + 2), Math.max(2, w * 0.6), 1);
+        ctx.moveTo(0, surfW - 40);
+        ctx.lineTo(vw, surfW - 40);
+        for (let x = vw; x >= 0; x -= 6) {
+          ctx.lineTo(x, surfW + Math.sin(x * 0.05 + this.t * 1.6) * 3 + Math.sin(x * 0.11 - this.t * 2.3) * 1.6);
         }
-        ctx.globalCompositeOperation = "source-over";
-        ctx.globalAlpha = 1;
-        ctx.restore();
-      }
-    }
-    /**
-     * The animal: the real rig, painted blue by thirty metres of water, coming
-     * down out of the dark, landing, and digging itself in until there is
-     * nothing left of it but a shape in the sand.
-     */
-    _crab(ctx, vw, vh, wy) {
-      const pl = crabPlates("ancient", 3);
-      const k = Math.min(vw * 0.54 / pl.w, vh * 0.38 / pl.h);
-      const w = pl.w * k, h = pl.h * k;
-      const cx = vw * 0.5;
-      const bedY = this._bedY(0.5, vh);
-      const fall = clamp01(this.t / T_LAND);
-      const ease = 1 - Math.pow(1 - fall, 2.4);
-      const restY = bedY - h * 0.52;
-      const y = lerp(-h * 0.7, restY, ease) + Math.sin(this.t * 0.7) * (1 - ease) * 6;
-      const sink = this.bury * 0.86;
-      const by = y + sink * h * 0.46;
-      const x = cx - w / 2;
-      ctx.save();
-      ctx.imageSmoothingEnabled = false;
-      if (sink > 0) {
-        ctx.beginPath();
-        ctx.rect(0, 0, vw, bedY + 2);
-        ctx.clip();
-      }
-      const wet = by + h * 0.5 > wy;
-      ctx.globalAlpha = 1;
-      ctx.drawImage(pl.body, x, by, w, h);
-      if (wet) {
-        ctx.globalAlpha = 0.42;
-        ctx.drawImage(pl.ghost, x, by, w, h);
-        ctx.globalAlpha = 0.16;
-        ctx.drawImage(pl.fill, x, by, w, h);
-        ctx.globalCompositeOperation = "lighter";
-        for (let i = 0; i < 10; i++) {
-          const u = (i / 10 + Math.sin(this.t * 0.6 + i) * 0.03) % 1;
-          ctx.globalAlpha = 0.1 * (0.4 + 0.6 * (0.5 + 0.5 * Math.sin(this.t * 2 + i * 1.7)));
-          ctx.fillStyle = "#d8f6ff";
-          ctx.fillRect(Math.round(x + u * w - 6), Math.round(by + h * (0.18 + i % 4 * 0.1)), 12, 1);
-        }
-        ctx.globalCompositeOperation = "source-over";
-      }
-      ctx.restore();
-      if (sink > 0.25) {
-        const a = clamp01((sink - 0.25) / 0.75);
-        ctx.globalAlpha = a;
-        const g = ctx.createLinearGradient(0, bedY - h * 0.3, 0, bedY + h * 0.2);
-        g.addColorStop(0, by + h * 0.5 > wy ? "#b39972" : "#e8c894");
-        g.addColorStop(1, by + h * 0.5 > wy ? "#7d6a4e" : "#b89463");
-        ctx.fillStyle = g;
-        ctx.beginPath();
-        ctx.moveTo(cx - w * 0.54, bedY + 2);
-        ctx.quadraticCurveTo(cx - w * 0.26, bedY - h * 0.07 * a, cx, bedY - h * 0.1 * a);
-        ctx.quadraticCurveTo(cx + w * 0.26, bedY - h * 0.07 * a, cx + w * 0.54, bedY + 2);
         ctx.closePath();
+        const g = ctx.createLinearGradient(0, surfW - 26, 0, surfW + 12);
+        g.addColorStop(0, `rgba(228,252,255,${0.9 * wet})`);
+        g.addColorStop(0.6, `rgba(150,226,240,${0.5 * wet})`);
+        g.addColorStop(1, "rgba(110,200,220,0)");
+        ctx.fillStyle = g;
         ctx.fill();
+        ctx.restore();
+        for (let x = 0; x < vw; x += 9) {
+          const y = surfW + Math.sin(x * 0.05 + this.t * 1.6) * 3 + Math.sin(x * 0.11 - this.t * 2.3) * 1.6;
+          ctx.globalAlpha = wet * (0.3 + 0.35 * Math.sin(x * 0.2 + this.t * 3));
+          ctx.fillStyle = "#f2ffff";
+          ctx.fillRect(x, Math.round(y) - 1, 5, 1);
+        }
         ctx.globalAlpha = 1;
       }
-      for (const p of this.puffs) {
-        const u = clamp01(p.t / p.life);
-        const r = (p.r + u * 0.05) * vw;
-        const px = p.x * vw, py = p.y * vh;
-        ctx.globalAlpha = (1 - u) * 0.22;
-        const g = ctx.createRadialGradient(px, py, 0, px, py, r);
-        g.addColorStop(0, "rgba(196,176,142,0.9)");
-        g.addColorStop(1, "rgba(150,132,104,0)");
-        ctx.fillStyle = g;
-        ctx.beginPath();
-        ctx.arc(px, py, r, 0, TAU);
-        ctx.fill();
+      if (this.yearShow > 0 && this.drain > 0) {
+        const yr = Math.round(Math.pow(clamp01(this.drain), 0.72) * 1e3);
+        const label = `${yr} YEARS`;
+        const fade = clamp01(this.drain * 6) * clamp01((1.05 - this.drain) * 6);
+        const w = textWidth(label, 2);
+        ctx.globalAlpha = fade * 0.9;
+        drawText(ctx, label, Math.round(vw / 2), Math.round(vh * 0.3), {
+          color: "#f6ecd2",
+          align: "center",
+          scale: 2,
+          outline: true,
+          outlineColor: "rgba(0,0,0,0.7)"
+        });
+        ctx.globalAlpha = fade * 0.5;
+        ctx.fillStyle = "#f6ecd2";
+        ctx.fillRect(Math.round(vw / 2 - w / 2), Math.round(vh * 0.3 + 18), Math.round(w * this.drain), 1);
+        ctx.globalAlpha = 1;
       }
-      ctx.globalAlpha = 1;
-    }
-    /** Everything suspended in the water, drifting up past you. */
-    _silt(ctx, vw, vh) {
-      for (const m of this.motes) {
-        const y = ((m.y - this.t * 0.012 * m.sp) % 1 + 1) % 1;
-        const x = ((m.x + Math.sin(this.t * 0.3 * m.sp + m.ph) * 0.01) % 1 + 1) % 1;
-        const sx = Math.round(x * vw), sy = Math.round(y * vh);
-        ctx.globalAlpha = 0.12 + 0.22 * (0.5 + 0.5 * Math.sin(this.t * 1.4 + m.ph));
-        ctx.fillStyle = m.s > 1.2 ? "#dff6ff" : "#a9d6e4";
-        ctx.fillRect(sx, sy, m.s > 1.2 ? 2 : 1, m.s > 1.2 ? 2 : 1);
-      }
-      ctx.globalAlpha = 1;
-    }
-    /** The underside of the surface: crests, and the sky coming through them. */
-    _surface(ctx, vw, vh, wy) {
-      if (wy > vh || wy < -30) return;
-      ctx.save();
-      ctx.beginPath();
-      ctx.moveTo(0, wy + 18);
-      for (let x = 0; x <= vw; x += 6) {
-        const y = wy + Math.sin(x * 0.05 + this.t * 1.6) * 3 + Math.sin(x * 0.11 - this.t * 2.3) * 1.6;
-        ctx.lineTo(x, y);
-      }
-      ctx.lineTo(vw, wy - 30);
-      ctx.lineTo(0, wy - 30);
-      ctx.closePath();
-      const g = ctx.createLinearGradient(0, wy - 20, 0, wy + 14);
-      g.addColorStop(0, "rgba(222,250,255,0.85)");
-      g.addColorStop(0.6, "rgba(150,226,240,0.45)");
-      g.addColorStop(1, "rgba(110,200,220,0)");
-      ctx.fillStyle = g;
-      ctx.fill();
-      ctx.restore();
-      for (let x = 0; x < vw; x += 9) {
-        const y = wy + Math.sin(x * 0.05 + this.t * 1.6) * 3 + Math.sin(x * 0.11 - this.t * 2.3) * 1.6;
-        ctx.globalAlpha = 0.35 + 0.35 * Math.sin(x * 0.2 + this.t * 3);
-        ctx.fillStyle = "#f2ffff";
-        ctx.fillRect(x, Math.round(y) - 1, 5, 1);
-      }
-      ctx.globalAlpha = 1;
-    }
-    /** A thousand years, counted off while the water goes. */
-    _years(ctx, vw, vh) {
-      const u = clamp01((this.t - T_DRAIN) / (T_DRY - T_DRAIN));
-      const yr = Math.round(Math.pow(u, 0.72) * 1e3);
-      const fade = clamp01((this.t - T_DRAIN + 0.4) / 0.6) * clamp01((T_DRY + 1.6 - this.t) / 1.2);
-      const label = `${yr} YEARS`;
-      const w = textWidth(label, 2);
-      ctx.globalAlpha = fade * 0.85;
-      drawText(ctx, label, Math.round(vw / 2), Math.round(vh * 0.42), {
-        color: "#f6ecd2",
-        align: "center",
-        scale: 2,
-        outline: true,
-        outlineColor: "rgba(0,0,0,0.65)"
-      });
-      ctx.globalAlpha = fade * 0.5;
-      ctx.fillStyle = "#f6ecd2";
-      ctx.fillRect(Math.round(vw / 2 - w / 2), Math.round(vh * 0.42 + 18), Math.round(w * u), 1);
-      ctx.globalAlpha = 1;
     }
   };
 
   // js/systems/green.js
-  var CELL2 = 24;
+  var CELL3 = 24;
   var SEEDABLE = 0.55;
   var Green = class {
     constructor(game2) {
@@ -7977,14 +8205,14 @@ body {
     }
     // -- the map --------------------------------------------------------------
     at(x) {
-      return this.life.get(Math.round(x / CELL2)) || 0;
+      return this.life.get(Math.round(x / CELL3)) || 0;
     }
     /** Water landing on the ground. `amount` is roughly litres of consequence. */
     water(x, amount, radius = 40) {
       const gain = amount * (this.game.economy ? 1 + this.game.economy.stat("green") : 1);
-      const i0 = Math.round((x - radius) / CELL2), i1 = Math.round((x + radius) / CELL2);
+      const i0 = Math.round((x - radius) / CELL3), i1 = Math.round((x + radius) / CELL3);
       for (let i = i0; i <= i1; i++) {
-        const k = 1 - clamp01(Math.abs(i * CELL2 - x) / radius);
+        const k = 1 - clamp01(Math.abs(i * CELL3 - x) / radius);
         if (k <= 0) continue;
         const cur = this.life.get(i) || 0;
         const next = clamp01(cur + gain * k * k);
@@ -8001,7 +8229,7 @@ body {
       const cx = this.game.crab.x;
       const keep = 3200;
       for (const [i, v] of this.life) {
-        const x = i * CELL2;
+        const x = i * CELL3;
         if (Math.abs(x - cx) > keep) {
           this.life.delete(i);
           this.plants.delete(i);
@@ -8027,9 +8255,9 @@ body {
       const g = this.game;
       for (const lm of landmarksNear(g.world.seed, g.crab.x, 900)) {
         if (lm.kind !== "oasis") continue;
-        const i0 = Math.round((lm.x - lm.size) / CELL2), i1 = Math.round((lm.x + lm.size) / CELL2);
+        const i0 = Math.round((lm.x - lm.size) / CELL3), i1 = Math.round((lm.x + lm.size) / CELL3);
         for (let i = i0; i <= i1; i++) {
-          const k = 1 - clamp01(Math.abs(i * CELL2 - lm.x) / lm.size);
+          const k = 1 - clamp01(Math.abs(i * CELL3 - lm.x) / lm.size);
           if (k <= 0.05) continue;
           const floor = clamp01(Math.pow(k, 0.7) * 1.15);
           const cur = this.life.get(i) || 0;
@@ -8053,7 +8281,7 @@ body {
         flip: r < 0.5,
         t: 0
       });
-      this.game.onGreened?.(i * CELL2);
+      this.game.onGreened?.(i * CELL3);
     }
     /** Things that came up on their own keep growing while the ground holds. */
     tick(dt) {
@@ -8074,13 +8302,13 @@ body {
      */
     drawGround(ctx, cam, terrain) {
       const b = cam.bounds(60);
-      const i0 = Math.round(b.x0 / CELL2), i1 = Math.round(b.x1 / CELL2);
+      const i0 = Math.round(b.x0 / CELL3), i1 = Math.round(b.x1 / CELL3);
       for (let i = i0; i <= i1; i++) {
         const v = this.life.get(i);
         if (!v) continue;
-        const x = i * CELL2;
+        const x = i * CELL3;
         const s = cam.worldToScreen(x, terrain.surfaceY(x));
-        const w = CELL2 * cam.zoom + 1;
+        const w = CELL3 * cam.zoom + 1;
         const h = (2.5 + v * 4.5) * cam.zoom;
         ctx.globalAlpha = clamp01(0.25 + v * 0.55);
         ctx.fillStyle = "#4a3118";
@@ -8118,7 +8346,7 @@ body {
   };
 
   // js/systems/digs.js
-  var CELL3 = 300;
+  var CELL4 = 300;
   var RELICS = [
     {
       id: "trilobite",
@@ -8174,12 +8402,12 @@ body {
       const r = mulberry32((hashStr(this.seed + "dig") ^ ci * 2246822519) >>> 0);
       if (r() > 0.34) return null;
       const relic = RELICS[Math.floor(r() * RELICS.length)];
-      const x = ci * CELL3 + CELL3 * (0.15 + r() * 0.7);
+      const x = ci * CELL4 + CELL4 * (0.15 + r() * 0.7);
       return { id: "dig" + ci, ci, x, relic, deep: 0.3 + r() * 0.7 };
     }
     near(x, radius = 260) {
       const out = [];
-      for (let ci = Math.floor((x - radius) / CELL3); ci <= Math.floor((x + radius) / CELL3); ci++) {
+      for (let ci = Math.floor((x - radius) / CELL4); ci <= Math.floor((x + radius) / CELL4); ci++) {
         const s = this.siteAt(ci);
         if (s && !this.taken.has(s.id) && Math.abs(s.x - x) <= radius) out.push(s);
       }
@@ -8295,6 +8523,58 @@ body {
           t: 0,
           r: 2 + Math.random() * 3 * amount,
           far
+        });
+      }
+    }
+    /**
+     * Something going into the ground. Not a puff: a burst. A low ring of smoke
+     * that spreads outward along the sand, a column of it going up through the
+     * middle, and a spray of actual grains thrown clear that fall back down.
+     * `wet` makes it silt instead of dust, which drifts instead of settling.
+     */
+    digBurst(x, y, power = 1, wet = false) {
+      const ring = Math.round(6 + power * 8);
+      for (let i = 0; i < ring; i++) {
+        const side = i % 2 ? 1 : -1;
+        const sp = (24 + Math.random() * 46) * power;
+        this._add({
+          k: "dust",
+          x: x + side * (2 + Math.random() * 6),
+          y: y - Math.random() * 3,
+          vx: side * sp,
+          vy: -(4 + Math.random() * 10) * (wet ? 1.6 : 1),
+          life: (wet ? 1.6 : 0.9) + Math.random() * 1.1,
+          t: 0,
+          r: 2.4 + Math.random() * 4 * power,
+          far: false
+        });
+      }
+      for (let i = 0; i < Math.round(4 + power * 6); i++) {
+        this._add({
+          k: "dust",
+          x: x + (Math.random() - 0.5) * 12,
+          y: y - Math.random() * 6,
+          vx: (Math.random() - 0.5) * 18,
+          vy: -(26 + Math.random() * 40) * power * (wet ? 0.5 : 1),
+          life: (wet ? 2.2 : 1.1) + Math.random() * 1.2,
+          t: 0,
+          r: 3 + Math.random() * 5 * power,
+          far: false
+        });
+      }
+      for (let i = 0; i < Math.round(6 + power * 10); i++) {
+        const a = -Math.PI * (0.15 + Math.random() * 0.7);
+        const sp = (40 + Math.random() * 90) * power;
+        this._add({
+          k: "grit",
+          x,
+          y: y - 2,
+          vx: Math.cos(a) * sp * (Math.random() < 0.5 ? -1 : 1),
+          vy: Math.sin(a) * sp,
+          life: 0.6 + Math.random() * 0.7,
+          t: 0,
+          r: 1,
+          grav: wet ? 90 : 260
         });
       }
     }
@@ -8452,6 +8732,14 @@ body {
             q.vy = lerp(q.vy, -3, 1 - Math.pow(0.3, dt));
             q.r += dt * 5;
             break;
+          case "grit":
+            q.vy += (q.grav || 260) * dt;
+            if (q.y > this.game.terrain.surfaceY(q.x) && q.vy > 0) {
+              q.vy = -q.vy * 0.22;
+              q.vx *= 0.4;
+              if (Math.abs(q.vy) < 24) q.t = q.life;
+            }
+            break;
           case "mist":
             q.vx = lerp(q.vx, wind.x * 0.35, 1 - Math.pow(0.25, dt));
             q.vy -= 4 * dt;
@@ -8525,6 +8813,16 @@ body {
             ctx.arc(s.x, s.y, q.r * z, 0, TAU);
             ctx.fill();
             break;
+          case "grit":
+            ctx.globalAlpha = a;
+            ctx.fillStyle = Math.random() < 0.3 ? "#f0dcb2" : "#b9955f";
+            ctx.fillRect(
+              Math.round(s.x),
+              Math.round(s.y),
+              Math.max(1, Math.round(z * 0.6)),
+              Math.max(1, Math.round(z * 0.6))
+            );
+            break;
           case "mist":
             ctx.globalAlpha = a * 0.11;
             ctx.fillStyle = "#cfeef6";
@@ -8572,7 +8870,7 @@ body {
   };
 
   // js/art/buildart.js
-  var LIGHT4 = { lightX: -0.6, lightY: -0.62, lightZ: 0.4, ambient: 0.38, dither: 0.7 };
+  var LIGHT5 = { lightX: -0.6, lightY: -0.62, lightZ: 0.4, ambient: 0.38, dither: 0.7 };
   function rng2(seed) {
     let s = seed | 0 || 3;
     return () => {
@@ -8752,7 +9050,7 @@ body {
     const R = rng2(def3.id.length * 977 + def3.w);
     (KIND[def3.kind] || KIND.crate)(p, W, H, x, y, K, R);
     p.smoothHeight(1, 0.4);
-    const cv = p.resolve(MATERIALS, { ...LIGHT4, outline: 1, outlineColor: "#170f09" });
+    const cv = p.resolve(MATERIALS, { ...LIGHT5, outline: 1, outlineColor: "#170f09" });
     const out = { cv, ox: x, oy: y, w: W, h: H };
     cache6.set(key2, out);
     return out;
@@ -10048,7 +10346,7 @@ body {
   };
 
   // js/art/faunaart.js
-  var LIGHT5 = { lightX: -0.58, lightY: -0.64, lightZ: 0.4, ambient: 0.37, dither: 0.68 };
+  var LIGHT6 = { lightX: -0.58, lightY: -0.64, lightZ: 0.4, ambient: 0.37, dither: 0.68 };
   function rng3(seed) {
     let s = seed | 0 || 7;
     return () => {
@@ -10515,7 +10813,7 @@ body {
     if (D.skin === "fur") furFringe(p, D.mat, S, (D.seed || 3) + 5, 0.5);
     p.smoothHeight(1, 0.38);
     return {
-      cv: p.resolve(MATERIALS, { ...LIGHT5, outline: 1, outlineColor: D.outline || "#160f0a" }),
+      cv: p.resolve(MATERIALS, { ...LIGHT6, outline: 1, outlineColor: D.outline || "#160f0a" }),
       ox: cx - L * 0.3,
       oy: cy,
       L,
@@ -10610,8 +10908,8 @@ body {
     if (D.skin === "fur" && !far) furFringe(p, mat, S, 61, 0.34);
     return {
       cv: p.resolve(MATERIALS, {
-        ...LIGHT5,
-        ambient: far ? 0.28 : LIGHT5.ambient,
+        ...LIGHT6,
+        ambient: far ? 0.28 : LIGHT6.ambient,
         outline: 1,
         outlineColor: far ? "#100a06" : D.outline || "#160f0a"
       }),
@@ -10706,7 +11004,7 @@ body {
     }
     if (D.skin === "fur") furFringe(p, D.tailMat || D.mat, S, 91, 0.45);
     return {
-      cv: p.resolve(MATERIALS, { ...LIGHT5, outline: 0.95, outlineColor: D.outline || "#160f0a" }),
+      cv: p.resolve(MATERIALS, { ...LIGHT6, outline: 0.95, outlineColor: D.outline || "#160f0a" }),
       ox: x0,
       oy: cy,
       len: L
@@ -10781,8 +11079,8 @@ body {
     }
     return {
       cv: p.resolve(MATERIALS, {
-        ...LIGHT5,
-        ambient: far ? 0.28 : LIGHT5.ambient,
+        ...LIGHT6,
+        ambient: far ? 0.28 : LIGHT6.ambient,
         outline: 0.85,
         outlineColor: D.outline || "#160f0a"
       }),
@@ -11070,7 +11368,7 @@ body {
     const plan = D.plan || "beast";
     const built = (PLAN[plan] || PLAN.beast)(D, S);
     const bodyCv = built.p.smoothHeight(1, 0.36).resolve(MATERIALS, {
-      ...LIGHT5,
+      ...LIGHT6,
       outline: 1,
       outlineColor: D.outline || "#160f0a"
     });
@@ -13142,7 +13440,7 @@ body {
   ];
 
   // js/systems/encounters.js
-  var CELL4 = 340;
+  var CELL5 = 340;
   var KINDS2 = [
     { id: "relic", name: "Buried Relic", w: 0.2, verb: "Excavate" },
     { id: "wildpatch", name: "Wild Patch", w: 0.22, verb: "Harvest" },
@@ -13181,7 +13479,7 @@ body {
           break;
         }
       }
-      const x = ci * CELL4 + CELL4 * (0.25 + r() * 0.5);
+      const x = ci * CELL5 + CELL5 * (0.25 + r() * 0.5);
       const biome = biomeAt(x);
       const poi = {
         id: `${ci}`,
@@ -13199,9 +13497,9 @@ body {
       this.cells.set(key2, poi);
       return poi;
     }
-    near(x, radius = CELL4) {
+    near(x, radius = CELL5) {
       const out = [];
-      const c0 = Math.floor((x - radius) / CELL4), c1 = Math.floor((x + radius) / CELL4);
+      const c0 = Math.floor((x - radius) / CELL5), c1 = Math.floor((x + radius) / CELL5);
       for (let ci = c0; ci <= c1; ci++) {
         const p = this.cell(ci);
         if (p && Math.abs(p.x - x) <= radius) out.push(p);
@@ -13313,7 +13611,7 @@ body {
     draw(ctx, cam) {
       const t = this.game.terrain;
       const z = cam.zoom;
-      for (const p of this.near(cam.rx, cam.vw / z + CELL4)) {
+      for (const p of this.near(cam.rx, cam.vw / z + CELL5)) {
         const taken = this.isTaken(p);
         const art = this._sprite(p);
         if (!art) continue;
@@ -13474,7 +13772,7 @@ body {
   }
 
   // js/ui/icons.js
-  var LIGHT6 = { lightX: -0.55, lightY: -0.68, lightZ: 0.42, ambient: 0.42, dither: 0.6 };
+  var LIGHT7 = { lightX: -0.55, lightY: -0.68, lightZ: 0.42, ambient: 0.42, dither: 0.6 };
   var cache8 = /* @__PURE__ */ new Map();
   var once = (key2, make) => {
     let v = cache8.get(key2);
@@ -13501,7 +13799,7 @@ body {
       return { h: 1.5 + band * 0.4, tint: -0.42 + t * 0.1 + band * 0.04 };
     }, { mat: "shellRock" });
     inner.grain("shellRock", { freq: 0.34, amp: 0.14, seed: 7 });
-    const back = inner.resolve(MATERIALS, { ...LIGHT6, ambient: 0.3, outline: 1, outlineColor: "#191108" });
+    const back = inner.resolve(MATERIALS, { ...LIGHT7, ambient: 0.3, outline: 1, outlineColor: "#191108" });
     const q = new Painter(w, h);
     q.field(cx - W / 2, base - H, cx + W / 2, base + 2, (x, y) => {
       const u = (x - (cx - W / 2)) / W;
@@ -13512,7 +13810,7 @@ body {
       const t = (y - top2) / Math.max(1, bot2 - top2);
       return { h: 3 - t * 3, tint: 0.16 - t * 0.55 };
     }, { mat: "water" });
-    const water = q.resolve(MATERIALS, { ...LIGHT6, ambient: 0.52, outline: 0 });
+    const water = q.resolve(MATERIALS, { ...LIGHT7, ambient: 0.52, outline: 0 });
     const front = new Painter(w, h);
     front.field(cx - W / 2 - 2, base - H - 2, cx + W / 2 + 2, base + 3, (x, y) => {
       const u = (x - (cx - W / 2)) / W;
@@ -13541,7 +13839,7 @@ body {
         { mat: "chitin", dome: 1.4, tint: sgn > 0 ? 0 : -0.14 }
       );
     }
-    const cv = front.resolve(MATERIALS, { ...LIGHT6, outline: 1, outlineColor: "#191108" });
+    const cv = front.resolve(MATERIALS, { ...LIGHT7, outline: 1, outlineColor: "#191108" });
     let top = q.h, bot = 0, left = q.w, right = 0;
     for (let y = 0; y < q.h; y++) {
       for (let x = 0; x < q.w; x++) {
@@ -13632,7 +13930,7 @@ body {
       p.ellipse(cx, ty, pr * 0.44, pr * 0.34, { mat: "fruitGold", dome: pr * 0.5, tint: 0.1 });
       p.speckle("fruitGold", { density: 0.35, amp: 0.4, seed: 3 });
     }
-    return { cv: p.resolve(MATERIALS, { ...LIGHT6, outline: 1, outlineColor: "#141c0e" }), w: 34, h: 40 };
+    return { cv: p.resolve(MATERIALS, { ...LIGHT7, outline: 1, outlineColor: "#141c0e" }), w: 34, h: 40 };
   }
   function drawBloom(ctx, x, y, stage, sway = 0, scale = 1) {
     const st = clamp(Math.round(stage), 0, 8);
@@ -13670,7 +13968,7 @@ body {
       p.ellipse(bx, by, 2.3, 2.3, { mat: "berry", dome: 2.6, tint: 0.02 });
       p.ellipse(bx - 0.7, by - 0.8, 0.8, 0.7, { mat: "berry", mask: true, dome: 2, tint: 0.5 });
     }
-    return { cv: p.resolve(MATERIALS, { ...LIGHT6, outline: 1, outlineColor: "#1a0d10" }), w: 26, h: 22 };
+    return { cv: p.resolve(MATERIALS, { ...LIGHT7, outline: 1, outlineColor: "#1a0d10" }), w: 26, h: 22 };
   }
   function drawSprig(ctx, x, y, n, scale = 1) {
     const k = clamp(n, 0, 5);
@@ -13707,7 +14005,7 @@ body {
       }
     }
     p.ellipse(cx - r * 0.34, cy - r * 0.4, r * 0.26, r * 0.22, { mat: "glass", mask: true, dome: r, tint: 0.7 });
-    return { cv: p.resolve(MATERIALS, { ...LIGHT6, ambient: 0.5, outline: 1, outlineColor: "#0e1a1e" }), w: 30, h: 30 };
+    return { cv: p.resolve(MATERIALS, { ...LIGHT7, ambient: 0.5, outline: 1, outlineColor: "#0e1a1e" }), w: 30, h: 30 };
   }
   function drawOrb(ctx, x, y, t, pulse = 0, scale = 1) {
     const O = once("orb", buildOrb);
@@ -13787,7 +14085,7 @@ body {
       default:
         break;
     }
-    return p.resolve(MATERIALS, { ...LIGHT6, outline: 1, outlineColor: "#1a140c" });
+    return p.resolve(MATERIALS, { ...LIGHT7, outline: 1, outlineColor: "#1a140c" });
   }
   function drawTab(ctx, kind, x, y) {
     const cv = once("tab" + kind, () => buildTab(kind));
@@ -13809,7 +14107,7 @@ body {
         return { h: 1.4 + dz * 3.4 + grain * 0.4, tint: -0.1 + dz * 0.22 + grain * 0.07 };
       }, { mat: "wood" });
       p.grain("wood", { freq: 0.6, amp: 0.16, seed: horizontal ? 3 : 9 });
-      return p.resolve(MATERIALS, { ...LIGHT6, outline: 1, outlineColor: "#1a1109" });
+      return p.resolve(MATERIALS, { ...LIGHT7, outline: 1, outlineColor: "#1a1109" });
     };
     const corner = () => {
       const p = new Painter(T + 4, T + 4);
@@ -13832,7 +14130,7 @@ body {
         );
       }
       p.grain("wood", { freq: 0.5, amp: 0.18, seed: 21 });
-      return p.resolve(MATERIALS, { ...LIGHT6, outline: 1, outlineColor: "#1a1109" });
+      return p.resolve(MATERIALS, { ...LIGHT7, outline: 1, outlineColor: "#1a1109" });
     };
     return { top: edge(true), side: edge(false), corner: corner(), T, L };
   }
@@ -13978,7 +14276,7 @@ body {
     p.ellipse(cx, cy, 2.4, 2.4, { mat: "flesh", dome: -1.6, tint: -0.3 });
     p.grain("shellRock", { freq: 0.34, amp: 0.2, seed: 31 });
     p.grain("chitin", { freq: 0.5, amp: 0.14, seed: 13 });
-    return { cv: p.resolve(MATERIALS, { ...LIGHT6, outline: 1, outlineColor: "#191108" }), w, h };
+    return { cv: p.resolve(MATERIALS, { ...LIGHT7, outline: 1, outlineColor: "#191108" }), w, h };
   }
   function drawValve(ctx, x, y, open, t) {
     const V = once("valve", buildValve);
@@ -14020,7 +14318,7 @@ body {
   }
 
   // js/art/anatomy.js
-  var LIGHT7 = {
+  var LIGHT8 = {
     lightX: -0.34,
     lightY: -0.62,
     lightZ: 0.7,
@@ -14032,8 +14330,8 @@ body {
     h = Math.imul(h ^ h >>> 15, 739982445);
     return ((h ^ h >>> 13) >>> 0) / 4294967296;
   };
-  var bake2 = (p, opts = {}) => p.resolve(MATERIALS, {
-    ...LIGHT7,
+  var bake3 = (p, opts = {}) => p.resolve(MATERIALS, {
+    ...LIGHT8,
     outline: 1,
     outlineColor: "#0a0f10",
     ...opts
@@ -14089,7 +14387,7 @@ body {
     p.grain("organ", { freq: 0.34 / S, amp: 0.15, seed: 3, oct: 2 });
     p.speckle("organ", { density: 0.045, amp: 0.26, seed: 29 });
     p.smoothHeight(1, 0.45);
-    return { cv: bake2(p), ox: cx, oy: cy, r: R };
+    return { cv: bake3(p), ox: cx, oy: cy, r: R };
   }
   function paintSpring(S, lv) {
     const w = Math.ceil(146 * S) + 12, h = Math.ceil(162 * S) + 12;
@@ -14134,7 +14432,7 @@ body {
     );
     p.grain("membrane", { freq: 0.3 / S, amp: 0.12, seed: 13 });
     p.smoothHeight(1, 0.5);
-    return { cv: bake2(p), ox: cx, oy: cy, r: R };
+    return { cv: bake3(p), ox: cx, oy: cy, r: R };
   }
   function paintGut(S, lv) {
     const w = Math.ceil(188 * S) + 12, h = Math.ceil(146 * S) + 12;
@@ -14188,7 +14486,7 @@ body {
     p.grain("organPale", { freq: 0.36 / S, amp: 0.15, seed: 7 });
     p.speckle("organ", { density: 0.05, amp: 0.28, seed: 37 });
     p.smoothHeight(1, 0.5);
-    return { cv: bake2(p), ox: cx, oy: cy, r: R };
+    return { cv: bake3(p), ox: cx, oy: cy, r: R };
   }
   function paintGanglion(S, lv) {
     const w = Math.ceil(168 * S) + 12, h = Math.ceil(152 * S) + 12;
@@ -14233,7 +14531,7 @@ body {
     p.speckle("nerve", { density: 0.07, amp: 0.32, seed: 23 });
     p.grain("nerve", { freq: 0.44 / S, amp: 0.13, seed: 11 });
     p.smoothHeight(1, 0.5);
-    return { cv: bake2(p), ox: cx, oy: cy, r: R };
+    return { cv: bake3(p), ox: cx, oy: cy, r: R };
   }
   function paintMuscle(S, lv) {
     const w = Math.ceil(172 * S) + 12, h = Math.ceil(150 * S) + 12;
@@ -14278,7 +14576,7 @@ body {
     p.grain("organ", { freq: 0.3 / S, amp: 0.16, seed: 47, oct: 2 });
     p.speckle("organ", { density: 0.035, amp: 0.26, seed: 59 });
     p.smoothHeight(1, 0.5);
-    return { cv: bake2(p), ox: cx, oy: cy, r: R };
+    return { cv: bake3(p), ox: cx, oy: cy, r: R };
   }
   function paintGill(S, lv, flip = 1) {
     const w = Math.ceil(150 * S) + 10, h = Math.ceil(210 * S) + 10;
@@ -14330,7 +14628,7 @@ body {
     ], H * 0.062, H * 0.05, { mat: "organPale", dome: H * 0.055, steps: 12, tint: -0.06 });
     p.grain("gill", { freq: 0.22 / S, amp: 0.16, seed: 19 });
     p.smoothHeight(1, 0.5);
-    return { cv: bake2(p), ox: cx, oy: cy };
+    return { cv: bake3(p), ox: cx, oy: cy };
   }
   function paintSeed(S, lv) {
     const w = Math.ceil(74 * S) + 10, h = Math.ceil(84 * S) + 10;
@@ -14362,7 +14660,7 @@ body {
     p.ellipse(cx, cy, R * 0.24, R * 0.34, { mat: "sap", mask: true, dome: R * 0.3, tint: 0.42, emissive: 0.75 });
     p.grain("seedcoat", { freq: 0.5 / S, amp: 0.18, seed: 71 });
     p.smoothHeight(1, 0.4);
-    return { cv: bake2(p), ox: cx, oy: cy, r: R };
+    return { cv: bake3(p), ox: cx, oy: cy, r: R };
   }
   var cache9 = /* @__PURE__ */ new Map();
   function rampFrom(hex, { lo = 0.1, hi = 1.55 } = {}) {
@@ -14422,7 +14720,7 @@ body {
     p.grain("orb", { freq: 0.7 / Math.max(0.4, R / 8), amp: on ? 0.1 : 0.16, seed: 7 });
     p.smoothHeight(1, 0.4);
     return {
-      cv: p.resolve(mats, { ...LIGHT7, ambient: on ? 0.5 : 0.34, outline: 1, outlineColor: "#0b0908" }),
+      cv: p.resolve(mats, { ...LIGHT8, ambient: on ? 0.5 : 0.34, outline: 1, outlineColor: "#0b0908" }),
       ox: c,
       oy: c,
       r: R
@@ -14474,6 +14772,225 @@ body {
     }
     cache9.set(k, v);
     return v;
+  }
+
+  // js/art/crabpose.js
+  var cache10 = /* @__PURE__ */ new Map();
+  function cv2(w, h) {
+    const cv = document.createElement("canvas");
+    cv.width = Math.max(1, Math.ceil(w));
+    cv.height = Math.max(1, Math.ceil(h));
+    const c = cv.getContext("2d");
+    c.imageSmoothingEnabled = false;
+    return { cv, c };
+  }
+  function seg(ctx, s, x, y, a) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(a);
+    ctx.drawImage(s.cv, -s.ox, -s.oy);
+    ctx.restore();
+  }
+  function stance(m, def3, standH) {
+    const sp = Math.abs(def3.spread || 0.6);
+    return {
+      x: def3.side * m.rx * (1.05 + sp * 0.78),
+      y: standH - (def3.depth || 0) * m.rx * 0.3
+    };
+  }
+  function drawLegs(ctx, rig, m, standH, far, phase) {
+    for (const def3 of rig.sockets.legs) {
+      if (!!def3.far !== far) continue;
+      const art = far ? rig.legArt.far : rig.legArt.near;
+      const l1 = art.coxa.len, l2 = art.femur.len, l3 = art.tibia.len;
+      const f = stance(m, def3, standH);
+      const sw = Math.sin(phase + def3.order * 0.9 + (def3.side > 0 ? 0 : 1.7)) * m.rx * 0.02;
+      const lx = f.x + sw, ly = f.y;
+      const side = def3.side;
+      const ankX = lx - side * l3 * 0.4;
+      const ankY = ly - l3 * 0.8;
+      const sol = ik2(def3.x, def3.y, ankX, ankY, l1, l2, side);
+      seg(ctx, art.coxa, def3.x, def3.y, sol.a1);
+      seg(ctx, art.femur, sol.kx, sol.ky, sol.a2);
+      const fx = sol.kx + Math.cos(sol.a2) * l2, fy = sol.ky + Math.sin(sol.a2) * l2;
+      seg(ctx, art.tibia, fx, fy, Math.atan2(ly - fy, lx - fx));
+    }
+  }
+  function drawClaws(ctx, rig, open) {
+    for (const side of [-1, 1]) {
+      const art = side > 0 ? rig.claw.near : rig.claw.far;
+      const so = rig.sockets.claws.find((q) => q.side === side);
+      const raise = open * 0.5;
+      ctx.save();
+      ctx.translate(so.x, so.y);
+      ctx.scale(side, 1);
+      const a1 = 0.92 - raise * 0.62;
+      const ex = Math.cos(a1) * art.arm.len, ey = Math.sin(a1) * art.arm.len;
+      const a2 = a1 - 1.1 - raise * 0.34;
+      const fx = ex + Math.cos(a2) * art.fore.len, fy = ey + Math.sin(a2) * art.fore.len;
+      const a3 = a2 + 0.18 - raise * 0.22;
+      seg(ctx, art.arm, 0, 0, a1);
+      seg(ctx, art.fore, ex, ey, a2);
+      ctx.save();
+      ctx.translate(fx, fy);
+      ctx.rotate(a3);
+      ctx.drawImage(art.palm.cv, -art.palm.ox, -art.palm.oy);
+      ctx.save();
+      ctx.translate(art.hinge.x, art.hinge.y);
+      ctx.rotate(-0.28 - open * 0.55);
+      ctx.drawImage(art.dactyl.cv, -art.dactyl.ox, -art.dactyl.oy);
+      ctx.restore();
+      ctx.restore();
+      ctx.restore();
+    }
+  }
+  function drawFace(ctx, rig, m) {
+    const mo = rig.sockets.mouth;
+    if (rig.mouth) {
+      ctx.save();
+      ctx.translate(mo.x, mo.y);
+      ctx.drawImage(rig.mouth.cv, -rig.mouth.ox, -rig.mouth.oy);
+      ctx.restore();
+    }
+    const art = rig.eye;
+    for (const e of rig.sockets.eyes) {
+      const a = -Math.PI / 2 + e.side * 0.34 - 0.036;
+      ctx.save();
+      ctx.translate(e.x, e.y);
+      ctx.rotate(a);
+      ctx.drawImage(art.cv, -art.ox, -art.oy);
+      ctx.restore();
+      const r = art.r;
+      const ex = e.x + Math.cos(a) * art.globe, ey = e.y + Math.sin(a) * art.globe;
+      ctx.fillStyle = "rgba(246,242,248,0.95)";
+      ctx.fillRect(
+        Math.round(ex - r * 0.34),
+        Math.round(ey - r * 0.36),
+        Math.max(1, Math.round(r * 0.42)),
+        Math.max(1, Math.round(r * 0.42))
+      );
+    }
+  }
+  function paintPose(ctx, rig, m, standH, phase) {
+    drawLegs(ctx, rig, m, standH, true, phase);
+    ctx.drawImage(rig.body.cv, -rig.body.ox, -rig.body.oy);
+    drawLegs(ctx, rig, m, standH, false, phase);
+    drawFace(ctx, rig, m);
+    drawClaws(ctx, rig, 0.34);
+  }
+  function alphaBounds(c, w, h) {
+    const d = c.getImageData(0, 0, w, h).data;
+    let x0 = w, y0 = h, x1 = -1, y1 = -1;
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        if (d[(y * w + x) * 4 + 3] > 8) {
+          if (x < x0) x0 = x;
+          if (x > x1) x1 = x;
+          if (y < y0) y0 = y;
+          if (y > y1) y1 = y;
+        }
+      }
+    }
+    if (x1 < 0) return { x0: 0, y0: 0, x1: w - 1, y1: h - 1 };
+    return { x0, y0, x1, y1 };
+  }
+  function crabPlates(stage = "adult", sc = 3) {
+    const key2 = stage + ":" + sc;
+    if (cache10.has(key2)) return cache10.get(key2);
+    const rig = buildCrab(stage);
+    const m = rig.m;
+    const standH = m.faceH * 0.9 + m.shellW * 0.13;
+    const phase = 0.6;
+    const W = Math.ceil((m.rx * 5 + m.w) * sc);
+    const H = Math.ceil((standH * 2.6 + m.h) * sc);
+    const a = cv2(W, H);
+    const ax = Math.round(W / 2), ay = Math.round(H * 0.46);
+    a.c.save();
+    a.c.translate(ax, ay);
+    a.c.scale(sc, sc);
+    paintPose(a.c, rig, m, standH, phase);
+    a.c.restore();
+    const b = alphaBounds(a.c, W, H);
+    const pad = 2;
+    const w = b.x1 - b.x0 + 1 + pad * 2, h = b.y1 - b.y0 + 1 + pad * 2;
+    const ox = ax - b.x0 + pad, oy = ay - b.y0 + pad;
+    const body = cv2(w, h);
+    body.c.drawImage(a.cv, b.x0 - pad, b.y0 - pad, w, h, 0, 0, w, h);
+    const mask = cv2(w, h);
+    mask.c.drawImage(body.cv, 0, 0);
+    mask.c.globalCompositeOperation = "source-in";
+    mask.c.fillStyle = "#ffffff";
+    mask.c.fillRect(0, 0, w, h);
+    const rimW = Math.max(1, Math.round(sc * 0.8));
+    const rim = cv2(w + rimW * 2, h + rimW * 2);
+    for (let i = 0; i < 8; i++) {
+      const th = i / 8 * TAU;
+      rim.c.drawImage(
+        mask.cv,
+        rimW + Math.round(Math.cos(th) * rimW),
+        rimW + Math.round(Math.sin(th) * rimW)
+      );
+    }
+    rim.c.globalCompositeOperation = "destination-out";
+    rim.c.drawImage(mask.cv, rimW, rimW);
+    const fill = cv2(w, h);
+    {
+      const g = fill.c.createRadialGradient(ox, oy - m.ry * sc, 0, ox, oy, Math.max(w, h) * 0.62);
+      g.addColorStop(0, "#1a1526");
+      g.addColorStop(0.42, "#0e0b16");
+      g.addColorStop(1, "#05050a");
+      fill.c.fillStyle = g;
+      fill.c.fillRect(0, 0, w, h);
+      fill.c.globalCompositeOperation = "destination-in";
+      fill.c.drawImage(mask.cv, 0, 0);
+    }
+    const ghost = cv2(w, h);
+    ghost.c.drawImage(body.cv, 0, 0);
+    ghost.c.globalCompositeOperation = "color";
+    ghost.c.fillStyle = "#3f8fa8";
+    ghost.c.fillRect(0, 0, w, h);
+    ghost.c.globalCompositeOperation = "destination-in";
+    ghost.c.drawImage(mask.cv, 0, 0);
+    const glow = cv2(w, h);
+    glow.c.drawImage(mask.cv, 0, 0);
+    glow.c.globalCompositeOperation = "source-in";
+    {
+      const g = glow.c.createRadialGradient(ox, oy - m.ry * sc, 0, ox, oy, Math.max(w, h) * 0.55);
+      g.addColorStop(0, "#4e7f8c");
+      g.addColorStop(0.5, "#22404c");
+      g.addColorStop(1, "#0d1a22");
+      glow.c.fillStyle = g;
+      glow.c.fillRect(0, 0, w, h);
+    }
+    rim.c.globalCompositeOperation = "source-in";
+    rim.c.fillStyle = "#aff0fb";
+    rim.c.fillRect(0, 0, rim.cv.width, rim.cv.height);
+    const s0 = rig.shellSurface(0, 0);
+    const out = {
+      stage,
+      sc,
+      m,
+      rig,
+      w,
+      h,
+      ox,
+      oy,
+      body: body.cv,
+      ghost: ghost.cv,
+      mask: mask.cv,
+      fill: fill.cv,
+      glow: glow.cv,
+      rim: rim.cv,
+      rimOx: ox + rimW,
+      rimOy: oy + rimW,
+      // anchor-relative sprite coordinates of useful landmarks
+      shell: { x: s0.x, y: s0.y },
+      standH,
+      // half-extents of the whole animal in sprite pixels, from the anchor
+      ext: { l: ox / sc, r: (w - ox) / sc, t: oy / sc, b: (h - oy) / sc }
+    };
+    cache10.set(key2, out);
+    return out;
   }
 
   // js/ui/tree.js
@@ -17685,6 +18202,49 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
     }
     // -- touch ----------------------------------------------------------------
     /**
+     * The prologue has one verb, so it gets one button - and the stick, because
+     * the whole point of it is that you can walk around down there.
+     */
+    drawPrologueControls(ctx, W, H) {
+      this.buttons.length = 0;
+      this.hover = null;
+      if (!this.touchEnabled) {
+        this.stickZone = null;
+        return;
+      }
+      const R = W < 320 ? 30 : 27;
+      const sx = 8, sy = H - 2 * R - 10;
+      this.stickZone = { x: 0, y: H - 2 * R - 20, w: 2 * R + 26, h: 2 * R + 20 };
+      const cx = this.stick ? this.stick.ox : sx + R;
+      const cy = this.stick ? this.stick.oy : sy + R;
+      ctx.globalAlpha = this.stick ? 0.55 : 0.3;
+      ctx.strokeStyle = "#cfeef6";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(cx, cy, R, 0, TAU);
+      ctx.stroke();
+      ctx.globalAlpha = this.stick ? 0.75 : 0.32;
+      ctx.fillStyle = "#cfeef6";
+      const dx = this.stick ? clamp(this.stick.x - this.stick.ox, -R, R) : 0;
+      ctx.beginPath();
+      ctx.arc(cx + dx, cy, this.stick ? 11 : 10, 0, TAU);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+      const bw = 76, bh = 28, bx = W - bw - 8, by = H - bh - 8;
+      this.buttons.push({ x: bx, y: by, w: bw, h: bh, key: "e" });
+      const hot = this._hit(bx, by, bw, bh);
+      const pulse = 0.6 + 0.4 * Math.sin(this.t * 3);
+      ctx.fillStyle = hot ? "rgba(30,86,98,0.95)" : "rgba(16,52,62,0.9)";
+      ctx.fillRect(bx, by, bw, bh);
+      ctx.strokeStyle = `rgba(190,238,246,${0.4 + pulse * 0.5})`;
+      ctx.strokeRect(bx + 0.5, by + 0.5, bw - 1, bh - 1);
+      drawText(ctx, "DIG IN", bx + bw / 2, by + (bh - 7) / 2, { color: "#dff6ff", align: "center" });
+      if (hot && this.game.input.clicked) {
+        this.game.input.clicked = false;
+        this.game.input.pulseVirtual("e");
+      }
+    }
+    /**
      * The controls you actually get on a phone. A thumbstick big enough to find
      * without looking, and a column of buttons on the other side that only
      * exist when there is something to press - a row of dead dashes teaches you
@@ -17847,6 +18407,7 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
       this.npc = new Archaeologist(this, 62);
       this.morse = new Morse(this);
       this.pump = new Pump(this);
+      this.sea = new Sea(this);
       this.green = new Green(this);
       this.digs = new Digs(this, this.seed);
       this.ui = new UI(this);
@@ -17898,27 +18459,114 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
     /**
      * The opening. It is in two halves and they are a thousand years apart.
      *
-     * The first is the sea: the animal comes down out of thirty metres of water,
-     * finds a hollow, and digs itself in, and then the sea leaves without it.
-     * None of that is the world renderer - `js/render/ocean.js` owns the screen
-     * for twenty seconds and then dissolves into the desert that is already
-     * drawn underneath it.
+     * The first half you play. You are a hand-sized crab on a reef, and the reef
+     * is the desert: the same terrain, the same camera, the same everything,
+     * with a sea put on top of it by `js/systems/sea.js`. You can walk around in
+     * it, look at the coral, and choose where to lie down - and when you dig in,
+     * the water starts leaving, and it takes a thousand years.
      *
-     * The second is this morning, and a woman who has been wrong about a rock
-     * for eleven years.
+     * The second half is this morning, and a woman who has been wrong about a
+     * rock for eleven years.
      */
     startIntro() {
+      this.state = "prologue";
+      this.cut = null;
+      this.dialog = null;
+      this.letterbox = 0;
+      this.buried = 0;
+      this.crab.setStage("hatchling");
+      this.crab.x = 0;
+      this.crab.snapToGround();
+      this.sea.start();
+      this.weather.hour = 10;
+      this.npc.hidden = true;
+      this.npc.x = this.crab.x + 900;
+      this.cam.followEntity(this.crab, true);
+      this.cam.targetZoom = this.cam.zoom = clamp(this.autoZoom() * 1.25, this.cam.minZoom, this.cam.maxZoom);
+      this.say("narrator", "Thirty metres of water, and every one of them warm.");
+      this._proT = 0;
+    }
+    /** While you are still choosing a spot. */
+    _runPrologue(dt) {
+      this.sea.update(dt);
+      this._proT = (this._proT || 0) + dt;
+      const t = this._proT;
+      if (t > 6 && !this._pro1) {
+        this._pro1 = 1;
+        this.say("narrator", "Everything here is alive, and most of it is smaller than you.");
+      }
+      if (t > 13 && !this._pro2) {
+        this._pro2 = 1;
+        this.say("narrator", "Your kind does this once. You pick a hollow, and you stay in it.");
+      }
+      if (t > 19 && !this._pro3) {
+        this._pro3 = 1;
+        this.dialog = null;
+      }
+      if (this.dialog) this.dialog.t += dt;
+      this.crab.pumping = 0;
+      if (Math.abs(this.crab.vx) > 8 && Math.random() < dt * 6) {
+        this.sea.puff(this.crab.x + (Math.random() - 0.5) * 14, this.crab.y - 4, 1);
+      }
+    }
+    /**
+     * Digging in. The whole animal goes down into the sand it will spend a
+     * thousand years under, and the sea starts to leave while it does.
+     */
+    buryIn() {
+      if (this.state !== "prologue") return;
+      this.state = "burying";
+      this.dialog = null;
+      this.buryT = 0;
+      this.cam.free = false;
+      this.audio.play("splash");
+      this.fx.digBurst(this.crab.x, this.crab.y + this.crab.m.rx * 0.3, 1.3, true);
+      this.sea.puff(this.crab.x, this.crab.y, 26);
+      this.say("narrator", "It dug in. Slowly. With enormous certainty.");
+    }
+    _runBury(dt) {
+      this.sea.update(dt);
+      this.buryT += dt;
+      const t = this.buryT;
+      if (this.dialog) this.dialog.t += dt;
+      this.buried = clamp01(t / 3);
+      if (t < 3 && Math.random() < dt * 6) {
+        this.fx.digBurst(
+          this.crab.x + (Math.random() - 0.5) * 22,
+          this.crab.y + this.crab.m.rx * 0.2,
+          0.4 + Math.random() * 0.4,
+          true
+        );
+        this.sea.puff(this.crab.x + (Math.random() - 0.5) * 20, this.crab.y, 2);
+      }
+      if (t > 2 && !this._drainOn) {
+        this._drainOn = 1;
+        this.sea.beginDrain();
+      }
+      if (t > 3.4 && t < 3.6) this.say("narrator", "And the sea, as it turned out, was in a hurry.");
+      if (t > 8 && t < 8.2) this.say("narrator", "Coast. Lagoon. Salt pan. Dust.");
+      if (t > 12.4) {
+        this.dialog = null;
+        this.startWake();
+      }
+    }
+    /** A thousand years later, and someone has walked into the basin. */
+    startWake() {
       this.state = "intro";
+      this.sea.stop();
+      this.buried = 1;
+      this.buryTarget = 0.62;
+      this.weather.hour = 9.4;
       const c = this.crab;
       const npc = this.npc;
-      this.ocean = new OceanIntro(this);
+      npc.hidden = false;
       npc.x = c.x + 320;
       npc.facing = -1;
       npc.faceT = -1;
       npc.hatOff = null;
-      npc.setPose(POSE.IDLE);
-      this.cam.snapTo(c.x, c.y - 8);
-      this.cam.targetZoom = this.cam.zoom = this.autoZoom() * 1.5;
+      npc.setPose(POSE.WALK);
+      this.cam.followEntity(c, true);
+      this.cam.targetZoom = this.cam.zoom = this.autoZoom() * 1.3;
       const N = (text) => this.say("narrator", text);
       const V = (text, mood) => {
         this.say("Dr. Vess", text);
@@ -17927,94 +18575,81 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
       this.cut = {
         t: 0,
         steps: [
-          // ---- thirty metres down ----------------------------------------
-          { at: 0.8, run: () => N("Thirty metres of water, and every one of them warm.") },
-          { at: 4, run: () => N("It picked a hollow out of the current, the way its kind always has.") },
-          { at: 7.2, run: () => N("It dug in. Slowly. With enormous certainty.") },
-          { at: 10, run: () => N("It had eaten. It had grown. It was in no hurry at all.") },
-          { at: 12.6, run: () => N("The sea, as it turned out, was.") },
-          { at: 15.4, run: () => N("It went the way everything goes here - not at once. Coast. Lagoon. Salt pan.") },
-          { at: 18.6, run: () => N("Dust.") },
-          { at: 20.6, run: () => N("And the animal slept through every part of it.") },
-          // ---- this morning ----------------------------------------------
-          { at: 23.2, run: () => {
-            this.ocean = null;
-            this.cam.cineTo(c.x + 40, c.y - 12, 2.4, 2.4);
+          { at: 0.4, run: () => {
+            this.cam.cineTo(c.x + 40, c.y - 12, this.autoZoom() * 1.1, 2.6);
             npc.moveTo = c.x + 46;
-            npc.setPose(POSE.WALK);
-            N("Basin nineteen. Eleven years later. Nobody has any reason to be here.");
+            N("Basin nineteen. A thousand years later. Nobody has any reason to be here.");
           } },
-          { at: 27, run: () => V("Survey day four thousand and six. Elevation, wrong. Salinity, wrong.", 7) },
-          { at: 30.6, run: () => {
+          { at: 4.4, run: () => V("Survey day four thousand and six. Elevation, wrong. Salinity, wrong.", 7) },
+          { at: 8, run: () => {
             npc.moveTo = c.x + 30;
             npc.setPose(POSE.WRITE);
             V("One large rock. Sedimentary. Roughly hill-shaped. As per the last four thousand entries.", 4);
           } },
-          { at: 34.6, run: () => {
+          { at: 12, run: () => {
             npc.setPose(POSE.IDLE);
             V("There was an inland sea here. I can prove it. I have the shells, the terraces, the strandlines.", 10);
           } },
-          { at: 38.6, run: () => V("What I do not have is water. Which is, apparently, the only part anybody funds.", 12) },
-          { at: 42.2, run: () => {
+          { at: 16, run: () => V("What I do not have is water. Which is, apparently, the only part anybody funds.", 12) },
+          { at: 19.6, run: () => {
             npc.facing = 1;
             npc.setPose(POSE.SIT);
             V("Eleven years. Nobody is watching. Nobody has been watching for a thousand years.", 7);
           } },
-          // ---- the yellow line -------------------------------------------
-          { at: 45.6, run: () => {
-            this.cam.cineTo(c.x + 10, c.y - 20, 3.2, 1.6);
+          { at: 23, run: () => {
+            this.cam.cineTo(c.x + 10, c.y - 16, this.autoZoom() * 1.7, 1.6);
             N("...");
           } },
-          { at: 47.4, run: () => {
+          { at: 24.8, run: () => {
             this._pee = 1;
             this.audio.play("water");
-            N("The first water to touch this rock in a thousand years is not, strictly, rain.");
+            N("The first water to touch this animal in a thousand years is not, strictly, rain.");
           } },
-          { at: 51, run: () => {
+          { at: 28.4, run: () => {
             this._pee = 0;
             this.crab.blink = 0.5;
             this.cam.shake(3);
-            N("The rock has been waiting a very long time for that.");
+            N("It has been waiting a very long time for that.");
           } },
-          { at: 53.6, run: () => {
+          { at: 31, run: () => {
             this.cam.shake(9);
             this.terrain.deform(c.x, 6, 40);
-            this.fx.dust(c.x, c.y + 20, 7);
+            this.fx.digBurst(c.x, c.y + 14, 2.4, false);
             this.audio.play("thunder");
             npc.facing = -1;
+            this.buryTarget = 0;
           } },
-          // ---- the jump ---------------------------------------------------
-          { at: 54.2, run: () => {
+          { at: 31.6, run: () => {
             npc.startle(1.25);
             this.cam.shake(4);
             N("");
           } },
-          { at: 54.9, run: () => {
+          { at: 32.3, run: () => {
             npc.moveTo = c.x + 108;
             npc.setPose(POSE.WALK);
             V("NOT A ROCK. NOT A ROCK. THAT IS NOT A ROCK -", 8);
           } },
-          { at: 57.6, run: () => {
+          { at: 35, run: () => {
             npc.moveTo = void 0;
             npc.setPose(POSE.IDLE);
             npc.facing = -1;
             V("...you are awake.", 2);
           } },
-          { at: 60.4, run: () => {
+          { at: 37.8, run: () => {
             npc.setPose(POSE.TALK);
             V("Oh. Oh, that is what the water table was for. It was never the rainfall. It was you.", 3);
           } },
-          { at: 64.6, run: () => V("You made this basin. You lay down in a sea and the sea kept coming because you were in it.", 5) },
-          { at: 68.8, run: () => {
+          { at: 42, run: () => V("You lay down in a sea and the sea kept coming, because you were in it.", 5) },
+          { at: 46.2, run: () => {
             npc.setPose(POSE.POINT);
             V("There is a spring in your back. I can hear it from here and it is the loudest thing in this desert.", 3);
           } },
-          { at: 73, run: () => {
+          { at: 50.4, run: () => {
             npc.setPose(POSE.TALK);
             V("So get up. Walk. Put it back.", 6);
           } },
-          { at: 76.2, run: () => V("I have eleven years of notes, one canteen, and absolutely nothing else to do.", 1) },
-          { at: 79.6, run: () => this.endIntro() }
+          { at: 53.6, run: () => V("I have eleven years of notes, one canteen, and absolutely nothing else to do.", 1) },
+          { at: 57, run: () => this.endIntro() }
         ],
         i: 0
       };
@@ -18033,8 +18668,12 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
       this.dialog = { who, text, t: 0 };
     }
     skipIntro() {
-      this.ocean = null;
+      this.sea.stop();
+      this.buried = 0;
+      this.buryTarget = 0;
+      this.npc.hidden = false;
       this.npc.hatOff = null;
+      this.weather.hour = 9.4;
       this.endIntro();
       this.npc.x = this.crab.x + 130;
       this.npc.facing = -1;
@@ -18047,19 +18686,23 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
       const slow = this.state === "dead" ? 0.3 : 1;
       const sdt = dt * slow;
       this.ui.update(dt);
-      if (this.state === "intro") {
-        this._runCut(dt);
-        if (i.justPressed("Escape") || i.justPressed(" ") || i.clicked && i.sy < this.renderer.vh - 40) {
+      if (this.state === "intro") this._runCut(dt);
+      if (this.state === "prologue") this._runPrologue(dt);
+      if (this.state === "burying") this._runBury(dt);
+      if (this.state !== "play") {
+        const skipTap = i.clicked && i.sy < this.renderer.vh - 56 && this.state !== "prologue";
+        if (i.justPressed("Escape") || this.state !== "prologue" && i.justPressed(" ") || skipTap) {
           i.consumeKey("Escape");
           i.consumeKey(" ");
           this.skipIntro();
         }
       }
       const play = this.state === "play";
+      const roam = play || this.state === "prologue";
       let move = 0;
       const tapped = this.ui.valveTapped;
       this.ui.valveTapped = false;
-      if (play && !this.ui.busy && !this.ui.building) {
+      if (roam && !this.ui.busy && !this.ui.building) {
         const ax = i.axis();
         move = ax.x;
         if (this.ui.driving) {
@@ -18071,18 +18714,23 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
           }
         }
         if (this.ui.mode === "auto" && Math.abs(move) < 0.05) move = this._autoWalk(sdt);
-        if (i.justPressed(" ") || i.justPressed("Space") || tapped) {
+        if (play && (i.justPressed(" ") || i.justPressed("Space") || tapped)) {
           i.consumeKey(" ");
           i.consumeKey("Space");
           this.pumpStroke();
         }
-        if (i.justPressed("e")) this.act();
-        if (i.justPressed("r")) this.harvestAll();
-        if (i.justPressed("f")) this.callVess();
-        if (i.justPressed("x")) this.infest();
-        if (i.justPressed("k")) this.incubateBest();
-        this.morse.update(sdt, i.key("t"));
-        if (i.justPressed("q")) this.attack();
+        if (!play) {
+          if (i.justPressed("e") || i.justPressed("Enter")) {
+            i.consumeKey("e");
+            this.buryIn();
+          }
+        } else if (i.justPressed("e")) this.act();
+        if (play && i.justPressed("r")) this.harvestAll();
+        if (play && i.justPressed("f")) this.callVess();
+        if (play && i.justPressed("x")) this.infest();
+        if (play && i.justPressed("k")) this.incubateBest();
+        if (play) this.morse.update(sdt, i.key("t"));
+        if (play && i.justPressed("q")) this.attack();
       }
       this.crab.update(sdt, {
         move,
@@ -18102,6 +18750,7 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
         if (i.wheel && !this.ui.busy) this.cam.zoomBy(i.wheel, i.sx, i.sy);
         if (i.dragging && !this.ui.busy && i.touchPan) this.cam.pan(i.dragDX, i.dragDY);
       }
+      if (this.state === "play") this.sea.update(sdt);
       this.pump.update(sdt);
       this.pumpHold = this.pump.power;
       if (this.pumpHold > 0.02) this.pumpTick(sdt);
@@ -18175,6 +18824,10 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
       }
     }
     _runCut(dt) {
+      const bt = this.buryTarget || 0;
+      if (Math.abs((this.buried || 0) - bt) > 2e-3) {
+        this.buried = damp(this.buried || 0, bt, 6e-4, dt);
+      }
       if (this.ocean) {
         this.ocean.update(dt);
         if (!this.ocean.active) this.ocean = null;
@@ -18447,7 +19100,7 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
         this.relics = this.relics || {};
         this.relics[res.relic.id] = (this.relics[res.relic.id] || 0) + 1;
         this.terrain.deform(site.x, 5, 22);
-        this.fx.dust(site.x, this.terrain.surfaceY(site.x), 3);
+        this.fx.digBurst(site.x, this.terrain.surfaceY(site.x), 1.8, false);
         this.fx.spark(
           site.x,
           this.terrain.surfaceY(site.x) - 6,
@@ -18848,18 +19501,20 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
       this.backdrop.drawLayer(ctx, cam, this.weather, "far", this.terrain);
       this.backdrop.drawLayer(ctx, cam, this.weather, "mid", this.terrain);
       this.backdrop.drawLayer(ctx, cam, this.weather, "near", this.terrain);
+      if (this.sea.active) this.sea.drawColumn(ctx, cam, r.vw, r.vh);
       this.world.drawProps(ctx, cam);
       this.terrain.draw(ctx, cam);
       this.world.drawWater(ctx, cam);
       this.terrain.drawSand(ctx, cam);
       this.green.drawGround(ctx, cam, this.terrain);
       this.world.drawScatter(ctx, cam, "far");
+      if (this.sea.active) this.sea.drawReef(ctx, cam, true);
       this.encounters.draw(ctx, cam);
       this.fx.draw(ctx, cam, "far");
       this.wildlife.draw(ctx, cam, "ground");
-      if (!this.npc.riding) this.npc.draw(ctx, cam);
-      this.crab.draw(ctx, cam, this.garden);
-      if (this.npc.riding) this.npc.draw(ctx, cam);
+      if (!this.npc.riding && !this.npc.hidden) this.npc.draw(ctx, cam);
+      this._drawCrab(ctx, cam);
+      if (this.npc.riding && !this.npc.hidden) this.npc.draw(ctx, cam);
       if (this._pee) this._drawStream(ctx, cam);
       this.ui.drawGhost(ctx, cam);
       this.wildlife.draw(ctx, cam, "shell");
@@ -18868,6 +19523,10 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
       this.world.drawScatter(ctx, cam, "near");
       this._drawGreenPlants(ctx, cam);
       this._drawDigs(ctx, cam);
+      if (this.sea.active) {
+        this.sea.drawReef(ctx, cam, false);
+        this.sea.drawSwimmers(ctx, cam);
+      }
       this.backdrop.drawForeground(ctx, cam, this.weather, this.terrain);
       r.beginLights(this.weather);
       const lightPow = this.economy.stat("light");
@@ -18890,13 +19549,9 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
       r.drawWeatherOverlay(this.weather, this);
       r.composite(this.weather, this);
       const ui = r.ui;
-      if (this.ocean) {
-        ui.save();
-        ui.globalAlpha = 1 - this.ocean.handover;
-        this.ocean.draw(ui, r.vw, r.vh);
-        ui.restore();
-      }
-      if (this.state === "intro") this._drawCutscene(ui, r);
+      if (this.sea.active) this.sea.overlay(ui, cam, r.vw, r.vh);
+      if (this.state === "intro" || this.state === "burying") this._drawCutscene(ui, r);
+      else if (this.state === "prologue") this._drawPrologue(ui, r);
       else this.ui.draw(ui, r);
       this.fx.drawText(ui, cam, (c, t, x, y, o) => drawText(c, t, x, y, o));
       if (this.state === "dead") this._drawDead(ui, r);
@@ -19020,6 +19675,83 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
       ctx.ellipse(b.x, b.y, 5 * cam.zoom, 2 * cam.zoom, 0, 0, TAU);
       ctx.fill();
       ctx.globalAlpha = 1;
+    }
+    /**
+     * The animal, and - while it is digging itself in - only as much of it as is
+     * still above the sand. It goes down; the ground does not come up.
+     */
+    _drawCrab(ctx, cam) {
+      const b = this.buried || 0;
+      if (b <= 1e-3) {
+        this.crab.draw(ctx, cam, this.garden);
+        return;
+      }
+      const gy = this.terrain.surfaceY(this.crab.x);
+      const line = cam.worldToScreen(this.crab.x, gy).y;
+      const drop = b * this.crab.m.rx * 1.5;
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(0, 0, this.renderer.vw, line + 2);
+      ctx.clip();
+      ctx.translate(0, drop * cam.zoom);
+      this.crab.draw(ctx, cam, this.garden);
+      ctx.restore();
+      if (b > 0.2) {
+        const s = cam.worldToScreen(this.crab.x, gy);
+        const w = this.crab.m.rx * 1.5 * cam.zoom;
+        ctx.globalAlpha = clamp01((b - 0.2) * 1.6);
+        const g = ctx.createLinearGradient(0, s.y - 8 * cam.zoom, 0, s.y + 4 * cam.zoom);
+        g.addColorStop(0, "#d8b98a");
+        g.addColorStop(1, "#a8875a");
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.moveTo(s.x - w, s.y + 2);
+        ctx.quadraticCurveTo(s.x - w * 0.4, s.y - 6 * cam.zoom * b, s.x, s.y - 7 * cam.zoom * b);
+        ctx.quadraticCurveTo(s.x + w * 0.4, s.y - 6 * cam.zoom * b, s.x + w, s.y + 2);
+        ctx.closePath();
+        ctx.fill();
+        ctx.globalAlpha = 1;
+      }
+    }
+    /** The prologue's only chrome: what you can do, and a button to do it. */
+    _drawPrologue(ctx, r) {
+      const vw = r.vw, vh = r.vh;
+      const bar = Math.round(18 * clamp01(this._proT / 2));
+      ctx.fillStyle = "rgba(4,10,14,0.8)";
+      ctx.fillRect(0, 0, vw, bar);
+      ctx.fillRect(0, vh - bar, vw, bar);
+      if (this.dialog) {
+        const lines = wrapText(this.dialog.text, vw - 60);
+        const cps = 48;
+        const shown = Math.floor(this.dialog.t * cps);
+        let used = 0;
+        lines.forEach((l, i) => {
+          const room = Math.max(0, shown - used);
+          used += l.length;
+          const ty = vh - bar - lines.length * LINE_H - (this.ui.touchEnabled ? 46 : 10);
+          drawText(
+            ctx,
+            l.slice(0, room),
+            26,
+            ty + i * LINE_H,
+            { color: "rgba(232,244,248,0.9)", outline: true, outlineColor: "rgba(0,0,0,0.7)" }
+          );
+        });
+      }
+      if (this._proT > 3) {
+        const pulse = 0.6 + 0.4 * Math.sin(this.time * 3);
+        const label = this.ui.touchEnabled ? "tap DIG IN to lie down" : "walk with A / D    press E to dig in";
+        ctx.globalAlpha = 0.55 + pulse * 0.45;
+        drawText(
+          ctx,
+          label,
+          vw / 2,
+          bar + 6,
+          { color: "#cfeef6", align: "center", outline: true, outlineColor: "rgba(0,0,0,0.7)" }
+        );
+        ctx.globalAlpha = 1;
+      }
+      this.ui.drawPrologueControls(ctx, vw, vh);
     }
     _drawSpeech(ctx, cam, who, code = false) {
       const s = cam.worldToScreen(who.x, who.y - 40);

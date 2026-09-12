@@ -53,6 +53,46 @@ export class Fx {
     }
   }
 
+  /**
+   * Something going into the ground. Not a puff: a burst. A low ring of smoke
+   * that spreads outward along the sand, a column of it going up through the
+   * middle, and a spray of actual grains thrown clear that fall back down.
+   * `wet` makes it silt instead of dust, which drifts instead of settling.
+   */
+  digBurst(x, y, power = 1, wet = false) {
+    const ring = Math.round(6 + power * 8);
+    for (let i = 0; i < ring; i++) {
+      const side = i % 2 ? 1 : -1;
+      const sp = (24 + Math.random() * 46) * power;
+      this._add({
+        k: 'dust', x: x + side * (2 + Math.random() * 6), y: y - Math.random() * 3,
+        vx: side * sp, vy: -(4 + Math.random() * 10) * (wet ? 1.6 : 1),
+        life: (wet ? 1.6 : 0.9) + Math.random() * 1.1,
+        t: 0, r: 2.4 + Math.random() * 4 * power, far: false,
+      });
+    }
+    // the column
+    for (let i = 0; i < Math.round(4 + power * 6); i++) {
+      this._add({
+        k: 'dust', x: x + (Math.random() - 0.5) * 12, y: y - Math.random() * 6,
+        vx: (Math.random() - 0.5) * 18, vy: -(26 + Math.random() * 40) * power * (wet ? 0.5 : 1),
+        life: (wet ? 2.2 : 1.1) + Math.random() * 1.2,
+        t: 0, r: 3 + Math.random() * 5 * power, far: false,
+      });
+    }
+    // grains, thrown clear and coming back
+    for (let i = 0; i < Math.round(6 + power * 10); i++) {
+      const a = -Math.PI * (0.15 + Math.random() * 0.7);
+      const sp = (40 + Math.random() * 90) * power;
+      this._add({
+        k: 'grit', x, y: y - 2,
+        vx: Math.cos(a) * sp * (Math.random() < 0.5 ? -1 : 1),
+        vy: Math.sin(a) * sp,
+        life: 0.6 + Math.random() * 0.7, t: 0, r: 1, grav: wet ? 90 : 260,
+      });
+    }
+  }
+
   /** A jet of water from the crab's organ. */
   spring(x, y, nx, ny, power = 1) {
     for (let i = 0; i < 2 + Math.round(power * 3); i++) {
@@ -173,6 +213,15 @@ export class Fx {
           q.vy = lerp(q.vy, -3, 1 - Math.pow(0.3, dt));
           q.r += dt * 5;
           break;
+        case 'grit':
+          // a thrown grain: gravity, and it stops when it hits the sand
+          q.vy += (q.grav || 260) * dt;
+          if (q.y > this.game.terrain.surfaceY(q.x) && q.vy > 0) {
+            q.vy = -q.vy * 0.22;
+            q.vx *= 0.4;
+            if (Math.abs(q.vy) < 24) q.t = q.life;
+          }
+          break;
         case 'mist':
           q.vx = lerp(q.vx, wind.x * 0.35, 1 - Math.pow(0.25, dt));
           q.vy -= 4 * dt;
@@ -247,6 +296,12 @@ export class Fx {
           ctx.globalAlpha = a * 0.26;
           ctx.fillStyle = '#e8d3ad';
           ctx.beginPath(); ctx.arc(s.x, s.y, q.r * z, 0, TAU); ctx.fill();
+          break;
+        case 'grit':
+          ctx.globalAlpha = a;
+          ctx.fillStyle = Math.random() < 0.3 ? '#f0dcb2' : '#b9955f';
+          ctx.fillRect(Math.round(s.x), Math.round(s.y), Math.max(1, Math.round(z * 0.6)),
+            Math.max(1, Math.round(z * 0.6)));
           break;
         case 'mist':
           ctx.globalAlpha = a * 0.11;

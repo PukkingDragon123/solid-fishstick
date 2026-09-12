@@ -41,6 +41,7 @@ npm run build     # -> dist/crabden.html + dist/crabden.body.html
 |  | keyboard | touch |
 | --- | --- | --- |
 | scuttle | `A` / `D` or arrows | left thumbstick (drag anywhere in the lower-left) |
+| dig in (opening only) | `E` | **DIG IN** |
 | the spring | tap `Space` in time with the gauge | tap the valve in time with the gauge |
 | pick what is ripe | `R` | **PICK**, or tap the bead over a plant |
 | build on your own back | click yourself | tap yourself |
@@ -66,31 +67,42 @@ The game autosaves every twenty seconds and reloads where you left off.
 
 ## The opening
 
-The game does not start in the desert. It starts thirty metres under water,
-because that is where the animal went to sleep.
+The game does not start in the desert, and it does not start with a film. It
+starts thirty metres under water, **and you can walk around in it**.
 
-`js/render/ocean.js` takes the screen for twenty seconds and is not the world
-renderer at all: its own light, its own colour, its own physics. Kelp rooted on
-the seabed rolls rather than wags, because each segment lags the one below it.
-Three shoals hold formation around a moving centre and flash a flank as they
-turn. God rays lean off the vertical and sway. Caustics crawl over the sand and
-over the animal's back. Silt drifts up past you. And the crab — the real rig,
-the same one you walk around in, with the red taken out of it by thirty metres
-of water — comes down out of the blue, finds a hollow out of the current, and
-**digs itself in**, throwing silt, until there is nothing left above the sand
-but a ridge of shell.
+There is no separate ocean renderer. The reef is the desert: the same terrain,
+the same camera, the same crab, with a sea put on top of it by
+`js/systems/sea.js`. Every dune you will later cross is a sandbank down there,
+and every ridge is a ridge. That is the whole point of the prologue — you are
+looking at the ground you are going to spend the game on, one thousand years
+before it dried.
 
-Then the sea leaves. The waterline descends the screen over a thousand years
-and eight seconds: the kelp above it browns and folds, the fish go with the
-water, the sun burns through, the seabed above the line dries pale, and a
-counter runs up to 1,000. The whole scene then **dissolves** into the desert
-that has been drawn underneath it the entire time, so the mound you were
-looking at and the animal you are about to play are in the same place on the
-screen and are obviously the same thing.
+The sea does three jobs. **The column**: everything above the seabed is water,
+so the desert sky and the far dunes are painted out of the frame entirely,
+before anything in the water is drawn — because the reef and the animal are
+*in* it, not behind it, which is the difference between a sea and a blue
+filter. Light comes down through it in shafts that lean and sway, caustics
+crawl over the sand, silt hangs in between, and if you are shallow enough the
+surface is up there being bright.
 
-And then it is this morning, and there is a woman who has been wrong about a
-rock for eleven years, and the first water to touch this animal in a thousand
-years is not, strictly, rain.
+**The life**: corals placed on the terrain the same deterministic way the dig
+sites are, and painted the same way as everything else — staghorn, sea fans
+with cross-ties between the ribs, brain coral with real grooves, tube sponges,
+anemones, soft weed. Urchins, starfish and shells on the sand, crablets walking
+about on it, shoals of fish whose tails beat about the peduncle while the body
+leans into the turn, jellyfish pulsing upward, and bubbles coming up out of the
+seabed and off you as you walk. Anything big enough to hide you is drawn
+behind you.
+
+And **you are hand-sized**. The coral towers over you. That is how you know.
+
+When you have found a hollow you like, you **dig in** — `E`, or the DIG IN
+button — and the animal goes down into the sand in a burst of silt, and while
+it is going down the sea starts to leave. The surface walks down the world, the
+reef thins out, the blue comes out of the light, a counter runs to 1,000, and
+what is left is the desert. Then it is this morning, you are still under the
+sand with only your shell showing, and a woman who has been wrong about a rock
+for eleven years sits down next to you.
 
 | | |
 | --- | --- |
@@ -261,7 +273,12 @@ banks, and animals that only live where there is standing water.
 Everything that ever lived here is still here, a metre down. Grow a **digging
 claw** and fossil and amber start showing above the sand — a corner of shale, a
 bead of amber catching the light from a long way off. Dig one up and it goes in
-your pack.
+your pack, and the ground it came out of goes everywhere: a low ring of smoke
+spreading outward along the sand, a column of it going up the middle, and a
+spray of actual grains thrown clear that bounce once and settle. Everything
+that digs in this game uses it — you, Vess over her trench, and the animal
+burying itself in the opening, where the same burst is silt instead of dust and
+drifts instead of settling.
 
 Then put it in the pool on your own back (`K`) and keep the water up. Given
 long enough in standing water, a thousand-year-old thing in a rock **hatches**,
@@ -436,6 +453,12 @@ read; hair tied back with strands pulling loose downwind; a felt hat with a
 brim and a crown; goggles that sit on the band or come down over the eye; a
 coat over a shirt, cut away down the front, with a bandolier of sample vials
 and a belt; a satchel; four limb bones, and a boot that is its own part.
+
+Her gait is driven by one phase rather than by how far each foot has drifted
+from a home position: at any moment one foot is planted and the other is
+swinging past it, and they swap every half cycle. The phase advances with
+distance covered rather than with time, so the feet never slide. That swap is
+the whole difference between walking and skating.
 
 Because she is in pieces, she is **posed rather than flipped through**.
 `js/entities/npc.js` is a skeleton: a pose is a set of joint targets — how far

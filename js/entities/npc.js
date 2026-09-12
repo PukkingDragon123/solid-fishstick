@@ -158,9 +158,6 @@ export class Person {
     this._air(dt, t);
     this._walkFeet(dt, t);
 
-    if (Math.abs(this.vx) > 24 && Math.random() < dt * 5) {
-      this.game.fx?.footPuff(this.x, this.y, Math.abs(this.vx) * 0.4, false);
-    }
   }
 
   /** Ease the body towards whatever the current pose asks for. */
@@ -229,52 +226,84 @@ export class Person {
   }
 
   /**
-   * Feet. Each one holds its ground until the hip has walked too far past it,
-   * then swings to a new plant. Exactly the way the crab does it, with two
-   * legs instead of eight.
+   * The gait. Feet are driven by one phase rather than by how far they have
+   * drifted from a home position: at any moment one foot is planted and the
+   * other is swinging past it, and they swap every half cycle. That swap is
+   * the whole difference between walking and skating, and the phase advances
+   * with distance covered rather than with time, so the feet never slide.
    */
   _walkFeet(dt, terr) {
-    const stride = 11 * this.rig.K;
+    const K = this.rig.K;
+    const stride = 13 * K;
+    const spd = Math.abs(this.vx);
+    const moving = spd > 5;
+    const tuck = 1 - this.b.crouch * 0.62;
+
     // in the air the feet come up with her, tucked under the hips, or she
     // reads as a person being dragged upward rather than one jumping
     if (this.jz > 0.5) {
       for (let i = 0; i < 2; i++) {
         const f = this.feet[i];
         f.air = 0;
-        f.x = damp(f.x, this.x + (i === 0 ? 1 : -1) * stride * 0.22, 0.0001, dt);
+        f.x = damp(f.x, this.x + (i === 0 ? 1 : -1) * stride * 0.20, 0.0001, dt);
         f.y = damp(f.y, this.y - this.jz * 0.55, 0.0001, dt);
         f.plant = f.x;
       }
       return;
     }
-    const moving = Math.abs(this.vx) > 6;
-    const P = POSES[this.pose] || POSES.idle;
+
+    if (moving) this.step = (this.step + (spd * dt) / (stride * 2)) % 1;
+    else this.step = (this.step + dt * 0.35) % 1;     // keeps a slow idle sway
+
+    const dir = Math.sign(this.vx) || this.facing || 1;
     for (let i = 0; i < 2; i++) {
       const f = this.feet[i];
-      // the lower she folds, the further under her the feet have to come, or
-      // the legs end up stretched out flat instead of tucked under a crouch
-      const tuck = 1 - this.b.crouch * 0.62;
-      const lead = (this.vx * 0.16
-        + (i === 0 ? 1 : -1) * stride * (moving ? 0.45 : 0.30)) * tuck;
-      const home = this.x + lead;
-      if (f.air > 0) {
-        f.air -= dt / 0.24;
-        const k = clamp01(1 - f.air);
-        f.x = lerp(f.from, f.plant, k);
-        f.y = terr.surfaceY(f.x) - Math.sin(k * Math.PI) * 4.5 * this.rig.K;
-        if (f.air <= 0) { f.air = 0; f.x = f.plant; f.y = terr.surfaceY(f.x); }
-      } else if (Math.abs(f.x - home) > stride * (P.sit ? 0.5 : 0.62) * (1 - this.b.crouch * 0.4)) {
-        const other = this.feet[1 - i];
-        if (other.air <= 0) {
-          f.from = f.x;
-          f.plant = home + Math.sign(home - f.x) * stride * 0.30;
-          f.air = 1;
-        }
+      const p = (this.step + i * 0.5) % 1;
+      const swinging = moving && p >= 0.5;
+
+      if (!moving) {
+        // standing: one foot a little ahead of the other, both on the ground
+        const tx = this.x + (i === 0 ? 1 : -1) * stride * 0.22 * tuck;
+        f.x = damp(f.x, tx, 0.002, dt);
+        f.y = damp(f.y, terr.surfaceY(f.x), 0.0006, dt);
+        f.plant = f.x;
+        f.air = 0;
+        f.sw = false;
+        continue;
+      }
+
+      if (swinging && !f.sw) {
+        // the swing starts here: remember where the foot was and pick where
+        // it is going, once, so the arc is smooth all the way through
+        f.from = f.x;
+        f.to = this.x + dir * stride * 0.62 * tuck + this.vx * 0.09;
+        f.sw = true;
+      } else if (!swinging && f.sw) {
+        f.sw = false;
+        f.x = f.to ?? f.x;
+        f.plant = f.x;
+        this._land(f, terr);
+      }
+
+      if (swinging) {
+        const k = (p - 0.5) * 2;
+        const e = k * k * (3 - 2 * k);
+        f.x = lerp(f.from, f.to, e);
+        f.air = Math.sin(k * Math.PI) * 5.2 * K;
+        f.y = terr.surfaceY(f.x) - f.air;
       } else {
-        f.y = damp(f.y, terr.surfaceY(f.x), 0.0005, dt);
+        // planted: the body walks over it and it does not move at all
+        f.air = 0;
+        f.x = f.plant;
+        f.y = terr.surfaceY(f.x);
       }
     }
-    this.step = moving ? (this.step + dt * Math.abs(this.vx) * 0.09) % 1 : damp(this.step, 0, 0.02, dt);
+  }
+
+  /** A boot going down: a little dust, and a sound if she is moving. */
+  _land(f, terr) {
+    if (Math.abs(this.vx) < 16) return;
+    this.game.fx?.footPuff(f.x, terr.surfaceY(f.x), Math.abs(this.vx) * 0.35, false);
   }
 
   // -------------------------------------------------------------------------
@@ -550,13 +579,13 @@ export class Archaeologist extends Person {
       this.idleT = hold * (0.7 + Math.random() * 0.7);
       if (pose === POSE.WANDER) this.moveTo = this.x + (Math.random() - 0.5) * 90;
       if (pose === POSE.DIG) {
-        this.game.fx?.dust(this.x + this.facing * 6, this.y, 1.2);
+        this.game.fx?.digBurst(this.x + this.facing * 6, this.y, 0.8, false);
         this._setUpCamp();
       }
       if (pose === POSE.SURVEY) this.facing = Math.random() < 0.5 ? -1 : 1;
     }
     if (this.pose === POSE.DIG && Math.random() < dt * 2.2) {
-      this.game.fx?.dust(this.x + this.facing * 6, this.y, 0.8);
+      this.game.fx?.digBurst(this.x + this.facing * 6, this.y, 0.45, false);
     }
   }
 

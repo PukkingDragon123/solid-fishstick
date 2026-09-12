@@ -1663,6 +1663,44 @@ export class UI {
   // -- touch ----------------------------------------------------------------
 
   /**
+   * The prologue has one verb, so it gets one button - and the stick, because
+   * the whole point of it is that you can walk around down there.
+   */
+  drawPrologueControls(ctx, W, H) {
+    this.buttons.length = 0;
+    this.hover = null;
+    if (!this.touchEnabled) { this.stickZone = null; return; }
+    const R = W < 320 ? 30 : 27;
+    const sx = 8, sy = H - 2 * R - 10;
+    this.stickZone = { x: 0, y: H - 2 * R - 20, w: 2 * R + 26, h: 2 * R + 20 };
+    const cx = this.stick ? this.stick.ox : sx + R;
+    const cy = this.stick ? this.stick.oy : sy + R;
+    ctx.globalAlpha = this.stick ? 0.55 : 0.30;
+    ctx.strokeStyle = '#cfeef6';
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(cx, cy, R, 0, TAU); ctx.stroke();
+    ctx.globalAlpha = this.stick ? 0.75 : 0.32;
+    ctx.fillStyle = '#cfeef6';
+    const dx = this.stick ? clamp(this.stick.x - this.stick.ox, -R, R) : 0;
+    ctx.beginPath(); ctx.arc(cx + dx, cy, this.stick ? 11 : 10, 0, TAU); ctx.fill();
+    ctx.globalAlpha = 1;
+
+    const bw = 76, bh = 28, bx = W - bw - 8, by = H - bh - 8;
+    this.buttons.push({ x: bx, y: by, w: bw, h: bh, key: 'e' });
+    const hot = this._hit(bx, by, bw, bh);
+    const pulse = 0.6 + 0.4 * Math.sin(this.t * 3);
+    ctx.fillStyle = hot ? 'rgba(30,86,98,0.95)' : 'rgba(16,52,62,0.9)';
+    ctx.fillRect(bx, by, bw, bh);
+    ctx.strokeStyle = `rgba(190,238,246,${0.4 + pulse * 0.5})`;
+    ctx.strokeRect(bx + 0.5, by + 0.5, bw - 1, bh - 1);
+    drawText(ctx, 'DIG IN', bx + bw / 2, by + (bh - 7) / 2, { color: '#dff6ff', align: 'center' });
+    if (hot && this.game.input.clicked) {
+      this.game.input.clicked = false;
+      this.game.input.pulseVirtual('e');
+    }
+  }
+
+  /**
    * The controls you actually get on a phone. A thumbstick big enough to find
    * without looking, and a column of buttons on the other side that only
    * exist when there is something to press - a row of dead dashes teaches you

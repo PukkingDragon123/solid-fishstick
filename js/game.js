@@ -17,7 +17,7 @@ import { Crab } from './entities/crab.js';
 import { Archaeologist, Elder, POSE } from './entities/npc.js';
 import { Morse } from './systems/talk.js';
 import { Pump } from './systems/pump.js';
-import { OceanIntro } from './render/ocean.js';
+import { Sea } from './systems/sea.js';
 import { Green } from './systems/green.js';
 import { Digs, RELIC_BY_ID } from './systems/digs.js';
 import { Fx } from './systems/fx.js';
@@ -79,6 +79,7 @@ export class Game {
     this.npc = new Archaeologist(this, 62);
     this.morse = new Morse(this);
     this.pump = new Pump(this);
+    this.sea = new Sea(this);
     this.green = new Green(this);
     this.digs = new Digs(this, this.seed);
     this.ui = new UI(this);
@@ -121,78 +122,139 @@ export class Game {
   /**
    * The opening. It is in two halves and they are a thousand years apart.
    *
-   * The first is the sea: the animal comes down out of thirty metres of water,
-   * finds a hollow, and digs itself in, and then the sea leaves without it.
-   * None of that is the world renderer - `js/render/ocean.js` owns the screen
-   * for twenty seconds and then dissolves into the desert that is already
-   * drawn underneath it.
+   * The first half you play. You are a hand-sized crab on a reef, and the reef
+   * is the desert: the same terrain, the same camera, the same everything,
+   * with a sea put on top of it by `js/systems/sea.js`. You can walk around in
+   * it, look at the coral, and choose where to lie down - and when you dig in,
+   * the water starts leaving, and it takes a thousand years.
    *
-   * The second is this morning, and a woman who has been wrong about a rock
-   * for eleven years.
+   * The second half is this morning, and a woman who has been wrong about a
+   * rock for eleven years.
    */
   startIntro() {
+    this.state = 'prologue';
+    this.cut = null;
+    this.dialog = null;
+    this.letterbox = 0;
+    this.buried = 0;
+    this.crab.setStage('hatchling');
+    this.crab.x = 0;
+    this.crab.snapToGround();
+    this.sea.start();
+    this.weather.hour = 10;
+    this.npc.hidden = true;
+    this.npc.x = this.crab.x + 900;
+    this.cam.followEntity(this.crab, true);
+    this.cam.targetZoom = this.cam.zoom = clamp(this.autoZoom() * 1.25, this.cam.minZoom, this.cam.maxZoom);
+    this.say('narrator', 'Thirty metres of water, and every one of them warm.');
+    this._proT = 0;
+  }
+
+  /** While you are still choosing a spot. */
+  _runPrologue(dt) {
+    this.sea.update(dt);
+    this._proT = (this._proT || 0) + dt;
+    const t = this._proT;
+    // three lines, spaced out, and then it stops talking and lets you look
+    if (t > 6 && !this._pro1) { this._pro1 = 1; this.say('narrator', 'Everything here is alive, and most of it is smaller than you.'); }
+    if (t > 13 && !this._pro2) { this._pro2 = 1; this.say('narrator', 'Your kind does this once. You pick a hollow, and you stay in it.'); }
+    if (t > 19 && !this._pro3) { this._pro3 = 1; this.dialog = null; }
+    if (this.dialog) this.dialog.t += dt;
+    this.crab.pumping = 0;
+    // bubbles come off you while you walk
+    if (Math.abs(this.crab.vx) > 8 && Math.random() < dt * 6) {
+      this.sea.puff(this.crab.x + (Math.random() - 0.5) * 14, this.crab.y - 4, 1);
+    }
+  }
+
+  /**
+   * Digging in. The whole animal goes down into the sand it will spend a
+   * thousand years under, and the sea starts to leave while it does.
+   */
+  buryIn() {
+    if (this.state !== 'prologue') return;
+    this.state = 'burying';
+    this.dialog = null;
+    this.buryT = 0;
+    this.cam.free = false;
+    this.audio.play('splash');
+    this.fx.digBurst(this.crab.x, this.crab.y + this.crab.m.rx * 0.3, 1.3, true);
+    this.sea.puff(this.crab.x, this.crab.y, 26);
+    this.say('narrator', 'It dug in. Slowly. With enormous certainty.');
+  }
+
+  _runBury(dt) {
+    this.sea.update(dt);
+    this.buryT += dt;
+    const t = this.buryT;
+    if (this.dialog) this.dialog.t += dt;
+    // it goes down over three seconds, throwing silt the whole way
+    this.buried = clamp01(t / 3.0);
+    if (t < 3.0 && Math.random() < dt * 6) {
+      this.fx.digBurst(this.crab.x + (Math.random() - 0.5) * 22,
+        this.crab.y + this.crab.m.rx * 0.2, 0.4 + Math.random() * 0.4, true);
+      this.sea.puff(this.crab.x + (Math.random() - 0.5) * 20, this.crab.y, 2);
+    }
+    if (t > 2.0 && !this._drainOn) { this._drainOn = 1; this.sea.beginDrain(); }
+    if (t > 3.4 && t < 3.6) this.say('narrator', 'And the sea, as it turned out, was in a hurry.');
+    if (t > 8.0 && t < 8.2) this.say('narrator', 'Coast. Lagoon. Salt pan. Dust.');
+    if (t > 12.4) { this.dialog = null; this.startWake(); }
+  }
+
+  /** A thousand years later, and someone has walked into the basin. */
+  startWake() {
     this.state = 'intro';
+    this.sea.stop();
+    // it is still under the sand, and stays there until it decides not to be
+    this.buried = 1;
+    this.buryTarget = 0.62;
+    this.weather.hour = 9.4;
     const c = this.crab;
     const npc = this.npc;
-    this.ocean = new OceanIntro(this);
+    npc.hidden = false;
     npc.x = c.x + 320;
     npc.facing = -1;
     npc.faceT = -1;
     npc.hatOff = null;
-    npc.setPose(POSE.IDLE);
-    this.cam.snapTo(c.x, c.y - 8);
-    this.cam.targetZoom = this.cam.zoom = this.autoZoom() * 1.5;
+    npc.setPose(POSE.WALK);
+    this.cam.followEntity(c, true);
+    this.cam.targetZoom = this.cam.zoom = this.autoZoom() * 1.3;
     const N = (text) => this.say('narrator', text);
     const V = (text, mood) => { this.say('Dr. Vess', text); npc.face = mood ?? npc._moodFor(text); };
     this.cut = {
       t: 0,
       steps: [
-        // ---- thirty metres down ----------------------------------------
-        { at: 0.8, run: () => N('Thirty metres of water, and every one of them warm.') },
-        { at: 4.0, run: () => N('It picked a hollow out of the current, the way its kind always has.') },
-        { at: 7.2, run: () => N('It dug in. Slowly. With enormous certainty.') },
-        { at: 10.0, run: () => N('It had eaten. It had grown. It was in no hurry at all.') },
-        { at: 12.6, run: () => N('The sea, as it turned out, was.') },
-        { at: 15.4, run: () => N('It went the way everything goes here - not at once. Coast. Lagoon. Salt pan.') },
-        { at: 18.6, run: () => N('Dust.') },
-        { at: 20.6, run: () => N('And the animal slept through every part of it.') },
-
-        // ---- this morning ----------------------------------------------
-        { at: 23.2, run: () => {
-          this.ocean = null;
-          this.cam.cineTo(c.x + 40, c.y - 12, 2.4, 2.4);
+        { at: 0.4, run: () => {
+          this.cam.cineTo(c.x + 40, c.y - 12, this.autoZoom() * 1.1, 2.6);
           npc.moveTo = c.x + 46;
-          npc.setPose(POSE.WALK);
-          N('Basin nineteen. Eleven years later. Nobody has any reason to be here.');
+          N('Basin nineteen. A thousand years later. Nobody has any reason to be here.');
         } },
-        { at: 27.0, run: () => V('Survey day four thousand and six. Elevation, wrong. Salinity, wrong.', 7) },
-        { at: 30.6, run: () => { npc.moveTo = c.x + 30; npc.setPose(POSE.WRITE); V('One large rock. Sedimentary. Roughly hill-shaped. As per the last four thousand entries.', 4); } },
-        { at: 34.6, run: () => { npc.setPose(POSE.IDLE); V('There was an inland sea here. I can prove it. I have the shells, the terraces, the strandlines.', 10); } },
-        { at: 38.6, run: () => V('What I do not have is water. Which is, apparently, the only part anybody funds.', 12) },
-        { at: 42.2, run: () => { npc.facing = 1; npc.setPose(POSE.SIT); V('Eleven years. Nobody is watching. Nobody has been watching for a thousand years.', 7); } },
-
-        // ---- the yellow line -------------------------------------------
-        { at: 45.6, run: () => { this.cam.cineTo(c.x + 10, c.y - 20, 3.2, 1.6); N('...'); } },
-        { at: 47.4, run: () => { this._pee = 1; this.audio.play('water'); N('The first water to touch this rock in a thousand years is not, strictly, rain.') } },
-        { at: 51.0, run: () => { this._pee = 0; this.crab.blink = 0.5; this.cam.shake(3); N('The rock has been waiting a very long time for that.') } },
-        { at: 53.6, run: () => {
+        { at: 4.4, run: () => V('Survey day four thousand and six. Elevation, wrong. Salinity, wrong.', 7) },
+        { at: 8.0, run: () => { npc.moveTo = c.x + 30; npc.setPose(POSE.WRITE); V('One large rock. Sedimentary. Roughly hill-shaped. As per the last four thousand entries.', 4); } },
+        { at: 12.0, run: () => { npc.setPose(POSE.IDLE); V('There was an inland sea here. I can prove it. I have the shells, the terraces, the strandlines.', 10); } },
+        { at: 16.0, run: () => V('What I do not have is water. Which is, apparently, the only part anybody funds.', 12) },
+        { at: 19.6, run: () => { npc.facing = 1; npc.setPose(POSE.SIT); V('Eleven years. Nobody is watching. Nobody has been watching for a thousand years.', 7); } },
+        { at: 23.0, run: () => { this.cam.cineTo(c.x + 10, c.y - 16, this.autoZoom() * 1.7, 1.6); N('...'); } },
+        { at: 24.8, run: () => { this._pee = 1; this.audio.play('water'); N('The first water to touch this animal in a thousand years is not, strictly, rain.'); } },
+        { at: 28.4, run: () => { this._pee = 0; this.crab.blink = 0.5; this.cam.shake(3); N('It has been waiting a very long time for that.'); } },
+        { at: 31.0, run: () => {
           this.cam.shake(9);
           this.terrain.deform(c.x, 6, 40);
-          this.fx.dust(c.x, c.y + 20, 7);
+          this.fx.digBurst(c.x, c.y + 14, 2.4, false);
           this.audio.play('thunder');
           npc.facing = -1;
+          // a thousand years of sand comes off it
+          this.buryTarget = 0;
         } },
-
-        // ---- the jump ---------------------------------------------------
-        { at: 54.2, run: () => { npc.startle(1.25); this.cam.shake(4); N('') } },
-        { at: 54.9, run: () => { npc.moveTo = c.x + 108; npc.setPose(POSE.WALK); V('NOT A ROCK. NOT A ROCK. THAT IS NOT A ROCK -', 8); } },
-        { at: 57.6, run: () => { npc.moveTo = undefined; npc.setPose(POSE.IDLE); npc.facing = -1; V('...you are awake.', 2); } },
-        { at: 60.4, run: () => { npc.setPose(POSE.TALK); V('Oh. Oh, that is what the water table was for. It was never the rainfall. It was you.', 3); } },
-        { at: 64.6, run: () => V('You made this basin. You lay down in a sea and the sea kept coming because you were in it.', 5) },
-        { at: 68.8, run: () => { npc.setPose(POSE.POINT); V('There is a spring in your back. I can hear it from here and it is the loudest thing in this desert.', 3); } },
-        { at: 73.0, run: () => { npc.setPose(POSE.TALK); V('So get up. Walk. Put it back.', 6); } },
-        { at: 76.2, run: () => V('I have eleven years of notes, one canteen, and absolutely nothing else to do.', 1) },
-        { at: 79.6, run: () => this.endIntro() },
+        { at: 31.6, run: () => { npc.startle(1.25); this.cam.shake(4); N(''); } },
+        { at: 32.3, run: () => { npc.moveTo = c.x + 108; npc.setPose(POSE.WALK); V('NOT A ROCK. NOT A ROCK. THAT IS NOT A ROCK -', 8); } },
+        { at: 35.0, run: () => { npc.moveTo = undefined; npc.setPose(POSE.IDLE); npc.facing = -1; V('...you are awake.', 2); } },
+        { at: 37.8, run: () => { npc.setPose(POSE.TALK); V('Oh. Oh, that is what the water table was for. It was never the rainfall. It was you.', 3); } },
+        { at: 42.0, run: () => V('You lay down in a sea and the sea kept coming, because you were in it.', 5) },
+        { at: 46.2, run: () => { npc.setPose(POSE.POINT); V('There is a spring in your back. I can hear it from here and it is the loudest thing in this desert.', 3); } },
+        { at: 50.4, run: () => { npc.setPose(POSE.TALK); V('So get up. Walk. Put it back.', 6); } },
+        { at: 53.6, run: () => V('I have eleven years of notes, one canteen, and absolutely nothing else to do.', 1) },
+        { at: 57.0, run: () => this.endIntro() },
       ],
       i: 0,
     };
@@ -212,8 +274,12 @@ export class Game {
   say(who, text) { this.dialog = { who, text, t: 0 }; }
 
   skipIntro() {
-    this.ocean = null;
+    this.sea.stop();
+    this.buried = 0;
+    this.buryTarget = 0;
+    this.npc.hidden = false;
     this.npc.hatOff = null;
+    this.weather.hour = 9.4;
     this.endIntro();
     this.npc.x = this.crab.x + 130;
     this.npc.facing = -1;
@@ -229,15 +295,20 @@ export class Game {
     const sdt = dt * slow;
 
     this.ui.update(dt);
-    if (this.state === 'intro') {
-      this._runCut(dt);
-      if (i.justPressed('Escape') || i.justPressed(' ') || (i.clicked && i.sy < this.renderer.vh - 40)) {
+    if (this.state === 'intro') this._runCut(dt);
+    if (this.state === 'prologue') this._runPrologue(dt);
+    if (this.state === 'burying') this._runBury(dt);
+    if (this.state !== 'play') {
+      const skipTap = i.clicked && i.sy < this.renderer.vh - 56 && this.state !== 'prologue';
+      if (i.justPressed('Escape') || (this.state !== 'prologue' && i.justPressed(' ')) || skipTap) {
         i.consumeKey('Escape'); i.consumeKey(' ');
         this.skipIntro();
       }
     }
 
     const play = this.state === 'play';
+    // you can walk in the prologue: it is a place, not a film
+    const roam = play || this.state === 'prologue';
 
     let move = 0;
     // You cannot walk while you are stood on your own shell planting things.
@@ -247,7 +318,7 @@ export class Game {
     const tapped = this.ui.valveTapped;
     this.ui.valveTapped = false;
 
-    if (play && !this.ui.busy && !this.ui.building) {
+    if (roam && !this.ui.busy && !this.ui.building) {
       const ax = i.axis();
       move = ax.x;
       // while you are riding one of your own, the keys are its keys
@@ -259,18 +330,21 @@ export class Game {
       if (this.ui.mode === 'auto' && Math.abs(move) < 0.05) move = this._autoWalk(sdt);
       // the spring is not a key you hold. It is a muscle with a rhythm, and
       // every stroke either catches the chamber full or does not.
-      if (i.justPressed(' ') || i.justPressed('Space') || tapped) {
+      if (play && (i.justPressed(' ') || i.justPressed('Space') || tapped)) {
         i.consumeKey(' '); i.consumeKey('Space');
         this.pumpStroke();
       }
-      if (i.justPressed('e')) this.act();
-      if (i.justPressed('r')) this.harvestAll();
-      if (i.justPressed('f')) this.callVess();
-      if (i.justPressed('x')) this.infest();
-      if (i.justPressed('k')) this.incubateBest();
+      if (!play) {
+        // the prologue has exactly one verb
+        if (i.justPressed('e') || i.justPressed('Enter')) { i.consumeKey('e'); this.buryIn(); }
+      } else if (i.justPressed('e')) this.act();
+      if (play && i.justPressed('r')) this.harvestAll();
+      if (play && i.justPressed('f')) this.callVess();
+      if (play && i.justPressed('x')) this.infest();
+      if (play && i.justPressed('k')) this.incubateBest();
       // T is the tap key: hold for a long tap, release for a short one
-      this.morse.update(sdt, i.key('t'));
-      if (i.justPressed('q')) this.attack();
+      if (play) this.morse.update(sdt, i.key('t'));
+      if (play && i.justPressed('q')) this.attack();
     }
     this.crab.update(sdt, {
       move, sprint: i.key('Shift'), grab: i.key('e'),
@@ -294,6 +368,7 @@ export class Game {
       if (i.dragging && !this.ui.busy && i.touchPan) this.cam.pan(i.dragDX, i.dragDY);
     }
 
+    if (this.state === 'play') this.sea.update(sdt);
     this.pump.update(sdt);
     this.pumpHold = this.pump.power;
     if (this.pumpHold > 0.02) this.pumpTick(sdt);
@@ -366,6 +441,10 @@ export class Game {
   }
 
   _runCut(dt) {
+    const bt = this.buryTarget || 0;
+    if (Math.abs((this.buried || 0) - bt) > 0.002) {
+      this.buried = damp(this.buried || 0, bt, 0.0006, dt);
+    }
     if (this.ocean) {
       this.ocean.update(dt);
       if (!this.ocean.active) this.ocean = null;
@@ -621,7 +700,7 @@ export class Game {
       this.relics = this.relics || {};
       this.relics[res.relic.id] = (this.relics[res.relic.id] || 0) + 1;
       this.terrain.deform(site.x, 5, 22);
-      this.fx.dust(site.x, this.terrain.surfaceY(site.x), 3);
+      this.fx.digBurst(site.x, this.terrain.surfaceY(site.x), 1.8, false);
       this.fx.spark(site.x, this.terrain.surfaceY(site.x) - 6,
         res.relic.kind === 'amber' ? '#eec66c' : '#c6bea7', 16, 40);
       this.fx.popup(site.x, this.terrain.surfaceY(site.x) - 14, res.relic.name, '#dcd6c3');
@@ -1007,20 +1086,23 @@ export class Game {
     this.backdrop.drawLayer(ctx, cam, this.weather, 'far', this.terrain);
     this.backdrop.drawLayer(ctx, cam, this.weather, 'mid', this.terrain);
     this.backdrop.drawLayer(ctx, cam, this.weather, 'near', this.terrain);
+    // the sea, if there is one, replaces the sky before anything in it is drawn
+    if (this.sea.active) this.sea.drawColumn(ctx, cam, r.vw, r.vh);
     this.world.drawProps(ctx, cam);
     this.terrain.draw(ctx, cam);
     this.world.drawWater(ctx, cam);
     this.terrain.drawSand(ctx, cam);
     this.green.drawGround(ctx, cam, this.terrain);
     this.world.drawScatter(ctx, cam, 'far');
+    if (this.sea.active) this.sea.drawReef(ctx, cam, true);
     this.encounters.draw(ctx, cam);
     this.fx.draw(ctx, cam, 'far');
 
     // creatures behind the crab, then the crab, then whatever rides on it
     this.wildlife.draw(ctx, cam, 'ground');
-    if (!this.npc.riding) this.npc.draw(ctx, cam);
-    this.crab.draw(ctx, cam, this.garden);
-    if (this.npc.riding) this.npc.draw(ctx, cam);
+    if (!this.npc.riding && !this.npc.hidden) this.npc.draw(ctx, cam);
+    this._drawCrab(ctx, cam);
+    if (this.npc.riding && !this.npc.hidden) this.npc.draw(ctx, cam);
     if (this._pee) this._drawStream(ctx, cam);
     this.ui.drawGhost(ctx, cam);
     this.wildlife.draw(ctx, cam, 'shell');
@@ -1029,6 +1111,7 @@ export class Game {
     this.world.drawScatter(ctx, cam, 'near');
     this._drawGreenPlants(ctx, cam);
     this._drawDigs(ctx, cam);
+    if (this.sea.active) { this.sea.drawReef(ctx, cam, false); this.sea.drawSwimmers(ctx, cam); }
     this.backdrop.drawForeground(ctx, cam, this.weather, this.terrain);
 
     // lights
@@ -1054,15 +1137,11 @@ export class Game {
     r.composite(this.weather, this);
 
     const ui = r.ui;
-    if (this.ocean) {
-      // the sea is drawn over the finished frame and dissolves off it, so the
-      // handover to the desert is one shot rather than a cut
-      ui.save();
-      ui.globalAlpha = 1 - this.ocean.handover;
-      this.ocean.draw(ui, r.vw, r.vh);
-      ui.restore();
-    }
-    if (this.state === 'intro') this._drawCutscene(ui, r);
+    // the water is between you and the world, so it goes on after the world is
+    // lit and before anything that is not in the water with you
+    if (this.sea.active) this.sea.overlay(ui, cam, r.vw, r.vh);
+    if (this.state === 'intro' || this.state === 'burying') this._drawCutscene(ui, r);
+    else if (this.state === 'prologue') this._drawPrologue(ui, r);
     else this.ui.draw(ui, r);
     this.fx.drawText(ui, cam, (c, t, x, y, o) => drawText(c, t, x, y, o));
     if (this.state === 'dead') this._drawDead(ui, r);
@@ -1181,6 +1260,73 @@ export class Game {
     ctx.ellipse(b.x, b.y, 5 * cam.zoom, 2 * cam.zoom, 0, 0, TAU);
     ctx.fill();
     ctx.globalAlpha = 1;
+  }
+
+  /**
+   * The animal, and - while it is digging itself in - only as much of it as is
+   * still above the sand. It goes down; the ground does not come up.
+   */
+  _drawCrab(ctx, cam) {
+    const b = this.buried || 0;
+    if (b <= 0.001) { this.crab.draw(ctx, cam, this.garden); return; }
+    const gy = this.terrain.surfaceY(this.crab.x);
+    const line = cam.worldToScreen(this.crab.x, gy).y;
+    const drop = b * this.crab.m.rx * 1.5;
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(0, 0, this.renderer.vw, line + 2);
+    ctx.clip();
+    ctx.translate(0, drop * cam.zoom);
+    this.crab.draw(ctx, cam, this.garden);
+    ctx.restore();
+    // sand banked up against whatever is left showing
+    if (b > 0.2) {
+      const s = cam.worldToScreen(this.crab.x, gy);
+      const w = this.crab.m.rx * 1.5 * cam.zoom;
+      ctx.globalAlpha = clamp01((b - 0.2) * 1.6);
+      const g = ctx.createLinearGradient(0, s.y - 8 * cam.zoom, 0, s.y + 4 * cam.zoom);
+      g.addColorStop(0, '#d8b98a');
+      g.addColorStop(1, '#a8875a');
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.moveTo(s.x - w, s.y + 2);
+      ctx.quadraticCurveTo(s.x - w * 0.4, s.y - 6 * cam.zoom * b, s.x, s.y - 7 * cam.zoom * b);
+      ctx.quadraticCurveTo(s.x + w * 0.4, s.y - 6 * cam.zoom * b, s.x + w, s.y + 2);
+      ctx.closePath();
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  /** The prologue's only chrome: what you can do, and a button to do it. */
+  _drawPrologue(ctx, r) {
+    const vw = r.vw, vh = r.vh;
+    const bar = Math.round(18 * clamp01(this._proT / 2));
+    ctx.fillStyle = 'rgba(4,10,14,0.8)';
+    ctx.fillRect(0, 0, vw, bar);
+    ctx.fillRect(0, vh - bar, vw, bar);
+    if (this.dialog) {
+      const lines = wrapText(this.dialog.text, vw - 60);
+      const cps = 48;
+      const shown = Math.floor(this.dialog.t * cps);
+      let used = 0;
+      lines.forEach((l, i) => {
+        const room = Math.max(0, shown - used);
+        used += l.length;
+        const ty = vh - bar - lines.length * LINE_H - (this.ui.touchEnabled ? 46 : 10);
+        drawText(ctx, l.slice(0, room), 26, ty + i * LINE_H,
+          { color: 'rgba(232,244,248,0.9)', outline: true, outlineColor: 'rgba(0,0,0,0.7)' });
+      });
+    }
+    if (this._proT > 3) {
+      const pulse = 0.6 + 0.4 * Math.sin(this.time * 3);
+      const label = this.ui.touchEnabled ? 'tap DIG IN to lie down' : 'walk with A / D    press E to dig in';
+      ctx.globalAlpha = 0.55 + pulse * 0.45;
+      drawText(ctx, label, vw / 2, bar + 6,
+        { color: '#cfeef6', align: 'center', outline: true, outlineColor: 'rgba(0,0,0,0.7)' });
+      ctx.globalAlpha = 1;
+    }
+    this.ui.drawPrologueControls(ctx, vw, vh);
   }
 
   _drawSpeech(ctx, cam, who, code = false) {
