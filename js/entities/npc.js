@@ -1,23 +1,20 @@
 // CRABDEN - the people.
 //
-// Dr. Vess used to be a skeleton with painted parts hung off it, solved with
-// the same two-bone IK the crab's legs use. It was the wrong tool: a person is
-// thirty pixels tall, and at thirty pixels a lit gradient is not shading and a
-// rotated limb is not a limb - both are mush, and no amount of tuning fixed
-// it. He is a sprite sheet now (`js/art/vessart.js`): eleven drawn frames,
-// flat colour, one hard outline, with his head stamped on a per-frame neck
-// pixel so the twenty-one expressions still work.
+// Nobody here is a sprite sheet. Dr. Vess is a skeleton with painted parts
+// hung off it: pelvis, torso, head, two arms and two legs, each a baked bone
+// that gets rotated into place every frame. His feet are planted in world
+// space and solved with the same two-bone IK the crab's legs use, so he
+// stands on slopes, steps over them, crouches over a dig with his knees where
+// knees go, and writes in a notebook his hand is actually holding.
 //
-// The poses below survive as a table of what he is DOING - what he holds, how
-// far he leans, whether he is sitting - because the rest of the game reads
-// them. What has gone is the idea that they were joint angles.
+// A pose is a set of joint targets. Everything between poses is damped, so he
+// never snaps - he settles.
 
 import { clamp, clamp01, lerp, damp, TAU } from '../lib/math.js';
 import { ITEM_BY_ID } from '../data/craft.js';
 import { pxEllipse, pxSize } from '../render/pix.js';
 import { ik2 } from './crab.js';
-import { buildPerson, headSide } from '../art/personart.js';
-import { bodyFrame, frameFor, NECK, HAND, BODY_W, BODY_H } from '../art/vessart.js';
+import { buildPerson, portrait } from '../art/personart.js';
 import { facePortrait, faceFor } from '../art/faces.js';
 
 export const POSE = {
@@ -514,36 +511,24 @@ export class Person {
 
   // -------------------------------------------------------------------------
 
-  /**
-   * Him, on the ground, as a sprite.
-   *
-   * This used to solve a skeleton every frame and hang eleven shaded blobs off
-   * it. It draws two canvases now: a body frame off the sheet, and his head
-   * stamped on that frame's neck pixel. Everything that was an angle is a
-   * frame instead, which is what a thirty-pixel person can actually show.
-   *
-   * The three things that survived the rig are the three that matter: he
-   * pivots on the spot instead of mirroring (a squash through the turn), he
-   * squashes and stretches off the ground, and his head still tilts - but in
-   * whole steps, because a drawn sprite does not survive being rotated far.
-   */
   draw(ctx, cam) {
+    const rig = this.rig;
     const z = cam.zoom;
     const P = POSES[this.pose] || POSES.idle;
     const dir = this.faceT >= 0 ? 1 : -1;
+    // How much of his width is facing us. It bottoms out well short of zero:
+    // a person turning round is briefly narrow, not briefly a sheet of paper.
     const t = Math.abs(this.faceT);
     const flat = TURN_MIN + (1 - TURN_MIN) * (t * t * (3 - 2 * t));
-    const px = Math.max(1, Math.round(z));
-    const blue = this.game.mind ? this.game.mind.blue : 0;
-    const spore = blue > 0.35 ? clamp01((blue - 0.35) / 0.4) : 0;
 
-    // the shadow he stands in
     const sa = this.game.weather ? this.game.weather.shadowAlpha : 0.35;
     if (sa > 0.02) {
       const s0 = cam.worldToScreen(this.x, this.y);
       ctx.globalAlpha = sa * 0.5;
       ctx.fillStyle = '#2a1a10';
-      pxEllipse(ctx, s0.x, s0.y, 7 * z, 2 * z, '#2a1a10', { p: px });
+      ctx.beginPath();
+      ctx.ellipse(s0.x, s0.y, 7 * z, 2 * z, 0, 0, TAU);
+      ctx.fill();
       ctx.globalAlpha = 1;
     }
 
@@ -551,7 +536,7 @@ export class Person {
     if (this.hatOff) {
       const h = this.hatOff;
       const hs = cam.worldToScreen(h.x, h.y);
-      const art = this.rig.hat;
+      const art = rig.hat;
       ctx.save();
       ctx.translate(Math.round(hs.x), Math.round(hs.y));
       ctx.scale(z, z);
@@ -560,70 +545,173 @@ export class Person {
       ctx.restore();
     }
 
-    // which frame, and where his feet are
-    const name = frameFor(this.pose, this.step % 1);
-    const body = bodyFrame(name, px, { kind: this.kind, spore });
-    const neck = NECK[name] || NECK.stand;
-    const hand = HAND[name] || HAND.stand;
-    const head = headSide(px, {
-      kind: this.kind, mood: this.face | 0,
-      goggles: P.tool === 'lens' || P.tool === 'canteen',
-      noHat: !!this.hatOff, spore: spore > 0.5,
-    });
-
-    const bob = Math.abs(this.vx) > 6 ? Math.sin(this.step * TAU * 2) * 0.9 : 0;
-    const breath = Math.sin(this.breathe) * 0.35;
-    const s = cam.worldToScreen(this.x, this.y + bob - this.jz);
+    // hips: the root of everything, dropped by the crouch and bobbed by the gait
+    const drop = this.b.crouch * rig.standH * 0.62;
+    const bob = Math.abs(this.vx) > 6 ? Math.sin(this.step * TAU * 2) * 1.1 * rig.K : 0;
+    const breath = Math.sin(this.breathe) * 0.35 * rig.K;
+    const hipWorldY = this.y - rig.standH + drop + bob - this.jz;
+    const s = cam.worldToScreen(this.x, hipWorldY);
 
     ctx.save();
-    ctx.translate(Math.round(s.x), Math.round(s.y));
+    ctx.translate(Math.round(s.x * 2) / 2, Math.round(s.y * 2) / 2);
+    ctx.scale(z, z);
     // turning is a squash, not a mirror: he pivots on the spot
     ctx.scale(dir * flat, 1);
-    if (Math.abs(this.squash) > 0.005) ctx.scale(1 - this.squash * 0.5, 1 + this.squash);
+    // and he rises onto the ball of his foot as he comes through the turn
+    if (flat < 0.995) ctx.translate(0, -(1 - flat) * 2.2 * rig.K);
+    // and a jump squashes on the way out and stretches at the top
+    if (Math.abs(this.squash) > 0.005) {
+      ctx.scale(1 - this.squash * 0.5, 1 + this.squash);
+    }
 
-    // the body sits with its bottom row on the ground
-    const bx = -(BODY_W / 2) * px;
-    const by = -(BODY_H - 1) * px + Math.round(breath) * px;
-    ctx.drawImage(body, Math.round(bx), Math.round(by));
+    const lean = this.b.lean;
+    const sh = rig.sockets.shoulder, nk = rig.sockets.neck;
+    const rot = (x, y, a) => ({ x: x * Math.cos(a) - y * Math.sin(a), y: x * Math.sin(a) + y * Math.cos(a) });
+    const shoulder = rot(sh.x, sh.y, lean);
+    const neck = rot(nk.x, nk.y, lean);
 
-    // the head, on the neck pixel, tilted in whole steps
-    const hx = bx + neck.x * px;
-    const hy = by + neck.y * px;
-    // A drawn head does not get rotated. Rotating it staircases the brim and
-    // doubles the outline, which is exactly the mush this whole sheet exists
-    // to get rid of. So leaning is a whole-pixel OFFSET instead: he puts his
-    // head forward over the work, and down a pixel when he is tired.
-    const want = this.b.lean * 0.4 + this.b.look * 0.22
-      + (this.speech ? Math.sin(this.t * 5.5) * 0.035 : 0)
-      + (P.work ? Math.sin(this.animT * 4.0) * 0.05 : 0);
-    const nod = clamp(Math.round(want * 5), -2, 2);
-    ctx.drawImage(head.cv,
-      Math.round(hx) - head.ox + nod * px,
-      Math.round(hy) - head.oy + Math.max(0, nod) * px);
-
-    // and whatever is in his hand
-    const tool = P.tool && this.rig.props[P.tool];
-    if (tool) {
+    // ---- far leg, far arm, then body, then near leg and arm ---------------
+    this._leg(ctx, rig.leg.far, this.feet[1], hipWorldY, dir, -1);
+    // the pack is slung behind him, under everything, and lags a beat behind
+    // the body it is strapped to - which is most of what sells the weight
+    const bg = rot(rig.sockets.bag.x, rig.sockets.bag.y, lean);
+    const sway = Math.abs(this.vx) > 6 ? Math.sin(this.step * TAU * 2 + 0.9) * 0.7 * rig.K : 0;
+    ctx.save();
+    ctx.translate(bg.x, bg.y + breath + sway);
+    ctx.rotate(lean * 0.8);
+    ctx.drawImage(rig.pack.cv, -rig.pack.ox, -rig.pack.oy);
+    ctx.restore();
+    // and the map tube hangs off the far hip, angled
+    if (rig.tube) {
+      const tb = rot(rig.sockets.tube.x, rig.sockets.tube.y, lean);
       ctx.save();
-      ctx.translate(Math.round(bx + hand.x * px), Math.round(by + hand.y * px));
-      ctx.scale(px, px);
-      ctx.rotate(P.tool === 'canteen' ? -1.5 : P.tool === 'beer' ? -1.15
-        : P.tool === 'peg' ? 1.2 : -0.25);
-      ctx.drawImage(tool.cv, -tool.ox, -tool.oy);
+      ctx.translate(tb.x, tb.y + breath);
+      ctx.rotate(lean + 1.02);
+      ctx.drawImage(rig.tube.cv, -rig.tube.ox, -rig.tube.oy);
       ctx.restore();
     }
-    if (P.hold && this.rig.props[P.hold]) {
-      const art = this.rig.props[P.hold];
+    this._arm(ctx, rig.arm.far, shoulder, this.b.armF0, this.b.armF1, lean, -1, null);
+
+    ctx.save();
+    ctx.rotate(lean);
+    ctx.translate(0, breath);
+    const T = rig.torso.near;
+    ctx.drawImage(T.cv, -T.ox, -T.oy);
+    ctx.restore();
+
+    this._head(ctx, neck, lean, breath, flat);
+    this._leg(ctx, rig.leg.near, this.feet[0], hipWorldY, dir, 1);
+    // whatever he is holding in the other hand sits against the chest
+    if (P.hold) {
+      const art = rig.props[P.hold];
+      if (art) {
+        const h = rot(rig.sockets.shoulder.x + 3.8 * rig.K, rig.sockets.shoulder.y + 6.0 * rig.K, lean);
+        ctx.save();
+        ctx.translate(h.x, h.y + breath);
+        ctx.rotate(-0.34);
+        ctx.drawImage(art.cv, -art.ox, -art.oy);
+        ctx.restore();
+      }
+    }
+    this._arm(ctx, rig.arm.near, shoulder, this.b.armN0, this.b.armN1, lean, 1, P.tool);
+
+    ctx.restore();
+  }
+
+  /** One arm, plus whatever is in the hand at the end of it. */
+  _arm(ctx, art, sh, a0, a1, lean, side, tool) {
+    const rig = this.rig;
+    const swing = (POSES[this.pose] || POSES.idle).swing || 0;
+    // An arm opposes the leg on its own side, so it is driven off the same
+    // phase the feet are: the near foot is furthest FORWARD at step 0, which
+    // is exactly when the near arm should be furthest BACK. (A sine here put
+    // the arm a quarter cycle out and made him look like he was wading.)
+    const sw = swing * Math.cos((this.step + (side > 0 ? 0 : 0.5)) * TAU) * 0.40;
+    const A = a0 + lean + sw;
+    // An elbow flexes the forearm FORWARD, toward the body's front - it does
+    // not keep rotating the same way the shoulder did. `a1` is how flexed it
+    // is, never which way, so it comes off the shoulder angle rather than
+    // being added to it. Added, the forearm swung back past vertical and the
+    // whole arm read as being on backwards.
+    const B = A - a1 - Math.abs(sw) * 0.22;
+    const u = art.upper, l = art.lower;
+    ctx.save();
+    ctx.translate(sh.x, sh.y);
+    ctx.rotate(A);
+    ctx.drawImage(u.cv, -u.ox, -u.oy);
+    ctx.translate(u.len, 0);
+    ctx.rotate(B - A);
+    ctx.drawImage(l.cv, -l.ox, -l.oy);
+    if (tool && rig.props[tool]) {
+      const p = rig.props[tool];
       ctx.save();
-      ctx.translate(Math.round(bx + 11 * px), Math.round(by + 7 * px));
-      ctx.scale(px, px);
-      ctx.rotate(-0.34);
-      ctx.drawImage(art.cv, -art.ox, -art.oy);
+      ctx.translate(l.len + 1.4 * rig.K, 0);
+      ctx.rotate(tool === 'canteen' ? -1.5 : tool === 'beer' ? -1.15 : tool === 'peg' ? 1.2 : -0.25);
+      ctx.drawImage(p.cv, -p.ox, -p.oy);
       ctx.restore();
     }
     ctx.restore();
   }
 
+  /**
+   * One leg, solved to where its foot actually is in the world. `up` folds the
+   * knee forward, which is the only thing that separates a person from a bird.
+   */
+  _leg(ctx, art, foot, hipWorldY, dir, side) {
+    const rig = this.rig;
+    const hx = rig.sockets.hip.x * side * 0.6;
+    const hy = rig.sockets.hip.y;
+    // the foot in body space; x flips with the facing squash
+    const fx = (foot.x - this.x) * dir + hx * 0.2;
+    const fy = (foot.y - hipWorldY);
+    const l1 = art.upper.len, l2 = art.lower.len;
+    // the ankle is a little above the sole and behind the toe
+    const sol = ik2(hx, hy, fx - 0.6 * rig.K, fy - 1.8 * rig.K, l1, l2, 1);
+    const u = art.upper, l = art.lower;
+    ctx.save();
+    ctx.translate(hx, hy);
+    ctx.rotate(sol.a1);
+    ctx.drawImage(u.cv, -u.ox, -u.oy);
+    ctx.restore();
+    ctx.save();
+    ctx.translate(sol.kx, sol.ky);
+    ctx.rotate(sol.a2);
+    ctx.drawImage(l.cv, -l.ox, -l.oy);
+    ctx.restore();
+    // the boot is not part of the shin: a foot stays flat whatever the leg
+    // above it is doing, and only tips up as it swings through
+    const bt = side > 0 ? rig.boot.near : rig.boot.far;
+    const ax = sol.kx + Math.cos(sol.a2) * l2, ay = sol.ky + Math.sin(sol.a2) * l2;
+    ctx.save();
+    ctx.translate(ax, ay);
+    ctx.rotate(foot.air > 0 ? -0.38 * Math.sin(clamp01(1 - foot.air) * Math.PI) : 0);
+    ctx.drawImage(bt.cv, -bt.ox, -bt.oy);
+    ctx.restore();
+  }
+
+  _head(ctx, neck, lean, breath, flat) {
+    const rig = this.rig;
+    const P = POSES[this.pose] || POSES.idle;
+    // He looks where he is working, and a little at whatever is talking - but
+    // his head is drawn pixel art now rather than a shaded blob, and drawn art
+    // does not survive being rotated far: the brim goes to staircases and the
+    // outline doubles. So the tilt is quantised to a few whole steps and kept
+    // small, which is what a hand-animated sprite does anyway.
+    const want = lean * 0.4 + this.b.look * 0.22
+      + (this.speech ? Math.sin(this.t * 5.5) * 0.035 : 0)
+      + (P.work ? Math.sin(this.animT * 4.0) * 0.05 : 0);
+    const STEP = 0.1;
+    const tilt = clamp(Math.round(want / STEP), -2, 2) * STEP;
+    const goggles = P.tool === 'lens' || P.tool === 'canteen';
+    // the spore shows in exactly one place, and it is the place you look
+    const blue = this.game.mind ? this.game.mind.blue : 0;
+    const art = rig.headFor(this.face | 0, goggles, !!this.hatOff, blue > 0.35);
+    ctx.save();
+    ctx.translate(neck.x, neck.y + breath);
+    ctx.rotate(tilt);
+    ctx.drawImage(art.cv, -art.ox, -art.oy);
+    ctx.restore();
+  }
 }
 
 /**

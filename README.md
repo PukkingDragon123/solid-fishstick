@@ -909,68 +909,37 @@ the spine, insects walk an alternating tripod, reptiles bask.
 
 ### Dr. Vess
 
-**He is a sprite sheet, and everything else in this game is not.**
-
-He used to be built the way the crab is: a skeleton with painted parts hung off
-it, each one a height field that gets lit, solved with two-bone IK so his feet
-planted on slopes. That is the right way to build a fifty-pixel animal with
-eight legs. It is the wrong way to build a thirty-pixel person, and the reason
-is arithmetic: at thirty pixels a lit gradient is not shading, it is noise, and
-a rotated limb is not a limb, it is a staircase. The joints between the blobs
-were mush. No amount of tuning fixes that — a person this size has to be
-*drawn*.
-
-So `js/art/vessart.js` is eleven hand-laid frames — stand, a four-frame walk,
-hold, crouch, dig, sit, down, shock — written out as text, flat colour, one
-hard outline, every pixel placed. Three tones to a garment and no more: what a
-sprite this size has is a colour and an edge, and the edge does most of the
-work. His head is stamped on top at a **per-frame neck pixel**, so the
-twenty-one expressions still work and he can still lose his hat, and whatever
-he is holding goes on the hand pixel the same way.
-
-Three things survived the rig because they were never about joints: he pivots
-on the spot rather than mirroring (a squash through the turn), he squashes and
-stretches off the ground, and his head still leans — but as a **whole-pixel
-offset**, not a rotation, because rotating drawn art staircases the brim and
-doubles the outline, which is exactly the mush the sheet exists to remove.
-
-The design still comes off the sheets in `assets/` — nothing there is loaded at
-runtime; they are the document, not the asset.
+**He is designed from the sheets in `assets/`, and painted from scratch.**
+Those two reference sheets — a young field archaeologist and an old wanderer —
+are the design document: what he wears, what he carries, what his face does.
+Nothing in `assets/` is loaded at runtime. `js/art/personart.js` rebuilds that
+design the same way the crab is built — height fields, material ramps, one
+light and a hard outline — so he is lit by the same sun as the ground he is
+standing on, and can be **posed** rather than flipped through: a skeleton with
+baked parts hung off it, feet planted in world space and solved with the same
+two-bone IK the crab's legs use.
 
 What comes off the sheet: a **wide tan bush hat** with a maroon band and brass
 goggles pushed up on it, a **cream shirt** with the sleeves already rolled, a
 leather placket and a belt with a brass buckle, **olive trousers** into heavy
 dark **boots with a turned-down cuff**, a **canvas pack** with a buckled flap
 and a bedroll strapped across the top, and the **maroon map tube** on his hip —
-the one saturated thing on him, and the first thing your eye lands on. His
-proportions come off the sheet too: the head with its hat is about a third of
-the figure, the legs are short, and the pack is nearly as wide as he is.
+the one saturated thing on him, and the first thing your eye lands on.
 
-**The head is drawn, not shaded.** Everything else on him is a height field
-that gets lit, and at the size a head actually is — about twelve pixels across
-— that does not work: a gradient over twelve pixels is not shading, it is
-noise, and the noise was what made him a smudge in a hat. A sprite this size in
-any game that has ever looked good is *drawn*: flat colour, a hard outline, and
-every feature placed on a specific pixel because there are only a hundred of
-them. So the side head is sixteen by fifteen pixels of hand-laid pixel art,
-written out as text in `personart.js`, in three variants — eyes open, eyes
-shut, mouth open. The twenty-one real expressions live on the portrait card;
-out in the desert at this size those three are all that read.
+**The head is the exception: it is drawn, not shaded.** A head in this game is
+about twelve pixels across, and a lit gradient over twelve pixels is not
+shading — it is noise, which is why his face never quite looked like the man on
+the sheet. So the head, and only the head, is a small piece of hand-laid pixel
+art: twelve by twelve, written out as text, in **colours sampled straight out
+of his own portrait frames**. The same pale pith helmet, the same maroon band,
+the same brass goggles pushed up on the brim, the same round blue-grey lenses
+with a dark rim, the same brown hair, the same stubble. Three variants is all
+it needs out here — eyes open, eyes shut, mouth open — because the twenty-one
+real expressions live on the portrait card, where there is room for them.
 
-The read, in order of how far away it still works: the **brim** (two rows, and
-wider than his head), the **maroon band**, the **brass goggles** pushed up on
-the brim where the sheet keeps them, the round **blue lens** over the eye, the
-hair mass filling the back of the skull, and a **nose** off the front of the
-silhouette so he is facing somewhere. The head tilt is quantised to a few whole
-steps, because a drawn sprite does not survive being rotated far — the brim
-goes to staircases and the outline breaks.
-
-The body went flat to match. Every ramp on a person is collapsed to three or
-four tones, the ordered dither is off, and **there is no grain and no cloth
-texture anywhere on him**: over an eight-pixel-wide shirt, texture is not
-texture, it is a column of vertical streaks. The pack went dark so it stops
-disappearing into the cream shirt behind it, and the bedroll strapped across it
-is maroon for the same reason.
+The head still leans where he is working, but the tilt is quantised to a couple
+of whole steps: drawn art does not survive being rotated far, because the brim
+goes to staircases and the outline doubles.
 
 **And he has fingers.** Four off the front of the palm, fanned across it and
 shortening toward the little one, each with a knuckle in it, plus a thumb off
