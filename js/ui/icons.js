@@ -491,6 +491,16 @@ function buildTab(kind) {
         { mat: 'leafDry', dome: 2.6, feather: 2, tint: 0.06 });
       p.rect(cx - 2, base - 5, 4, 5, { mat: 'wood', mask: true, dome: -1.5, tint: -0.4 });
       break;
+    case 'map':
+      // a folded chart: two creases, a route across it, and a mark on the end
+      p.rect(cx - 9, base - 14, 18, 14, { mat: 'petalWhite', dome: 2.2, tint: 0.04 });
+      for (const d of [-3, 3]) {
+        p.rect(cx + d, base - 14, 0.9, 14, { mat: 'petalWhite', mask: true, tint: -0.3, dome: 0 });
+      }
+      p.curve([{ x: cx - 6, y: base - 3 }, { x: cx - 1, y: base - 10 }, { x: cx + 5, y: base - 5 }],
+        0.9, 0.5, { mat: 'petalWhite', mask: true, tint: -0.45, dome: 0, steps: 10 });
+      p.ellipse(cx + 5, base - 5, 1.6, 1.6, { mat: 'petalPink', dome: 1.8, tint: 0.22 });
+      break;
     case 'codex':
       p.rect(cx - 8, base - 13, 16, 13, { mat: 'leather', dome: 2.6, tint: 0.02 });
       p.rect(cx - 6, base - 11, 12, 9, { mat: 'petalWhite', dome: 1.4, tint: 0.08 });
@@ -687,7 +697,22 @@ const GLYPH_COLS = {
 /** Stamp a 12x12 pictogram. `tint` recolours the mid tone. */
 export function drawGlyph(ctx, name, x, y, opts = {}) {
   const rows = GLYPHS[name];
-  if (!rows) return 12;
+  if (!rows) {
+    // There are two pictogram sets in here: these twelve-pixel ones, and the
+    // nine-pixel NODE set the genome and the bench draw from. Asking for a
+    // name that only exists in the other one used to draw nothing at all,
+    // silently - which is how a whole screen of recipes ended up with no
+    // icons on it. If the name is over there, draw it from over there.
+    if (NODE[name]) {
+      const s = Math.max(1, Math.round((opts.scale || 1) * 1.2));
+      const prev = ctx.globalAlpha;
+      if (opts.alpha !== undefined) ctx.globalAlpha = prev * opts.alpha;
+      drawNodeIcon(ctx, name, x + 6 * (opts.scale || 1), y + 6 * (opts.scale || 1),
+        opts.color || GLYPH_COLS[2], s);
+      ctx.globalAlpha = prev;
+    }
+    return 12;
+  }
   const s = opts.scale || 1;
   const cols = { ...GLYPH_COLS, ...(opts.colors || {}) };
   if (opts.color) cols[2] = opts.color;

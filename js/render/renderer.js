@@ -56,8 +56,20 @@ export class Renderer {
     let scale = Math.max(2, Math.floor(Math.min(w / BASE_W, h / BASE_H)));
     scale = Math.min(scale, 6);
     const vw = Math.ceil(w / scale);
-    const vh = Math.ceil(h / scale);
+    // A phone held upright is much taller than any game wants to be. The first
+    // answer here was a letterbox, and it was worse than the problem: two fat
+    // black bars and the game floating between them. So the frame is the whole
+    // screen, and the tallness is dealt with where it actually comes from -
+    // the camera puts the horizon higher and pulls in a little (see
+    // `Game.autoZoom` and `cam.yBias`), so the bottom half is ground with the
+    // controls sitting on it instead of a hundred rows of empty sky.
+    //
+    // The cap that is left only exists so a freakishly narrow window cannot
+    // ask for a buffer taller than it is wide twice over.
+    const vh = Math.min(Math.ceil(h / scale), Math.ceil(vw * 2.1));
     this.scale = scale;
+    /** True when the frame is meaningfully taller than it is wide. */
+    this.tall = vh > vw * 1.05;
     if (vw !== this.vw || vh !== this.vh) {
       this.vw = vw; this.vh = vh;
       this._makeLayers();

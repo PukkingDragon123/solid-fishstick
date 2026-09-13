@@ -12,6 +12,12 @@ export class Camera {
     this.minZoom = 1;
     this.maxZoom = 3;
     this.vw = 460; this.vh = 258;
+    // Where the thing you are following sits in the frame, as a fraction of
+    // the frame below its middle. On a wide screen it sits low and you look
+    // ahead over the dunes; on a phone that would be all sky, so the game
+    // pulls this toward zero and the bottom of the screen becomes ground for
+    // the controls to sit on.
+    this.yBias = 0.16;
     this.follow = null;
     this.lead = 0;
     this.shakeAmt = 0;
@@ -61,7 +67,7 @@ export class Camera {
         const f = this.follow;
         this.lead = damp(this.lead, clamp((f.vx || 0) * 0.34, -46, 46), 0.02, dt);
         this.tx = f.x + this.lead;
-        this.ty = f.y - this.vh * 0.16 / this.zoom;
+        this.ty = f.y - this.vh * this.yBias / this.zoom;
       }
       this.x = damp(this.x, this.tx, 0.0009, dt);
       this.y = damp(this.y, this.ty, 0.004, dt);

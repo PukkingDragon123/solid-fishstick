@@ -62,6 +62,18 @@ export class Game {
     // before the first frame, so the title screen it opens on is framed
     // against the real window rather than the camera's default guess
     this.cam.setViewport(this.renderer.vw, this.renderer.vh);
+    // On a phone a good part of the screen is controls, so the animal is
+    // lifted clear above them and the ground - not the sky - is what ends up
+    // underneath the stick and the band. The interface says how much room it
+    // is taking and the camera answers, which means starting a job lifts the
+    // shot rather than burying the hole under the band.
+    let bias = this.renderer.tall ? -0.10 : 0.16;
+    if (this.ui?.touchEnabled) {
+      const top = this.ui.furnitureTop(this.renderer.vw, this.renderer.vh);
+      const want = clamp((top - 42) / this.renderer.vh, 0.3, 0.66) - 0.5;
+      bias = Math.min(bias, want);
+    }
+    this.cam.yBias = bias;
 
     this.menu = new Menu(this);
     this.newRun();
@@ -76,6 +88,18 @@ export class Game {
       this.renderer.resize();
       this.input.scale = this.renderer.scale;
       this.cam.setViewport(this.renderer.vw, this.renderer.vh);
+    // On a phone a good part of the screen is controls, so the animal is
+    // lifted clear above them and the ground - not the sky - is what ends up
+    // underneath the stick and the band. The interface says how much room it
+    // is taking and the camera answers, which means starting a job lifts the
+    // shot rather than burying the hole under the band.
+    let bias = this.renderer.tall ? -0.10 : 0.16;
+    if (this.ui?.touchEnabled) {
+      const top = this.ui.furnitureTop(this.renderer.vw, this.renderer.vh);
+      const want = clamp((top - 42) / this.renderer.vh, 0.3, 0.66) - 0.5;
+      bias = Math.min(bias, want);
+    }
+    this.cam.yBias = bias;
       this.cam.targetZoom = this.autoZoom();
     });
     this._autosave = 0;
@@ -141,7 +165,23 @@ export class Game {
   }
 
   /** Frame the crab sensibly whatever shape the window is. */
-  autoZoom() { return clamp(this.renderer.vw / 300, 1.15, 2.3); }
+  /**
+   * How close the camera sits. On a wide screen this is about the width of
+   * the frame; on a phone held upright it cannot be, because a tall frame at
+   * that zoom is nine tenths sky. So a tall aspect is framed off the shorter
+   * side instead, and the animal stays the size it is meant to be.
+   */
+  /**
+   * How close the camera sits, from the shape of the window. A wide screen is
+   * framed off its width. A phone held upright gets pulled in a little and
+   * the horizon pushed up, because the alternative is a strip of desert under
+   * four hundred rows of sky.
+   */
+  autoZoom() {
+    const r = this.renderer;
+    if (r.tall) return clamp(Math.max(r.vw, r.vh * 0.46) / 300, 1.35, 2.6);
+    return clamp(r.vw / 300, 1.15, 2.6);
+  }
 
   get currentBiome() { return this.biome; }
 
@@ -510,9 +550,16 @@ export class Game {
           N('Something is happening outside.');
         } },
         { at: 28.2, run: () => {
-          // she has walked right up to the mound and is standing over it
+          // She has walked right up to the mound and is standing over it -
+          // and she has to STOP. Leaving the old waypoint on her meant she
+          // kept drifting toward it, which flipped her facing, which sent the
+          // stream out of her back and away from the animal.
           npc.x = c.x + 22;
+          npc.moveTo = undefined;
+          npc.vx = 0;
           npc.setFacing(-1);
+          npc.turnT = 1;
+          npc.faceT = -1;
           npc.setPose(POSE.REST);
           this._pee = 1; this._peeT = 0;
           this.audio.play('water', { pitch: 0.8 });
@@ -772,6 +819,8 @@ export class Game {
     this.buried = 0;
     this.buryTarget = 0;
     this._pee = 0;
+    this._peeT = 0;
+    this._peeDrops = null;
     this.lids = 0;
     this.ocean = null;
     this.npc.hidden = false;
@@ -799,6 +848,18 @@ export class Game {
     // buffer narrower than the frame and left a bright band down one side,
     // and every screen-to-world sum on the menu was off by the difference.
     this.cam.setViewport(this.renderer.vw, this.renderer.vh);
+    // On a phone a good part of the screen is controls, so the animal is
+    // lifted clear above them and the ground - not the sky - is what ends up
+    // underneath the stick and the band. The interface says how much room it
+    // is taking and the camera answers, which means starting a job lifts the
+    // shot rather than burying the hole under the band.
+    let bias = this.renderer.tall ? -0.10 : 0.16;
+    if (this.ui?.touchEnabled) {
+      const top = this.ui.furnitureTop(this.renderer.vw, this.renderer.vh);
+      const want = clamp((top - 42) / this.renderer.vh, 0.3, 0.66) - 0.5;
+      bias = Math.min(bias, want);
+    }
+    this.cam.yBias = bias;
     // how long you have actually been playing, which is what the control hints
     // fade against - a cutscene does not count as practice
     if (this.state === 'play') this.playT = (this.playT || 0) + dt;
@@ -811,6 +872,7 @@ export class Game {
     if (this.state === 'prologue') this._runPrologue(dt);
     if (this.state === 'burying') this._runBury(dt);
     if (this.state !== 'play') this._cineTick(dt);
+    this._peeTick(dt);
     if (this.state === 'title') {
       // the world keeps breathing behind the menu, but nothing in it is
       // playable: no input reaches the animal, and the clock does not run
@@ -2289,7 +2351,7 @@ export class Game {
     if (this.state === 'title') this.menu.drawBottle(ctx, cam);
     if (this.sleep) this._drawSleep(ctx, cam);
     if (this.waking) this._drawWaking(ctx, cam);
-    if (this._pee) this._drawStream(ctx, cam);
+    if (this._pee || this._peeDrops?.length) this._drawStream(ctx, cam);
     if (this.state === 'play') {
       this.mind.draw(ctx, cam);
       this.hive.drawAim(ctx, cam);
@@ -2481,8 +2543,13 @@ export class Game {
         ctx.globalAlpha = 1;
       }
       if (Math.abs(site.x - this.crab.x) < 40) {
-        drawText(ctx, power ? 'E to dig' : 'you would need a digging claw',
-          s.x, s.y - 18 * z, { color: '#dcd6c3', align: 'center' });
+        // on a phone there is no E, and the ACT plate is already saying it -
+        // so the only thing worth writing over the hole is the bad news
+        const touch = this.ui?.touchEnabled;
+        const label = power ? (touch ? null : 'E to dig') : 'you would need a digging claw';
+        if (label) {
+          drawText(ctx, label, s.x, s.y - 18 * z, { color: '#dcd6c3', align: 'center' });
+        }
       }
     }
   }
@@ -2512,57 +2579,103 @@ export class Game {
    * thousand years and the whole game turns on it, so it gets drawn properly:
    * an arc with weight to it, a bright core, and a wet patch where it lands.
    */
-  _drawStream(ctx, cam) {
-    const p = this.npc;
-    const c = this.crab;
-    const dir = p.facing || -1;
-    const a = cam.worldToScreen(p.x - 7 * dir, p.y - 13);
-    const hit = c.shellWorldAB(0.1, 0.5);
-    const b = cam.worldToScreen(hit.x, hit.y);
-    const mx = (a.x + b.x) / 2, my = Math.min(a.y, b.y) - 10 * cam.zoom;
-    // it starts and stops the way it would: a splutter, then a steady arc
-    this._peeT = (this._peeT || 0) + 1 / 60;
-    const run = clamp01(this._peeT * 2.2) * (0.72 + 0.28 * Math.sin(this.time * 1.3));
-    const wob = Math.sin(this.time * 9) * 1.2 * cam.zoom;
-    const lift = (1 - run) * 10 * cam.zoom;
-    const bx = lerp(a.x, b.x, run), by = lerp(a.y, b.y, run);
-    ctx.lineCap = 'round';
-    for (const [col, w] of [['rgba(96,72,14,0.55)', 4.0], ['#c79f2c', 2.6], ['#e9cf5c', 1.6], ['#fbf3b4', 0.7]]) {
-      ctx.strokeStyle = col;
-      ctx.lineWidth = Math.max(1, w * cam.zoom * 0.55);
-      ctx.beginPath();
-      ctx.moveTo(a.x, a.y);
-      ctx.quadraticCurveTo(mx + wob, my + lift, bx, by);
-      ctx.stroke();
-    }
-    // beads running along it, and a spatter coming off where it lands
-    for (let i = 0; i < 7; i++) {
-      const t = ((this.time * 1.9 + i * 0.14) % 1) * run;
-      const u = 1 - t;
-      const x = u * u * a.x + 2 * u * t * (mx + wob) + t * t * b.x;
-      const y = u * u * a.y + 2 * u * t * (my + lift) + t * t * b.y;
-      ctx.globalAlpha = 0.5 + 0.5 * Math.sin(t * Math.PI);
-      ctx.fillStyle = i % 3 ? '#f6e58a' : '#fffbd8';
-      ctx.fillRect(Math.round(x), Math.round(y), 2, 2);
-    }
-    if (run > 0.9) {
-      for (let i = 0; i < 5; i++) {
-        const a2 = -Math.PI * (0.15 + Math.random() * 0.7);
-        const d = (3 + Math.random() * 9) * cam.zoom;
-        ctx.globalAlpha = 0.5 * Math.random();
-        ctx.fillStyle = '#f6e58a';
-        ctx.fillRect(Math.round(b.x + Math.cos(a2) * d), Math.round(b.y + Math.sin(a2) * d * 0.6), 1, 1);
+  /**
+   * The stream.
+   *
+   * It used to be four stroked beziers whose clock ticked inside the draw,
+   * anchored to the wrong side of her, which meant it hung in the air when the
+   * frame stalled and came out of her back when she turned round. It is drops
+   * now: real ones, with velocity, that leave her, arc, land on the shell,
+   * splash and steam, and stop existing when the beat is over. The clock lives
+   * in update with everything else's.
+   */
+  _peeTick(dt) {
+    this._peeDrops = this._peeDrops || [];
+    const D = this._peeDrops;
+    // the drops that are already in the air do not care whether she is still
+    // going, so they run whether _pee is set or not
+    for (let i = D.length - 1; i >= 0; i--) {
+      const d = D[i];
+      d.t += dt;
+      if (d.land) { if (d.t > d.life) D.splice(i, 1); continue; }
+      d.vy += 520 * dt;
+      d.x += d.vx * dt;
+      d.y += d.vy * dt;
+      // it lands on the shell if it is over it, and on the sand otherwise
+      const hit = this.crab.shellWorldAB(0.1, 0.5);
+      const onShell = Math.abs(d.x - hit.x) < this.crab.m.rx * 0.9;
+      const gy = onShell ? hit.y : this.terrain.surfaceY(d.x);
+      if (d.y >= gy) {
+        d.y = gy; d.land = 1; d.t = 0; d.life = 0.3 + Math.random() * 0.3;
+        // it steams off a shell that has been in the sun for a thousand
+        // years, and steam off that is warm, not cold-blue like sea mist
+        if (Math.random() < 0.22) this.fx.drift(d.x, d.y - 3, '#e8dcae', 1);
       }
-      // and it steams, because the shell has been in the sun for a thousand years
-      if (Math.random() < 0.3) this.fx.mist(hit.x, hit.y - 2, 0.6, 9);
     }
-    // the wet patch, spreading
-    const patch = clamp01(this._peeT * 0.5);
-    ctx.globalAlpha = (0.35 + 0.25 * Math.sin(this.time * 7)) * patch;
-    pxEllipse(ctx, b.x, b.y, (3 + patch * 6) * cam.zoom, (1.2 + patch * 2) * cam.zoom,
-      '#b8902a', { p: pxSize(cam.zoom), soft: 0.35 });
+    if (!this._pee) return;
+    this._peeT = (this._peeT || 0) + dt;
+    // a splutter, then a steady stream, then it tails off
+    const run = clamp01(this._peeT * 2.4) * clamp01(4.4 - this._peeT * 0.6);
+    if (run <= 0.02) return;
+    const p = this.npc;
+    // aim at the animal rather than at whichever way she happens to be
+    // pointing: she is looking at it, so it goes at it
+    const dir = Math.sign(this.crab.x - p.x) || (p.facing || -1);
+    const ax = p.x + dir * 5, ay = p.y - 13;
+    const n = Math.random() < run * 0.9 ? 2 : 1;
+    for (let i = 0; i < n; i++) {
+      D.push({
+        x: ax + (Math.random() - 0.5) * 1.5, y: ay,
+        vx: dir * (34 + Math.random() * 16) * (0.6 + run * 0.6),
+        vy: -34 - Math.random() * 20,
+        t: 0, life: 0, land: 0,
+        r: Math.random() < 0.24 ? 2 : 1,
+      });
+    }
+    if (D.length > 220) D.splice(0, D.length - 220);
+  }
+
+  /** Everything currently in the air, and the patch it has made. */
+  _drawStream(ctx, cam) {
+    const D = this._peeDrops;
+    if (!D || !D.length) return;
+    const z = cam.zoom;
+    const pp = pxSize(z);
+    // the patch where it has been landing, which grows while she goes
+    const patch = clamp01((this._peeT || 0) * 0.45);
+    if (patch > 0.02) {
+      const hit = this.crab.shellWorldAB(0.1, 0.5);
+      const b = cam.worldToScreen(hit.x, hit.y);
+      ctx.globalAlpha = 0.26 + 0.14 * Math.sin(this.time * 5);
+      pxEllipse(ctx, b.x, b.y, (3 + patch * 7) * z, (1.2 + patch * 2.4) * z,
+        '#b8902a', { p: pp, soft: 0.4 });
+      ctx.globalAlpha = 1;
+    }
+    for (const d of D) {
+      const s = cam.worldToScreen(d.x, d.y);
+      if (d.land) {
+        const k = clamp01(1 - d.t / d.life);
+        ctx.globalAlpha = k * 0.8;
+        ctx.fillStyle = '#f6e58a';
+        const w = Math.max(1, Math.round((1 + (1 - k) * 3) * z * 0.4));
+        ctx.fillRect(Math.round(s.x - w / 2), Math.round(s.y), w, Math.max(1, Math.round(z * 0.4)));
+        continue;
+      }
+      // in the air a drop stretches along the way it is going, which is what
+      // makes a stream read as a stream rather than as a line of dots
+      const sp = Math.hypot(d.vx, d.vy);
+      const len = Math.max(1, Math.round(Math.min(6, sp / 26) * z * 0.5));
+      ctx.globalAlpha = 0.95;
+      ctx.fillStyle = d.r > 1 ? '#fbf3b4' : '#e9cf5c';
+      ctx.save();
+      ctx.translate(Math.round(s.x), Math.round(s.y));
+      ctx.rotate(Math.atan2(d.vy, d.vx));
+      ctx.fillRect(0, 0, len, Math.max(1, Math.round(d.r * z * 0.45)));
+      ctx.restore();
+    }
     ctx.globalAlpha = 1;
   }
+
 
   /**
    * The animal, and - while it is digging itself in - only as much of it as is

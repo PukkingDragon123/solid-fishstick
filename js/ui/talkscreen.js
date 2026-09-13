@@ -238,31 +238,43 @@ export class TalkScreen {
     ctx.fillRect(0, 0, W, lb);
     ctx.fillRect(0, H - lb, W, lb);
 
+    // A phone held upright has no left-hand column to put anybody in. Wide,
+    // she stands at the side of the frame and what passes between you is next
+    // to her; narrow, she is at the top of it looking down at you and the
+    // talking happens underneath, which is also roughly what is happening.
     const narrow = W < 360;
-    // ---- her face, large, on the left ------------------------------------
-    const K = narrow ? 3.4 : Math.min(5.6, Math.max(4, H / 52));
+    const K = narrow ? Math.min(4.4, Math.max(3, W / 46)) : Math.min(5.6, Math.max(4, H / 52));
     const spore = (g.mind?.blue || 0) > 0.35;
     let port = null;
     try { port = portrait(g.npc.kind, g.npc.face | 0, K, spore); } catch { port = null; }
-    const px = Math.round(W * (narrow ? 0.10 : 0.085));
-    const py = Math.round(H * 0.30);
+    // far enough in that neither the brim of her hat nor her name runs off
+    // the left edge of a short, wide frame
+    const px = Math.round(narrow ? W * 0.5
+      : Math.max(W * 0.085, (port ? port.ox : 0) + 4, textWidth('DR. ILSA VESS') / 2 + 4));
+    // narrow: hung from the top of the frame, so the hat is never cropped
+    const py = Math.round(narrow ? lb + 4 + (port ? port.oy : 24) : H * 0.30);
     if (port) {
       // a breath, so she is not a still image while she is talking
       const br = Math.sin(this.t * 1.4) * 0.6 + (this.type < 1 ? Math.sin(this.t * 16) * 0.5 : 0);
       ctx.drawImage(port.cv, Math.round(px - port.ox), Math.round(py - port.oy + br));
     }
-    drawText(ctx, 'DR. ILSA VESS', px, Math.round(H * 0.30 + (port ? port.H * 0.62 : 30)),
+    const nameY = Math.round(py + (port ? port.H * 0.62 : 30));
+    drawText(ctx, 'DR. ILSA VESS', px, nameY,
       { color: DIM, align: 'center', outline: true, outlineColor: OUT });
 
     // ---- what she is saying, or what you could say -----------------------
     const cx = Math.round(W * (narrow ? 0.06 : 0.34));
     const cw = Math.round(W - cx - W * 0.06);
+    const cy = narrow ? nameY + 26 : Math.round(H * 0.30);
 
     if (this.topic) {
       this.rows = [];
-      this._card(ctx, cx, Math.round(H * 0.30), cw, H);
+      this._card(ctx, cx, cy, cw, H);
     } else {
-      this._topics(ctx, cx, Math.round(H * 0.18), cw, H, narrow);
+      // a phone on its side has almost no height, so the grid starts right
+      // under the letterbox instead of a fifth of the way down
+      const top = narrow ? cy : H < 210 ? lb + 14 : Math.round(H * 0.18);
+      this._topics(ctx, cx, top, cw, H, narrow);
     }
 
     // ---- and the wire you are talking on ---------------------------------
@@ -323,15 +335,24 @@ export class TalkScreen {
    */
   _topics(ctx, x, y, w, H, narrow) {
     const list = this.list();
-    const cols = narrow ? 1 : w > 300 ? 3 : 2;
+    // a word you say with a thumb is a thumb tall - unless the screen is a
+    // phone on its side, where there is no such thing as a spare row
+    const short = H < 210;
+    const cellH = short ? 24 : this.game.ui?.touchEnabled ? 30 : 21;
+    const floor = H - (short ? 22 : 40);
+    const fits = Math.max(1, Math.floor((floor - y) / (cellH + 4)));
+    // and if the words would fall off the bottom they go into more columns
+    // rather than quietly not existing
+    const maxCols = Math.max(1, Math.min(4, Math.floor(w / 84)));
+    let cols = narrow ? 1 : w > 300 ? 3 : 2;
+    while (cols < maxCols && Math.ceil(list.length / cols) > fits) cols++;
     const cellW = Math.floor((w - (cols - 1) * 6) / cols);
-    const cellH = 21;
     const rows = [];
     list.forEach((tp, i) => {
       const col = i % cols, row = Math.floor(i / cols);
       const bx = x + col * (cellW + 6);
       const by = y + row * (cellH + 4);
-      if (by + cellH > H - 26) return;
+      if (by + cellH > floor) return;
       const on = i === this.pick;
       const done = this.said.has(tp.id);
       const lit = this.flash > 0 && this.word === '' && this.said.has(tp.id);
@@ -347,10 +368,10 @@ export class TalkScreen {
         ctx.fillStyle = '#e2b74a';
         ctx.fillRect(bx, by, 2, cellH);
       }
-      drawText(ctx, tp.word, bx + 6, by + 2,
+      drawText(ctx, tp.word, bx + 6, by + (cellH - 19) / 2,
         { color: on ? '#f7ecd0' : done ? 'rgba(180,156,112,0.8)' : '#b49c70' });
       // its code, in the colour the tap channel uses everywhere else
-      drawText(ctx, morseFor(tp.word), bx + 6, by + 12,
+      drawText(ctx, morseFor(tp.word), bx + 6, by + (cellH - 19) / 2 + 10,
         { color: on ? TAP : 'rgba(143,224,204,0.45)' });
     });
     this.rows = rows;
@@ -358,7 +379,7 @@ export class TalkScreen {
     // what she is waiting for you to say, under the whole grid
     const b = 0.4 + 0.6 * (0.5 + 0.5 * Math.sin(this.t * 2));
     ctx.globalAlpha = b;
-    drawText(ctx, this.said.size ? '' : 'tap it, or point at it', x, y - 12, { color: FAINT });
+    drawText(ctx, this.said.size ? '' : 'tap it, or point at it', x, y - 11, { color: FAINT });
     ctx.globalAlpha = 1;
   }
 

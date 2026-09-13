@@ -8,7 +8,7 @@
 
 import { clamp, clamp01, lerp, damp, TAU, easeOutCubic } from '../lib/math.js';
 import * as Save from '../core/save.js';
-import { pxDisc, pxGlow } from '../render/pix.js';
+import { pxDisc, pxGlow, pxRing, pxSize } from '../render/pix.js';
 import { drawText, textWidth, wrapText, ellipsize, LINE_H } from '../lib/font.js';
 import { FLORA, FLORA_BY_ID, NEEDS_TEXT, NEEDS_ICON } from '../data/flora.js';
 import { ITEM_BY_ID, STATIONS } from '../data/craft.js';
@@ -515,13 +515,164 @@ export class UI {
     if (this.drawer > 0.005) this._panel(ctx, W, H);
     else if (this.touchEnabled) this._touchControls(ctx, W, H);
 
-    if (this.game.work?.live) this._workBar(ctx, W, H);
+    // on touch the thumb band replaces the little tablet at the work: one
+    // control, thumb-sized, in the one place a thumb already is
+    if (this.game.work?.live && !this.touchEnabled) this._workBar(ctx, W, H);
+    this._thumbBand(ctx, W, H);
     if (this.toast) this._toast(ctx, W, H);
     if (this.game.taming?.live) this._songCard(ctx, W, H);
     if (this.drag) this._drawCarried(ctx, W, H);
     this._exitChip(ctx, W, H);
     if (this.paused) this._pauseCard(ctx, W, H);
     if (this.hover && !this.drag) this._tooltip(ctx, W, H);
+  }
+
+  // The bottom of a phone screen is the only real estate there is, and four
+  // different things want it: the walking stick, the spring valve, a row of
+  // action plates, and the band. They are all measured from here so that
+  // nothing computes its own position any more - which is what let the valve
+  // end up sitting on the band and the MODE plate end up stranded in the
+  // middle of the desert.
+  //
+  // There are two arrangements, because a phone on its side is a different
+  // shape of problem. Upright there is height to spare, so they stack: stick
+  // row, button row, band. On its side there is almost no height at all, so
+  // they spread out along the bottom instead - stick in one corner, valve in
+  // the other, buttons in a column beside it, and the band in the gap in the
+  // middle, which is exactly where neither thumb is.
+  /** True when the screen is too short to stack anything. */
+  compact(H) { return H < 210; }
+  stickR(W, H) { return clamp(Math.round(Math.min(W, H) * 0.17), 22, 34); }
+  /** How much of the bottom the walking stick wants, so nothing lands on it. */
+  stickSpan(W, H) { return this.buildOn ? 0 : this.stickR(W, H) * 2 + 24; }
+  buttonSize(W, H) {
+    return this.compact(H) ? { w: 74, h: 26 } : { w: 88, h: W < 300 ? 34 : 36 };
+  }
+  /** The top of the row of action plates, when they are in a row. */
+  buttonRowY(W, H) {
+    if (!this.touchEnabled || this.buildOn) return H;
+    return H - this.stickSpan(W, H) - this.buttonSize(W, H).h - 6;
+  }
+  /** Where the spring valve sits - on the stick's line, at the other end. */
+  valveBox(W, H) {
+    const size = 34;
+    if (!this.touchEnabled) return { x: W - size - 8, y: H - size - 26, size };
+    if (this.compact(H)) return { x: W - size - 8, y: H - size - 16, size };
+    const R = this.stickR(W, H);
+    return { x: W - size - 8, y: H - this.stickSpan(W, H) + 10 + R - size / 2, size };
+  }
+  /** The ceiling everything else has to stay above. */
+  furnitureTop(W, H) {
+    if (!this.touchEnabled || this.buildOn) return H;
+    if (this.compact(H)) {
+      const b = this.buttonSize(W, H);
+      return H - 6 - b.h * 2 - 4;   // a column two deep is what usually shows
+    }
+    return this._bandBox(W, H)?.y ?? this.buttonRowY(W, H);
+  }
+
+  /** Whatever is asking for a stroke right now, in the order it would matter. */
+  _bandSpec() {
+    const g = this.game;
+    let band = null;
+    if (g.work?.live) {
+      const j = g.work.job;
+      band = { kind: 'work', label: j.label.toUpperCase(), tint: j.def.tint,
+        needle: j.needle, centre: j.centre, width: j.band,
+        hit: () => g.work.strike(), hold: true };
+    } else if (this.mode === 'hunt' && g.combat?.live) {
+      const c = g.combat;
+      band = { kind: 'hunt', label: 'STRIKE', tint: '#e2564f',
+        needle: c.pos ?? 0, centre: c.band ?? 0.5, width: c.width ?? 0.26,
+        hit: () => g.strike() };
+    } else if (g.pump?.open > 0.01) {
+      const p = g.pump;
+      band = { kind: 'pump', label: 'SPRING', tint: '#5fc6d8',
+        needle: p.pos ?? 0, centre: p.centre ?? 0.5, width: p.band ?? 0.3,
+        hit: () => g.pumpStroke() };
+    }
+    return band;
+  }
+
+  /** Where the band sits, or null when nothing is asking. Wanted by the
+   * button row too, which has to keep out of it. */
+  _bandBox(W, H) {
+    if (!this.touchEnabled || !this._bandSpec()) return null;
+    if (this.compact(H) && !this.buildOn) {
+      // sideways: it goes in the gap between the two thumbs
+      const span = this.stickSpan(W, H);
+      const x = this.stickR(W, H) * 2 + 36;
+      const right = W - 8 - this.buttonSize(W, H).w - 12 - 34;
+      return { x, y: H - span - 2, w: Math.max(110, right - x), h: span - 8 };
+    }
+    // upright: it sits above the button row rather than over it, so you can
+    // still walk away from a job you have changed your mind about
+    const h = clamp(Math.round(H * 0.14), 48, 76);
+    const floor = this.buildOn ? H - 8 : this.buttonRowY(W, H) - 6;
+    return { x: 6, y: Math.max(24, floor - h), w: W - 12, h };
+  }
+
+  /**
+   * THE BAND.
+   *
+   * Four different things in this game are the same thing: a needle sweeping
+   * across a bar with a band on it that you have to hit. The spring, the
+   * claw, the spore and every job. On a keyboard they are four keys. On a
+   * phone they were four small buttons in four different corners, which is
+   * four ways to lose.
+   *
+   * So on touch there is one control, and it is enormous: a band across the
+   * bottom third of the screen that you hit with the thumb you are already
+   * holding the phone with. It says what it is doing, it shows the same
+   * needle and the same band as the tablet does, and whatever is live takes
+   * it. Nothing else needs to be aimed at.
+   */
+  _thumbBand(ctx, W, H) {
+    const band = this.touchEnabled ? this._bandSpec() : null;
+    if (!band) { this.thumbRect = null; return; }
+    const g = this.game;
+    const box = this._bandBox(W, H);
+    const { x, y, w, h } = box;
+    const hot = this._hit(x, y, w, h);
+    this.buttons.push({ x, y, w, h, key: band.kind === 'work' ? 'e' : ' ' });
+
+    drawPlate(ctx, x, y, w, h, { mat: 'stone', edge: 'none' });
+    drawText(ctx, band.label, x + w / 2, y + 5,
+      { color: '#e6dcc0', align: 'center', scale: 2 });
+
+    // the bar, thumb-sized
+    const bx = x + 10, bw = w - 20, bh = Math.max(14, Math.round(h * 0.30));
+    const by = y + h - bh - 8;
+    ctx.fillStyle = 'rgba(14,11,7,0.92)';
+    ctx.fillRect(bx, by, bw, bh);
+    const half = band.width / 2;
+    const b0 = Math.round(bx + clamp01(band.centre - half) * bw);
+    const b1 = Math.round(bx + clamp01(band.centre + half) * bw);
+    ctx.globalAlpha = 0.32;
+    ctx.fillStyle = band.tint;
+    ctx.fillRect(b0, by, b1 - b0, bh);
+    const c0 = Math.round(bx + clamp01(band.centre - half * 0.32) * bw);
+    const c1 = Math.round(bx + clamp01(band.centre + half * 0.32) * bw);
+    ctx.globalAlpha = 0.7;
+    ctx.fillRect(c0, by, Math.max(2, c1 - c0), bh);
+    ctx.globalAlpha = 1;
+    const nx = Math.round(bx + clamp01(band.needle) * bw);
+    ctx.fillStyle = '#f7ecd0';
+    ctx.fillRect(nx - 1, by - 3, 3, bh + 6);
+
+    // and the whole plate lights when your thumb is on it
+    if (hot && g.input.down) {
+      ctx.globalAlpha = 0.18;
+      ctx.fillStyle = band.tint;
+      ctx.fillRect(x, y, w, h);
+      ctx.globalAlpha = 1;
+    }
+    if (band.hold) this.actHeld = hot && g.input.down;
+    if (hot && g.input.clicked) {
+      g.input.clicked = false;
+      band.hit();
+    }
+    this.thumbRect = { x, y, w, h };
   }
 
   /**
@@ -606,9 +757,22 @@ export class UI {
   _modeBar(ctx, W, H) {
     const g = this.game;
     const avail = MODES.filter((m) => this.modeUnlocked(m.id));
-    const S = 17, gap = 2;
+    // On a phone this column is something you press with a thumb, so the
+    // tiles grow and the whole rail climbs to sit clear of the band and the
+    // stick instead of under them.
+    const touch = this.touchEnabled && !this.buildOn;
+    const bottom = touch ? this.furnitureTop(W, H) - 8 : H - 11;
+    // On a phone these are things you press with a thumb, so they grow - but
+    // only as far as the room above the rest of the furniture allows, which
+    // on a phone lying on its side is not very far.
+    const gap = touch ? 4 : 2;
+    const room = bottom - 4;
+    const n = avail.length;
+    const S = touch
+      ? clamp(Math.floor((room - (n - 1) * gap) / n), 14, 22)
+      : 17;
     const bx = 3;
-    const by = H - 28 - (avail.length - 1) * (S + gap);
+    const by = bottom - S - (n - 1) * (S + gap);
     avail.forEach((m, i) => {
       const y = by + i * (S + gap);
       const on = this.mode === m.id;
@@ -640,7 +804,7 @@ export class UI {
     });
 
     // and the mode's own controls, to the right of the column
-    const ax = bx + S + 7, ay = H - 28;
+    const ax = bx + S + 7, ay = bottom - S;
     if (this.mode === 'hunt') this._huntBar(ctx, ax, ay, W, H);
     else if (this.mode === 'spore') this._sporeBar(ctx, ax, ay, W, H);
     else if (this.mode === 'hive') this._hiveBar(ctx, ax, ay, W, H);
@@ -1315,7 +1479,7 @@ export class UI {
     if (this.mode === 'spore') return this._sprayButton(ctx, W, H);
     const g = this.game;
     const size = 34;
-    const x = W - size - 8, y = H - size - (this.touchEnabled ? 70 : 26);
+    const { x, y } = this.valveBox(W, H);
     const hold = g.pumpHold || 0;
     const hot = this._hit(x, y, size, size);
     const i = g.input;
@@ -1427,7 +1591,7 @@ export class UI {
     const hv = g.hive;
     const e = g.economy;
     const size = 34;
-    const x = W - size - 8, y = H - size - (this.touchEnabled ? 70 : 26);
+    const { x, y } = this.valveBox(W, H);
     const hot = this._hit(x, y, size, size);
     const i = g.input;
     this.valveRect = { x, y, w: size, h: size };
@@ -1870,26 +2034,28 @@ export class UI {
     const inX = px + 12, inY = py + 12, inW = pw - 24, inH = ph - 24;
 
     // -- the tab rail -------------------------------------------------------
+    // a tab is a thing you hit with a thumb on a phone, so it gets taller
+    const tabH = this.touchEnabled ? 28 : 20;
     const tabW = Math.floor(inW / TABS.length);
     TABS.forEach((t, i) => {
       const tx = inX + i * tabW;
       const on = this.tab === t.id;
-      const hot = this._hit(tx, inY, tabW, 20);
+      const hot = this._hit(tx, inY, tabW, tabH);
       if (on) {
         ctx.fillStyle = 'rgba(104,80,48,0.95)';
-        ctx.fillRect(tx, inY, tabW - 1, 20);
+        ctx.fillRect(tx, inY, tabW - 1, tabH);
         ctx.fillStyle = '#d6ba8a';
-        ctx.fillRect(tx, inY + 19, tabW - 1, 1);
+        ctx.fillRect(tx, inY + tabH - 1, tabW - 1, 1);
       } else if (hot) {
         ctx.fillStyle = 'rgba(70,54,34,0.9)';
-        ctx.fillRect(tx, inY, tabW - 1, 20);
+        ctx.fillRect(tx, inY, tabW - 1, tabH);
       }
       ctx.globalAlpha = k * (on ? 1 : 0.62);
       // narrow screens get the pictogram alone; there is no room for both
       const lw = tabW >= 58 ? textWidth(t.name) : 0;
       const gx = tx + Math.round((tabW - 1 - (18 + (lw ? 2 + lw : 0))) / 2);
-      drawTab(ctx, t.icon, gx, inY + 3);
-      if (lw) drawText(ctx, t.name, gx + 20, inY + 7, { color: on ? INK : DIM });
+      drawTab(ctx, t.icon, gx, inY + Math.round((tabH - 22) / 2) + 1);
+      if (lw) drawText(ctx, t.name, gx + 20, inY + Math.round((tabH - 7) / 2), { color: on ? INK : DIM });
       ctx.globalAlpha = k;
       if (hot && this.game.input.clicked) {
         this.game.input.clicked = false;
@@ -1900,17 +2066,19 @@ export class UI {
 
     // -- close --------------------------------------------------------------
     const cx0 = px + pw - 20, cy0 = py + 4;
-    const closeHot = this._hit(cx0, cy0, 14, 14);
+    // the target around it is finger-sized even though the mark stays small
+    const cpad = this.touchEnabled ? 8 : 0;
+    const closeHot = this._hit(cx0 - cpad, cy0 - cpad, 14 + cpad * 2, 14 + cpad * 2);
     drawGlyph(ctx, 'close', cx0 + 1, cy0 + 1, { color: closeHot ? '#f5e7c6' : '#a08a64' });
     if (closeHot) {
       this.hover = { title: 'Close', body: 'esc' };
       if (this.game.input.clicked) { this.game.input.clicked = false; this.drawerOpen = false; }
     }
 
-    const bodyY = inY + 26, bodyH = inH - 26;
+    const bodyY = inY + tabH + 6, bodyH = inH - tabH - 6;
     const tab = TABS.find((t) => t.id === this.tab) || TABS[0];
     if (this.tab === 'codex' || this.tab === 'map' || this.tab === 'craft') {
-      drawText(ctx, tab.sub, inX, bodyY - 4, { color: FAINT });
+      drawText(ctx, ellipsize(tab.sub, inW - 6), inX, bodyY - 4, { color: FAINT });
       ctx.save();
       ctx.beginPath(); ctx.rect(inX, bodyY + 6, inW, bodyH - 6); ctx.clip();
       if (this.tab === 'map') this._mapTab(ctx, inX, bodyY + 6, inW, bodyH - 6);
@@ -1921,7 +2089,7 @@ export class UI {
       return;
     }
 
-    drawText(ctx, tab.sub, inX, bodyY - 4, { color: FAINT });
+    drawText(ctx, ellipsize(tab.sub, inW - 6), inX, bodyY - 4, { color: FAINT });
     ctx.save();
     ctx.beginPath(); ctx.rect(inX, bodyY + 6, inW, bodyH - 6); ctx.clip();
     this._fleetTab(ctx, inX, bodyY + 6, inW, bodyH - 6);
@@ -1951,7 +2119,7 @@ export class UI {
       const cw = 30;
       if (bx + cw > x + w) { bx = x; by += 14; }
       drawPlate(ctx, bx, by, cw - 2, 12, { rivets: false });
-      drawGlyph(ctx, e.def.icon, bx + 6, by + 6, { color: e.def.tint, scale: 1 });
+      drawNodeIcon(ctx, e.def.icon, bx + 8, by + 6, e.def.tint, 1);
       drawText(ctx, `${e.n}`, bx + cw - 5, by + 3, { color: INK, align: 'right' });
       if (this._hit(bx, by, cw - 2, 12)) {
         this.hover = { title: `${e.def.name} x${e.n}`, body: e.def.desc };
@@ -1983,19 +2151,26 @@ export class UI {
         edge: can ? 'rgba(180,146,86,0.6)' : 'rgba(90,74,50,0.35)',
       });
       ctx.globalAlpha = can ? 1 : 0.5;
-      drawGlyph(ctx, out.icon, x + 9, by + 9, { color: out.tint, scale: 1 });
-      drawText(ctx, `${out.name}${r.out[1] > 1 ? ` x${r.out[1]}` : ''}`, x + 18, by + 2,
-        { color: can ? INK : DIM });
+      // what it makes, on its own margin down the left of the row
+      drawNodeIcon(ctx, out.icon, x + 11, by + (rowH - 2) / 2, out.tint, 1);
+      // and where it has to be made, only when the row is wide enough that
+      // the words are not sitting on the ingredients
+      const roomy = w > 210;
+      const nameW = roomy ? w - 44 - textWidth(STATIONS[r.at].name) : w - 44;
+      drawText(ctx, ellipsize(`${out.name}${r.out[1] > 1 ? ` x${r.out[1]}` : ''}`, nameW),
+        x + 20, by + 2, { color: can ? INK : DIM });
       // what it takes, as chips
-      let cx2 = x + 18;
+      let cx2 = x + 20;
       for (const [id, n] of r.need) {
         const d = ITEM_BY_ID[id];
         const short = craft.count(id) < n;
-        drawGlyph(ctx, d.icon, cx2 + 3, by + 14, { color: short ? '#c07a6a' : d.tint, scale: 1 });
-        drawText(ctx, `${n}`, cx2 + 9, by + 11, { color: short ? '#c07a6a' : FAINT });
+        drawNodeIcon(ctx, d.icon, cx2 + 4, by + 13, short ? '#c07a6a' : d.tint, 1);
+        drawText(ctx, `${n}`, cx2 + 10, by + 10, { color: short ? '#c07a6a' : FAINT });
         cx2 += 17;
       }
-      drawText(ctx, STATIONS[r.at].name, x + w - 12, by + 11, { color: FAINT, align: 'right' });
+      if (roomy) {
+        drawText(ctx, STATIONS[r.at].name, x + w - 12, by + 2, { color: FAINT, align: 'right' });
+      }
       ctx.globalAlpha = 1;
       if (hot) {
         this.hover = { title: out.name, body: why ? `${out.desc}\n\n${why}.`
@@ -2366,8 +2541,12 @@ export class UI {
     ctx.lineWidth = 1;
     ctx.stroke();
 
-    // distance ticks, every hundred metres
-    for (let m = Math.floor((this.mapX - span / 2) / 2000) * 2000; m < this.mapX + span / 2; m += 2000) {
+    // Distance ticks. Every two hundred metres is right on a desktop panel
+    // and unreadable on a phone, where the labels end up on top of each
+    // other - so the step doubles until they have room to be read.
+    let step = 2000;
+    while (step * (w / span) < 40) step *= 2;
+    for (let m = Math.floor((this.mapX - span / 2) / step) * step; m < this.mapX + span / 2; m += step) {
       const tx = toX(m);
       if (tx < x + 14 || tx > x + w - 14) continue;
       ctx.fillStyle = 'rgba(214,186,138,0.16)';
@@ -2450,8 +2629,11 @@ export class UI {
     ctx.fillRect(Math.round(you) - 3, gy - 11, 2, 2);
     ctx.fillRect(Math.round(you) + 2, gy - 11, 2, 2);
 
-    drawText(ctx, `${g.world.found.size} places found`, x, y + h - 9, { color: FAINT });
-    drawText(ctx, `${Math.round(g.crab.x / 10)}m from where you woke`, x + w, y + h - 9,
+    const far = `${Math.round(g.crab.x / 10)}m`;
+    const tight = w < 240;
+    drawText(ctx, tight ? `${g.world.found.size} found` : `${g.world.found.size} places found`,
+      x, y + h - 9, { color: FAINT });
+    drawText(ctx, tight ? far : `${far} from where you woke`, x + w, y + h - 9,
       { color: FAINT, align: 'right' });
   }
 
@@ -2661,78 +2843,100 @@ export class UI {
    */
   _touchControls(ctx, W, H) {
     const g = this.game;
-    const narrow = W < 320;
+    const narrow = W < 300;
     // up on the shell nothing moves and nothing acts, so none of this exists
     if (this.buildOn) { this.stickZone = null; this.stick = null; return; }
-    const R = narrow ? 30 : 27;
-    // in build mode the rail owns the left edge, so the stick steps aside
+    // A thumb is about nine millimetres of certainty. At this scale that is
+    // around thirty pixels, so nothing you are meant to hit in a hurry is
+    // smaller than that, and the stick is twice it.
+    const R = this.stickR(W, H);
+    const pad = 10;
     const off = this.buildOn ? this.railW(W) + 4 : 0;
-    const sx = 8 + off, sy = H - 2 * R - 10;
-    this.stickZone = { x: off, y: H - 2 * R - 20, w: 2 * R + 26, h: 2 * R + 20 };
+    const span = this.stickSpan(W, H);
+    const sx = pad + off, sy = H - span + 10;
+    this.stickZone = { x: off, y: H - span, w: 2 * R + 30, h: span };
     const cx = this.stick ? this.stick.ox : sx + R;
     const cy = this.stick ? this.stick.oy : sy + R;
-    // the ring, with a groove so it reads as a thing rather than a circle
-    ctx.globalAlpha = this.stick ? 0.55 : 0.30;
-    ctx.strokeStyle = INK;
-    ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.arc(cx, cy, R, 0, TAU); ctx.stroke();
-    ctx.globalAlpha = this.stick ? 0.22 : 0.12;
-    ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.arc(cx, cy, R - 5, 0, TAU); ctx.stroke();
-    // two chevrons, because this stick only goes two ways
-    ctx.globalAlpha = 0.30;
+    const p = 2;   // the stick is UI, so it snaps to the UI grid, not the world's
+
+    // The ring used to be three ctx.arc strokes, which is three smooth circles
+    // sitting on a screen that has no other smooth anything on it. Same shape,
+    // built out of squares.
     ctx.fillStyle = INK;
+    ctx.globalAlpha = this.stick ? 0.5 : 0.26;
+    pxRing(ctx, cx, cy, R, R, INK, { p, thick: p });
+    ctx.globalAlpha = this.stick ? 0.2 : 0.1;
+    pxRing(ctx, cx, cy, R - 6, R - 6, INK, { p, thick: p });
+    // two chevrons, because this stick only goes two ways
+    ctx.globalAlpha = 0.3;
     for (const d of [-1, 1]) {
-      const ax = cx + d * (R - 7);
-      ctx.beginPath();
-      ctx.moveTo(ax + d * 3, cy);
-      ctx.lineTo(ax - d * 2, cy - 4);
-      ctx.lineTo(ax - d * 2, cy + 4);
-      ctx.closePath();
-      ctx.fill();
+      const ax = cx + d * (R - 10);
+      for (let k = 0; k < 5; k++) {
+        const wdt = (5 - k) * p;
+        ctx.fillRect(ax - d * k * p - (d < 0 ? 0 : p), cy - wdt / 2, p, wdt);
+      }
     }
-    ctx.globalAlpha = this.stick ? 0.75 : 0.30;
+    ctx.globalAlpha = this.stick ? 0.8 : 0.34;
     const dx = this.stick ? clamp(this.stick.x - this.stick.ox, -R, R) : 0;
-    ctx.beginPath(); ctx.arc(cx + dx, cy, this.stick ? 11 : 10, 0, TAU); ctx.fill();
+    pxDisc(ctx, cx + dx, cy, this.stick ? 13 : 11, INK, { p, soft: p });
     ctx.globalAlpha = 1;
 
-    // the buttons: only the live ones, stacked up the right edge above the
-    // valve so a thumb never has to cross the spring to reach them
-    // laid out along the bottom, right to left from the valve, wrapping up a
-    // row rather than ever landing on the stick or on the spring
-    const bw = narrow ? 58 : 52, bh = narrow ? 26 : 23;
-    const v = this.valveRect;
-    const rightEdge = (v ? v.x : W - 6) - 8;
-    const leftEdge = (this.stickZone ? this.stickZone.x + this.stickZone.w : 0) + 6;
-    const bottom = H - bh - 6;
-    let bx = rightEdge - bw;
-    let by = bottom;
-    const add = (label, key, colour) => {
-      if (bx < leftEdge) { bx = rightEdge - bw; by -= bh + 5; }
-      this.buttons.push({ x: bx, y: by, w: bw, h: bh, key });
+    // The buttons. Only the live ones exist - a row of dead dashes teaches
+    // you nothing - and where they go depends on which way up the phone is.
+    const bs = this.buttonSize(W, H);
+    const hint = g.actionHint();
+    const wanted = [];
+    if (g.npc && g.talk && !g.talk.on && Math.abs(g.npc.x - g.crab.x) < 64) {
+      wanted.push({ label: 'TALK', key: 'c', colour: '#e8c98a' });
+    }
+    if (g.garden.ripeCount) wanted.push({ label: `PICK ${g.garden.ripeCount}`, key: 'r', colour: '#cfe89a' });
+    if (hint) wanted.push({ label: 'ACT', key: 'e' });
+    wanted.push({ label: 'MODE', key: 'm' });
+
+    const gap = 6;
+    const plate = (b, bx, by, bw, bh) => {
+      this.buttons.push({ x: bx, y: by, w: bw, h: bh, key: b.key });
       const hot = this._hit(bx, by, bw, bh);
-      ctx.globalAlpha = hot ? 0.95 : 0.80;
-      ctx.fillStyle = 'rgba(46,34,22,0.92)';
-      ctx.fillRect(bx, by, bw, bh);
-      ctx.fillStyle = 'rgba(88,66,42,0.9)';
-      ctx.fillRect(bx, by, bw, 2);
-      ctx.strokeStyle = colour || 'rgba(214,186,138,0.55)';
-      ctx.strokeRect(bx + 0.5, by + 0.5, bw - 1, bh - 1);
-      ctx.globalAlpha = 1;
-      drawText(ctx, label, bx + bw / 2, by + (bh - 7) / 2,
-        { color: colour || INK, align: 'center' });
+      drawPlate(ctx, bx, by, bw, bh, { mat: 'stone', edge: 'none', alpha: hot ? 1 : 0.92 });
+      if (hot) {
+        ctx.globalAlpha = 0.2;
+        ctx.fillStyle = b.colour || '#e6d5ad';
+        ctx.fillRect(bx, by, bw, bh);
+        ctx.globalAlpha = 1;
+      }
+      // two-high letters if they fit, one-high if the plate had to shrink
+      const big = textWidth(b.label) * 2 + 10 <= bw && bh >= 28;
+      drawText(ctx, b.label, bx + bw / 2, by + (bh - (big ? 14 : 7)) / 2,
+        { color: b.colour || INK, align: 'center', scale: big ? 2 : 1 });
       if (hot && this.game.input.clicked) {
         this.game.input.clicked = false;
-        if (key) this.game.input.pulseVirtual(key);
+        if (b.key) this.game.input.pulseVirtual(b.key);
       }
-      bx -= bw + 6;
     };
-    const hint = g.actionHint();
-    if (g.garden.ripeCount) add(`PICK ${g.garden.ripeCount}`, 'r', '#cfe89a');
-    if (hint) add('ACT', 'e');
-    add('MODE', 'm');
+
+    let hintY;
+    if (this.compact(H)) {
+      // sideways: a column stacked up from the bottom-right, under the thumb
+      // that is already holding that corner of the phone
+      const v = this.valveBox(W, H);
+      const bx = v.x - bs.w - 10;
+      let by = H - bs.h - 6;
+      for (const b of wanted) { plate(b, bx, by, bs.w, bs.h); by -= bs.h + 4; }
+      hintY = by - 2;
+    } else {
+      // upright: one row of their own, directly above the stick, sharing the
+      // width evenly - four on a small phone are four smaller plates rather
+      // than three plates and one somewhere else
+      const by = this.buttonRowY(W, H);
+      const left = this.stickZone.x + this.stickZone.w + 4;
+      const right = W - 6;
+      const bw = Math.min(bs.w, Math.floor((right - left - gap * (wanted.length - 1)) / wanted.length));
+      let bx = right - wanted.length * bw - (wanted.length - 1) * gap;
+      for (const b of wanted) { plate(b, bx, by, bw, bs.h); bx += bw + gap; }
+      hintY = by - 12;
+    }
     if (hint) {
-      drawText(ctx, hint, rightEdge, by - 10,
+      drawText(ctx, hint, W - 6, hintY,
         { color: INK, align: 'right', outline: true, outlineColor: OUT });
     }
   }

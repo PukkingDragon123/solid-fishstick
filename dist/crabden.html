@@ -1271,6 +1271,7 @@ body {
       this.maxZoom = 3;
       this.vw = 460;
       this.vh = 258;
+      this.yBias = 0.16;
       this.follow = null;
       this.lead = 0;
       this.shakeAmt = 0;
@@ -1336,7 +1337,7 @@ body {
           const f = this.follow;
           this.lead = damp(this.lead, clamp((f.vx || 0) * 0.34, -46, 46), 0.02, dt);
           this.tx = f.x + this.lead;
-          this.ty = f.y - this.vh * 0.16 / this.zoom;
+          this.ty = f.y - this.vh * this.yBias / this.zoom;
         }
         this.x = damp(this.x, this.tx, 9e-4, dt);
         this.y = damp(this.y, this.ty, 4e-3, dt);
@@ -1945,8 +1946,9 @@ body {
       let scale = Math.max(2, Math.floor(Math.min(w / BASE_W, h / BASE_H)));
       scale = Math.min(scale, 6);
       const vw = Math.ceil(w / scale);
-      const vh = Math.ceil(h / scale);
+      const vh = Math.min(Math.ceil(h / scale), Math.ceil(vw * 2.1));
       this.scale = scale;
+      this.tall = vh > vw * 1.05;
       if (vw !== this.vw || vh !== this.vh) {
         this.vw = vw;
         this.vh = vh;
@@ -10022,6 +10024,19 @@ body {
         );
         p.rect(cx - 2, base - 5, 4, 5, { mat: "wood", mask: true, dome: -1.5, tint: -0.4 });
         break;
+      case "map":
+        p.rect(cx - 9, base - 14, 18, 14, { mat: "petalWhite", dome: 2.2, tint: 0.04 });
+        for (const d of [-3, 3]) {
+          p.rect(cx + d, base - 14, 0.9, 14, { mat: "petalWhite", mask: true, tint: -0.3, dome: 0 });
+        }
+        p.curve(
+          [{ x: cx - 6, y: base - 3 }, { x: cx - 1, y: base - 10 }, { x: cx + 5, y: base - 5 }],
+          0.9,
+          0.5,
+          { mat: "petalWhite", mask: true, tint: -0.45, dome: 0, steps: 10 }
+        );
+        p.ellipse(cx + 5, base - 5, 1.6, 1.6, { mat: "petalPink", dome: 1.8, tint: 0.22 });
+        break;
       case "codex":
         p.rect(cx - 8, base - 13, 16, 13, { mat: "leather", dome: 2.6, tint: 0.02 });
         p.rect(cx - 6, base - 11, 12, 9, { mat: "petalWhite", dome: 1.4, tint: 0.08 });
@@ -10192,7 +10207,23 @@ body {
   };
   function drawGlyph(ctx, name, x, y, opts = {}) {
     const rows = GLYPHS[name];
-    if (!rows) return 12;
+    if (!rows) {
+      if (NODE[name]) {
+        const s2 = Math.max(1, Math.round((opts.scale || 1) * 1.2));
+        const prev = ctx.globalAlpha;
+        if (opts.alpha !== void 0) ctx.globalAlpha = prev * opts.alpha;
+        drawNodeIcon(
+          ctx,
+          name,
+          x + 6 * (opts.scale || 1),
+          y + 6 * (opts.scale || 1),
+          opts.color || GLYPH_COLS[2],
+          s2
+        );
+        ctx.globalAlpha = prev;
+      }
+      return 12;
+    }
     const s = opts.scale || 1;
     const cols = { ...GLYPH_COLS, ...opts.colors || {} };
     if (opts.color) cols[2] = opts.color;
@@ -10769,7 +10800,7 @@ body {
       ctx.fillRect(0, 0, W, lb);
       ctx.fillRect(0, H - lb, W, lb);
       const narrow = W < 360;
-      const K = narrow ? 3.4 : Math.min(5.6, Math.max(4, H / 52));
+      const K = narrow ? Math.min(4.4, Math.max(3, W / 46)) : Math.min(5.6, Math.max(4, H / 52));
       const spore = (g.mind?.blue || 0) > 0.35;
       let port = null;
       try {
@@ -10777,26 +10808,29 @@ body {
       } catch {
         port = null;
       }
-      const px = Math.round(W * (narrow ? 0.1 : 0.085));
-      const py = Math.round(H * 0.3);
+      const px = Math.round(narrow ? W * 0.5 : Math.max(W * 0.085, (port ? port.ox : 0) + 4, textWidth("DR. ILSA VESS") / 2 + 4));
+      const py = Math.round(narrow ? lb + 4 + (port ? port.oy : 24) : H * 0.3);
       if (port) {
         const br = Math.sin(this.t * 1.4) * 0.6 + (this.type < 1 ? Math.sin(this.t * 16) * 0.5 : 0);
         ctx.drawImage(port.cv, Math.round(px - port.ox), Math.round(py - port.oy + br));
       }
+      const nameY = Math.round(py + (port ? port.H * 0.62 : 30));
       drawText(
         ctx,
         "DR. ILSA VESS",
         px,
-        Math.round(H * 0.3 + (port ? port.H * 0.62 : 30)),
+        nameY,
         { color: DIM, align: "center", outline: true, outlineColor: OUT }
       );
       const cx = Math.round(W * (narrow ? 0.06 : 0.34));
       const cw = Math.round(W - cx - W * 0.06);
+      const cy = narrow ? nameY + 26 : Math.round(H * 0.3);
       if (this.topic) {
         this.rows = [];
-        this._card(ctx, cx, Math.round(H * 0.3), cw, H);
+        this._card(ctx, cx, cy, cw, H);
       } else {
-        this._topics(ctx, cx, Math.round(H * 0.18), cw, H, narrow);
+        const top = narrow ? cy : H < 210 ? lb + 14 : Math.round(H * 0.18);
+        this._topics(ctx, cx, top, cw, H, narrow);
       }
       this._wire(ctx, W, H, lb);
       ctx.globalAlpha = 1;
@@ -10845,15 +10879,20 @@ body {
      */
     _topics(ctx, x, y, w, H, narrow) {
       const list = this.list();
-      const cols = narrow ? 1 : w > 300 ? 3 : 2;
+      const short = H < 210;
+      const cellH = short ? 24 : this.game.ui?.touchEnabled ? 30 : 21;
+      const floor = H - (short ? 22 : 40);
+      const fits = Math.max(1, Math.floor((floor - y) / (cellH + 4)));
+      const maxCols = Math.max(1, Math.min(4, Math.floor(w / 84)));
+      let cols = narrow ? 1 : w > 300 ? 3 : 2;
+      while (cols < maxCols && Math.ceil(list.length / cols) > fits) cols++;
       const cellW = Math.floor((w - (cols - 1) * 6) / cols);
-      const cellH = 21;
       const rows = [];
       list.forEach((tp, i) => {
         const col = i % cols, row = Math.floor(i / cols);
         const bx = x + col * (cellW + 6);
         const by = y + row * (cellH + 4);
-        if (by + cellH > H - 26) return;
+        if (by + cellH > floor) return;
         const on = i === this.pick;
         const done = this.said.has(tp.id);
         const lit = this.flash > 0 && this.word === "" && this.said.has(tp.id);
@@ -10871,21 +10910,21 @@ body {
           ctx,
           tp.word,
           bx + 6,
-          by + 2,
+          by + (cellH - 19) / 2,
           { color: on ? "#f7ecd0" : done ? "rgba(180,156,112,0.8)" : "#b49c70" }
         );
         drawText(
           ctx,
           morseFor(tp.word),
           bx + 6,
-          by + 12,
+          by + (cellH - 19) / 2 + 10,
           { color: on ? TAP : "rgba(143,224,204,0.45)" }
         );
       });
       this.rows = rows;
       const b = 0.4 + 0.6 * (0.5 + 0.5 * Math.sin(this.t * 2));
       ctx.globalAlpha = b;
-      drawText(ctx, this.said.size ? "" : "tap it, or point at it", x, y - 12, { color: FAINT });
+      drawText(ctx, this.said.size ? "" : "tap it, or point at it", x, y - 11, { color: FAINT });
       ctx.globalAlpha = 1;
     }
     /**
@@ -22080,13 +22119,183 @@ body {
       if (this.placing) this._placingHud(ctx, W, H);
       if (this.drawer > 5e-3) this._panel(ctx, W, H);
       else if (this.touchEnabled) this._touchControls(ctx, W, H);
-      if (this.game.work?.live) this._workBar(ctx, W, H);
+      if (this.game.work?.live && !this.touchEnabled) this._workBar(ctx, W, H);
+      this._thumbBand(ctx, W, H);
       if (this.toast) this._toast(ctx, W, H);
       if (this.game.taming?.live) this._songCard(ctx, W, H);
       if (this.drag) this._drawCarried(ctx, W, H);
       this._exitChip(ctx, W, H);
       if (this.paused) this._pauseCard(ctx, W, H);
       if (this.hover && !this.drag) this._tooltip(ctx, W, H);
+    }
+    // The bottom of a phone screen is the only real estate there is, and four
+    // different things want it: the walking stick, the spring valve, a row of
+    // action plates, and the band. They are all measured from here so that
+    // nothing computes its own position any more - which is what let the valve
+    // end up sitting on the band and the MODE plate end up stranded in the
+    // middle of the desert.
+    //
+    // There are two arrangements, because a phone on its side is a different
+    // shape of problem. Upright there is height to spare, so they stack: stick
+    // row, button row, band. On its side there is almost no height at all, so
+    // they spread out along the bottom instead - stick in one corner, valve in
+    // the other, buttons in a column beside it, and the band in the gap in the
+    // middle, which is exactly where neither thumb is.
+    /** True when the screen is too short to stack anything. */
+    compact(H) {
+      return H < 210;
+    }
+    stickR(W, H) {
+      return clamp(Math.round(Math.min(W, H) * 0.17), 22, 34);
+    }
+    /** How much of the bottom the walking stick wants, so nothing lands on it. */
+    stickSpan(W, H) {
+      return this.buildOn ? 0 : this.stickR(W, H) * 2 + 24;
+    }
+    buttonSize(W, H) {
+      return this.compact(H) ? { w: 74, h: 26 } : { w: 88, h: W < 300 ? 34 : 36 };
+    }
+    /** The top of the row of action plates, when they are in a row. */
+    buttonRowY(W, H) {
+      if (!this.touchEnabled || this.buildOn) return H;
+      return H - this.stickSpan(W, H) - this.buttonSize(W, H).h - 6;
+    }
+    /** Where the spring valve sits - on the stick's line, at the other end. */
+    valveBox(W, H) {
+      const size = 34;
+      if (!this.touchEnabled) return { x: W - size - 8, y: H - size - 26, size };
+      if (this.compact(H)) return { x: W - size - 8, y: H - size - 16, size };
+      const R = this.stickR(W, H);
+      return { x: W - size - 8, y: H - this.stickSpan(W, H) + 10 + R - size / 2, size };
+    }
+    /** The ceiling everything else has to stay above. */
+    furnitureTop(W, H) {
+      if (!this.touchEnabled || this.buildOn) return H;
+      if (this.compact(H)) {
+        const b = this.buttonSize(W, H);
+        return H - 6 - b.h * 2 - 4;
+      }
+      return this._bandBox(W, H)?.y ?? this.buttonRowY(W, H);
+    }
+    /** Whatever is asking for a stroke right now, in the order it would matter. */
+    _bandSpec() {
+      const g = this.game;
+      let band = null;
+      if (g.work?.live) {
+        const j = g.work.job;
+        band = {
+          kind: "work",
+          label: j.label.toUpperCase(),
+          tint: j.def.tint,
+          needle: j.needle,
+          centre: j.centre,
+          width: j.band,
+          hit: () => g.work.strike(),
+          hold: true
+        };
+      } else if (this.mode === "hunt" && g.combat?.live) {
+        const c = g.combat;
+        band = {
+          kind: "hunt",
+          label: "STRIKE",
+          tint: "#e2564f",
+          needle: c.pos ?? 0,
+          centre: c.band ?? 0.5,
+          width: c.width ?? 0.26,
+          hit: () => g.strike()
+        };
+      } else if (g.pump?.open > 0.01) {
+        const p = g.pump;
+        band = {
+          kind: "pump",
+          label: "SPRING",
+          tint: "#5fc6d8",
+          needle: p.pos ?? 0,
+          centre: p.centre ?? 0.5,
+          width: p.band ?? 0.3,
+          hit: () => g.pumpStroke()
+        };
+      }
+      return band;
+    }
+    /** Where the band sits, or null when nothing is asking. Wanted by the
+     * button row too, which has to keep out of it. */
+    _bandBox(W, H) {
+      if (!this.touchEnabled || !this._bandSpec()) return null;
+      if (this.compact(H) && !this.buildOn) {
+        const span = this.stickSpan(W, H);
+        const x = this.stickR(W, H) * 2 + 36;
+        const right = W - 8 - this.buttonSize(W, H).w - 12 - 34;
+        return { x, y: H - span - 2, w: Math.max(110, right - x), h: span - 8 };
+      }
+      const h = clamp(Math.round(H * 0.14), 48, 76);
+      const floor = this.buildOn ? H - 8 : this.buttonRowY(W, H) - 6;
+      return { x: 6, y: Math.max(24, floor - h), w: W - 12, h };
+    }
+    /**
+     * THE BAND.
+     *
+     * Four different things in this game are the same thing: a needle sweeping
+     * across a bar with a band on it that you have to hit. The spring, the
+     * claw, the spore and every job. On a keyboard they are four keys. On a
+     * phone they were four small buttons in four different corners, which is
+     * four ways to lose.
+     *
+     * So on touch there is one control, and it is enormous: a band across the
+     * bottom third of the screen that you hit with the thumb you are already
+     * holding the phone with. It says what it is doing, it shows the same
+     * needle and the same band as the tablet does, and whatever is live takes
+     * it. Nothing else needs to be aimed at.
+     */
+    _thumbBand(ctx, W, H) {
+      const band = this.touchEnabled ? this._bandSpec() : null;
+      if (!band) {
+        this.thumbRect = null;
+        return;
+      }
+      const g = this.game;
+      const box = this._bandBox(W, H);
+      const { x, y, w, h } = box;
+      const hot = this._hit(x, y, w, h);
+      this.buttons.push({ x, y, w, h, key: band.kind === "work" ? "e" : " " });
+      drawPlate(ctx, x, y, w, h, { mat: "stone", edge: "none" });
+      drawText(
+        ctx,
+        band.label,
+        x + w / 2,
+        y + 5,
+        { color: "#e6dcc0", align: "center", scale: 2 }
+      );
+      const bx = x + 10, bw = w - 20, bh = Math.max(14, Math.round(h * 0.3));
+      const by = y + h - bh - 8;
+      ctx.fillStyle = "rgba(14,11,7,0.92)";
+      ctx.fillRect(bx, by, bw, bh);
+      const half = band.width / 2;
+      const b0 = Math.round(bx + clamp01(band.centre - half) * bw);
+      const b1 = Math.round(bx + clamp01(band.centre + half) * bw);
+      ctx.globalAlpha = 0.32;
+      ctx.fillStyle = band.tint;
+      ctx.fillRect(b0, by, b1 - b0, bh);
+      const c0 = Math.round(bx + clamp01(band.centre - half * 0.32) * bw);
+      const c1 = Math.round(bx + clamp01(band.centre + half * 0.32) * bw);
+      ctx.globalAlpha = 0.7;
+      ctx.fillRect(c0, by, Math.max(2, c1 - c0), bh);
+      ctx.globalAlpha = 1;
+      const nx = Math.round(bx + clamp01(band.needle) * bw);
+      ctx.fillStyle = "#f7ecd0";
+      ctx.fillRect(nx - 1, by - 3, 3, bh + 6);
+      if (hot && g.input.down) {
+        ctx.globalAlpha = 0.18;
+        ctx.fillStyle = band.tint;
+        ctx.fillRect(x, y, w, h);
+        ctx.globalAlpha = 1;
+      }
+      if (band.hold) this.actHeld = hot && g.input.down;
+      if (hot && g.input.clicked) {
+        g.input.clicked = false;
+        band.hit();
+      }
+      this.thumbRect = { x, y, w, h };
     }
     /**
      * The job you are in the middle of. It is drawn at the work, not in a
@@ -22169,9 +22378,14 @@ body {
     _modeBar(ctx, W, H) {
       const g = this.game;
       const avail = MODES.filter((m) => this.modeUnlocked(m.id));
-      const S = 17, gap = 2;
+      const touch = this.touchEnabled && !this.buildOn;
+      const bottom = touch ? this.furnitureTop(W, H) - 8 : H - 11;
+      const gap = touch ? 4 : 2;
+      const room = bottom - 4;
+      const n = avail.length;
+      const S = touch ? clamp(Math.floor((room - (n - 1) * gap) / n), 14, 22) : 17;
       const bx = 3;
-      const by = H - 28 - (avail.length - 1) * (S + gap);
+      const by = bottom - S - (n - 1) * (S + gap);
       avail.forEach((m, i) => {
         const y = by + i * (S + gap);
         const on = this.mode === m.id;
@@ -22207,7 +22421,7 @@ body {
           }
         }
       });
-      const ax = bx + S + 7, ay = H - 28;
+      const ax = bx + S + 7, ay = bottom - S;
       if (this.mode === "hunt") this._huntBar(ctx, ax, ay, W, H);
       else if (this.mode === "spore") this._sporeBar(ctx, ax, ay, W, H);
       else if (this.mode === "hive") this._hiveBar(ctx, ax, ay, W, H);
@@ -22907,7 +23121,7 @@ Coming back.` };
       if (this.mode === "spore") return this._sprayButton(ctx, W, H);
       const g = this.game;
       const size = 34;
-      const x = W - size - 8, y = H - size - (this.touchEnabled ? 70 : 26);
+      const { x, y } = this.valveBox(W, H);
       const hold = g.pumpHold || 0;
       const hot = this._hit(x, y, size, size);
       const i = g.input;
@@ -23016,7 +23230,7 @@ Coming back.` };
       const hv = g.hive;
       const e = g.economy;
       const size = 34;
-      const x = W - size - 8, y = H - size - (this.touchEnabled ? 70 : 26);
+      const { x, y } = this.valveBox(W, H);
       const hot = this._hit(x, y, size, size);
       const i = g.input;
       this.valveRect = { x, y, w: size, h: size };
@@ -23444,25 +23658,26 @@ Coming back.` };
       ctx.globalAlpha = k;
       drawPanel(ctx, px, py, pw, ph);
       const inX = px + 12, inY = py + 12, inW = pw - 24, inH = ph - 24;
+      const tabH = this.touchEnabled ? 28 : 20;
       const tabW = Math.floor(inW / TABS.length);
       TABS.forEach((t, i) => {
         const tx = inX + i * tabW;
         const on = this.tab === t.id;
-        const hot = this._hit(tx, inY, tabW, 20);
+        const hot = this._hit(tx, inY, tabW, tabH);
         if (on) {
           ctx.fillStyle = "rgba(104,80,48,0.95)";
-          ctx.fillRect(tx, inY, tabW - 1, 20);
+          ctx.fillRect(tx, inY, tabW - 1, tabH);
           ctx.fillStyle = "#d6ba8a";
-          ctx.fillRect(tx, inY + 19, tabW - 1, 1);
+          ctx.fillRect(tx, inY + tabH - 1, tabW - 1, 1);
         } else if (hot) {
           ctx.fillStyle = "rgba(70,54,34,0.9)";
-          ctx.fillRect(tx, inY, tabW - 1, 20);
+          ctx.fillRect(tx, inY, tabW - 1, tabH);
         }
         ctx.globalAlpha = k * (on ? 1 : 0.62);
         const lw = tabW >= 58 ? textWidth(t.name) : 0;
         const gx = tx + Math.round((tabW - 1 - (18 + (lw ? 2 + lw : 0))) / 2);
-        drawTab(ctx, t.icon, gx, inY + 3);
-        if (lw) drawText(ctx, t.name, gx + 20, inY + 7, { color: on ? INK : DIM2 });
+        drawTab(ctx, t.icon, gx, inY + Math.round((tabH - 22) / 2) + 1);
+        if (lw) drawText(ctx, t.name, gx + 20, inY + Math.round((tabH - 7) / 2), { color: on ? INK : DIM2 });
         ctx.globalAlpha = k;
         if (hot && this.game.input.clicked) {
           this.game.input.clicked = false;
@@ -23473,7 +23688,8 @@ Coming back.` };
         }
       });
       const cx0 = px + pw - 20, cy0 = py + 4;
-      const closeHot = this._hit(cx0, cy0, 14, 14);
+      const cpad = this.touchEnabled ? 8 : 0;
+      const closeHot = this._hit(cx0 - cpad, cy0 - cpad, 14 + cpad * 2, 14 + cpad * 2);
       drawGlyph(ctx, "close", cx0 + 1, cy0 + 1, { color: closeHot ? "#f5e7c6" : "#a08a64" });
       if (closeHot) {
         this.hover = { title: "Close", body: "esc" };
@@ -23482,10 +23698,10 @@ Coming back.` };
           this.drawerOpen = false;
         }
       }
-      const bodyY = inY + 26, bodyH = inH - 26;
+      const bodyY = inY + tabH + 6, bodyH = inH - tabH - 6;
       const tab = TABS.find((t) => t.id === this.tab) || TABS[0];
       if (this.tab === "codex" || this.tab === "map" || this.tab === "craft") {
-        drawText(ctx, tab.sub, inX, bodyY - 4, { color: FAINT2 });
+        drawText(ctx, ellipsize(tab.sub, inW - 6), inX, bodyY - 4, { color: FAINT2 });
         ctx.save();
         ctx.beginPath();
         ctx.rect(inX, bodyY + 6, inW, bodyH - 6);
@@ -23497,7 +23713,7 @@ Coming back.` };
         ctx.globalAlpha = 1;
         return;
       }
-      drawText(ctx, tab.sub, inX, bodyY - 4, { color: FAINT2 });
+      drawText(ctx, ellipsize(tab.sub, inW - 6), inX, bodyY - 4, { color: FAINT2 });
       ctx.save();
       ctx.beginPath();
       ctx.rect(inX, bodyY + 6, inW, bodyH - 6);
@@ -23529,7 +23745,7 @@ Coming back.` };
           by += 14;
         }
         drawPlate(ctx, bx, by, cw - 2, 12, { rivets: false });
-        drawGlyph(ctx, e.def.icon, bx + 6, by + 6, { color: e.def.tint, scale: 1 });
+        drawNodeIcon(ctx, e.def.icon, bx + 8, by + 6, e.def.tint, 1);
         drawText(ctx, `${e.n}`, bx + cw - 5, by + 3, { color: INK, align: "right" });
         if (this._hit(bx, by, cw - 2, 12)) {
           this.hover = { title: `${e.def.name} x${e.n}`, body: e.def.desc };
@@ -23557,23 +23773,27 @@ Coming back.` };
           edge: can ? "rgba(180,146,86,0.6)" : "rgba(90,74,50,0.35)"
         });
         ctx.globalAlpha = can ? 1 : 0.5;
-        drawGlyph(ctx, out.icon, x + 9, by + 9, { color: out.tint, scale: 1 });
+        drawNodeIcon(ctx, out.icon, x + 11, by + (rowH - 2) / 2, out.tint, 1);
+        const roomy = w > 210;
+        const nameW = roomy ? w - 44 - textWidth(STATIONS[r.at].name) : w - 44;
         drawText(
           ctx,
-          `${out.name}${r.out[1] > 1 ? ` x${r.out[1]}` : ""}`,
-          x + 18,
+          ellipsize(`${out.name}${r.out[1] > 1 ? ` x${r.out[1]}` : ""}`, nameW),
+          x + 20,
           by + 2,
           { color: can ? INK : DIM2 }
         );
-        let cx2 = x + 18;
+        let cx2 = x + 20;
         for (const [id, n] of r.need) {
           const d = ITEM_BY_ID[id];
           const short = craft.count(id) < n;
-          drawGlyph(ctx, d.icon, cx2 + 3, by + 14, { color: short ? "#c07a6a" : d.tint, scale: 1 });
-          drawText(ctx, `${n}`, cx2 + 9, by + 11, { color: short ? "#c07a6a" : FAINT2 });
+          drawNodeIcon(ctx, d.icon, cx2 + 4, by + 13, short ? "#c07a6a" : d.tint, 1);
+          drawText(ctx, `${n}`, cx2 + 10, by + 10, { color: short ? "#c07a6a" : FAINT2 });
           cx2 += 17;
         }
-        drawText(ctx, STATIONS[r.at].name, x + w - 12, by + 11, { color: FAINT2, align: "right" });
+        if (roomy) {
+          drawText(ctx, STATIONS[r.at].name, x + w - 12, by + 2, { color: FAINT2, align: "right" });
+        }
         ctx.globalAlpha = 1;
         if (hot) {
           this.hover = { title: out.name, body: why ? `${out.desc}
@@ -23959,7 +24179,9 @@ She has to be yours to make it.` };
       ctx.strokeStyle = "rgba(214,175,112,0.85)";
       ctx.lineWidth = 1;
       ctx.stroke();
-      for (let m = Math.floor((this.mapX - span / 2) / 2e3) * 2e3; m < this.mapX + span / 2; m += 2e3) {
+      let step = 2e3;
+      while (step * (w / span) < 40) step *= 2;
+      for (let m = Math.floor((this.mapX - span / 2) / step) * step; m < this.mapX + span / 2; m += step) {
         const tx = toX(m);
         if (tx < x + 14 || tx > x + w - 14) continue;
         ctx.fillStyle = "rgba(214,186,138,0.16)";
@@ -24038,10 +24260,18 @@ ${d}m ${m.x > g.crab.x ? "east" : "west"}` : `${d}m ${m.x > g.crab.x ? "east" : 
       ctx.fillRect(Math.round(you), gy - 7, 1, 7);
       ctx.fillRect(Math.round(you) - 3, gy - 11, 2, 2);
       ctx.fillRect(Math.round(you) + 2, gy - 11, 2, 2);
-      drawText(ctx, `${g.world.found.size} places found`, x, y + h - 9, { color: FAINT2 });
+      const far = `${Math.round(g.crab.x / 10)}m`;
+      const tight = w < 240;
       drawText(
         ctx,
-        `${Math.round(g.crab.x / 10)}m from where you woke`,
+        tight ? `${g.world.found.size} found` : `${g.world.found.size} places found`,
+        x,
+        y + h - 9,
+        { color: FAINT2 }
+      );
+      drawText(
+        ctx,
+        tight ? far : `${far} from where you woke`,
         x + w,
         y + h - 9,
         { color: FAINT2, align: "right" }
@@ -24289,91 +24519,99 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
      */
     _touchControls(ctx, W, H) {
       const g = this.game;
-      const narrow = W < 320;
+      const narrow = W < 300;
       if (this.buildOn) {
         this.stickZone = null;
         this.stick = null;
         return;
       }
-      const R = narrow ? 30 : 27;
+      const R = this.stickR(W, H);
+      const pad = 10;
       const off = this.buildOn ? this.railW(W) + 4 : 0;
-      const sx = 8 + off, sy = H - 2 * R - 10;
-      this.stickZone = { x: off, y: H - 2 * R - 20, w: 2 * R + 26, h: 2 * R + 20 };
+      const span = this.stickSpan(W, H);
+      const sx = pad + off, sy = H - span + 10;
+      this.stickZone = { x: off, y: H - span, w: 2 * R + 30, h: span };
       const cx = this.stick ? this.stick.ox : sx + R;
       const cy = this.stick ? this.stick.oy : sy + R;
-      ctx.globalAlpha = this.stick ? 0.55 : 0.3;
-      ctx.strokeStyle = INK;
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.arc(cx, cy, R, 0, TAU);
-      ctx.stroke();
-      ctx.globalAlpha = this.stick ? 0.22 : 0.12;
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.arc(cx, cy, R - 5, 0, TAU);
-      ctx.stroke();
-      ctx.globalAlpha = 0.3;
+      const p = 2;
       ctx.fillStyle = INK;
+      ctx.globalAlpha = this.stick ? 0.5 : 0.26;
+      pxRing(ctx, cx, cy, R, R, INK, { p, thick: p });
+      ctx.globalAlpha = this.stick ? 0.2 : 0.1;
+      pxRing(ctx, cx, cy, R - 6, R - 6, INK, { p, thick: p });
+      ctx.globalAlpha = 0.3;
       for (const d of [-1, 1]) {
-        const ax = cx + d * (R - 7);
-        ctx.beginPath();
-        ctx.moveTo(ax + d * 3, cy);
-        ctx.lineTo(ax - d * 2, cy - 4);
-        ctx.lineTo(ax - d * 2, cy + 4);
-        ctx.closePath();
-        ctx.fill();
-      }
-      ctx.globalAlpha = this.stick ? 0.75 : 0.3;
-      const dx = this.stick ? clamp(this.stick.x - this.stick.ox, -R, R) : 0;
-      ctx.beginPath();
-      ctx.arc(cx + dx, cy, this.stick ? 11 : 10, 0, TAU);
-      ctx.fill();
-      ctx.globalAlpha = 1;
-      const bw = narrow ? 58 : 52, bh = narrow ? 26 : 23;
-      const v = this.valveRect;
-      const rightEdge = (v ? v.x : W - 6) - 8;
-      const leftEdge = (this.stickZone ? this.stickZone.x + this.stickZone.w : 0) + 6;
-      const bottom = H - bh - 6;
-      let bx = rightEdge - bw;
-      let by = bottom;
-      const add = (label, key2, colour) => {
-        if (bx < leftEdge) {
-          bx = rightEdge - bw;
-          by -= bh + 5;
+        const ax = cx + d * (R - 10);
+        for (let k = 0; k < 5; k++) {
+          const wdt = (5 - k) * p;
+          ctx.fillRect(ax - d * k * p - (d < 0 ? 0 : p), cy - wdt / 2, p, wdt);
         }
-        this.buttons.push({ x: bx, y: by, w: bw, h: bh, key: key2 });
+      }
+      ctx.globalAlpha = this.stick ? 0.8 : 0.34;
+      const dx = this.stick ? clamp(this.stick.x - this.stick.ox, -R, R) : 0;
+      pxDisc(ctx, cx + dx, cy, this.stick ? 13 : 11, INK, { p, soft: p });
+      ctx.globalAlpha = 1;
+      const bs = this.buttonSize(W, H);
+      const hint = g.actionHint();
+      const wanted = [];
+      if (g.npc && g.talk && !g.talk.on && Math.abs(g.npc.x - g.crab.x) < 64) {
+        wanted.push({ label: "TALK", key: "c", colour: "#e8c98a" });
+      }
+      if (g.garden.ripeCount) wanted.push({ label: `PICK ${g.garden.ripeCount}`, key: "r", colour: "#cfe89a" });
+      if (hint) wanted.push({ label: "ACT", key: "e" });
+      wanted.push({ label: "MODE", key: "m" });
+      const gap = 6;
+      const plate = (b, bx, by, bw, bh) => {
+        this.buttons.push({ x: bx, y: by, w: bw, h: bh, key: b.key });
         const hot = this._hit(bx, by, bw, bh);
-        ctx.globalAlpha = hot ? 0.95 : 0.8;
-        ctx.fillStyle = "rgba(46,34,22,0.92)";
-        ctx.fillRect(bx, by, bw, bh);
-        ctx.fillStyle = "rgba(88,66,42,0.9)";
-        ctx.fillRect(bx, by, bw, 2);
-        ctx.strokeStyle = colour || "rgba(214,186,138,0.55)";
-        ctx.strokeRect(bx + 0.5, by + 0.5, bw - 1, bh - 1);
-        ctx.globalAlpha = 1;
+        drawPlate(ctx, bx, by, bw, bh, { mat: "stone", edge: "none", alpha: hot ? 1 : 0.92 });
+        if (hot) {
+          ctx.globalAlpha = 0.2;
+          ctx.fillStyle = b.colour || "#e6d5ad";
+          ctx.fillRect(bx, by, bw, bh);
+          ctx.globalAlpha = 1;
+        }
+        const big = textWidth(b.label) * 2 + 10 <= bw && bh >= 28;
         drawText(
           ctx,
-          label,
+          b.label,
           bx + bw / 2,
-          by + (bh - 7) / 2,
-          { color: colour || INK, align: "center" }
+          by + (bh - (big ? 14 : 7)) / 2,
+          { color: b.colour || INK, align: "center", scale: big ? 2 : 1 }
         );
         if (hot && this.game.input.clicked) {
           this.game.input.clicked = false;
-          if (key2) this.game.input.pulseVirtual(key2);
+          if (b.key) this.game.input.pulseVirtual(b.key);
         }
-        bx -= bw + 6;
       };
-      const hint = g.actionHint();
-      if (g.garden.ripeCount) add(`PICK ${g.garden.ripeCount}`, "r", "#cfe89a");
-      if (hint) add("ACT", "e");
-      add("MODE", "m");
+      let hintY;
+      if (this.compact(H)) {
+        const v = this.valveBox(W, H);
+        const bx = v.x - bs.w - 10;
+        let by = H - bs.h - 6;
+        for (const b of wanted) {
+          plate(b, bx, by, bs.w, bs.h);
+          by -= bs.h + 4;
+        }
+        hintY = by - 2;
+      } else {
+        const by = this.buttonRowY(W, H);
+        const left = this.stickZone.x + this.stickZone.w + 4;
+        const right = W - 6;
+        const bw = Math.min(bs.w, Math.floor((right - left - gap * (wanted.length - 1)) / wanted.length));
+        let bx = right - wanted.length * bw - (wanted.length - 1) * gap;
+        for (const b of wanted) {
+          plate(b, bx, by, bw, bs.h);
+          bx += bw + gap;
+        }
+        hintY = by - 12;
+      }
       if (hint) {
         drawText(
           ctx,
           hint,
-          rightEdge,
-          by - 10,
+          W - 6,
+          hintY,
           { color: INK, align: "right", outline: true, outlineColor: OUT2 }
         );
       }
@@ -24415,6 +24653,13 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
       this.input.scale = this.renderer.scale;
       this.cam = new Camera();
       this.cam.setViewport(this.renderer.vw, this.renderer.vh);
+      let bias = this.renderer.tall ? -0.1 : 0.16;
+      if (this.ui?.touchEnabled) {
+        const top = this.ui.furnitureTop(this.renderer.vw, this.renderer.vh);
+        const want = clamp((top - 42) / this.renderer.vh, 0.3, 0.66) - 0.5;
+        bias = Math.min(bias, want);
+      }
+      this.cam.yBias = bias;
       this.menu = new Menu(this);
       this.newRun();
       const saved = readSave();
@@ -24427,6 +24672,13 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
         this.renderer.resize();
         this.input.scale = this.renderer.scale;
         this.cam.setViewport(this.renderer.vw, this.renderer.vh);
+        let bias2 = this.renderer.tall ? -0.1 : 0.16;
+        if (this.ui?.touchEnabled) {
+          const top = this.ui.furnitureTop(this.renderer.vw, this.renderer.vh);
+          const want = clamp((top - 42) / this.renderer.vh, 0.3, 0.66) - 0.5;
+          bias2 = Math.min(bias2, want);
+        }
+        this.cam.yBias = bias2;
         this.cam.targetZoom = this.autoZoom();
       });
       this._autosave = 0;
@@ -24484,8 +24736,22 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
       this.startIntro();
     }
     /** Frame the crab sensibly whatever shape the window is. */
+    /**
+     * How close the camera sits. On a wide screen this is about the width of
+     * the frame; on a phone held upright it cannot be, because a tall frame at
+     * that zoom is nine tenths sky. So a tall aspect is framed off the shorter
+     * side instead, and the animal stays the size it is meant to be.
+     */
+    /**
+     * How close the camera sits, from the shape of the window. A wide screen is
+     * framed off its width. A phone held upright gets pulled in a little and
+     * the horizon pushed up, because the alternative is a strip of desert under
+     * four hundred rows of sky.
+     */
     autoZoom() {
-      return clamp(this.renderer.vw / 300, 1.15, 2.3);
+      const r = this.renderer;
+      if (r.tall) return clamp(Math.max(r.vw, r.vh * 0.46) / 300, 1.35, 2.6);
+      return clamp(r.vw / 300, 1.15, 2.6);
     }
     get currentBiome() {
       return this.biome;
@@ -24895,7 +25161,11 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
           } },
           { at: 28.2, run: () => {
             npc.x = c.x + 22;
+            npc.moveTo = void 0;
+            npc.vx = 0;
             npc.setFacing(-1);
+            npc.turnT = 1;
+            npc.faceT = -1;
             npc.setPose(POSE.REST);
             this._pee = 1;
             this._peeT = 0;
@@ -25185,6 +25455,8 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
       this.buried = 0;
       this.buryTarget = 0;
       this._pee = 0;
+      this._peeT = 0;
+      this._peeDrops = null;
       this.lids = 0;
       this.ocean = null;
       this.npc.hidden = false;
@@ -25204,6 +25476,13 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
     update(dt) {
       this.time += dt;
       this.cam.setViewport(this.renderer.vw, this.renderer.vh);
+      let bias = this.renderer.tall ? -0.1 : 0.16;
+      if (this.ui?.touchEnabled) {
+        const top = this.ui.furnitureTop(this.renderer.vw, this.renderer.vh);
+        const want = clamp((top - 42) / this.renderer.vh, 0.3, 0.66) - 0.5;
+        bias = Math.min(bias, want);
+      }
+      this.cam.yBias = bias;
       if (this.state === "play") this.playT = (this.playT || 0) + dt;
       const i = this.input;
       const slow = this.state === "dead" ? 0.3 : 1;
@@ -25213,6 +25492,7 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
       if (this.state === "prologue") this._runPrologue(dt);
       if (this.state === "burying") this._runBury(dt);
       if (this.state !== "play") this._cineTick(dt);
+      this._peeTick(dt);
       if (this.state === "title") {
         this.menu.update(dt);
         this._menuPose();
@@ -26746,7 +27026,7 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
       if (this.state === "title") this.menu.drawBottle(ctx, cam);
       if (this.sleep) this._drawSleep(ctx, cam);
       if (this.waking) this._drawWaking(ctx, cam);
-      if (this._pee) this._drawStream(ctx, cam);
+      if (this._pee || this._peeDrops?.length) this._drawStream(ctx, cam);
       if (this.state === "play") {
         this.mind.draw(ctx, cam);
         this.hive.drawAim(ctx, cam);
@@ -26923,13 +27203,11 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
           ctx.globalAlpha = 1;
         }
         if (Math.abs(site.x - this.crab.x) < 40) {
-          drawText(
-            ctx,
-            power ? "E to dig" : "you would need a digging claw",
-            s.x,
-            s.y - 18 * z,
-            { color: "#dcd6c3", align: "center" }
-          );
+          const touch = this.ui?.touchEnabled;
+          const label = power ? touch ? null : "E to dig" : "you would need a digging claw";
+          if (label) {
+            drawText(ctx, label, s.x, s.y - 18 * z, { color: "#dcd6c3", align: "center" });
+          }
         }
       }
     }
@@ -26957,58 +27235,104 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
      * thousand years and the whole game turns on it, so it gets drawn properly:
      * an arc with weight to it, a bright core, and a wet patch where it lands.
      */
-    _drawStream(ctx, cam) {
-      const p = this.npc;
-      const c = this.crab;
-      const dir = p.facing || -1;
-      const a = cam.worldToScreen(p.x - 7 * dir, p.y - 13);
-      const hit = c.shellWorldAB(0.1, 0.5);
-      const b = cam.worldToScreen(hit.x, hit.y);
-      const mx = (a.x + b.x) / 2, my = Math.min(a.y, b.y) - 10 * cam.zoom;
-      this._peeT = (this._peeT || 0) + 1 / 60;
-      const run = clamp01(this._peeT * 2.2) * (0.72 + 0.28 * Math.sin(this.time * 1.3));
-      const wob = Math.sin(this.time * 9) * 1.2 * cam.zoom;
-      const lift = (1 - run) * 10 * cam.zoom;
-      const bx = lerp(a.x, b.x, run), by = lerp(a.y, b.y, run);
-      ctx.lineCap = "round";
-      for (const [col, w] of [["rgba(96,72,14,0.55)", 4], ["#c79f2c", 2.6], ["#e9cf5c", 1.6], ["#fbf3b4", 0.7]]) {
-        ctx.strokeStyle = col;
-        ctx.lineWidth = Math.max(1, w * cam.zoom * 0.55);
-        ctx.beginPath();
-        ctx.moveTo(a.x, a.y);
-        ctx.quadraticCurveTo(mx + wob, my + lift, bx, by);
-        ctx.stroke();
-      }
-      for (let i = 0; i < 7; i++) {
-        const t = (this.time * 1.9 + i * 0.14) % 1 * run;
-        const u = 1 - t;
-        const x = u * u * a.x + 2 * u * t * (mx + wob) + t * t * b.x;
-        const y = u * u * a.y + 2 * u * t * (my + lift) + t * t * b.y;
-        ctx.globalAlpha = 0.5 + 0.5 * Math.sin(t * Math.PI);
-        ctx.fillStyle = i % 3 ? "#f6e58a" : "#fffbd8";
-        ctx.fillRect(Math.round(x), Math.round(y), 2, 2);
-      }
-      if (run > 0.9) {
-        for (let i = 0; i < 5; i++) {
-          const a2 = -Math.PI * (0.15 + Math.random() * 0.7);
-          const d = (3 + Math.random() * 9) * cam.zoom;
-          ctx.globalAlpha = 0.5 * Math.random();
-          ctx.fillStyle = "#f6e58a";
-          ctx.fillRect(Math.round(b.x + Math.cos(a2) * d), Math.round(b.y + Math.sin(a2) * d * 0.6), 1, 1);
+    /**
+     * The stream.
+     *
+     * It used to be four stroked beziers whose clock ticked inside the draw,
+     * anchored to the wrong side of her, which meant it hung in the air when the
+     * frame stalled and came out of her back when she turned round. It is drops
+     * now: real ones, with velocity, that leave her, arc, land on the shell,
+     * splash and steam, and stop existing when the beat is over. The clock lives
+     * in update with everything else's.
+     */
+    _peeTick(dt) {
+      this._peeDrops = this._peeDrops || [];
+      const D = this._peeDrops;
+      for (let i = D.length - 1; i >= 0; i--) {
+        const d = D[i];
+        d.t += dt;
+        if (d.land) {
+          if (d.t > d.life) D.splice(i, 1);
+          continue;
         }
-        if (Math.random() < 0.3) this.fx.mist(hit.x, hit.y - 2, 0.6, 9);
+        d.vy += 520 * dt;
+        d.x += d.vx * dt;
+        d.y += d.vy * dt;
+        const hit = this.crab.shellWorldAB(0.1, 0.5);
+        const onShell = Math.abs(d.x - hit.x) < this.crab.m.rx * 0.9;
+        const gy = onShell ? hit.y : this.terrain.surfaceY(d.x);
+        if (d.y >= gy) {
+          d.y = gy;
+          d.land = 1;
+          d.t = 0;
+          d.life = 0.3 + Math.random() * 0.3;
+          if (Math.random() < 0.22) this.fx.drift(d.x, d.y - 3, "#e8dcae", 1);
+        }
       }
-      const patch = clamp01(this._peeT * 0.5);
-      ctx.globalAlpha = (0.35 + 0.25 * Math.sin(this.time * 7)) * patch;
-      pxEllipse(
-        ctx,
-        b.x,
-        b.y,
-        (3 + patch * 6) * cam.zoom,
-        (1.2 + patch * 2) * cam.zoom,
-        "#b8902a",
-        { p: pxSize(cam.zoom), soft: 0.35 }
-      );
+      if (!this._pee) return;
+      this._peeT = (this._peeT || 0) + dt;
+      const run = clamp01(this._peeT * 2.4) * clamp01(4.4 - this._peeT * 0.6);
+      if (run <= 0.02) return;
+      const p = this.npc;
+      const dir = Math.sign(this.crab.x - p.x) || (p.facing || -1);
+      const ax = p.x + dir * 5, ay = p.y - 13;
+      const n = Math.random() < run * 0.9 ? 2 : 1;
+      for (let i = 0; i < n; i++) {
+        D.push({
+          x: ax + (Math.random() - 0.5) * 1.5,
+          y: ay,
+          vx: dir * (34 + Math.random() * 16) * (0.6 + run * 0.6),
+          vy: -34 - Math.random() * 20,
+          t: 0,
+          life: 0,
+          land: 0,
+          r: Math.random() < 0.24 ? 2 : 1
+        });
+      }
+      if (D.length > 220) D.splice(0, D.length - 220);
+    }
+    /** Everything currently in the air, and the patch it has made. */
+    _drawStream(ctx, cam) {
+      const D = this._peeDrops;
+      if (!D || !D.length) return;
+      const z = cam.zoom;
+      const pp = pxSize(z);
+      const patch = clamp01((this._peeT || 0) * 0.45);
+      if (patch > 0.02) {
+        const hit = this.crab.shellWorldAB(0.1, 0.5);
+        const b = cam.worldToScreen(hit.x, hit.y);
+        ctx.globalAlpha = 0.26 + 0.14 * Math.sin(this.time * 5);
+        pxEllipse(
+          ctx,
+          b.x,
+          b.y,
+          (3 + patch * 7) * z,
+          (1.2 + patch * 2.4) * z,
+          "#b8902a",
+          { p: pp, soft: 0.4 }
+        );
+        ctx.globalAlpha = 1;
+      }
+      for (const d of D) {
+        const s = cam.worldToScreen(d.x, d.y);
+        if (d.land) {
+          const k = clamp01(1 - d.t / d.life);
+          ctx.globalAlpha = k * 0.8;
+          ctx.fillStyle = "#f6e58a";
+          const w = Math.max(1, Math.round((1 + (1 - k) * 3) * z * 0.4));
+          ctx.fillRect(Math.round(s.x - w / 2), Math.round(s.y), w, Math.max(1, Math.round(z * 0.4)));
+          continue;
+        }
+        const sp = Math.hypot(d.vx, d.vy);
+        const len = Math.max(1, Math.round(Math.min(6, sp / 26) * z * 0.5));
+        ctx.globalAlpha = 0.95;
+        ctx.fillStyle = d.r > 1 ? "#fbf3b4" : "#e9cf5c";
+        ctx.save();
+        ctx.translate(Math.round(s.x), Math.round(s.y));
+        ctx.rotate(Math.atan2(d.vy, d.vx));
+        ctx.fillRect(0, 0, len, Math.max(1, Math.round(d.r * z * 0.45)));
+        ctx.restore();
+      }
       ctx.globalAlpha = 1;
     }
     /**
