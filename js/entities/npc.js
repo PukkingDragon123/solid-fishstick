@@ -11,6 +11,8 @@
 // never snaps - she settles.
 
 import { clamp, clamp01, lerp, damp, TAU } from '../lib/math.js';
+import { ITEM_BY_ID } from '../data/craft.js';
+import { pxEllipse, pxSize } from '../render/pix.js';
 import { ik2 } from './crab.js';
 import { buildPerson, portrait } from '../art/personart.js';
 
@@ -102,6 +104,10 @@ export class Person {
     this.jv = 0;
     this.squash = 0;             // <0 squashed, >0 stretched
     this.hatOff = null;          // the hat, once it has left
+    this.shout = 0;              // >0 while the current line is being yelled
+    this._seen = new Map();      // what she has already remarked on, and when
+    this._cool = 0;              // a breath between remarks
+    this._scan = 0;
   }
 
   get scale() { return 1; }
@@ -110,7 +116,107 @@ export class Person {
   say(text, secs = 4.5, mood = null) {
     this.speech = text;
     this.speechT = secs;
+    this.shout = 0;
     this.face = mood !== null ? mood : this._moodFor(text);
+  }
+
+  /**
+   * Not everything is said at conversational volume. When something is about
+   * to go badly for you she stops narrating and shouts - bigger letters, a
+   * bubble with a hard edge on it, and the camera takes a knock. A yell also
+   * beats whatever she was in the middle of saying, because that is what
+   * yelling is for.
+   */
+  yell(text, secs = 3.2) {
+    this.speech = text;
+    this.speechT = secs;
+    this.shout = 1;
+    this.face = 2;
+    this.setPose(POSE.POINT);
+    this.game.audio?.play('uiBig', { pitch: 1.3 });
+    this.game.cam?.shake(2.2);
+    this.jv = Math.min(this.jv - 40, -40);
+  }
+
+  /**
+   * What she notices. She has been out here eleven years and she is the only
+   * one of you who can read the desert, so she says so - once, with a cooldown,
+   * and never twice about the same thing in the same minute. This is the
+   * difference between an NPC that follows you and one that is with you.
+   */
+  _watch(dt) {
+    if (this.game.state !== 'play' || this.hidden) return;
+    this._cool = Math.max(0, (this._cool || 0) - dt);
+    this._scan = (this._scan || 0) + dt;
+    if (this._scan < 0.6) return;
+    this._scan = 0;
+    if (this.speech || this._cool > 0) return;
+
+    const g = this.game;
+    const c = g.crab;
+    const near = Math.abs(this.x - c.x) < 220;
+    if (!near && !this.riding) return;
+
+    // -- the ones that are shouted ------------------------------------------
+    const foe = g.wildlife?.nearest
+      ? g.wildlife.nearest(c.x, c.y, 130, (q) => q.alive && q.hostile && !q.tamed)
+      : null;
+    if (foe && this._once('foe:' + (foe.uid ?? foe.def.id), 26)) {
+      this.yell(`BEHIND YOU - ${String(foe.def.name).toUpperCase()}!`);
+      return;
+    }
+    if (c.hp < c.hpMax * 0.3 && this._once('hurt', 22)) {
+      this.yell('YOU ARE BLEEDING. GET AWAY FROM IT.');
+      return;
+    }
+    if (g.weather && g.weather.sand > 0.55 && this._once('storm', 90)) {
+      this.yell('SAND COMING - PUT YOUR FACE DOWN!');
+      return;
+    }
+
+    // -- and the ones that are only remarks ---------------------------------
+    const e = g.economy;
+    if (e && e.water < 12 && this._once('dry', 40)) {
+      this.say('You are nearly dry. Work the valve - the band pays, the middle pays double.', 5);
+      return;
+    }
+    const wilting = g.garden?.plots?.find((p) => p.plant && p.plant.thirst > 0.75);
+    if (wilting && this._once('wilt', 45)) {
+      this.say(`That ${wilting.plant.def.name} is going. Water it or lose it.`, 5);
+      return;
+    }
+    const seam = g.mining?.near ? g.mining.near(c.x, 30)[0] : null;
+    if (seam && this._once('seam:' + seam.ci, 70)) {
+      const ore = ITEM_BY_ID[seam.ore.id];
+      this.say(`${ore ? ore.name : 'Ore'} under you. Dig straight down and swing at it.`, 5);
+      return;
+    }
+    const site = g.digs?.near ? g.digs.near(c.x, 34)[0] : null;
+    if (site && this._once('dig:' + site.ci, 70)) {
+      this.say(`Stop. That is ${site.relic.name} - and it should not be this far up.`, 5.5);
+      return;
+    }
+    const bird = g.wildlife?.nearest
+      ? g.wildlife.nearest(c.x, c.y, 90, (q) => q.alive && !q.tamed && !q.hostile && q.trust > 0.5)
+      : null;
+    if (bird && this._once('sing:' + (bird.uid ?? bird.def.id), 50)) {
+      this.say(`It is waiting for you. Sing at it - it will give you the phrase first.`, 5);
+      return;
+    }
+    if (g.weather && g.weather.hour > 20.5 && this._once('night:' + (g.day | 0), 200)) {
+      this.say('Dark. Things come out that do not come out in the day.', 4.5);
+    }
+  }
+
+  /** Has this not been said for `secs`? Marks it said if so. */
+  _once(key, secs) {
+    if (!(this._seen instanceof Map)) this._seen = new Map();
+    const now = this.game.time;
+    const prev = this._seen.get(key);
+    if (prev !== undefined && now - prev < secs) return false;
+    this._seen.set(key, now);
+    this._cool = 6;
+    return true;
   }
 
   _moodFor(text) {
@@ -136,7 +242,8 @@ export class Person {
     this.poseT += dt;
     this.animT += dt;
     this.breathe += dt * 1.3;
-    if (this.speechT > 0) { this.speechT -= dt; if (this.speechT <= 0) this.speech = null; }
+    if (this.speechT > 0) { this.speechT -= dt; if (this.speechT <= 0) { this.speech = null; this.shout = 0; } }
+    this._watch(dt);
 
     const crab = this.game.crab;
     if (this.keepAway && crab && this.game.state === 'play') {

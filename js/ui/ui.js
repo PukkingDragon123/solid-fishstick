@@ -15,7 +15,7 @@ import { FAUNA, FAUNA_BY_ID, CLADES, OBSERVE_STEPS } from '../data/fauna.js';
 import { BUILDINGS, BUILD_BY_ID, GENES, GENE_BY_ID, SKILL_BY_ID } from '../data/progress.js';
 import { buildPlant } from '../art/floraart.js';
 import { buildStructure } from '../art/buildart.js';
-import { drawShell, drawBloom, drawSprig, drawOrb, drawTab, drawPanel, drawGlyph, drawValve, drawGauge, drawNodeIcon, drawPlate, drawModeArt } from './icons.js';
+import { drawShell, drawBloom, drawSprig, drawOrb, drawTab, drawPanel, drawGlyph, drawValve, drawGauge, drawNodeIcon, drawPlate, drawModeArt, drawGland, drawTame, drawNozzle } from './icons.js';
 import { TreeScreen } from './tree.js';
 import { WORLD_NOTES, ERAS } from '../data/lore.js';
 import { biomeAt } from '../world/biomes.js';
@@ -180,6 +180,8 @@ export class UI {
   // -- frame ----------------------------------------------------------------
 
   update(dt) {
+    // the conversation owns the keyboard while it is up
+    if (this.game.talk && this.game.talk.on) { this.t += dt; return; }
     this.t += dt;
     const i = this.game.input;
     if (this.toastT > 0) { this.toastT -= dt; if (this.toastT <= 0) this.toast = null; }
@@ -721,31 +723,67 @@ export class UI {
   }
 
   /** Spore: a charge bar that tells you where pressure is. */
+  /**
+   * The nozzle in the corner is the hand. This is the eye: who is in range,
+   * and whether the spore would actually take in them. A second charge bar
+   * beside a charge bar taught you nothing; knowing that the thing in front
+   * of you is not willing yet, and why, is the whole game.
+   */
   _sporeBar(ctx, x, y, W, H) {
     const g = this.game;
     const hv = g.hive;
-    const w = 96;
-    const k = clamp01(hv.charge / 1.35);
-    // the charge, with the sweet band marked on it
-    const gy = y - 16;
-    drawPlate(ctx, x, gy, w, 13);
-    const iw = w - 6, ix = x + 3, iy = gy + 3;
-    ctx.fillStyle = 'rgba(12,8,5,0.9)';
-    ctx.fillRect(ix, iy, iw, 7);
-    ctx.fillStyle = 'rgba(201,138,222,0.40)';
-    ctx.fillRect(ix + iw * 0.62, iy, iw * 0.26, 7);
-    ctx.fillStyle = 'rgba(226,86,79,0.5)';
-    ctx.fillRect(ix + iw * 0.93, iy, iw * 0.07, 7);
-    ctx.fillStyle = hv.pressured ? '#f0d4ff' : '#c98ade';
-    ctx.fillRect(ix, iy, Math.round(iw * Math.min(1, k)), 7);
-    drawText(ctx, `${g.economy.parasites}`, x + w - 3, gy - 9,
-      { color: '#c98ade', align: 'right' });
+    const w = Math.min(168, Math.max(120, W - x - 10));
+    // two lines of it, so the plate sits over the action row rather than
+    // spilling its label out above itself
+    const py = y - 10;
+    const ph = 24;
+    const c = g.wildlife?.nearest
+      ? g.wildlife.nearest(g.crab.x, g.crab.y, 190, (q) => q.alive && !q.tamed && !q.puppet)
+      : null;
+    const npcNear = g.npc && !g.npc.hidden && Math.abs(g.npc.x - g.crab.x) < 190
+      && g.mind && g.mind.stage !== 'owned';
+    const willing = !!c && hv.willing(c);
 
-    const holding = hv.holding;
-    this._actBtn(ctx, x, y, w, 14, 'jet', holding ? 'RELEASE' : 'HOLD TO CHARGE', 'V', {
-      tint: '#c98ade', dim: g.economy.parasites < 1,
-      hover: { title: 'Spore', body: 'Hold to build pressure, let go inside the band. Too long and it goes off on you - and it only takes in something already worn down, fed, or half trusting you.' },
+    drawPlate(ctx, x, py, w, ph, {
+      edge: willing ? '#c98ade' : 'rgba(120,96,58,0.4)',
+      rivets: false,
     });
+    // how many are left in the gland, top right of the plate
+    drawText(ctx, `${g.economy.parasites}`, x + w - 5, py + 3,
+      { color: g.economy.parasites > 0 ? '#c98ade' : FAINT, align: 'right' });
+
+    if (!c && !npcNear) {
+      drawText(ctx, 'nothing in range', x + 6, py + 9, { color: FAINT });
+      return;
+    }
+    if (!c && npcNear) {
+      drawText(ctx, 'Dr. Vess', x + 6, py + 3, { color: '#c98ade' });
+      drawText(ctx, 'L to lure her in', x + 6, py + 13, { color: DIM });
+      return;
+    }
+
+    // a token for what it is, then its name, then the one thing in the way
+    drawTame(ctx, x + 3, py + 4, c, { size: 16, on: false, t: this.t });
+    drawText(ctx, ellipsize(c.def?.name || 'it', w - 48), x + 22, py + 3,
+      { color: willing ? '#e6c0f2' : DIM });
+    if (willing) {
+      const b = 0.5 + 0.5 * Math.sin(this.t * 4);
+      ctx.globalAlpha = 0.6 + b * 0.4;
+      drawText(ctx, 'WILLING', x + 22, py + 13, { color: '#e6c0f2' });
+      ctx.globalAlpha = 1;
+    } else {
+      // the three ways in, as filled or hollow marks: hurt it, feed it, earn it
+      const chip = (i, on, icon, tip) => {
+        const cx2 = x + 26 + i * 13;
+        ctx.globalAlpha = on ? 1 : 0.3;
+        drawNodeIcon(ctx, icon, cx2, py + 16, on ? '#c98ade' : '#8a7a62', 1);
+        ctx.globalAlpha = 1;
+        if (this._hit(cx2 - 6, py + 10, 12, 12)) this.hover = { title: 'Not willing yet', body: tip };
+      };
+      chip(0, c.hp < c.hpMax * 0.45, 'claw', 'Worn down. Take it below half and it stops arguing.');
+      chip(1, c.mood === 'feed', 'fruit', 'Fed. Put fruit down and let it eat.');
+      chip(2, c.trust > 0.35, 'call', 'Half trusting. Stand near it, and do not be a threat.');
+    }
   }
 
   /** Hive: everything on your nerve, as a row you can click. */
@@ -934,11 +972,28 @@ export class UI {
       return;
     }
 
-    // water: a moulted shell with the water actually in it
-    const sh = drawShell(ctx, L, 4, e.water / maxW, this.t);
-    drawText(ctx, `${Math.round(e.water)}`, L + sh.w / 2, 4 + sh.h - 1,
-      { color: INK, align: 'center', outline: true, outlineColor: OUT });
-    if (this._hit(L, 4, sh.w, sh.h)) this.hover = { title: 'Spring', body: `${Math.round(e.water)} / ${Math.round(maxW)}` };
+    // The first slot is whatever the mode actually spends. In SPORE that is
+    // not water at all - it is the gland, and the number under it is how many
+    // spores are in you, not how much water is.
+    const spore = this.mode === 'spore';
+    let sh;
+    if (spore) {
+      const cap = Math.max(4, e.stat('sporeMax') || 8);
+      const have = e.parasites || 0;
+      const press = clamp01((g.hive?.charge || 0) / 1.35);
+      sh = drawGland(ctx, L, 2, have / cap, this.t, press);
+      drawText(ctx, `${have}`, L + sh.w / 2, 4 + sh.h - 5,
+        { color: have > 0 ? '#e6c0f2' : '#8a6a94', align: 'center', outline: true, outlineColor: OUT });
+      if (this._hit(L, 2, sh.w, sh.h)) {
+        this.hover = { title: 'The gland', body: `${have} / ${cap} spores. It fruits from a mindcap; hold the nozzle to build pressure.` };
+      }
+    } else {
+      // water: a moulted shell with the water actually in it
+      sh = drawShell(ctx, L, 4, e.water / maxW, this.t);
+      drawText(ctx, `${Math.round(e.water)}`, L + sh.w / 2, 4 + sh.h - 1,
+        { color: INK, align: 'center', outline: true, outlineColor: OUT });
+      if (this._hit(L, 4, sh.w, sh.h)) this.hover = { title: 'Spring', body: `${Math.round(e.water)} / ${Math.round(maxW)}` };
+    }
 
     // nutrients: a flower that blooms as you bank them and sheds when you spend
     const stage = clamp(Math.round(Math.pow(clamp01(this.bloomShown / 260), 0.62) * 8), 0, 8);
@@ -969,12 +1024,41 @@ export class UI {
       }
     }
 
-    // fruit
+    // What is yours. Not a number of berries - the animals themselves, each
+    // as its own face, with what is left of it drawn under it. Click one and
+    // you are it.
     const fx = bx + 34;
-    drawSprig(ctx, fx, 16, e.berries);
-    drawText(ctx, `${e.berries}`, fx + 13, 4 + sh.h - 1,
-      { color: INK, align: 'center', outline: true, outlineColor: OUT });
-    if (this._hit(fx, 16, 26, 22)) this.hover = { title: 'Fruit', body: 'Fruit. Animals walk a long way for it.' };
+    const mine = g.hive ? g.hive.roster() : [];
+    if (mine.length) {
+      let tx = fx;
+      const row = Math.min(mine.length, W < 320 ? 3 : 5);
+      for (let i = 0; i < row; i++) {
+        const q = mine[i];
+        const on = g.hive.pick === q;
+        const box = drawTame(ctx, tx, 14, q, { size: 16, on, t: this.t });
+        if (this._hit(box.x, box.y, box.w, box.h)) {
+          this.hover = {
+            title: q.name || q.def?.name || 'Dr. Vess',
+            body: on ? 'You are this one. Click again to let go.' : 'Yours. Click to be it.',
+          };
+          if (g.input.clicked) { g.input.clicked = false; g.takeHive(q); }
+        }
+        tx += 18;
+      }
+      if (mine.length > row) {
+        drawText(ctx, `+${mine.length - row}`, tx + 1, 18, { color: FAINT });
+      }
+    } else {
+      // nothing yet: the sprig, so the slot still tells you what makes tames
+      ctx.globalAlpha = 0.55;
+      drawSprig(ctx, fx, 16, e.berries);
+      ctx.globalAlpha = 1;
+      drawText(ctx, `${e.berries}`, fx + 13, 4 + sh.h - 1,
+        { color: FAINT, align: 'center', outline: true, outlineColor: OUT });
+      if (this._hit(fx, 16, 26, 22)) {
+        this.hover = { title: 'Nothing is yours yet', body: 'Fruit brings the birds in. Once one trusts you, sing with it - and it stands here.' };
+      }
+    }
 
     // place, weather, and a clock you can actually read at a glance. On a
     // phone there is no room for all of it across the top, so the place name
@@ -1150,6 +1234,10 @@ export class UI {
    * behaves like one: every tap is one stroke of the muscle behind it.
    */
   _pumpButton(ctx, W, H) {
+    // In SPORE mode the corner is not a spring at all. Same place, same hand,
+    // entirely different organ - so it gets its own drawing rather than the
+    // valve with a different tint on it.
+    if (this.mode === 'spore') return this._sprayButton(ctx, W, H);
     const g = this.game;
     const size = 34;
     const x = W - size - 8, y = H - size - (this.touchEnabled ? 70 : 26);
@@ -1250,6 +1338,121 @@ export class UI {
       align: 'center', outline: true, outlineColor: OUT,
     });
     this._pumpGauge(ctx, W, H, x + size / 2, y - 10);
+  }
+
+  /**
+   * The nozzle. Hold it and the pressure behind it climbs; let go inside the
+   * band and the spore goes out on an arc. Hold it too long and it lets go on
+   * its own, on you. Everything it throws is violet and alive - none of it is
+   * water, and none of it behaves like water either: spores hang, drift up,
+   * and fade rather than arcing down and soaking in.
+   */
+  _sprayButton(ctx, W, H) {
+    const g = this.game;
+    const hv = g.hive;
+    const e = g.economy;
+    const size = 34;
+    const x = W - size - 8, y = H - size - (this.touchEnabled ? 70 : 26);
+    const hot = this._hit(x, y, size, size);
+    const i = g.input;
+    this.valveRect = { x, y, w: size, h: size };
+    const empty = (e.parasites || 0) < 1;
+
+    // Holding this is exactly holding V - it feeds the same charge, so the
+    // skill is the same skill whichever hand you are using.
+    const live = hot && i.down && !this.drawerOpen && g.state === 'play' && !empty;
+    this.nozzleHeld = live;
+    if (this.touchEnabled && g.state === 'play' && !this.drawerOpen) {
+      this.buttons.push({ x: x - 4, y: y - 4, w: size + 8, h: size + 8, key: 'v' });
+    }
+    if (hot && i.clicked) i.clicked = false;
+    if (hot) {
+      this.hover = empty
+        ? { title: 'The gland is empty', body: 'Spores fruit from a mindcap. Grow one, and pick it.' }
+        : { title: 'The nozzle', body: 'Hold to build pressure. Let go in the band. Too long and it goes off in you.' };
+    }
+
+    const k = clamp01((hv?.charge || 0) / 1.35);
+    const press = hv?.holding ? k : 0;
+
+    // the cloud it is putting out while it is held
+    this.motes = this.motes || [];
+    if (press > 0.03) {
+      const n = 1 + Math.floor(press * 4);
+      for (let q = 0; q < n; q++) {
+        if (Math.random() > press) continue;
+        this.motes.push({
+          x: x + size / 2 + (Math.random() - 0.5) * 10,
+          y: y + size / 2 - 6,
+          vx: (Math.random() - 0.5) * 34 * (0.4 + press),
+          vy: -16 - Math.random() * 40 * (0.4 + press),
+          life: 0.7 + Math.random() * 0.8, t: 0,
+          r: Math.random() < 0.3 ? 2 : 1,
+        });
+      }
+    }
+    for (let q = this.motes.length - 1; q >= 0; q--) {
+      const d = this.motes[q];
+      d.t += 1 / 60;
+      if (d.t > d.life) { this.motes.splice(q, 1); continue; }
+      // spores do not fall - they hang and wander, which is the whole point
+      d.vy += 6 / 60;
+      d.vx += Math.sin(this.t * 3 + d.life * 9) * 14 / 60;
+      d.x += d.vx / 60;
+      d.y += d.vy / 60;
+      const a = clamp01(1 - d.t / d.life);
+      ctx.globalAlpha = a * 0.8;
+      ctx.fillStyle = d.r > 1 ? '#f0d4ff' : '#c98ade';
+      ctx.fillRect(Math.round(d.x), Math.round(d.y), d.r, d.r);
+    }
+    if (this.motes.length > 200) this.motes.splice(0, this.motes.length - 200);
+    ctx.globalAlpha = 1;
+
+    ctx.globalAlpha = empty ? 0.4 : (hot || press > 0 ? 1 : 0.76);
+    drawNozzle(ctx, x, y, press, this.t, hot);
+    ctx.globalAlpha = 1;
+
+    const label = empty ? 'EMPTY' : hv?.holding ? (hv.pressured ? 'LET GO' : 'HOLD') : 'SPRAY';
+    drawText(ctx, label, x + size / 2, y + size + 1, {
+      color: empty ? FAINT : hv?.pressured ? '#f0d4ff' : '#c98ade',
+      align: 'center', outline: true, outlineColor: OUT,
+    });
+    this._sprayGauge(ctx, W, H, x + size / 2, y - 10);
+  }
+
+  /**
+   * The pressure gauge: how hard the gland is being squeezed, where the band
+   * is that actually throws, and the red at the end where it bursts.
+   */
+  _sprayGauge(ctx, W, H, cx, by) {
+    const hv = this.game.hive;
+    if (!hv || (!hv.holding && hv.charge < 0.01)) return;
+    const k = clamp01(hv.charge / 1.35);
+    const w = Math.min(140, Math.max(96, Math.round(W * 0.28)));
+    const h = 13;
+    const sh = hv.pressured ? Math.round(Math.sin(this.t * 40) * 1.4) : 0;
+    const x = Math.round(clamp(cx - w / 2, 4, W - w - 4)) + sh;
+    const y = Math.round(by - h);
+
+    drawPlate(ctx, x, y, w, h, { edge: 'rgba(150,92,180,0.5)', rivets: false });
+    const iw = w - 6, ix = x + 3, iy = y + 3;
+    ctx.fillStyle = 'rgba(14,8,18,0.92)';
+    ctx.fillRect(ix, iy, iw, h - 6);
+    // the band that throws, and the red past it
+    ctx.fillStyle = 'rgba(201,138,222,0.40)';
+    ctx.fillRect(Math.round(ix + iw * 0.62), iy, Math.round(iw * 0.26), h - 6);
+    ctx.fillStyle = 'rgba(226,86,79,0.55)';
+    ctx.fillRect(Math.round(ix + iw * 0.88), iy, Math.round(iw * 0.12), h - 6);
+    // and the pressure itself
+    ctx.fillStyle = hv.pressured ? '#f0d4ff' : k > 0.88 ? '#e2564f' : '#c98ade';
+    ctx.fillRect(ix, iy, Math.round(iw * Math.min(1, k)), h - 6);
+    if (hv.pressured) {
+      const b = 0.5 + 0.5 * Math.sin(this.t * 14);
+      ctx.globalAlpha = 0.3 + b * 0.5;
+      ctx.fillStyle = '#f6e2ff';
+      ctx.fillRect(ix, iy, Math.round(iw * Math.min(1, k)), 1);
+      ctx.globalAlpha = 1;
+    }
   }
 
   /**

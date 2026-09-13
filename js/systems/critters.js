@@ -15,6 +15,7 @@
 // same small life in it every time you walk back down it.
 
 import { clamp, clamp01, lerp, damp, TAU, mulberry32, hashStr } from '../lib/math.js';
+import { pxGlow } from '../render/pix.js';
 
 const CELL = 120;             // one colony per cell of desert
 const MAX_LIVE = 140;         // hard cap on how many are simulated at once
@@ -357,11 +358,7 @@ export class Critters {
         case 'lanternfly': {
           // the light first, then the animal inside it
           const on = 0.35 + 0.65 * Math.abs(Math.sin(q.t * 1.7 + q.seed));
-          const gr = ctx.createRadialGradient(px, py, 0, px, py, S * 6);
-          gr.addColorStop(0, `rgba(127,232,180,${0.5 * on})`);
-          gr.addColorStop(1, 'rgba(127,232,180,0)');
-          ctx.fillStyle = gr;
-          ctx.beginPath(); ctx.arc(px, py, S * 6, 0, TAU); ctx.fill();
+          pxGlow(ctx, px, py, S * 6, '#7fe8b4', 0.5 * on, { p: Math.max(1, Math.round(S)), steps: 3 });
           ctx.fillStyle = lit;
           ctx.fillRect(px, py, Math.max(1, S), Math.max(1, S));
           break;

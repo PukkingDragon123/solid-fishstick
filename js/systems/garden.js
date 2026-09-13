@@ -7,6 +7,7 @@
 // that need standing water can finally be planted.
 
 import { clamp, clamp01, lerp, damp, TAU } from '../lib/math.js';
+import { pxArc, pxEllipse, pxRing } from '../render/pix.js';
 import { buildPlant } from '../art/floraart.js';
 import { buildStructure } from '../art/buildart.js';
 import { FLORA_BY_ID, STAGE_NAME, NEEDS_TEXT } from '../data/flora.js';
@@ -351,15 +352,12 @@ export class Garden {
         // a seed: a husk sitting in the bed, with how wet it is around it
         const pl = plot.plant;
         const r = 1.6 + crab.m.rx * 0.02;
-        ctx.fillStyle = '#5e4d27';
-        ctx.beginPath(); ctx.ellipse(0, -r * 0.5, r * 0.7, r, 0, 0, TAU); ctx.fill();
+        pxEllipse(ctx, 0, -r * 0.5, r * 0.7, r, '#5e4d27', { p: 1 });
         ctx.fillStyle = '#957e42';
         ctx.fillRect(-Math.round(r * 0.2), Math.round(-r * 1.1), 1, Math.round(r * 1.1));
-        ctx.strokeStyle = pl.soaked > 0 ? '#5fc6d8' : 'rgba(150,130,90,0.5)';
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.arc(0, -r * 0.5, r * 1.9, -Math.PI / 2, -Math.PI / 2 + TAU * Math.max(0.04, pl.soaked));
-        ctx.stroke();
+        pxArc(ctx, 0, -r * 0.5, r * 1.9, -Math.PI / 2,
+          -Math.PI / 2 + TAU * Math.max(0.04, pl.soaked),
+          pl.soaked > 0 ? '#5fc6d8' : 'rgba(150,130,90,0.5)', { p: 1 });
       } else if (plot.plant) {
         const pl = plot.plant;
         const wilt = 1 - pl.thirst * 0.22;
@@ -426,19 +424,14 @@ export class Garden {
         for (let i = 0; i < 3; i++) {
           const rr = ((this.t * 16 + i * 6) % 18) + 1;
           ctx.globalAlpha = clamp01(this.spring) * (1 - rr / 19) * 0.7;
-          ctx.beginPath();
-          ctx.ellipse(org.x, org.y, rr, rr * 0.42, 0, 0, TAU);
-          ctx.stroke();
+          pxRing(ctx, org.x, org.y, rr, rr * 0.42, '#eafbfd', { p: 1 });
         }
       }
       ctx.globalAlpha = 1;
       ctx.restore();
       // rim highlight so the pool sits in a bowl rather than on a plate
-      ctx.strokeStyle = 'rgba(230,248,252,0.5)';
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.ellipse(c.x, c.y, rx, ry, 0, Math.PI, TAU);
-      ctx.stroke();
+      pxArc(ctx, c.x, c.y, Math.max(rx, ry), Math.PI, TAU,
+        'rgba(230,248,252,0.5)', { p: 1, rx, ry });
     }
 
     // the spring itself: a plume out of the organ

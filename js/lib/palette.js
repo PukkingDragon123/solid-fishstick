@@ -142,6 +142,15 @@ def('leather', ['#2a1a10', '#412819', '#5b3a24', '#754e31', '#8e6440', '#a67c53'
 def('canvasBag', ['#332b1c', '#4a4029', '#645738', '#7e7048', '#968959', '#ada370', '#c3bb8d', '#d8d2ae'],
   { rim: 0.24 });
 
+// -- the spore organ --------------------------------------------------------
+// A violet that is deliberately the one cold colour in a hot palette - the
+// gland does not belong in this desert and is not supposed to look like it
+// does.
+def('spore', ['#1b0c25', '#2d1339', '#431b52', '#5b256c', '#763687', '#9450a4', '#b473c2', '#d5a3dd'],
+  { rim: 0.55, spec: 0.4, translucent: 0.35 });
+def('sporeSac', ['#241228', '#3a1c3e', '#532a55', '#6d3a6c', '#874f84', '#a2699c', '#bc8ab5', '#d6b0cd'],
+  { rim: 0.45, spec: 0.3, translucent: 0.5 });
+
 def('default', ['#1a1a1a', '#333', '#4d4d4d', '#666', '#808080', '#999', '#b3b3b3', '#ccc']);
 
 export const MATERIALS = M;

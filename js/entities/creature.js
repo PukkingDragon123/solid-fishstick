@@ -7,6 +7,7 @@
 // no legs at all and moves by pushing sideways against the sand.
 
 import { clamp, clamp01, lerp, damp, TAU } from '../lib/math.js';
+import { pxRing, pxArc, pxEllipse, pxSize } from '../render/pix.js';
 import { buildCreature } from '../art/faunaart.js';
 import { ik2 } from './crab.js';
 
@@ -672,16 +673,11 @@ export class Creature {
     ctx.save();
     // the well
     ctx.globalAlpha = 0.45;
-    ctx.strokeStyle = 'rgba(14,10,6,0.9)';
-    ctx.lineWidth = 2.2;
-    ctx.beginPath(); ctx.arc(s.x, s.y, r, 0, TAU); ctx.stroke();
+    pxRing(ctx, s.x, s.y, r, r, 'rgba(14,10,6,0.9)', { p: pxSize(z), thick: Math.max(1, Math.round(2 * z)) });
     // and how full it is
     ctx.globalAlpha = ready ? 0.95 : 0.75;
-    ctx.strokeStyle = ready ? '#ffe9a8' : '#8ec8d8';
-    ctx.lineWidth = 1.6;
-    ctx.beginPath();
-    ctx.arc(s.x, s.y, r, -Math.PI / 2, -Math.PI / 2 + TAU * k);
-    ctx.stroke();
+    pxArc(ctx, s.x, s.y, r, -Math.PI / 2, -Math.PI / 2 + TAU * k,
+      ready ? '#ffe9a8' : '#8ec8d8', { p: pxSize(z), thick: Math.max(1, Math.round(1.6 * z)) });
     if (ready) {
       // a note, bobbing, meaning it will sing with you
       const b = Math.sin(this.game.time * 3.4) * 1.4 * z;

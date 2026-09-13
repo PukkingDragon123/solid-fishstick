@@ -5,6 +5,7 @@
 // Walk the same line twice and you will see the track.
 
 import { clamp, clamp01, lerp, TAU } from '../lib/math.js';
+import { pxBlob, pxRing, pxEllipse, pxSize } from '../render/pix.js';
 
 const MAX = 900;
 const WIND_PX = 34;      // px/s of drift per unit of reported wind
@@ -434,17 +435,17 @@ export class Fx {
           break;
         case 'dust':
           ctx.globalAlpha = a * 0.26;
-          ctx.fillStyle = '#e8d3ad';
-          ctx.beginPath(); ctx.arc(s.x, s.y, q.r * z, 0, TAU); ctx.fill();
+          pxBlob(ctx, s.x, s.y, q.r * z, '#e8d3ad', { p: pxSize(z) });
           break;
         case 'ring': {
           const k = clamp01(q.t / q.life);
           ctx.globalAlpha = (1 - k) * 0.85;
-          ctx.strokeStyle = q.color;
-          ctx.lineWidth = Math.max(1, (1 - k) * 2 * z);
-          ctx.beginPath();
-          ctx.ellipse(s.x, s.y, lerp(q.r0, q.r1, k) * z, lerp(q.r0, q.r1, k) * 0.45 * z, 0, 0, TAU);
-          ctx.stroke();
+          {
+            const rr = lerp(q.r0, q.r1, k) * z;
+            const p = pxSize(z);
+            pxRing(ctx, s.x, s.y, rr, rr * 0.45, q.color,
+              { p, thick: Math.max(p, Math.round((1 - k) * 2 * z)) });
+          }
           break;
         }
         case 'bug': {
@@ -484,8 +485,7 @@ export class Fx {
         }
         case 'gore':
           ctx.globalAlpha = a * 0.42;
-          ctx.fillStyle = q.color;
-          ctx.beginPath(); ctx.arc(s.x, s.y, q.r * z, 0, TAU); ctx.fill();
+          pxBlob(ctx, s.x, s.y, q.r * z, q.color, { p: pxSize(z) });
           break;
         case 'grit':
           ctx.globalAlpha = a;
@@ -495,8 +495,7 @@ export class Fx {
           break;
         case 'mist':
           ctx.globalAlpha = a * 0.11;
-          ctx.fillStyle = '#cfeef6';
-          ctx.beginPath(); ctx.arc(s.x, s.y, q.r * z, 0, TAU); ctx.fill();
+          pxBlob(ctx, s.x, s.y, q.r * z, '#cfeef6', { p: pxSize(z) });
           break;
         case 'water': {
           ctx.globalAlpha = a;

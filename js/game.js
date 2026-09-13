@@ -2,6 +2,7 @@
 // strict back-to-front draw.
 
 import { clamp, clamp01, lerp, damp, TAU } from './lib/math.js';
+import { pxGlow, pxDisc, pxEllipse, pxRing, pxArc, pxLine, pxSize } from './render/pix.js';
 import { Audio } from './lib/audio.js';
 import { drawText, drawTextBlock, textWidth, wrapText, LINE_H } from './lib/font.js';
 import { Input } from './core/input.js';
@@ -16,6 +17,7 @@ import { World } from './world/landmarks.js';
 import { Crab } from './entities/crab.js';
 import { Archaeologist, Elder, POSE } from './entities/npc.js';
 import { Morse } from './systems/talk.js';
+import { TalkScreen, TALK_RANGE } from './ui/talkscreen.js';
 import { Pump } from './systems/pump.js';
 import { Sea } from './systems/sea.js';
 import { Green } from './systems/green.js';
@@ -96,6 +98,7 @@ export class Game {
     this.world = new World(this, this.seed);
     this.npc = new Archaeologist(this, 62);
     this.morse = new Morse(this);
+    this.talk = new TalkScreen(this);
     this.pump = new Pump(this);
     this.sea = new Sea(this);
     this.green = new Green(this);
@@ -349,12 +352,8 @@ export class Game {
     if (k > 0.4) {
       const b = Math.sin(this.time * 1.5) * 0.5 + 0.5;
       const s = cam.worldToScreen(c.x, c.y - c.m.rx * 0.42);
-      const g = ctx.createRadialGradient(s.x, s.y, 0, s.x, s.y, c.m.rx * 1.5 * z);
-      g.addColorStop(0, `rgba(255,232,180,${0.10 * (k - 0.4) * 1.6 * b})`);
-      g.addColorStop(1, 'rgba(255,232,180,0)');
-      ctx.fillStyle = g;
-      ctx.fillRect(s.x - c.m.rx * 1.6 * z, s.y - c.m.rx * 1.6 * z,
-        c.m.rx * 3.2 * z, c.m.rx * 3.2 * z);
+      pxGlow(ctx, s.x, s.y, c.m.rx * 1.5 * z, '#ffe8b4',
+        0.10 * (k - 0.4) * 1.6 * b, { p: pxSize(z), steps: 3 });
     }
     ctx.globalAlpha = 1;
   }
@@ -694,6 +693,20 @@ export class Game {
       this.input.endFrame();
       return;
     }
+    // Sitting down with her stops everything else. The world keeps breathing
+    // behind the conversation, but nothing you press reaches the animal.
+    this.talk.update(dt);
+    if (this.talk.on) {
+      this.npc.update(dt);
+      this.crab.update(dt, { move: 0 });
+      this.fx.update(dt, this.weather);
+      this.critters.update(dt, this.weather);
+      this.terrain.update(dt, 1.1);
+      this.cam.update(dt);
+      this.input.endFrame();
+      return;
+    }
+
     if (this.state !== 'play') {
       const skipTap = i.clicked && i.sy < this.renderer.vh - 56 && this.state !== 'prologue';
       if (i.justPressed('Escape') || (this.state !== 'prologue' && i.justPressed(' ')) || skipTap) {
@@ -740,6 +753,17 @@ export class Game {
       } else if (i.justPressed('e')) this.act();
       if (play && i.justPressed('r')) this.harvestAll();
       if (play && i.justPressed('f')) this.callVess();
+      // C sits you down in front of her - G is already the way into your own
+      // genome. So does clicking on her, which is what anyone tries first.
+      if (play && i.justPressed('c')) { i.consumeKey('c'); this.openTalk(); }
+      if (play && i.clicked && !this.ui.busy && this.talk.near) {
+        const sp = this.cam.worldToScreen(this.npc.x, this.npc.y - 14);
+        const rr = 14 * this.cam.zoom;
+        if (Math.abs(i.sx - sp.x) < rr && Math.abs(i.sy - sp.y) < rr * 1.6) {
+          i.clicked = false;
+          this.openTalk();
+        }
+      }
       if (play && i.justPressed('x')) this.infest();
       if (play && i.justPressed('k')) this.incubateBest();
       // the song: 1-5 are the pitches you answer with
@@ -761,8 +785,10 @@ export class Game {
         } else this.npc.driveX = 0;
         if (i.justPressed('e')) { i.consumeKey('e'); this.mind.order('mine', this.npc.x + (this.npc.facing || 1) * 8); }
       }
-      // T is the tap key: hold for a long tap, release for a short one
-      if (play) this.morse.update(sdt, i.key('t'));
+      // T is the tap key: hold for a long tap, release for a short one. It
+      // means one thing out in the world and another sitting in front of her,
+      // and the conversation gets it while the conversation is open.
+      if (play && !this.talk.on) this.morse.update(sdt, i.key('t'));
       // Q is the claw. In HUNT it is the timed strike; anywhere else it is
       // the old flat swipe, so you are never without a way to defend yourself.
       if (play && i.justPressed('q')) {
@@ -770,7 +796,8 @@ export class Game {
         else this.attack();
       }
       // SPORE mode: hold V to charge, let go to throw
-      if (play && this.ui.mode === 'spore') this.hive.hold(i.key('v'));
+      // the nozzle in the corner and the V key are the same muscle
+      if (play && this.ui.mode === 'spore') this.hive.hold(i.key('v') || !!this.ui.nozzleHeld);
       else if (this.hive.holding) this.hive.hold(false);
       // HIVE mode: A/D walks whichever of yours you have picked
       if (play && this.ui.mode === 'hive' && this.hive.pick) {
@@ -882,6 +909,10 @@ export class Game {
     this.cam.update(dt);
     const w = this.cam.screenToWorld(i.sx, i.sy);
     i.wx = w.x; i.wy = w.y;
+    // the frame takes the colour of what you are holding
+    this.renderer.setMode(
+      this.state === 'play' && (this.ui.mode === 'hunt' || this.ui.mode === 'spore')
+        ? this.ui.mode : null);
     this.renderer.update(dt, this.weather);
     this.audio.updateMusic(dt);
 
@@ -1028,11 +1059,8 @@ export class Game {
     const p = (this.time * 1.4) % 1;
     ctx.save();
     ctx.globalAlpha = 0.55 * (1 - p) + 0.25;
-    ctx.strokeStyle = '#9ad86a';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.ellipse(s.x, s.y, (5 + p * 9) * z, (2 + p * 4) * z, 0, 0, TAU);
-    ctx.stroke();
+    pxRing(ctx, s.x, s.y, (5 + p * 9) * z, (2 + p * 4) * z, '#9ad86a',
+      { p: pxSize(z), thick: pxSize(z) });
     // a pin standing in the sand
     ctx.globalAlpha = 0.85;
     ctx.fillStyle = '#9ad86a';
@@ -1140,7 +1168,7 @@ export class Game {
       return why ? `${wildOne.def.name}: ${why}` : `Sing with ${wildOne.def.name}`;
     }
     if (this.encounters.hint) return this.encounters.hint;
-    if (Math.abs(this.npc.x - c.x) < 46) return 'Talk to Dr. Vess';
+    if (Math.abs(this.npc.x - c.x) < TALK_RANGE) return 'C: talk to Dr. Vess';
     return null;
   }
 
@@ -1277,6 +1305,19 @@ export class Game {
   onOwned() {
     this.ui.say('Hers no longer.', 3);
     this.teach(7);
+  }
+
+  /** Sit down with her, if she is close enough and in a state to talk. */
+  openTalk() {
+    if (!this.talk.near) {
+      this.ui.say('She is too far to hear you tap.', 2.2);
+      return;
+    }
+    if (this.mind?.owned) {
+      this.npc.say('...', 2);
+      return;
+    }
+    this.talk.open();
   }
 
   callVess() {
@@ -1451,10 +1492,12 @@ export class Game {
         t.stagger = 0.9;
         t.vx += Math.sign(t.x - c.x) * 120;
         this.cam.shake(6);
+        this.renderer.modeHit(1.1);
         this.fx.popup(t.x, t.y - 18, `${Math.round(dmg)}!`, '#ffd678');
         this.audio.play('hit', { pitch: 0.7 });
       } else {
         this.cam.shake(2.6);
+        this.renderer.modeHit(0.5);
         this.fx.popup(t.x, t.y - 16, `${Math.round(dmg)}`, '#f2e4c2');
         this.audio.play('hit');
       }
@@ -1934,11 +1977,12 @@ export class Game {
     else if (this.state === 'prologue') this._drawPrologue(ui, r);
     if (this.state === 'title') { /* the menu is its own chrome */ }
     else if (this.state !== 'play' && this.state !== 'dead') this._drawCine(ui, r);
-    else this.ui.draw(ui, r);
+    else if (!this.talk.on) this.ui.draw(ui, r);
+    if (this.talk.fade > 0.01) this.talk.draw(ui, r.vw, r.vh);
     this.fx.drawText(ui, cam, (c, t, x, y, o) => drawText(c, t, x, y, o));
     if (this.state === 'dead') this._drawDead(ui, r);
     const inside = this.ui.tree.dive > 0.4;
-    if (this.npc.speech && this.state === 'play' && !inside) this._drawSpeech(ui, cam, this.npc);
+    if (this.npc.speech && this.state === 'play' && !inside && !this.talk.on) this._drawSpeech(ui, cam, this.npc);
     if (this.state === 'play' && !inside) {
       const m = this.morse.render();
       if (m) {
@@ -1981,16 +2025,24 @@ export class Game {
       ctx.save();
       ctx.translate(Math.round(s.x), Math.round(s.y));
 
-      // the sand heaped round it, wider than the thing itself
-      ctx.fillStyle = 'rgba(198,166,112,0.55)';
+      // the sand heaped round it, wider than the thing itself. Everything in
+      // here is stamped on the world's own pixel grid - a fossil half out of
+      // the sand next to a dithered dune should not be the one smooth,
+      // anti-aliased shape on the screen.
+      const pp = pxSize(z);
+      // A heap, not a disc: the sand only exists above the ground line, so it
+      // is clipped flat at the bottom and lit along the top. A whole ellipse
+      // lying on the sand just reads as a circle someone drew there.
+      ctx.save();
       ctx.beginPath();
-      ctx.moveTo(-w * 1.5, 1);
-      ctx.quadraticCurveTo(-w * 0.7, -h * 0.55, 0, -h * 0.60);
-      ctx.quadraticCurveTo(w * 0.7, -h * 0.55, w * 1.5, 1);
-      ctx.closePath();
-      ctx.fill();
-      ctx.fillStyle = 'rgba(120,92,56,0.30)';
-      ctx.fillRect(-w * 1.5, 0, w * 3, Math.max(1, z * 0.6));
+      ctx.rect(-w * 2, -h * 2, w * 4, h * 2 + 1);
+      ctx.clip();
+      pxEllipse(ctx, 0, 1, w * 1.45, h * 0.86, 'rgba(186,152,100,0.5)', { p: pp, soft: 0.45 });
+      pxEllipse(ctx, -w * 0.18, 1, w * 1.05, h * 0.66, 'rgba(214,184,130,0.45)', { p: pp, soft: 0.4 });
+      ctx.restore();
+      // the shadow the heap casts along its own foot
+      ctx.fillStyle = 'rgba(120,92,56,0.26)';
+      ctx.fillRect(Math.round(-w * 1.3), 0, Math.round(w * 2.6), Math.max(1, Math.round(z * 0.6)));
 
       // and the thing itself, clipped at the sand line
       ctx.save();
@@ -1998,28 +2050,15 @@ export class Game {
       ctx.rect(-w * 2, -h * 3, w * 4, h * 3 + 1);
       ctx.clip();
       if (amber) {
-        // a rounded nodule with a lit core
-        const g = ctx.createRadialGradient(-w * 0.2, -h * 0.7, 0, 0, -h * 0.3, w * 1.1);
-        g.addColorStop(0, '#fae19f');
-        g.addColorStop(0.55, '#d79a2a');
-        g.addColorStop(1, '#8a5a14');
-        ctx.fillStyle = g;
-        ctx.beginPath();
-        ctx.ellipse(0, -h * 0.15, w * 0.85, h * 0.95, 0.2, 0, TAU);
-        ctx.fill();
-        ctx.fillStyle = 'rgba(60,34,6,0.55)';
-        ctx.beginPath();
-        ctx.ellipse(w * 0.25, -h * 0.1, w * 0.16, h * 0.22, 0.4, 0, TAU);
-        ctx.fill();
+        // a nodule in three bands, lit from the top left, with a dark core
+        pxEllipse(ctx, 0, -h * 0.15, w * 0.85, h * 0.95, '#8a5a14', { p: pp });
+        pxEllipse(ctx, -w * 0.05, -h * 0.30, w * 0.66, h * 0.72, '#d79a2a', { p: pp });
+        pxEllipse(ctx, -w * 0.20, -h * 0.52, w * 0.34, h * 0.38, '#fae19f', { p: pp });
+        pxEllipse(ctx, w * 0.25, -h * 0.10, w * 0.16, h * 0.22, 'rgba(60,34,6,0.55)', { p: pp });
       } else if (site.relic.id === 'vertebra') {
         // a bone end: a shaft with two knobs on it
-        ctx.fillStyle = '#cdc4ab';
-        ctx.beginPath();
-        ctx.ellipse(-w * 0.42, -h * 0.5, w * 0.36, h * 0.42, -0.3, 0, TAU);
-        ctx.fill();
-        ctx.beginPath();
-        ctx.ellipse(w * 0.42, -h * 0.32, w * 0.30, h * 0.36, 0.3, 0, TAU);
-        ctx.fill();
+        pxEllipse(ctx, -w * 0.42, -h * 0.50, w * 0.36, h * 0.42, '#cdc4ab', { p: pp });
+        pxEllipse(ctx, w * 0.42, -h * 0.32, w * 0.30, h * 0.36, '#cdc4ab', { p: pp });
         ctx.fillStyle = '#b3a88d';
         ctx.beginPath();
         ctx.moveTo(-w * 0.42, -h * 0.72);
@@ -2029,46 +2068,45 @@ export class Game {
         ctx.closePath();
         ctx.fill();
         ctx.fillStyle = 'rgba(60,50,34,0.4)';
-        ctx.fillRect(-w * 0.42, -h * 0.34, w * 0.84, Math.max(1, z * 0.5));
+        ctx.fillRect(Math.round(-w * 0.42), Math.round(-h * 0.34), Math.round(w * 0.84), Math.max(1, Math.round(z * 0.5)));
+        // and the grain of it
+        ctx.fillStyle = 'rgba(255,250,235,0.35)';
+        ctx.fillRect(Math.round(-w * 0.3), Math.round(-h * 0.62), Math.round(w * 0.5), Math.max(1, Math.round(z * 0.4)));
       } else {
-        // a shell lip: a ribbed arc coming out of the sand at an angle
-        ctx.fillStyle = '#9a927e';
-        ctx.beginPath();
-        ctx.ellipse(0, -h * 0.05, w * 0.9, h * 1.0, 0.28, Math.PI * 1.06, TAU * 0.99);
-        ctx.fill();
-        ctx.fillStyle = '#cfc7b0';
-        ctx.beginPath();
-        ctx.ellipse(-w * 0.1, -h * 0.22, w * 0.62, h * 0.72, 0.28, Math.PI * 1.06, TAU * 0.99);
-        ctx.fill();
-        // the ribs, which are what makes it read as a shell
-        ctx.strokeStyle = 'rgba(86,76,56,0.5)';
-        ctx.lineWidth = Math.max(1, z * 0.5);
-        for (let i = 0; i < 4; i++) {
-          const a = Math.PI * 1.12 + i * 0.24;
-          ctx.beginPath();
-          ctx.moveTo(Math.cos(a) * w * 0.25, -h * 0.15 + Math.sin(a) * h * 0.28);
-          ctx.lineTo(Math.cos(a) * w * 0.88, -h * 0.15 + Math.sin(a) * h * 0.95);
-          ctx.stroke();
+        // A coiled shell, half of it still in the sand. It is a solid object
+        // with ribs cut across it and a lip that catches the light - a thin
+        // ring of outline out here just reads as a circle drawn on the ground.
+        pxEllipse(ctx, 0, -h * 0.30, w * 0.92, h * 0.86, '#7d7663', { p: pp });
+        pxEllipse(ctx, -w * 0.06, -h * 0.38, w * 0.78, h * 0.72, '#9a927e', { p: pp });
+        pxEllipse(ctx, -w * 0.16, -h * 0.52, w * 0.46, h * 0.44, '#b8b09a', { p: pp });
+        // the whorl: a darker eye where the coil goes in
+        pxEllipse(ctx, -w * 0.10, -h * 0.44, w * 0.20, h * 0.20, '#655e4e', { p: pp });
+        // the ribs, running out from the whorl to the rim. Thin - a rib at the
+        // full pixel size is a black bar and the shell stops being a shell.
+        const rp = Math.max(1, Math.round(z * 0.5));
+        for (let k = 0; k < 6; k++) {
+          const a = Math.PI * 1.02 + k * 0.36;
+          pxLine(ctx, -w * 0.10 + Math.cos(a) * w * 0.24, -h * 0.40 + Math.sin(a) * h * 0.22,
+            -w * 0.10 + Math.cos(a) * w * 0.92, -h * 0.40 + Math.sin(a) * h * 0.86,
+            'rgba(96,88,70,0.40)', { p: rp });
         }
+        // and the lip, lit along the top edge
+        pxArc(ctx, 0, -h * 0.30, Math.max(w, h), Math.PI * 1.08, TAU * 0.96, '#e0d8c2',
+          { p: pp, rx: w * 0.92, ry: h * 0.86, thick: pp });
       }
       ctx.restore();
 
-      // the shadow it casts into its own hole
-      ctx.fillStyle = 'rgba(58,40,20,0.35)';
-      ctx.beginPath();
-      ctx.ellipse(0, 0, w * 0.95, Math.max(1, h * 0.22), 0, 0, TAU);
-      ctx.fill();
+      // a shadow in the hollow the sand makes round it
+      ctx.globalAlpha = 0.35;
+      pxEllipse(ctx, 0, 0, w * 0.95, Math.max(1, h * 0.22), 'rgba(60,44,26,0.6)', { p: pp, soft: 0.4 });
+      ctx.globalAlpha = 1;
       ctx.restore();
 
       if (amber) {
         // amber catches the light, which is how you spot it from a way off
         const tw = 0.5 + 0.5 * Math.sin(this.time * 2.6 + site.ci);
         ctx.globalAlpha = 0.18 + tw * 0.34;
-        const g = ctx.createRadialGradient(s.x, s.y - h * 0.5, 0, s.x, s.y - h * 0.5, w * 3);
-        g.addColorStop(0, '#fae19f');
-        g.addColorStop(1, 'rgba(238,198,108,0)');
-        ctx.fillStyle = g;
-        ctx.beginPath(); ctx.arc(s.x, s.y - h * 0.5, w * 3, 0, TAU); ctx.fill();
+        pxGlow(ctx, s.x, s.y - h * 0.5, w * 3, '#fae19f', 0.9, { p: pxSize(z), steps: 3 });
         ctx.globalAlpha = 1;
       }
       if (Math.abs(site.x - this.crab.x) < 40) {
@@ -2150,10 +2188,8 @@ export class Game {
     // the wet patch, spreading
     const patch = clamp01(this._peeT * 0.5);
     ctx.globalAlpha = (0.35 + 0.25 * Math.sin(this.time * 7)) * patch;
-    ctx.fillStyle = '#b8902a';
-    ctx.beginPath();
-    ctx.ellipse(b.x, b.y, (3 + patch * 6) * cam.zoom, (1.2 + patch * 2) * cam.zoom, 0, 0, TAU);
-    ctx.fill();
+    pxEllipse(ctx, b.x, b.y, (3 + patch * 6) * cam.zoom, (1.2 + patch * 2) * cam.zoom,
+      '#b8902a', { p: pxSize(cam.zoom), soft: 0.35 });
     ctx.globalAlpha = 1;
   }
 
@@ -2245,11 +2281,21 @@ export class Game {
     const y = clamp(Math.round(s.y - h), 3, this.renderer.vh - h - 12);
     const tailX = clamp(Math.round(s.x), x + 8, x + w - 8);
 
-    const PAPER = code ? '#0e2226' : '#e9dcbc';
-    const SHADE = code ? '#0a1a1d' : '#d2c29c';
-    const INKC = code ? '#8fe0cc' : '#2a2016';
+    // A yell is not a bigger page - it is a different one: hot paper, a hard
+    // red edge, and the whole card shaking on the spot.
+    const shout = !code && who.shout > 0;
+    const PAPER = code ? '#0e2226' : shout ? '#f6e0c4' : '#e9dcbc';
+    const SHADE = code ? '#0a1a1d' : shout ? '#e0b48e' : '#d2c29c';
+    const INKC = code ? '#8fe0cc' : shout ? '#7a1c12' : '#2a2016';
     const RULE = code ? 'rgba(143,224,204,0.20)' : 'rgba(42,32,22,0.13)';
-    const EDGE = code ? 'rgba(143,224,204,0.55)' : 'rgba(92,70,44,0.75)';
+    const EDGE = code ? 'rgba(143,224,204,0.55)' : shout ? '#c8402e' : 'rgba(92,70,44,0.75)';
+    if (shout) {
+      // it jitters, and the jitter dies down as the line runs out
+      const k = clamp01(who.speechT / 1.2);
+      ctx.save();
+      ctx.translate(Math.round(Math.sin(this.time * 47) * 2 * k),
+        Math.round(Math.cos(this.time * 39) * 1.6 * k));
+    }
 
     // the dog-ear pointing at the speaker, drawn first so the page covers its root
     ctx.fillStyle = SHADE;
@@ -2302,6 +2348,23 @@ export class Game {
     if (code) {
       drawText(ctx, this.morse.learned ? 'she is listening' : 'tapping',
         x + w / 2, y - 9, { color: 'rgba(159,232,212,0.5)', align: 'center' });
+    }
+    if (shout) {
+      // spikes round the card, so it reads as loud with the sound off
+      ctx.strokeStyle = EDGE;
+      ctx.lineWidth = 1;
+      for (let i = 0; i < 14; i++) {
+        const a3 = (i / 14) * TAU + this.time * 0.6;
+        const ex = x + w / 2 + Math.cos(a3) * (w / 2 + 2);
+        const ey = y + h / 2 + Math.sin(a3) * (h / 2 + 2);
+        const ex2 = x + w / 2 + Math.cos(a3) * (w / 2 + 6);
+        const ey2 = y + h / 2 + Math.sin(a3) * (h / 2 + 6);
+        ctx.beginPath();
+        ctx.moveTo(Math.round(ex), Math.round(ey));
+        ctx.lineTo(Math.round(ex2), Math.round(ey2));
+        ctx.stroke();
+      }
+      ctx.restore();
     }
   }
 

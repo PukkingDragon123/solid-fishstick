@@ -7,6 +7,7 @@
 // world space and every joint is solved.
 
 import { clamp, clamp01, lerp, damp, TAU } from '../lib/math.js';
+import { pxDisc, pxGlow, pxEllipse } from '../render/pix.js';
 import { buildCrab, crabMetrics } from '../art/crabart.js';
 
 /** Two-bone IK. `up` picks which side the joint folds toward. */
@@ -474,18 +475,13 @@ export class Crab {
         const tint = this.game.modeTint;
         if (tint) {
           const heat = 0.55 + 0.45 * Math.sin(this.game.time * 3.2);
-          const gr = ctx.createRadialGradient(ex, ey, 0, ex, ey, r * 3.4);
-          gr.addColorStop(0, tint.glow);
-          gr.addColorStop(1, 'rgba(0,0,0,0)');
+          // the face is drawn inside the animal's own transform, so one unit
+          // here is already one world pixel - no zoom to pass in
           ctx.save();
           ctx.globalAlpha = 0.35 + heat * 0.4;
-          ctx.fillStyle = gr;
-          ctx.beginPath(); ctx.arc(ex, ey, r * 3.4, 0, TAU); ctx.fill();
+          pxGlow(ctx, ex, ey, r * 3.4, tint.glow, 1, { p: 1, steps: 3 });
           ctx.restore();
-          ctx.fillStyle = tint.iris;
-          ctx.beginPath();
-          ctx.ellipse(ex, ey, r * 0.62, r * 0.62, 0, 0, TAU);
-          ctx.fill();
+          pxDisc(ctx, ex, ey, r * 0.62, tint.iris, { p: 1 });
         }
         const px = ex + this.look.x * r * 0.22 - r * 0.34;
         const py = ey + this.look.y * r * 0.22 - r * 0.36;

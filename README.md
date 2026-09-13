@@ -48,6 +48,7 @@ npm run build     # -> dist/crabden.html + dist/crabden.body.html
 | put a parasite on something | `X` | — |
 | put a relic in your basin | `K` | — |
 | tap out a word | hold/release `T` | — |
+| sit down with her | `C`, or click her | tap her |
 | Vess: follow, get on, get off | `F` | — |
 | act — dig, win over, strike | `E` | **ACT** |
 | map / fleet / field notes | `1` / `2` / `3` | **SHOP**, then a tab |
@@ -255,11 +256,51 @@ you flinches), **Signal Skin**.
 go inside the band and the cloud lands where the arc said. Let go early and it
 falls short. Hold too long and it goes off on the animal holding it.
 
+And the corner stops being a spring. In spore mode the **water shell becomes the
+gland** — a sac of violet fluid slung under a ring of chitin, with things moving
+about in it, swelling as the pressure rises — and the **valve becomes a nozzle**,
+which is a ring of muscle with a spout through it that clenches as you squeeze
+rather than opening like the valve does. What it throws is not water and does not
+behave like water: the motes hang, drift upward and wander off, and the gauge
+beside it has a band that throws and a red end where it bursts. The mode bar
+beside it stops repeating the charge and tells you the thing you actually need —
+who is in range, and whether the spore would take in them, with the three ways in
+(hurt it, feed it, or earn it) shown as chips that fill in.
+
 **HIVE** is everything on your nerve, and the nerve itself.
+
+### The frame takes the colour of your hand
+
+What you are holding is not a chip in a corner — **it grades the whole world**.
+
+**HUNT** drops the frame into a hot red: the sand goes bloody rather than brown,
+the edges close in hard, two bars of heat breathe along the top and bottom on the
+strike beat, a scanline crawls, and every landed hit kicks a bright pulse through
+the lot of it. Some rows of the picture jolt out of line as it goes, so the whole
+screen flinches.
+
+**SPORE** goes the other way: violet, lifted rather than darkened, with the
+frame breathing closed slowly and spores hanging in the air drifting up across
+everything. And the world **warps** — long, slow, low waves that run down the
+picture out of phase with each other, so nothing you are looking at is quite
+still. Both are built out of the same square pixels as the rest of the game.
+
+| | |
+| --- | --- |
+| ![Hunt](docs/shot-25-hunt.png) | ![Spore](docs/shot-26-spore.png) |
 
 | | |
 | --- | --- |
 | ![Modes and eyes](docs/shot-23-modes.png) | ![A fossil in the ground](docs/shot-24-dig.png) |
+
+### What is yours
+
+The third readout in the corner used to be a count of fruit, which told you
+nothing you could act on. It is **the animals themselves** now: each one drawn
+as its own head, on its own plate, with the thread of what is left of it
+underneath and a breathing frame round whichever one you are currently riding.
+Click one and you are it. Until you have any, the slot shows the sprig instead —
+because fruit is how you get the first one, and the slot should say what fills it.
 
 ### The small print of the desert
 
@@ -619,6 +660,31 @@ carapace, membrane, horn, rope, cloth, metal, glass, skin, khaki, leather — so
 a fern frond and a crab's leg are lit by the same sun and sit in the same
 desert. Everything is baked once into a canvas at load.
 
+### No smooth circles anywhere
+
+The one thing that kept escaping the grid was circles. A glow round an eye, the
+sun in the sky, a ring off a splash, the shadow under an animal — all of those
+went through the canvas arc / ellipse / radial-gradient path, which is smooth,
+anti-aliased and continuous, and beside a dithered sprite it reads as a sticker
+somebody stuck on the screen.
+
+So `js/render/pix.js` draws every round thing out of squares, on the same grid
+the sprites are on, with the **same ordered dither** on the soft edges instead
+of an alpha ramp: `pxDisc`, `pxEllipse`, `pxRing`, `pxArc`, `pxGlow`, `pxBlob`,
+`pxLine`, `pxCurve`, `pxVignette`. A pixel here is `p` screen pixels, so passing
+the camera zoom snaps a disc in the world to the world's own grid — which is
+what stops it crawling when the camera moves. A glow is three or four flat
+bands dithered into each other, never a gradient.
+
+The sun and the moon are the biggest round things on the screen and were the
+two that needed it most; the moon has a bite of dark side and two seas now
+rather than a translucent overlay. Every eye glow, spore cloud, dust puff, gore
+blob, splash ring, trust dial, progress arc, ore bed, shadow and half-buried
+fossil went the same way. The full-screen grades are the same — a canvas
+gradient would be the one smooth thing left on the screen — and they are baked
+into a cached canvas once per size rather than rebuilt out of forty thousand
+fill calls every frame.
+
 ### The crab
 
 The crab is drawn **head-on**, because that is how a crab moves: it does not
@@ -774,9 +840,57 @@ letter. Six taps in and she stops hearing noise and starts hearing language:
 > Wait. Wait. That is not random. Long, short, long — that is code. You are
 > TAPPING AT ME. You are a person. Oh, you are a person.
 
-From then on you have a language. It is a terrible language. `WATER`, `HELP`,
-`SEA`, `YES`, `NO`, `NAME`, `UP`, `DIG` — she answers every one of them, and
-reads back anything else you spell letter by letter.
+From then on you have a language. It is a terrible language. Tapped at her
+across the sand she answers every word she knows and reads back anything else
+you spell, letter by letter.
+
+### Sitting down with her
+
+And then there is the other kind of talking, the kind where you both stop.
+Press `C` beside her, or click on her, and the world goes quiet: her face at
+five times walking size on the left, a letterbox, and everything you could say
+laid out as a grid.
+
+**Every word has its code written underneath it**, because the code is the
+language and hiding it would be like hiding the words. You answer two ways and
+they are the same answer: **tap it out for real** on the key — the wire along
+the bottom shows every mark the instant you make it, and the moment the letters
+spell something she knows she answers without waiting for the pause — or
+**point at it**, for when your hands are busy. She does not treat you
+differently for pointing.
+
+She answers a card at a time, each with its own icon and her face in the state
+that line puts her in, the words arriving as she says them rather than all at
+once. Pips in the corner say how much is left. And some of the answers are
+lessons — **this is the only place in the game where you are taught anything**.
+Not a tooltip and not a tutorial step: a woman who has been out here eleven
+years telling you how to grow a plant, how the seam under your feet works, why
+a spore will not take in something that owes you nothing, and what the sea did.
+
+Tap `PLANT` at her and you get the whole of it: your back is soil, drag a seed
+onto a plot, water it, leave it alone, and pick it when the bead lifts. There
+are a dozen of them, and the ones that would not make sense yet are not on the
+table yet.
+
+![Sitting down with her](docs/shot-27-talk.png)
+
+### She notices things
+
+She is the only one of you who can read this desert, so she says so. A hostile
+inside a hundred and thirty and she **shouts** — and a shout is not a bigger
+speech bubble, it is a different one: hot paper, red ink, a hard red edge, spikes
+round the outside and the whole card shaking on the spot, over the top of
+whatever she was in the middle of saying.
+
+> **BEHIND YOU — DUNE SCORPION!**
+
+She shouts when you are down to a third of your blood, and when the sand is
+coming. She remarks — quietly, at conversational volume — on a seam under your
+feet, on a fossil sitting far higher in the section than it has any right to, on
+a plant about to die of thirst, on a tank nearly dry, on an animal that has
+decided it will sing with you, and on the sun going down. Each one has its own
+cooldown and its own memory, so she never says the same thing twice in a row and
+never talks over herself.
 
 ### The rest
 
@@ -866,6 +980,8 @@ js/
 | ![Build mode](docs/shot-05-drawer.png) | ![The map](docs/shot-06-notes.png) |
 | ![Your genome](docs/shot-04-tree.png) | ![Night](docs/shot-08-night.png) |
 | ![Dr. Vess at a dig](docs/shot-09-vess.png) | ![Water](docs/shot-07-water.png) |
+| ![Hunt](docs/shot-25-hunt.png) | ![Spore](docs/shot-26-spore.png) |
+| ![Sitting down with her](docs/shot-27-talk.png) | ![The front door](docs/shot-22-title.png) |
 
 ---
 

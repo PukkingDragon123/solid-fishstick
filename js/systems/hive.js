@@ -17,6 +17,7 @@
 // rimmed, and threaded back to you.
 
 import { clamp, clamp01, damp, lerp, TAU } from '../lib/math.js';
+import { pxDisc, pxGlow, pxSize } from '../render/pix.js';
 
 const CHARGE_SECS = 1.35;       // hold this long and the bladder is at pressure
 const SWEET = [0.62, 0.88];     // the part of the charge that actually throws
@@ -166,11 +167,8 @@ export class Hive {
     if (this.flight) {
       const s = cam.worldToScreen(this.flight.x, this.flight.y);
       const z = cam.zoom;
-      const g = ctx.createRadialGradient(s.x, s.y, 0, s.x, s.y, 6 * z);
-      g.addColorStop(0, 'rgba(214,160,236,0.9)');
-      g.addColorStop(1, 'rgba(201,138,222,0)');
-      ctx.fillStyle = g;
-      ctx.beginPath(); ctx.arc(s.x, s.y, 6 * z, 0, TAU); ctx.fill();
+      pxGlow(ctx, s.x, s.y, 6 * z, '#d6a0ec', 0.9, { p: pxSize(z), steps: 3 });
+      pxDisc(ctx, s.x, s.y, 1.6 * z, '#f4dcff', { p: pxSize(z) });
     }
     if (!this.holding) return;
     const dir = c.facing || 1;
@@ -284,16 +282,12 @@ export class Hive {
       const bx = (1 - bt) * (1 - bt) * s0.x + 2 * (1 - bt) * bt * mx + bt * bt * s.x;
       const by = (1 - bt) * (1 - bt) * s0.y + 2 * (1 - bt) * bt * my + bt * bt * s.y;
       ctx.globalAlpha = k * 0.9;
-      ctx.fillStyle = own ? '#fff4d0' : '#bff2ff';
-      ctx.beginPath(); ctx.arc(bx, by, (own ? 2.2 : 1.5), 0, TAU); ctx.fill();
+      pxDisc(ctx, bx, by, own ? 2.2 : 1.5, own ? '#fff4d0' : '#bff2ff', { p: 1 });
       // and the halo on the animal itself
       const r = (own ? 16 : 11) * cam.zoom * 0.5 * beat;
-      const hg = ctx.createRadialGradient(s.x, s.y, 0, s.x, s.y, r * 2.2);
-      hg.addColorStop(0, own ? 'rgba(255,233,168,0.55)' : 'rgba(127,216,234,0.42)');
-      hg.addColorStop(1, 'rgba(0,0,0,0)');
       ctx.globalAlpha = k;
-      ctx.fillStyle = hg;
-      ctx.beginPath(); ctx.arc(s.x, s.y, r * 2.2, 0, TAU); ctx.fill();
+      pxGlow(ctx, s.x, s.y, r * 2.2, own ? '#ffe9a8' : '#7fd8ea', own ? 0.55 : 0.42,
+        { p: pxSize(cam.zoom), steps: 3 });
     }
     ctx.restore();
 

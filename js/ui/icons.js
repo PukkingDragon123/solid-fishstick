@@ -6,8 +6,10 @@
 // the HUD is lit by the same sun as the desert behind it.
 
 import { Painter, makeCanvas } from '../render/pixel.js';
+import { buildCreature } from '../art/faunaart.js';
 import { MATERIALS } from '../lib/palette.js';
 import { clamp, clamp01, lerp, TAU } from '../lib/math.js';
+import { pxDisc, pxGlow } from '../render/pix.js';
 
 const LIGHT = { lightX: -0.55, lightY: -0.68, lightZ: 0.42, ambient: 0.42, dither: 0.6 };
 
@@ -213,6 +215,210 @@ export function drawSprig(ctx, x, y, n, scale = 1) {
 }
 
 // ---------------------------------------------------------------------------
+// your tames: the animals that are actually yours, as their own faces
+//
+// A number of berries told you nothing - it was a count of a thing you spend.
+// What belongs in that corner is what you have made out here: the animals that
+// came to you, each drawn as its own head, with the thread of health it is on
+// and a mark for the one you are currently riding.
+
+const tameHeads = new Map();
+
+/**
+ * The head sprite of a species, cropped to the animal and cached at token
+ * size. The crop matters: a painted head sits in a canvas with a lot of
+ * padding round it, and fitting the whole canvas into fourteen pixels leaves
+ * the actual face about three pixels across.
+ */
+function tameHead(def, size = 14) {
+  const key = def.id + ':' + size;
+  let cv = tameHeads.get(key);
+  if (cv) return cv;
+  const rig = buildCreature(def);
+  const src = rig.head.cv;
+  const box = opaqueBox(src);
+  cv = makeCanvas(size, size);
+  const g = cv.getContext('2d');
+  g.imageSmoothingEnabled = false;
+  // fit the cropped head into the token, biggest side first
+  const k = Math.min((size - 1) / box.w, (size - 1) / box.h);
+  const w = Math.max(1, Math.round(box.w * k));
+  const h = Math.max(1, Math.round(box.h * k));
+  g.drawImage(src, box.x, box.y, box.w, box.h,
+    Math.round((size - w) / 2), Math.round((size - h) / 2), w, h);
+  if (tameHeads.size > 64) tameHeads.clear();
+  tameHeads.set(key, cv);
+  return cv;
+}
+
+const boxes = new WeakMap();
+
+/** The bounding box of everything that is not transparent in a canvas. */
+function opaqueBox(cv) {
+  let b = boxes.get(cv);
+  if (b) return b;
+  const g = cv.getContext('2d');
+  let x0 = cv.width, y0 = cv.height, x1 = -1, y1 = -1;
+  try {
+    const d = g.getImageData(0, 0, cv.width, cv.height).data;
+    for (let y = 0; y < cv.height; y++) {
+      for (let x = 0; x < cv.width; x++) {
+        if (d[(y * cv.width + x) * 4 + 3] < 8) continue;
+        if (x < x0) x0 = x; if (x > x1) x1 = x;
+        if (y < y0) y0 = y; if (y > y1) y1 = y;
+      }
+    }
+  } catch { /* a tainted canvas is not a reason to fail to draw a token */ }
+  b = x1 < 0
+    ? { x: 0, y: 0, w: cv.width, h: cv.height }
+    : { x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1 };
+  boxes.set(cv, b);
+  return b;
+}
+
+/**
+ * One animal, as a token: its face on a plate, a health thread under it, and a
+ * ring if you are riding it. Returns the box it drew in so the caller can
+ * hit-test it.
+ */
+export function drawTame(ctx, x, y, c, opts = {}) {
+  const S = opts.size || 16;
+  const on = !!opts.on;
+  const t = opts.t || 0;
+  drawPlate(ctx, x, y, S, S, {
+    edge: on ? '#ffe9a8' : 'rgba(120,96,58,0.45)',
+    top: on ? 'rgba(64,52,26,0.95)' : undefined,
+    rivets: false,
+  });
+  const def = c.def || c;
+  try {
+    if (def && def.headL) {
+      ctx.drawImage(tameHead(def, S - 2), x + 1, y + 1);
+    } else {
+      // Dr. Vess, when she is the one on the nerve, has no creature rig
+      ctx.fillStyle = on ? '#e8c3aa' : '#a8846a';
+      ctx.fillRect(x + 5, y + 4, 6, 7);
+      ctx.fillStyle = '#5b3a24';
+      ctx.fillRect(x + 4, y + 3, 8, 2);
+    }
+  } catch { /* a species with no art is still a tame; the plate is enough */ }
+  // health, as a thread along the bottom edge
+  const hp = clamp01((c.hp ?? 1) / (c.hpMax ?? 1));
+  ctx.fillStyle = 'rgba(10,8,5,0.8)';
+  ctx.fillRect(x + 2, y + S - 3, S - 4, 1);
+  ctx.fillStyle = hp > 0.4 ? '#8cc468' : '#e2564f';
+  ctx.fillRect(x + 2, y + S - 3, Math.round((S - 4) * hp), 1);
+  if (on) {
+    // the one you are riding breathes
+    const b = 0.5 + 0.5 * Math.sin(t * 4);
+    ctx.globalAlpha = 0.35 + b * 0.5;
+    ctx.fillStyle = '#ffe9a8';
+    ctx.fillRect(x - 1, y - 1, S + 2, 1);
+    ctx.fillRect(x - 1, y + S, S + 2, 1);
+    ctx.globalAlpha = 1;
+  }
+  return { x, y, w: S, h: S };
+}
+
+// ---------------------------------------------------------------------------
+// the spore gland: what the water shell becomes while you are in SPORE mode
+//
+// It is not a tank bolted to you - it is an organ, a sac of violet fluid slung
+// under a ring of chitin with a nozzle at the bottom of it, and it swells and
+// settles as the pressure in it changes. The fluid level reads the same way
+// the water in the shell does, so you never have to learn a second gauge.
+
+function buildGland(w = 38) {
+  const h = 42;
+  const cx = w / 2, base = h - 4;
+
+  // the sac itself, in two layers so the wall reads as a wall
+  const q = new Painter(w, h);
+  q.ellipse(cx, base - 13, 13, 14, { mat: 'sporeSac', dome: 11, tint: -0.06 });
+  const back = q.resolve(MATERIALS, { ...LIGHT, ambient: 0.34, outline: 0 });
+
+  // the fluid: a second pass in the hot violet, drawn clipped to the level
+  const f = new Painter(w, h);
+  f.ellipse(cx, base - 13, 11.4, 12.6, { mat: 'spore', dome: 9, tint: 0.12 });
+  f.grain('spore', { freq: 0.42, amp: 0.24, seed: 12, height: 0.6 });
+  // things moving about in it, because it is alive
+  for (let i = 0; i < 5; i++) {
+    const a = i * 1.31;
+    f.ellipse(cx + Math.cos(a) * 5, base - 13 + Math.sin(a) * 6, 1.5, 1.5,
+      { mat: 'spore', mask: true, dome: 2, tint: 0.42 });
+  }
+  const fluid = f.resolve(MATERIALS, { ...LIGHT, ambient: 0.6, outline: 0 });
+
+  // the front: the ring it hangs in, the ribs across it, and the nozzle
+  const p = new Painter(w, h);
+  // the collar
+  p.capsule(cx - 12, base - 24, cx + 12, base - 24, 3.2, 3.2,
+    { mat: 'chitin', dome: 2.8, tint: 0.04 });
+  for (const sgn of [-1, 1]) {
+    p.capsule(cx + sgn * 11, base - 23, cx + sgn * 8.5, base - 6, 2.0, 1.4,
+      { mat: 'chitinDark', dome: 1.8, tint: sgn > 0 ? 0.04 : -0.12 });
+  }
+  // the wall of the sac, as a rim only - the middle stays clear for the fluid
+  p.field(cx - 15, base - 29, cx + 15, base + 2, (x, y) => {
+    const d = Math.hypot((x - cx) / 13, (y - (base - 13)) / 14);
+    if (d > 1.02 || d < 0.80) return null;
+    const k = clamp01((d - 0.80) / 0.22);
+    return { h: 1.6 + k * 2.4, tint: 0.04 + k * 0.12 };
+  }, { mat: 'sporeSac' });
+  // the nozzle: a short spout with a lip
+  p.capsule(cx, base - 2, cx, base + 3, 2.6, 1.9, { mat: 'chitin', dome: 2.2, tint: -0.04 });
+  p.ellipse(cx, base + 3, 2.3, 1.2, { mat: 'chitinDark', dome: -1.2, tint: -0.3 });
+  const cv = p.resolve(MATERIALS, { ...LIGHT, outline: 1, outlineColor: '#140a1a' });
+
+  return { cv, back, fluid, w, h, top: base - 26, bot: base - 1, left: cx - 12, right: cx + 12 };
+}
+
+/**
+ * Draw the gland with `f` of it full. `t` drives the churn, and `press` (0-1)
+ * swells it while a spore is being charged.
+ */
+export function drawGland(ctx, x, y, f, t, press = 0, scale = 1) {
+  const G = once('gland', () => buildGland(38));
+  const lvl = G.bot - (G.bot - G.top) * clamp01(f);
+  ctx.save();
+  ctx.translate(Math.round(x) + G.w / 2, Math.round(y) + G.h / 2);
+  // pressure swells it, and the swell has a wobble on it so it reads as soft
+  const k = (scale) * (1 + press * 0.10 + Math.sin(t * 9) * press * 0.03);
+  ctx.scale(k, k * (1 - press * 0.03));
+  ctx.translate(-G.w / 2, -G.h / 2);
+  ctx.drawImage(G.back, 0, 0);
+  if (f > 0.005) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(0, lvl, G.w, G.bot - lvl + 3);
+    ctx.clip();
+    ctx.drawImage(G.fluid, 0, 0);
+    ctx.restore();
+    // the meniscus, wobbling
+    ctx.fillStyle = press > 0.05 ? '#f0d4ff' : '#d5a3dd';
+    for (let x2 = G.left; x2 <= G.right; x2++) {
+      const wob = Math.sin(t * 3.4 + x2 * 0.6) * 0.8 + Math.sin(t * 1.7 + x2 * 0.2) * 0.5;
+      const yy = Math.round(lvl + wob);
+      if (yy < G.top - 1 || yy > G.bot) continue;
+      ctx.fillRect(x2, yy, 1, 1);
+    }
+    // and spores coming off the surface while it is under pressure
+    if (press > 0.08) {
+      for (let i = 0; i < 5; i++) {
+        const ph = (t * (1.3 + i * 0.4) + i * 0.7) % 1;
+        ctx.globalAlpha = press * (1 - ph) * 0.85;
+        ctx.fillStyle = '#e6c0f2';
+        ctx.fillRect(Math.round(G.left + 3 + i * 4), Math.round(lvl - ph * 12), 1, 1);
+      }
+      ctx.globalAlpha = 1;
+    }
+  }
+  ctx.drawImage(G.cv, 0, 0);
+  ctx.restore();
+  return { w: G.w, h: G.h };
+}
+
+// ---------------------------------------------------------------------------
 // the gene orb: the way into the Tree of Life
 
 function buildOrb() {
@@ -244,10 +450,7 @@ export function drawOrb(ctx, x, y, t, pulse = 0, scale = 1) {
   if (scale !== 1) ctx.scale(scale, scale);
   const s = 1 + Math.sin(t * 1.7) * 0.03 + pulse * 0.22;
   ctx.globalAlpha = 0.30 + pulse * 0.5 + Math.sin(t * 2.3) * 0.06;
-  ctx.fillStyle = '#7fe0c8';
-  ctx.beginPath();
-  ctx.arc(0, 0, 13 * s, 0, TAU);
-  ctx.fill();
+  pxDisc(ctx, 0, 0, 13 * s, '#7fe0c8', { p: 1, soft: 4 });
   ctx.globalAlpha = 1;
   ctx.scale(s, s);
   ctx.drawImage(O.cv, -15, -15);
@@ -541,15 +744,71 @@ export function drawValve(ctx, x, y, open, t) {
   const k = 1 + open * 0.06 + Math.sin(t * 22) * open * 0.02;
   ctx.scale(k, k);
   if (open > 0.01) {
-    const g = ctx.createRadialGradient(0, 0, 0, 0, 0, 16);
-    g.addColorStop(0, `rgba(159,232,238,${0.55 * open})`);
-    g.addColorStop(1, 'rgba(95,198,216,0)');
-    ctx.fillStyle = g;
-    ctx.beginPath(); ctx.arc(0, 0, 16, 0, TAU); ctx.fill();
+    pxGlow(ctx, 0, 0, 16, '#9fe8ee', 0.55 * open, { p: 1, steps: 3 });
   }
   ctx.drawImage(V.cv, -V.w / 2, -V.h / 2);
   ctx.restore();
   return { w: V.w, h: V.h };
+}
+
+/**
+ * The nozzle: what the valve becomes in SPORE mode. It is the far end of the
+ * gland - a muscular ring with a spout through it, held shut until you build
+ * pressure behind it. The valve throws water; this throws something alive.
+ */
+function buildNozzle() {
+  const w = 34, h = 34;
+  const p = new Painter(w, h);
+  const cx = w / 2, cy = h / 2;
+  // the ring of muscle it sits in
+  p.ellipse(cx, cy, 15, 15, { mat: 'sporeSac', dome: 6, tint: -0.10 });
+  p.ellipse(cx, cy, 12.2, 12.2, { mat: 'spore', dome: 5, tint: 0.06 });
+  // the throat, going back into the animal
+  p.ellipse(cx, cy, 8.4, 8.4, { mat: 'spore', dome: -7, tint: -0.40 });
+  // three petals of the sphincter, not four - it should not read as the valve
+  for (let i = 0; i < 3; i++) {
+    const th = (i / 3) * TAU - 1.1;
+    p.poly([
+      { x: cx + Math.cos(th) * 8.2, y: cy + Math.sin(th) * 8.2 },
+      { x: cx + Math.cos(th + 1.6) * 8.2, y: cy + Math.sin(th + 1.6) * 8.2 },
+      { x: cx + Math.cos(th + 0.8) * 1.8, y: cy + Math.sin(th + 0.8) * 1.8 },
+    ], { mat: 'sporeSac', dome: 2.8, feather: 2, tint: 0.10 - i * 0.04 });
+  }
+  // the spout standing proud of it
+  p.capsule(cx, cy - 1, cx, cy - 9, 3.4, 2.2, { mat: 'chitin', dome: 2.6, tint: 0.02 });
+  p.ellipse(cx, cy - 9.4, 2.2, 1.3, { mat: 'chitinDark', dome: -1.4, tint: -0.34 });
+  // the veins that feed it
+  for (const sgn of [-1, 1]) {
+    p.curve([{ x: cx + sgn * 13, y: cy + 4 }, { x: cx + sgn * 8, y: cy + 9 },
+      { x: cx + sgn * 3, y: cy + 6 }], 1.1, 0.7,
+      { mat: 'spore', dome: 1.0, steps: 8, tint: 0.24 });
+  }
+  p.grain('spore', { freq: 0.44, amp: 0.18, seed: 21 });
+  p.speckle('sporeSac', { density: 0.05, amp: 0.35, seed: 7 });
+  return { cv: p.resolve(MATERIALS, { ...LIGHT, outline: 1, outlineColor: '#140a1a' }), w, h };
+}
+
+/** Draw the nozzle. `open` is how much pressure is behind it. */
+export function drawNozzle(ctx, x, y, open, t, hot = false) {
+  const N = once('nozzle', buildNozzle);
+  ctx.save();
+  ctx.translate(x + N.w / 2, y + N.h / 2);
+  // it clenches as the pressure rises rather than opening like the valve does
+  const k = 1 + open * 0.10 + Math.sin(t * 26) * open * 0.025;
+  ctx.scale(k, k * (1 - open * 0.04));
+  if (open > 0.01 || hot) {
+    pxGlow(ctx, 0, 0, 16, '#c98ade', 0.6 * Math.max(open, hot ? 0.25 : 0), { p: 1, steps: 3 });
+  }
+  ctx.drawImage(N.cv, -N.w / 2, -N.h / 2);
+  // the spout lights up from the inside when it is about to go
+  if (open > 0.5) {
+    ctx.globalAlpha = (open - 0.5) * 2;
+    ctx.fillStyle = '#f0d4ff';
+    ctx.fillRect(-2, -N.h / 2 + 6, 4, 2);
+    ctx.globalAlpha = 1;
+  }
+  ctx.restore();
+  return { w: N.w, h: N.h };
 }
 
 /** A small horizontal gauge, used for ripeness and for load. */

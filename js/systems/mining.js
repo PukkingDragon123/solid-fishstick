@@ -14,6 +14,7 @@
 
 import { mulberry32, hashStr, clamp, clamp01, lerp, TAU } from '../lib/math.js';
 import { ORES } from '../data/craft.js';
+import { pxEllipse } from '../render/pix.js';
 
 const CELL = 46;              // one possible seam per cell of desert
 const REACH = 16;             // how far a swing carries, in world units
@@ -159,16 +160,12 @@ export class Mining {
       ctx.save();
       ctx.translate(Math.round(top.x), Math.round(top.y));
       ctx.scale(z, z);
-      ctx.fillStyle = 'rgba(42,30,20,0.92)';
-      ctx.beginPath();
-      ctx.ellipse(0, 0, 7.5, 5, 0, 0, TAU);
-      ctx.fill();
+      pxEllipse(ctx, 0, 0, 7.5, 5, 'rgba(42,30,20,0.92)', { p: 1 });
       for (let i = 0; i < s.lumps; i++) {
         const a = s.seed + i * (TAU / s.lumps);
         const lx = Math.cos(a) * 3.6, ly = Math.sin(a) * 2.4;
         const r = 1.5 + ((i * 7) % 3) * 0.4;
-        ctx.fillStyle = s.ore.colour;
-        ctx.beginPath(); ctx.ellipse(lx, ly, r, r * 0.85, 0, 0, TAU); ctx.fill();
+        pxEllipse(ctx, lx, ly, r, r * 0.85, s.ore.colour, { p: 1 });
         ctx.fillStyle = 'rgba(255,255,255,0.34)';
         ctx.fillRect(Math.round(lx - r * 0.4), Math.round(ly - r * 0.6), 1, 1);
       }

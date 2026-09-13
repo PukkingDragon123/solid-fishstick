@@ -7,6 +7,7 @@
 
 import { clamp, clamp01, lerp, mixHex, rgba, hashStr } from '../lib/math.js';
 import { Painter, makeCanvas, fbmTex, hash2i } from './pixel.js';
+import { pxDisc, pxGlow, pxLine } from './pix.js';
 import { MATERIALS } from '../lib/palette.js';
 import { biomeAt, biomeMix } from '../world/biomes.js';
 
@@ -120,31 +121,31 @@ export class Backdrop {
     const arc = Math.sin(Math.PI * clamp01(t));
     const y = vh * (0.86 - arc * 0.72);
 
+    // The sun and the moon are the two biggest round things on the screen, so
+    // they are the two that most needed to stop being anti-aliased discs with
+    // a gradient behind them. Both are dithered pixel discs on a 2px grid now,
+    // with the corona in flat bands instead of a ramp.
     if (day) {
       const warm = arc < 0.35 ? mixHex('#ff9a4a', '#ffd98a', arc / 0.35) : '#fff3cf';
-      const r = 7;
-      // glow
-      const g = ctx.createRadialGradient(x, y, 0, x, y, 64);
-      g.addColorStop(0, rgba(warm, 0.5));
-      g.addColorStop(0.35, rgba(warm, 0.16));
-      g.addColorStop(1, rgba(warm, 0));
-      ctx.fillStyle = g;
-      ctx.fillRect(x - 64, y - 64, 128, 128);
-      ctx.fillStyle = warm;
-      ctx.beginPath(); ctx.arc(Math.round(x), Math.round(y), r, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = '#fffdf2';
-      ctx.beginPath(); ctx.arc(Math.round(x), Math.round(y), r - 2.5, 0, Math.PI * 2); ctx.fill();
+      pxGlow(ctx, x, y, 58, warm, 0.5, { p: 2, steps: 4 });
+      pxDisc(ctx, x, y, 7, warm, { p: 2 });
+      pxDisc(ctx, x, y, 4.5, '#fffdf2', { p: 2 });
+      // and a couple of rays, which is how the sun is drawn rather than lit
+      ctx.globalAlpha = 0.18 + arc * 0.14;
+      for (let k = 0; k < 4; k++) {
+        const a = k * Math.PI / 2 + 0.4;
+        pxLine(ctx, x + Math.cos(a) * 10, y + Math.sin(a) * 10,
+          x + Math.cos(a) * 20, y + Math.sin(a) * 20, warm, { p: 2 });
+      }
+      ctx.globalAlpha = 1;
     } else {
-      const r = 6;
-      const g = ctx.createRadialGradient(x, y, 0, x, y, 46);
-      g.addColorStop(0, rgba('#cfe0ff', 0.28));
-      g.addColorStop(1, rgba('#cfe0ff', 0));
-      ctx.fillStyle = g;
-      ctx.fillRect(x - 46, y - 46, 92, 92);
-      ctx.fillStyle = '#e8eeff';
-      ctx.beginPath(); ctx.arc(Math.round(x), Math.round(y), r, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = rgba('#b9c6e0', 0.7);
-      ctx.beginPath(); ctx.arc(Math.round(x) + 2, Math.round(y) - 1, r * 0.7, 0, Math.PI * 2); ctx.fill();
+      pxGlow(ctx, x, y, 40, '#cfe0ff', 0.3, { p: 2, steps: 3 });
+      pxDisc(ctx, x, y, 6, '#e8eeff', { p: 2 });
+      // the moon's dark side is a bite out of it, not a translucent overlay
+      pxDisc(ctx, x + 3, y - 1, 4.6, rgba('#b9c6e0', 0.7), { p: 2 });
+      // two seas, so it has a face
+      pxDisc(ctx, x - 2, y + 1, 1.4, rgba('#9fb0cc', 0.8), { p: 2 });
+      pxDisc(ctx, x - 1, y - 3, 1, rgba('#9fb0cc', 0.6), { p: 2 });
     }
   }
 

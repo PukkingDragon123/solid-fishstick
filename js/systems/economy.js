@@ -12,6 +12,8 @@ import { FLORA_BY_ID } from '../data/flora.js';
 
 const BASE = {
   pumpGain: 6, waterMax: 200, pondGain: 0, nightWater: 0,
+  // how many spores the gland will hold at once
+  sporeMax: 8,
   plots: 0, upkeep: 0, grow: 1, yield: 1, berryRate: 1,   // `plots` is carrying capacity now
   ripen: 1, attract: 1, trust: 1, fleetSlots: 3, orders: false,
   speed: 1, armour: 0, hp: 0, dmg: 18, dig: false, light: 0, warn: 0,

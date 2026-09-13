@@ -5,6 +5,7 @@
 
 import { clamp, clamp01, lerp, mixHex, rgba } from '../lib/math.js';
 import { hash2i } from './pixel.js';
+import { pxVignette } from './pix.js';
 
 const BASE_W = 460;
 const BASE_H = 258;
@@ -27,6 +28,13 @@ export class Renderer {
     this.flashColor = '#ffffff';
     this.fade = 0;
     this.fadeColor = '#000000';
+    // What you are holding colours the whole world, not a chip in the corner.
+    // `mode` names the grade and `modeK` eases it in and out so switching
+    // hands is a wash rather than a cut.
+    this.mode = null;
+    this.modeK = 0;
+    this.modePulse = 0;     // rises on a hit or a release, decays on its own
+    this.motes = [];        // spore motes drifting over the frame
     this._vignette = null;
     this._makeLayers();
     this.resize();
@@ -107,6 +115,36 @@ export class Renderer {
   update(dt, weather) {
     this.haze = lerp(this.haze, weather.haze * 1.7, 1 - Math.pow(0.06, dt));
     this.flash = Math.max(0, this.flash - dt * 2.6);
+    const want = this.mode ? 1 : 0;
+    this.modeK = lerp(this.modeK, want, 1 - Math.pow(0.02, dt));
+    this.modePulse = Math.max(0, this.modePulse - dt * 1.8);
+    if (this.mode === 'spore' && this.modeK > 0.05) this._motes(dt);
+    else if (this.motes.length) this.motes.length = 0;
+  }
+
+  /** Which grade the frame is under. Called every frame by the game. */
+  setMode(id) { this.mode = id || null; }
+
+  /** A hit, a release, a kill - something that should hit the frame itself. */
+  modeHit(a = 1) { this.modePulse = Math.min(1.4, this.modePulse + a); }
+
+  /** Spores in the air, drifting up and across, for the dreamy grade. */
+  _motes(dt) {
+    const M = this.motes;
+    if (M.length < 60 && Math.random() < dt * 70) {
+      M.push({
+        x: Math.random() * this.vw, y: this.vh + 6,
+        vy: -6 - Math.random() * 16, ph: Math.random() * 6.3,
+        r: Math.random() < 0.22 ? 2 : 1, life: 0,
+      });
+    }
+    for (let i = M.length - 1; i >= 0; i--) {
+      const m = M[i];
+      m.life += dt;
+      m.y += m.vy * dt;
+      m.ph += dt * 1.3;
+      if (m.y < -8) M.splice(i, 1);
+    }
   }
 
   doFlash(color = '#ffffff', a = 0.6) { this.flashColor = color; this.flash = a; }
@@ -148,6 +186,94 @@ export class Renderer {
     }
   }
 
+  /**
+   * The mode grade. HUNT drops the whole frame into a hot red, closes it down
+   * at the edges and puts a bar of heat top and bottom that beats with the
+   * strike timer; SPORE lifts it into violet, throws a soft bloom over
+   * everything and hangs spores in the air. Both are made of the same square
+   * pixels as the rest of the game - a canvas gradient here would be the one
+   * smooth thing on the screen.
+   */
+  _drawModeGrade(s) {
+    const k = this.modeK;
+    if (!this.mode || k < 0.02) return;
+    const vw = this.vw, vh = this.vh;
+    const t = this.time;
+
+    if (this.mode === 'hunt') {
+      const beat = 0.5 + 0.5 * Math.sin(t * 6.2);
+      const heat = k * (0.78 + this.modePulse * 0.40);
+      // the wash: multiplied, so the sand goes bloody rather than pink
+      s.globalCompositeOperation = 'multiply';
+      s.globalAlpha = heat * 0.46;
+      s.fillStyle = '#b83a2e';
+      s.fillRect(0, 0, vw, vh);
+      s.globalCompositeOperation = 'source-over';
+      // a thin hot layer over the top, so the reds stay reds and do not just
+      // go dark - blood, not a brown filter
+      s.globalCompositeOperation = 'lighter';
+      s.globalAlpha = heat * 0.10;
+      s.fillStyle = '#8a1a10';
+      s.fillRect(0, 0, vw, vh);
+      s.globalCompositeOperation = 'source-over';
+      // and the frame closing in, hard
+      s.globalAlpha = 1;
+      pxVignette(s, vw, vh, '#3a0704', heat * (0.82 + beat * 0.12), { p: 2, steps: 5, inner: 0.24 });
+      // two bars of heat, top and bottom, breathing on the beat
+      const bh = Math.round(vh * 0.075 * (0.7 + beat * 0.5));
+      s.fillStyle = '#e2564f';
+      for (let y = 0; y < bh; y += 1) {
+        s.globalAlpha = heat * 0.62 * Math.pow(1 - y / bh, 1.6);
+        s.fillRect(0, y, vw, 1);
+        s.fillRect(0, vh - 1 - y, vw, 1);
+      }
+      // and a scanline crawl, which is what makes it feel like a state you
+      // are in rather than a colour someone put on the lens
+      s.globalAlpha = heat * 0.10;
+      s.fillStyle = '#ff6a58';
+      for (let y = Math.round(t * 40) % 4; y < vh; y += 4) s.fillRect(0, y, vw, 1);
+      // and the pulse itself: a bright rim when something lands
+      if (this.modePulse > 0.02) {
+        s.globalCompositeOperation = 'lighter';
+        s.globalAlpha = Math.min(0.5, this.modePulse * 0.4) * k;
+        s.fillStyle = '#ff8a72';
+        s.fillRect(0, 0, vw, vh);
+        s.globalCompositeOperation = 'source-over';
+      }
+      s.globalAlpha = 1;
+      return;
+    }
+
+    if (this.mode === 'spore') {
+      const breathe = 0.5 + 0.5 * Math.sin(t * 0.9);
+      // the wash: screened, so it lifts the shadows into violet instead of
+      // dirtying the highlights - the dream is brighter than the world
+      s.globalCompositeOperation = 'lighter';
+      s.globalAlpha = k * (0.10 + breathe * 0.05);
+      s.fillStyle = '#6a3a88';
+      s.fillRect(0, 0, vw, vh);
+      s.globalCompositeOperation = 'multiply';
+      s.globalAlpha = k * 0.22;
+      s.fillStyle = '#b48ad0';
+      s.fillRect(0, 0, vw, vh);
+      s.globalCompositeOperation = 'source-over';
+      s.globalAlpha = 1;
+      pxVignette(s, vw, vh, '#2a1038', k * (0.44 + breathe * 0.10), { p: 2, steps: 5, inner: 0.34 });
+      // spores hanging in the air, drifting up across the whole frame
+      s.globalCompositeOperation = 'lighter';
+      for (const m of this.motes) {
+        const x = m.x + Math.sin(m.ph) * 9;
+        const fade = Math.min(1, m.life * 1.5);
+        s.globalAlpha = k * fade * (0.3 + 0.4 * (0.5 + 0.5 * Math.sin(m.ph * 2.1)));
+        s.fillStyle = m.r > 1 ? '#e6c0f2' : '#c98ade';
+        s.fillRect(Math.round(x), Math.round(m.y), m.r, m.r);
+      }
+      s.globalCompositeOperation = 'source-over';
+      s.globalAlpha = 1;
+      return;
+    }
+  }
+
   composite(weather, game) {
     const s = this.scene;
     s.globalCompositeOperation = 'multiply';
@@ -158,6 +284,8 @@ export class Renderer {
 
     if (!this._vignette) this._buildVignette();
     s.drawImage(this._vignette, 0, 0);
+
+    this._drawModeGrade(s);
 
     if (this.flash > 0.004) {
       s.globalAlpha = clamp01(this.flash);
@@ -172,7 +300,13 @@ export class Renderer {
     d.fillRect(0, 0, this.display.width, this.display.height);
 
     const haze = this.haze;
-    if (haze < 0.02) {
+    // The dream is a warp, not a filter: in SPORE the whole frame breathes in
+    // long slow waves, and in HUNT it jolts on the beat. Both ride the same
+    // per-row redraw the heat shimmer already uses.
+    const k = this.modeK;
+    const dream = this.mode === 'spore' ? k : 0;
+    const jolt = this.mode === 'hunt' ? k * (0.25 + this.modePulse * 0.75) : 0;
+    if (haze < 0.02 && dream < 0.02 && jolt < 0.02) {
       d.drawImage(this.sceneC, 0, 0, this.vw, this.vh, 0, 0, this.vw * sc, this.vh * sc);
     } else {
       d.drawImage(this.sceneC, 0, 0, this.vw, this.vh, 0, 0, this.vw * sc, this.vh * sc);
@@ -183,7 +317,16 @@ export class Renderer {
         // shimmer is strongest just above the ground, where the air is hottest
         const depth = clamp01(1 - Math.abs(y - horizon) / (this.vh * 0.55));
         const amp = haze * (0.35 + depth * 1.5);
-        const off = Math.round((Math.sin(y * 0.23 + t * 2.4) * 0.7 + Math.sin(y * 0.08 - t * 1.4) * 0.5) * amp);
+        let off = (Math.sin(y * 0.23 + t * 2.4) * 0.7 + Math.sin(y * 0.08 - t * 1.4) * 0.5) * amp;
+        if (dream > 0.02) {
+          // long, low-frequency, slightly out of phase top to bottom
+          off += (Math.sin(y * 0.035 + t * 0.8) * 2.6 + Math.sin(y * 0.013 - t * 0.5) * 1.8) * dream;
+        }
+        if (jolt > 0.02) {
+          // short, hard, and only on some rows, so it reads as a flinch
+          if ((y >> 1) % 3 === 0) off += Math.sin(t * 30 + y * 0.9) * 1.8 * jolt;
+        }
+        off = Math.round(off);
         if (!off) continue;
         const hh = Math.min(band, this.vh - y);
         d.drawImage(this.sceneC, 0, y, this.vw, hh, off * sc, y * sc, this.vw * sc, hh * sc);

@@ -20,6 +20,7 @@
 // either, because there is nothing there to do the forgiving.
 
 import { clamp, clamp01, damp, lerp, TAU } from '../lib/math.js';
+import { pxGlow, pxEllipse, pxSize } from '../render/pix.js';
 import { POSE } from '../entities/npc.js';
 
 const LURE_RANGE = 22;        // how close to the bait counts as "at it"
@@ -206,11 +207,9 @@ export class Mind {
       ctx.translate(Math.round(s.x), Math.round(s.y));
       ctx.scale(z, z);
       ctx.globalAlpha = 0.35 * pulse;
-      ctx.fillStyle = '#e2b74a';
-      ctx.beginPath(); ctx.ellipse(0, 0, 6, 2.4, 0, 0, TAU); ctx.fill();
+      pxEllipse(ctx, 0, 0, 6, 2.4, '#e2b74a', { p: 1, soft: 0.3 });
       ctx.globalAlpha = 1;
-      ctx.fillStyle = '#b79a5e';
-      ctx.beginPath(); ctx.ellipse(0, -1.6, 3.2, 2.2, 0.3, 0, TAU); ctx.fill();
+      pxEllipse(ctx, 0, -1.6, 3.2, 2.2, '#b79a5e', { p: 1 });
       ctx.fillStyle = '#e4d6b4';
       ctx.fillRect(-1, -2.6, 2, 1);
       ctx.restore();
@@ -219,11 +218,7 @@ export class Mind {
       const s = cam.worldToScreen(this.cloudX, this.cloudY);
       const z = cam.zoom;
       const r = lerp(6, 26, 1 - this.cloud) * z;
-      const g = ctx.createRadialGradient(s.x, s.y, 0, s.x, s.y, r);
-      g.addColorStop(0, `rgba(201,138,222,${0.42 * this.cloud})`);
-      g.addColorStop(1, 'rgba(201,138,222,0)');
-      ctx.fillStyle = g;
-      ctx.beginPath(); ctx.arc(s.x, s.y, r, 0, TAU); ctx.fill();
+      pxGlow(ctx, s.x, s.y, r, '#c98ade', 0.42 * this.cloud, { p: pxSize(z), steps: 3 });
     }
   }
 

@@ -15,6 +15,7 @@
 //            the blue comes out of the light, and the desert is left
 
 import { clamp, clamp01, lerp, damp, smoothstep, TAU, mulberry32, hashStr } from '../lib/math.js';
+import { pxRing } from '../render/pix.js';
 import { drawText, textWidth } from '../lib/font.js';
 import { reefArt, fishArt, jellyArt, REEF_KINDS, FLOOR_KINDS, FISH_KINDS } from '../art/seaart.js';
 
@@ -258,9 +259,7 @@ export class Sea {
       const s = cam.worldToScreen(u.x, u.y);
       const r = Math.max(1, u.r * z);
       ctx.globalAlpha = wet * 0.55;
-      ctx.strokeStyle = '#dff6ff';
-      ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.arc(s.x, s.y, r, 0, TAU); ctx.stroke();
+      pxRing(ctx, s.x, s.y, r, r, '#dff6ff', { p: 1, thick: 1 });
       ctx.globalAlpha = wet * 0.35;
       ctx.fillStyle = '#bfeaf6';
       ctx.fillRect(Math.round(s.x - r * 0.3), Math.round(s.y - r * 0.5), 1, 1);
