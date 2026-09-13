@@ -1,22 +1,22 @@
-// CRABDEN - taking her over.
+// CRABDEN - taking him over.
 //
 // This is the ugliest thing in the game and it is meant to be. You are a
-// mindcap host with no hands, she is a person with two of them, and the
+// mindcap host with no hands, he is a person with two of them, and the
 // parasite you have been growing on your own back does one thing very well.
 //
 // It takes three steps, on purpose, so that none of it happens by accident:
 //
-//   LURE    put something down she cannot walk past. She comes to look at it
-//           and crouches over it, which is the only time her head is low
+//   LURE    put something down he cannot walk past. He comes to look at it
+//           and crouches over it, which is the only time his head is low
 //           enough and still enough to hit.
-//   SPRAY   a cloud, at close range, while she is down. It takes a moment to
-//           reach her and there is a beat where she knows.
-//   OWNED   the eye goes blue and stays blue. She walks where you point her,
-//           swings the pick you made her, works the bench and plants on your
-//           back - and everything she does, she does with her hands, which is
+//   SPRAY   a cloud, at close range, while he is down. It takes a moment to
+//           reach him and there is a beat where he knows.
+//   OWNED   the eye goes blue and stays blue. He walks where you point him,
+//           swings the pick you made him, works the bench and plants on your
+//           back - and everything he does, he does with his hands, which is
 //           the entire point.
 //
-// You can let her go. She does not remember it, and she does not forgive it
+// You can let him go. He does not remember it, and he does not forgive it
 // either, because there is nothing there to do the forgiving.
 
 import { clamp, clamp01, damp, lerp, TAU } from '../lib/math.js';
@@ -24,9 +24,9 @@ import { pxGlow, pxEllipse, pxSize } from '../render/pix.js';
 import { POSE } from '../entities/npc.js';
 
 const LURE_RANGE = 22;        // how close to the bait counts as "at it"
-const SPRAY_RANGE = 60;       // how close you have to be to spray her
+const SPRAY_RANGE = 60;       // how close you have to be to spray him
 const DOSE_SECS = 2.6;        // cloud to blue eye
-const DOWN_SECS = 3.4;        // and then she is on the ground, fighting it
+const DOWN_SECS = 3.4;        // and then he is on the ground, fighting it
 
 export class Mind {
   constructor(game) {
@@ -39,25 +39,25 @@ export class Mind {
     this.cloud = 0;           // the spray still hanging in the air
     this.cloudX = 0;
     this.cloudY = 0;
-    this.work = null;         // what she is doing under orders
+    this.work = null;         // what he is doing under orders
     this.workT = 0;
   }
 
   get npc() { return this.game.npc; }
   get owned() { return this.stage === 'owned'; }
-  /** On the ground with it going through her - not yours yet, not free either. */
+  /** On the ground with it going through him - not yours yet, not free either. */
   get downed() { return this.stage === 'down'; }
 
   // -- step one: the lure ---------------------------------------------------
 
   /**
-   * Put bait down. Anything she has not catalogued will do, and you have a
+   * Put bait down. Anything he has not catalogued will do, and you have a
    * pack full of things nobody has catalogued.
    */
   lure(x) {
-    if (this.stage !== 'free') return { ok: false, why: 'She is already coming.' };
+    if (this.stage !== 'free') return { ok: false, why: 'He is already coming.' };
     const relic = Object.keys(this.game.relics || {}).find((k) => this.game.relics[k] > 0);
-    if (!relic) return { ok: false, why: 'Nothing she would cross a desert for. Dig something up.' };
+    if (!relic) return { ok: false, why: 'Nothing he would cross a desert for. Dig something up.' };
     this.game.relics[relic]--;
     if (!this.game.relics[relic]) delete this.game.relics[relic];
     this.bait = { x, y: this.game.terrain.surfaceY(x), t: 0, id: relic };
@@ -71,7 +71,7 @@ export class Mind {
     return { ok: true };
   }
 
-  /** Is she down over the bait with her head where you can reach it? */
+  /** Is he down over the bait with his head where you can reach it? */
   get ready() {
     if (this.stage !== 'lured' || !this.bait) return false;
     const n = this.npc;
@@ -81,16 +81,16 @@ export class Mind {
   // -- step two: the spray --------------------------------------------------
 
   spray() {
-    if (this.stage === 'owned') return { ok: false, why: 'She is already yours.' };
-    if (this.stage === 'dosing' || this.stage === 'down') return { ok: false, why: 'It is already in her.' };
+    if (this.stage === 'owned') return { ok: false, why: 'He is already yours.' };
+    if (this.stage === 'dosing' || this.stage === 'down') return { ok: false, why: 'It is already in him.' };
     const e = this.game.economy;
     if (e.parasites < 1) return { ok: false, why: 'No spore. Grow a mindcap and pick it.' };
     const n = this.npc;
     const d = Math.abs(n.x - this.game.crab.x);
     if (d > SPRAY_RANGE + this.game.crab.m.shellW * 0.5) {
-      return { ok: false, why: 'Too far. She has to be right up against you.' };
+      return { ok: false, why: 'Too far. He has to be right up against you.' };
     }
-    if (!this.ready) return { ok: false, why: 'Not while she is standing. Put bait down and wait.' };
+    if (!this.ready) return { ok: false, why: 'Not while he is standing. Put bait down and wait.' };
     e.parasites--;
     e.markDirty();
     this.stage = 'dosing';
@@ -104,7 +104,7 @@ export class Mind {
     return { ok: true };
   }
 
-  // -- step three: hers no longer -------------------------------------------
+  // -- step three: not his own any more -------------------------------------------
 
   release() {
     if (this.stage !== 'owned') return;
@@ -118,11 +118,11 @@ export class Mind {
     n.say('...I have lost an hour. Again.', 5, 10);
   }
 
-  // -- what she does while you have her -------------------------------------
+  // -- what he does while you have him -------------------------------------
 
-  /** Send her at the nearest seam and let her work it. */
+  /** Send him at the nearest seam and let him work it. */
   order(kind, x) {
-    if (!this.owned) return { ok: false, why: 'She is not yours.' };
+    if (!this.owned) return { ok: false, why: 'He is not yours.' };
     this.work = { kind, x };
     this.workT = 0;
     const n = this.npc;
@@ -137,11 +137,11 @@ export class Mind {
 
     if (this.stage === 'lured' && this.bait) {
       this.bait.t += dt;
-      // once she gets there she goes down over it and stays down
+      // once he gets there he goes down over it and stays down
       if (Math.abs(n.x - this.bait.x) < LURE_RANGE) {
         n.moveTo = undefined;
         if (n.pose !== POSE.CROUCH) { n.setPose(POSE.CROUCH); n.setFacing(Math.sign(this.bait.x - n.x) || 1); }
-        if (this.bait.t > 22) {       // she does not stay down for ever
+        if (this.bait.t > 22) {       // he does not stay down for ever
           this.stage = 'free';
           this.bait = null;
           n.setPose(POSE.IDLE);
@@ -156,15 +156,15 @@ export class Mind {
       this.doseT += dt;
       const k = clamp01(this.doseT / DOSE_SECS);
       this.blue = k;
-      // she knows, for about a second, and then she does not
+      // he knows, for about a second, and then he does not
       if (this.doseT > 0.5 && this.doseT - dt <= 0.5) n.setPose(POSE.TIRED);
       if (Math.random() < dt * 14) {
         g.fx?.drift(n.x + (Math.random() - 0.5) * 10, n.y - 14 - Math.random() * 8, '#c98ade', 1);
       }
       if (k >= 1) {
-        // it does not simply take. Her legs go first, and then she is on the
-        // ground with it going through her, and that takes a few seconds she
-        // spends telling you exactly what she thinks of it.
+        // it does not simply take. His legs go first, and then he is on the
+        // ground with it going through him, and that takes a few seconds he
+        // spends telling you exactly what he thinks of it.
         this.stage = 'down';
         this.downT = 0;
         this.blue = 1;
@@ -187,13 +187,13 @@ export class Mind {
     if (this.stage === 'down') {
       this.downT += dt;
       const k = clamp01(this.downT / DOWN_SECS);
-      // she thrashes, and the thrashing gets weaker
+      // he thrashes, and the thrashing gets weaker
       const fight = 1 - k;
       if (Math.random() < dt * (7 + fight * 16)) {
         g.fx?.dust(n.x + (Math.random() - 0.5) * 16, n.y, 0.3 + fight * 0.5);
         g.fx?.drift(n.x + (Math.random() - 0.5) * 12, n.y - 12 - Math.random() * 10, '#c98ade', 1);
       }
-      // the kick: she comes up off the sand and goes back down, less each time
+      // the kick: he comes up off the sand and goes back down, less each time
       if (Math.random() < dt * 3.2 * (0.3 + fight)) {
         n.jv = -40 - fight * 70;
         n.squash = -0.25 * fight;

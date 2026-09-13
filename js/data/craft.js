@@ -3,7 +3,7 @@
 // The desert used to be a seabed, so what is under it is what a seabed leaves:
 // salt, silica, shell, and the metal that was dissolved in the water when it
 // dried. You cannot pick any of it up - you have claws the size of a door and
-// no thumbs. She has thumbs.
+// no thumbs. He has thumbs.
 //
 // Items are ids and counts, nothing more. A recipe says what it needs, what it
 // makes, and whether it can be done in the hand or wants a bench, and the
@@ -51,7 +51,7 @@ export const ITEMS = [
   { id: 'spool', name: 'Spool', icon: 'graft', tint: '#c3bb8d', tier: 2,
     desc: 'Wound shell fibre. Holds anything to anything.' },
 
-  // -- tools she carries ----------------------------------------------------
+  // -- tools he carries ----------------------------------------------------
   { id: 'pickcopper', name: 'Copper Pick', icon: 'hammer', tint: '#e08a4a', tier: 2,
     tool: 'pick', power: 1, desc: 'A pick. It will break sandstone and shell.' },
   { id: 'pickiron', name: 'Iron Pick', icon: 'hammer', tint: '#c6ccd4', tier: 3,
@@ -69,7 +69,7 @@ export const ITEM_BY_ID = Object.fromEntries(ITEMS.map((i) => [i.id, i]));
  * the surface the seam sits - which is the whole reason a better pick matters,
  * because the deep seams are the ones worth having.
  */
-// The ladder has to close, so nothing needs a pick made out of itself: her
+// The ladder has to close, so nothing needs a pick made out of itself: him
 // trowel (power 0) gets everything down to copper, copper buys the copper pick
 // (power 1), and the copper pick is what opens iron and amber. The iron pick
 // is not a gate - it is just faster, and it drops an extra lump.
@@ -86,7 +86,7 @@ export const ORES = [
 /**
  * The tree. Three tiers: ore melts into bar, bar becomes part, part becomes a
  * thing that goes on your back. `at` is what it has to be done on - nothing at
- * all, the fire, or the bench - and both of those are things she builds.
+ * all, the fire, or the bench - and both of those are things he builds.
  */
 export const RECIPES = [
   // hand

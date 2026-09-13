@@ -9,8 +9,8 @@
 // place for ever, so a spot you remember is still there when you come back,
 // and somewhere you have already emptied stays empty.
 //
-// You cannot mine. You have claws the size of a door and no thumbs. She has
-// thumbs, which is the entire reason any of this is worth doing to her.
+// You cannot mine. You have claws the size of a door and no thumbs. He has
+// thumbs, which is the entire reason any of this is worth doing to him.
 
 import { mulberry32, hashStr, clamp, clamp01, lerp, TAU } from '../lib/math.js';
 import { ORES } from '../data/craft.js';

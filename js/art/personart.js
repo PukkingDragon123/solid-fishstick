@@ -14,7 +14,7 @@
 //
 // Proportions come straight off the sheet: the head with its hat is about a
 // third of the figure, the legs are short, the boots are heavy, and the pack
-// is nearly as wide as she is. Everything faces RIGHT and is measured from
+// is nearly as wide as he is. Everything faces RIGHT and is measured from
 // the hip, which is where the skeleton is rooted.
 
 import { Painter } from '../render/pixel.js';
@@ -102,8 +102,8 @@ function bake(p, ox, oy, far, kind, extra = {}) {
  * The torso. A cream shirt with the sleeves already rolled, a dark leather
  * work vest over it that stops at the waist and hangs open down the front, a
  * belt with a brass buckle and a pouch on it, and the two pack straps coming
- * over the shoulders - which is the detail that makes the silhouette hers
- * even when she is a hundred pixels away.
+ * over the shoulders - which is the detail that makes the silhouette his
+ * even when he is a hundred pixels away.
  */
 function paintTorso(K, far, kind) {
   const W = 8.6 * K, H = 10.6 * K;
@@ -146,9 +146,9 @@ function paintTorso(K, far, kind) {
         tint: -0.02 + (v < 0.12 ? 0.08 : 0) + (d < -0.5 ? -0.10 : d > 0.3 ? 0.05 : 0) };
     }, { mat });
   };
-  // The shirt is the body, and stays the body: on the sheet she is a pale
-  // shape against the sand and everything dark on her is an edge, a strap or
-  // a buckle. A full leather vest would lose her against the ground.
+  // The shirt is the body, and stays the body: on the sheet he is a pale
+  // shape against the sand and everything dark on him is an edge, a strap or
+  // a buckle. A full leather vest would lose him against the ground.
   body('shirt', 1.0);
   if (elder) {
     body('leather', 0.94, { from: 0.05 });        // the slate coat
@@ -477,7 +477,7 @@ function paintBone(len, r0, r1, mat, K, far, kind, opts = {}) {
   return bake(p, pad, cy, far, kind, { len });
 }
 
-/** The hat on its own, so it can be knocked off her head and land in the sand. */
+/** The hat on its own, so it can be knocked off his head and land in the sand. */
 function paintHat(K, far, kind) {
   const W = 8.6 * K, H = 8.8 * K;
   const p = new Painter(Math.ceil(W * 2.2) + 8, Math.ceil(H * 1.2) + 8);
@@ -536,7 +536,7 @@ function paintBoot(K, far, kind) {
 }
 
 /**
- * The pack. On the sheet it is the biggest single shape she has: a tall
+ * The pack. On the sheet it is the biggest single shape he has: a tall
  * canvas body with a buckled flap, a bedroll strapped across the top, a side
  * pocket, and a tin cup hanging off it. Drawn from its centre, hung behind
  * the shoulder.
@@ -592,7 +592,7 @@ function paintPack(K, far, kind) {
 
 /**
  * The map tube: a maroon leather cylinder with brass end caps, slung at the
- * hip at an angle. It is the one saturated thing on her, and on the sheet it
+ * hip at an angle. It is the one saturated thing on him, and on the sheet it
  * is what your eye lands on first.
  */
 function paintTube(K, far, kind) {
@@ -611,7 +611,7 @@ function paintTube(K, far, kind) {
 }
 
 /**
- * Things she carries or leaves lying about. Each is drawn from its grip end,
+ * Things he carries or leaves lying about. Each is drawn from its grip end,
  * so a hand can be put at (ox, oy) and the tool points the way the arm does.
  */
 function paintProps(K, kind) {
@@ -647,7 +647,7 @@ function paintProps(K, kind) {
       p.capsule(x, y, x + 7 * K, y, 1.2 * K, 1.0 * K, { mat: 'wood', dome: 1.1 * K });
       p.capsule(x + 7 * K, y, x + 11 * K, y, 1.9 * K, 1.2 * K, { mat: 'fur', dome: 1.5 * K, tint: 0.10 });
     }),
-    // a bottle, held by the neck. The level in it goes down as she drinks it,
+    // a bottle, held by the neck. The level in it goes down as he drinks it,
     // which is the only prop in the game with a state
     beer: mk(7 * K, 14 * K, (p, x, y) => {
       p.capsule(x + 3 * K, y - 6.2 * K, x + 3 * K, y - 4.2 * K, 1.0 * K, 1.2 * K,
@@ -671,7 +671,7 @@ function paintProps(K, kind) {
       p.ellipse(x + 4 * K, y, 2.4 * K, 2.9 * K, { mat: 'metal', mask: true, dome: -1.6 * K, tint: -0.14 });
       p.capsule(x + 4 * K, y - 4.8 * K, x + 4 * K, y - 6.4 * K, 1.3 * K, 1.2 * K, { mat: 'wood', dome: 1.1 * K });
     }),
-    // the map, which is the pose the sheet draws her in most often
+    // the map, which is the pose the sheet draws him in most often
     map: mk(14 * K, 10 * K, (p, x, y) => {
       p.field(x, y - 4.4 * K, x + 13 * K, y + 4.4 * K, (px, py) => {
         const u = (px - x) / (13 * K);
@@ -791,7 +791,7 @@ export function buildPerson(kind = 'vess', K = 1) {
   rig.satchel = rig.pack;
 
   // heads are baked the first time a face is worn, which is cheap enough that
-  // she can change expression in the world and not only in a speech bubble
+  // he can change expression in the world and not only in a speech bubble
   const heads = new Map();
   rig.headFor = (mood = 0, goggles = false, bare = false, spore = false) => {
     const k = `${mood}:${goggles ? 1 : 0}:${bare ? 1 : 0}:${spore ? 1 : 0}`;
@@ -812,7 +812,7 @@ export function buildPerson(kind = 'vess', K = 1) {
   };
   // Hip height above the ground when standing. Both leg bones nearly straight,
   // PLUS the ankle's height above the sole - the leg solves to the ankle, not
-  // to the ground, and leaving that out is what made her walk in a permanent
+  // to the ground, and leaving that out is what made him walk in a permanent
   // half-crouch.
   rig.standH = (rig.leg.near.upper.len + rig.leg.near.lower.len) * 0.955 + 1.9 * K;
   cache.set(key, rig);

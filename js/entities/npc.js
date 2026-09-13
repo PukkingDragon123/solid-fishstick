@@ -2,19 +2,20 @@
 //
 // Nobody here is a sprite sheet. Dr. Vess is a skeleton with painted parts
 // hung off it: pelvis, torso, head, two arms and two legs, each a baked bone
-// that gets rotated into place every frame. Her feet are planted in world
-// space and solved with the same two-bone IK the crab's legs use, so she
-// stands on slopes, steps over them, crouches over a dig with her knees where
-// knees go, and writes in a notebook her hand is actually holding.
+// that gets rotated into place every frame. His feet are planted in world
+// space and solved with the same two-bone IK the crab's legs use, so he
+// stands on slopes, steps over them, crouches over a dig with his knees where
+// knees go, and writes in a notebook his hand is actually holding.
 //
-// A pose is a set of joint targets. Everything between poses is damped, so she
-// never snaps - she settles.
+// A pose is a set of joint targets. Everything between poses is damped, so he
+// never snaps - he settles.
 
 import { clamp, clamp01, lerp, damp, TAU } from '../lib/math.js';
 import { ITEM_BY_ID } from '../data/craft.js';
 import { pxEllipse, pxSize } from '../render/pix.js';
 import { ik2 } from './crab.js';
 import { buildPerson, portrait } from '../art/personart.js';
+import { facePortrait, faceFor } from '../art/faces.js';
 
 export const POSE = {
   IDLE: 'idle', IDLE_FRONT: 'idleFront', IDLE_BACK: 'idleBack',
@@ -47,7 +48,7 @@ const POSES = {
   write: { crouch: 0.05, lean: 0.20, armN: [0.74, 0.84], armF: [0.98, 0.92], tool: 'pencil', hold: 'notebook', swing: 0 },
   point: { crouch: 0, lean: 0.02, armN: [-0.34, 0.02], armF: [1.46, 0.18], swing: 0 },
   drink: { crouch: 0.02, lean: -0.06, armN: [0.20, 1.24], armF: [1.48, 0.16], tool: 'canteen', swing: 0 },
-  // the same pose with a bottle in it, which is what she does on the title
+  // the same pose with a bottle in it, which is what he does on the title
   // screen and has done every evening for eleven years
   beer: { crouch: 0.03, lean: -0.04, armN: [0.26, 1.10], armF: [1.46, 0.18], tool: 'beer', swing: 0 },
   wave: { crouch: 0, lean: 0.02, armN: [-0.90, 0.42], armF: [1.46, 0.18], swing: 0, work: 0.6 },
@@ -58,7 +59,7 @@ const POSES = {
   measure: { crouch: 0.10, lean: 0.22, armN: [0.30, 0.42], armF: [0.50, 0.50], tool: 'peg', swing: 0 },
   rest: { crouch: 0.94, lean: 0.24, armN: [1.00, 0.54], armF: [1.14, 0.50], swing: 0, sit: 1 },
   // on the ground, and not calmly: the legs are folded wrong, one arm is out
-  // trying to push the world away and the other is somewhere under her
+  // trying to push the world away and the other is somewhere under him
   down: { crouch: 1.25, lean: 1.05, armN: [0.30, 0.10], armF: [2.10, 0.34], swing: 0, sit: 1, face: 0.2 },
   // both arms straight up, spine back: the shape a person makes when the rock
   // they have been sitting on turns out to be an animal
@@ -67,7 +68,7 @@ const POSES = {
 
 const CAMP_ITEMS = ['bedroll', 'canteen', 'lantern', 'peg', 'skull', 'spoil', 'pick', 'brush'];
 
-/** How long a pivot takes, and how narrow she gets halfway through it. */
+/** How long a pivot takes, and how narrow he gets halfway through it. */
 const TURN_SECS = 0.26;
 const TURN_MIN = 0.58;
 
@@ -81,7 +82,7 @@ export class Person {
     this.vx = 0;
     this.facing = -1;
     this.faceT = -1;
-    this.turnFrom = -1;          // the facing she is pivoting away from
+    this.turnFrom = -1;          // the facing he is pivoting away from
     this.turnT = 1;              // 0..1 through the pivot; 1 means settled
     this.pose = POSE.IDLE;
     this.poseT = 0;
@@ -95,6 +96,7 @@ export class Person {
     this.name = opts.name || 'Someone';
     this.keepAway = opts.keepAway !== false;
     this.face = 0;
+    this.mood = 'flat';      // which of the twenty-one he is wearing
 
     // the body, damped towards whatever the pose wants
     this.b = { crouch: 0, lean: 0, armN0: 1.4, armN1: 0.3, armF0: 1.5, armF1: 0.3, look: 0 };
@@ -104,12 +106,12 @@ export class Person {
       { x, y: this.y, plant: x, air: 0, side: -1 },
     ];
     this.breathe = Math.random() * TAU;
-    this.jz = 0;                 // how far off the ground she is
+    this.jz = 0;                 // how far off the ground he is
     this.jv = 0;
     this.squash = 0;             // <0 squashed, >0 stretched
     this.hatOff = null;          // the hat, once it has left
     this.shout = 0;              // >0 while the current line is being yelled
-    this._seen = new Map();      // what she has already remarked on, and when
+    this._seen = new Map();      // what he has already remarked on, and when
     this._cool = 0;              // a breath between remarks
     this._scan = 0;
   }
@@ -122,13 +124,14 @@ export class Person {
     this.speechT = secs;
     this.shout = 0;
     this.face = mood !== null ? mood : this._moodFor(text);
+    this.mood = this._faceFor(text);
   }
 
   /**
    * Not everything is said at conversational volume. When something is about
-   * to go badly for you she stops narrating and shouts - bigger letters, a
+   * to go badly for you he stops narrating and shouts - bigger letters, a
    * bubble with a hard edge on it, and the camera takes a knock. A yell also
-   * beats whatever she was in the middle of saying, because that is what
+   * beats whatever he was in the middle of saying, because that is what
    * yelling is for.
    */
   yell(text, secs = 3.2) {
@@ -136,6 +139,7 @@ export class Person {
     this.speechT = secs;
     this.shout = 1;
     this.face = 2;
+    this.mood = 'shout';
     this.setPose(POSE.POINT);
     this.game.audio?.play('uiBig', { pitch: 1.3 });
     this.game.cam?.shake(2.2);
@@ -143,8 +147,8 @@ export class Person {
   }
 
   /**
-   * What she notices. She has been out here eleven years and she is the only
-   * one of you who can read the desert, so she says so - once, with a cooldown,
+   * What he notices. He has been out here eleven years and he is the only
+   * one of you who can read the desert, so he says so - once, with a cooldown,
    * and never twice about the same thing in the same minute. This is the
    * difference between an NPC that follows you and one that is with you.
    */
@@ -234,7 +238,37 @@ export class Person {
     return (Math.abs(t.length * 7) % 3);
   }
 
-  portrait() { return portrait(this.kind, this.face, 2.6, (this.game.mind?.blue || 0) > 0.35); }
+  /**
+   * Which of the twenty-one faces a line wears. The painted head in the
+   * desert only has four numbers to move, so it keeps `face`; this is the
+   * close-up, and a close-up can afford to be specific about the difference
+   * between annoyed and actually shouting.
+   */
+  _faceFor(text) {
+    const t = String(text);
+    if (this.shout > 0) return 'shout';
+    if ((this.game.mind?.blue || 0) > 0.35) return 'spore';
+    if (/[!?]{2}|NOT A ROCK|TAPPING/.test(t)) return 'gasp';
+    if (/idiot|no |No |not |never|cannot|stop|do not/.test(t)) return 'scowl';
+    if (/water|spring|oasis|green|came up|alive|soil/.test(t)) return 'grin';
+    if (/ha|Ha|funny|beautiful|look at/.test(t)) return 'laugh';
+    if (/\?/.test(t)) return 'peer';
+    if (/thousand|eleven years|notes|writing|record|measure/.test(t)) return 'squint';
+    if (/^\.\.\.|tired|sleep|late|enough for today/.test(t)) return 'tired';
+    if (/sorry|afraid|gone|dead|lost/.test(t)) return 'sad';
+    if (/bottle|beer|drink/.test(t)) return 'drink';
+    return ['flat', 'talk', 'smug'][Math.abs(t.length * 7) % 3];
+  }
+
+  /**
+   * His face for a card. This is his own portrait sheet now rather than the
+   * painted head - twenty-one expressions he actually has, on the game's
+   * grid - so what he thinks of you is something you can see. The painted
+   * head is still what stands in the desert; this is only ever a close-up.
+   */
+  portrait(scale = 1) {
+    return facePortrait(this.mood || 'flat', scale, (this.game.mind?.blue || 0) > 0.35 ? 1 : 0);
+  }
 
   setPose(p) { if (this.pose !== p) { this.pose = p; this.animT = 0; } this.poseT = 0; }
 
@@ -265,8 +299,8 @@ export class Person {
     }
 
     let want = 0;
-    // Driven directly - which only happens while the spore has her - beats
-    // anything she was walking towards on her own.
+    // Driven directly - which only happens while the spore has him - beats
+    // anything he was walking towards on his own.
     if (this.driveX) {
       want = clamp(this.driveX, -1, 1);
       this.moveTo = undefined;
@@ -291,7 +325,7 @@ export class Person {
   }
 
   /**
-   * Turning round. She does not flip: she pivots. The facing runs on its own
+   * Turning round. He does not flip: he pivots. The facing runs on its own
    * short clock rather than on a damp, so every turn takes the same time and
    * ends cleanly, and the body only ever narrows to a bit over half width -
    * enough to read as turning through, never so thin it looks like a card
@@ -326,7 +360,7 @@ export class Person {
     const rate = 0.0006;
     b.crouch = damp(b.crouch, P.crouch, rate, dt);
     b.lean = damp(b.lean, P.lean, rate, dt);
-    // a bit of life in the arms while she is working or talking
+    // a bit of life in the arms while he is working or talking
     const w = (P.work || 0) * Math.sin(this.animT * (this.pose === POSE.DIG ? 7.5 : 4.2));
     b.armN0 = damp(b.armN0, P.armN[0] + w * 0.34, rate, dt);
     b.armN1 = damp(b.armN1, P.armN[1] - w * 0.28, rate, dt);
@@ -336,7 +370,7 @@ export class Person {
   }
 
   /**
-   * Off the ground, and the hat that is no longer on her head. Both exist
+   * Off the ground, and the hat that is no longer on his head. Both exist
    * for exactly one gag, and the gag is worth it.
    */
   _air(dt, terr) {
@@ -374,6 +408,7 @@ export class Person {
     this.squash = 0.24;
     this.setPose(POSE.SHOCK);
     this.face = 8;
+    this.mood = 'gasp';
     if (!this.hatOff) {
       this.hatOff = {
         x: this.x, y: this.y - 26 * this.rig.K, t: 0,
@@ -401,7 +436,7 @@ export class Person {
     const moving = spd > 5;
     const tuck = 1 - this.b.crouch * 0.62;
 
-    // in the air the feet come up with her, tucked under the hips, or she
+    // in the air the feet come up with him, tucked under the hips, or he
     // reads as a person being dragged upward rather than one jumping
     if (this.jz > 0.5) {
       for (let i = 0; i < 2; i++) {
@@ -468,7 +503,7 @@ export class Person {
     }
   }
 
-  /** A boot going down: a little dust, and a sound if she is moving. */
+  /** A boot going down: a little dust, and a sound if he is moving. */
   _land(f, terr) {
     if (Math.abs(this.vx) < 16) return;
     this.game.fx?.footPuff(f.x, terr.surfaceY(f.x), Math.abs(this.vx) * 0.35, false);
@@ -481,7 +516,7 @@ export class Person {
     const z = cam.zoom;
     const P = POSES[this.pose] || POSES.idle;
     const dir = this.faceT >= 0 ? 1 : -1;
-    // How much of her width is facing us. It bottoms out well short of zero:
+    // How much of his width is facing us. It bottoms out well short of zero:
     // a person turning round is briefly narrow, not briefly a sheet of paper.
     const t = Math.abs(this.faceT);
     const flat = TURN_MIN + (1 - TURN_MIN) * (t * t * (3 - 2 * t));
@@ -497,7 +532,7 @@ export class Person {
       ctx.globalAlpha = 1;
     }
 
-    // the hat, if it is no longer on her head
+    // the hat, if it is no longer on his head
     if (this.hatOff) {
       const h = this.hatOff;
       const hs = cam.worldToScreen(h.x, h.y);
@@ -520,9 +555,9 @@ export class Person {
     ctx.save();
     ctx.translate(Math.round(s.x * 2) / 2, Math.round(s.y * 2) / 2);
     ctx.scale(z, z);
-    // turning is a squash, not a mirror: she pivots on the spot
+    // turning is a squash, not a mirror: he pivots on the spot
     ctx.scale(dir * flat, 1);
-    // and she rises onto the ball of her foot as she comes through the turn
+    // and he rises onto the ball of his foot as he comes through the turn
     if (flat < 0.995) ctx.translate(0, -(1 - flat) * 2.2 * rig.K);
     // and a jump squashes on the way out and stretches at the top
     if (Math.abs(this.squash) > 0.005) {
@@ -537,7 +572,7 @@ export class Person {
 
     // ---- far leg, far arm, then body, then near leg and arm ---------------
     this._leg(ctx, rig.leg.far, this.feet[1], hipWorldY, dir, -1);
-    // the pack is slung behind her, under everything, and lags a beat behind
+    // the pack is slung behind him, under everything, and lags a beat behind
     // the body it is strapped to - which is most of what sells the weight
     const bg = rot(rig.sockets.bag.x, rig.sockets.bag.y, lean);
     const sway = Math.abs(this.vx) > 6 ? Math.sin(this.step * TAU * 2 + 0.9) * 0.7 * rig.K : 0;
@@ -566,7 +601,7 @@ export class Person {
 
     this._head(ctx, neck, lean, breath, flat);
     this._leg(ctx, rig.leg.near, this.feet[0], hipWorldY, dir, 1);
-    // whatever she is holding in the other hand sits against the chest
+    // whatever he is holding in the other hand sits against the chest
     if (P.hold) {
       const art = rig.props[P.hold];
       if (art) {
@@ -590,7 +625,7 @@ export class Person {
     // An arm opposes the leg on its own side, so it is driven off the same
     // phase the feet are: the near foot is furthest FORWARD at step 0, which
     // is exactly when the near arm should be furthest BACK. (A sine here put
-    // the arm a quarter cycle out and made her look like she was wading.)
+    // the arm a quarter cycle out and made him look like he was wading.)
     const sw = swing * Math.cos((this.step + (side > 0 ? 0 : 0.5)) * TAU) * 0.40;
     const A = a0 + lean + sw;
     // An elbow flexes the forearm FORWARD, toward the body's front - it does
@@ -657,7 +692,7 @@ export class Person {
   _head(ctx, neck, lean, breath, flat) {
     const rig = this.rig;
     const P = POSES[this.pose] || POSES.idle;
-    // she looks where she is working, and a little at whatever is talking
+    // he looks where he is working, and a little at whatever is talking
     const tilt = lean * 0.4 + this.b.look * 0.22
       + (this.speech ? Math.sin(this.t * 5.5) * 0.035 : 0)
       + (P.work ? Math.sin(this.animT * 4.0) * 0.05 : 0);
@@ -676,10 +711,10 @@ export class Person {
 /**
  * Dr. Vess: the reason you are awake, and the reason there are field notes.
  *
- * She has three states. On the ground she works - wanders, crouches, digs,
- * writes. Following, she keeps you in sight and complains about the pace.
- * Riding, she is sitting on your shell with her notebook out, which is the
- * only way she gets to write while you are moving.
+ * He has three states. On the ground he works - wanders, crouches, digs,
+ * writes. Following, he keeps you in sight and complains about the pace.
+ * Riding, he is sitting on your shell with his notebook out, which is the
+ * only way he gets to write while you are moving.
  */
 export class Archaeologist extends Person {
   constructor(game, x) {
@@ -745,7 +780,7 @@ export class Archaeologist extends Person {
       if (this.poseT > 6 && this.pose === POSE.SIT) this.setPose(POSE.WRITE);
       else if (this.poseT > 8 && this.pose === POSE.WRITE) this.setPose(POSE.SIT);
       this._settle(dt);
-      // riding, her feet are on the shell, not the ground
+      // riding, his feet are on the shell, not the ground
       for (const f of this.feet) { f.x = this.x - 3 * this.rig.K * f.side; f.y = this.y + 1; f.air = 0; }
       this._chatter(dt);
       return;
@@ -757,16 +792,16 @@ export class Archaeologist extends Person {
     }
 
     super.update(dt);
-    // during the opening the script owns her: no idle rota, no small talk
+    // during the opening the script owns him: no idle rota, no small talk
     if (this.game.state === 'intro') return;
-    // and while the spore has her she has no small talk and no rota either -
-    // she does what she is pointed at and nothing else, which is most of what
+    // and while the spore has him he has no small talk and no rota either -
+    // he does what he is pointed at and nothing else, which is most of what
     // makes it read as wrong
     if (this.mode === 'owned') return;
     this._chatter(dt);
 
     if (this.mode === 'follow') return;
-    // She never just stands there. A rota of things an archaeologist alone in
+    // He never just stands there. A rota of things an archaeologist alone in
     // a basin actually does, each one running for as long as it is worth.
     this.idleT -= dt;
     if (this.idleT <= 0 && this.pose !== POSE.WALK) {
@@ -791,7 +826,7 @@ export class Archaeologist extends Person {
     }
   }
 
-  /** Drop her kit around wherever she has decided to work. */
+  /** Drop his kit around wherever he has decided to work. */
   _setUpCamp() {
     if (this.camp && Math.abs(this.camp.x - this.x) < 70) return;
     const items = [];
@@ -806,7 +841,7 @@ export class Archaeologist extends Person {
     this.camp = { x: this.x, items };
   }
 
-  /** She talks. Constantly. That is most of what she is for. */
+  /** He talks. Constantly. That is most of what he is for. */
   _chatter(dt) {
     if (this.speech) { this.chatT = 9 + Math.random() * 12; return; }
     this.chatT -= dt;
@@ -820,7 +855,7 @@ export class Archaeologist extends Person {
         'Left, right, left. Sideways. Always sideways.',
         'From up here I can see three of my old survey pegs. All wrong.');
     }
-    // if something is hanging about that will not come aboard, she says why -
+    // if something is hanging about that will not come aboard, he says why -
     // in a bubble, with the name of the thing it is waiting for
     const shy = g.wildlife.list.find((c) => c.alive && !c.tamed && !c.hostile
       && Math.abs(c.x - g.crab.x) < 220 && g.wildlife.attraction(c.def) < 0.45);
@@ -840,7 +875,7 @@ export class Archaeologist extends Person {
   }
 
   draw(ctx, cam) {
-    // her kit goes down first, because she is standing over it
+    // his kit goes down first, because he is standing over it
     if (this.camp && this.camp.items.length && !this.riding) {
       const z = cam.zoom;
       for (const it of this.camp.items) {

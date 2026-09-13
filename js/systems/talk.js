@@ -1,10 +1,10 @@
 // CRABDEN - saying something.
 //
 // You have no voice, no hands you can write with, and a face that does not
-// move the way hers does. What you do have is a claw and a hard shell, and a
-// woman who has spent eleven years listening to nothing.
+// move the way his mouth does. What you do have is a claw and a hard shell, and a
+// man who has spent eleven years listening to nothing.
 //
-// So you tap. She works out, faster than she has any right to, that the taps
+// So you tap. He works out, faster than he has any right to, that the taps
 // are not random - and from then on the two of you have a language. It is a
 // terrible language. It is enough.
 
@@ -18,7 +18,7 @@ export const CODE = {
   '---..': '8', '----.': '9',
 };
 
-/** What she says back when a word actually lands. */
+/** What he says back when a word actually lands. */
 const REPLIES = {
   WATER: "Water. You're asking about water. There's a seep two ridges east - I'll show you.",
   SEA: 'The sea. Yes. It was here. You were here when it was here.',
@@ -26,7 +26,7 @@ const REPLIES = {
   YES: 'Yes. Good. That is a yes. I am writing that down.',
   NO: 'No. Fine. Noted, and I will stop asking.',
   FOOD: 'Food. There are berries setting on your own back, you enormous idiot.',
-  NAME: 'My name is Vess. Ilsa Vess. You have just asked me my name.',
+  NAME: 'My name is Vess. Elias Vess. You have just asked me my name.',
   HOME: 'Home. This was home. It is going to be again, at the rate you are going.',
   GO: "Go. Where? Point with a leg, I'll follow.",
   STOP: 'Stopping. Stopped. I am a very good listener.',
@@ -42,7 +42,7 @@ const REPLIES = {
 
 /**
  * The tap channel. Hold the key for a long tap, release for a short one; a
- * pause ends a letter, a longer pause ends the word and she reads it back.
+ * pause ends a letter, a longer pause ends the word and he reads it back.
  */
 export class Morse {
   constructor(game) {
@@ -52,7 +52,7 @@ export class Morse {
     this.gap = 0;           // seconds since the last tap
     this.held = 0;          // how long the key has been down
     this.down = false;
-    this.learned = false;   // whether she has worked out it is a code
+    this.learned = false;   // whether he has worked out it is a code
     this.taps = 0;
     this.show = 0;          // fades the bubble over the crab
   }
@@ -119,7 +119,7 @@ export class Morse {
     this.game.audio?.play('discover');
   }
 
-  /** The moment she stops hearing noise and starts hearing language. */
+  /** The moment he stops hearing noise and starts hearing language. */
   _learn() {
     this.learned = true;
     const npc = this.game.npc;
@@ -144,9 +144,9 @@ export class Morse {
 // ---------------------------------------------------------------------------
 // The conversation.
 //
-// Tapping a word at her and getting a sentence back was a good trick, but it
+// Tapping a word at him and getting a sentence back was a good trick, but it
 // was a trick: you had to already know which words did anything. So there is
-// a conversation now. You sit down in front of her, she has a face and a
+// a conversation now. You sit down in front of him, he has a face and a
 // voice, and the things you can say are laid out with their code written
 // under them - because the code is the language, and hiding it would be like
 // hiding the words.
@@ -167,8 +167,8 @@ export function morseFor(word) {
 }
 
 /**
- * What you can say to her. `lines` is what she says back, one card at a time.
- * `when` gates a topic on the world - there is no point asking her how to
+ * What you can say to him. `lines` is what he says back, one card at a time.
+ * `when` gates a topic on the world - there is no point asking him how to
  * mine before you have a claw that could. `then` runs once the topic is done.
  */
 export const TOPICS = [
@@ -259,16 +259,16 @@ export const TOPICS = [
     ],
   },
   {
-    id: 'name', word: 'NAME', group: 'her',
+    id: 'name', word: 'NAME', group: 'him',
     ask: 'Who are you?',
     lines: [
-      { icon: 'hand', t: "Ilsa Vess. Doctor, if the funding body is listening, which it is not." },
+      { icon: 'hand', t: "Elias Vess. Doctor, if the funding body is listening, which it is not." },
       { icon: 'clock', t: "Eleven years on a sea that dried up before there was anyone to see it. Three papers. One reviewer. He said the timeline was implausible." },
       { icon: 'crab', t: "I am going to put you in the fourth one and he is going to have a very bad afternoon." },
     ],
   },
   {
-    id: 'me', word: 'ME', group: 'her',
+    id: 'me', word: 'ME', group: 'him',
     ask: 'What am I?',
     lines: [
       { icon: 'crab', t: "You are an Oasis Crab, which is a thing I named last Tuesday, and you are the only one." },
@@ -277,14 +277,14 @@ export const TOPICS = [
     ],
   },
   {
-    id: 'help', word: 'HELP', group: 'her',
+    id: 'help', word: 'HELP', group: 'him',
     ask: 'Help me.',
     lines: [
       { icon: 'hand', t: "Always. Say where and I will do the digging - I have the hands and you have the reach." },
     ],
   },
   {
-    id: 'bye', word: 'BYE', group: 'her',
+    id: 'bye', word: 'BYE', group: 'him',
     ask: 'Enough.',
     lines: [
       { icon: 'close', t: "Go on, then. I will be here. I am always here." },

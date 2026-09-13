@@ -31,8 +31,8 @@ const OUT = 'rgba(12,8,5,0.72)';
 const TABS = [
   { id: 'map', icon: 'map', name: 'MAP', sub: 'the basin, and what is left standing in it' },
   { id: 'fleet', icon: 'fauna', name: 'FLEET', sub: 'what lives on you, and where it is' },
-  { id: 'codex', icon: 'codex', name: 'FIELD', sub: "Dr. Vess's notes - you have to be with her to read them" },
-  { id: 'craft', icon: 'build', name: 'BENCH', sub: 'her bag, and what her hands can make out of it' },
+  { id: 'codex', icon: 'codex', name: 'FIELD', sub: "Dr. Vess's notes - you have to be with him to read them" },
+  { id: 'craft', icon: 'build', name: 'BENCH', sub: 'his bag, and what his hands can make out of it' },
 ];
 
 // and build mode has its own two, down the side
@@ -212,7 +212,7 @@ export class UI {
     }
     if (i.justPressed('g')) { i.consumeKey('g'); this._openTree(); }
     if (i.justPressed('m')) { i.consumeKey('m'); this.cycleMode(); }
-    // B is the bench, because that is the one you reach for most once she is
+    // B is the bench, because that is the one you reach for most once he is
     // yours, and it should not be a number you have to remember
     if (i.justPressed('b')) {
       i.consumeKey('b');
@@ -996,7 +996,7 @@ export class UI {
     }
     if (!c && npcNear) {
       drawText(ctx, 'Dr. Vess', x + 6, py + 3, { color: '#c98ade' });
-      drawText(ctx, 'L to lure her in', x + 6, py + 13, { color: DIM });
+      drawText(ctx, 'L to lure him in', x + 6, py + 13, { color: DIM });
       return;
     }
 
@@ -1444,7 +1444,7 @@ export class UI {
     ctx.globalAlpha = Math.min(1, a);
     caps.forEach(([k, word], i) => {
       const w = capW[i];
-      // a key written on a scrap of her notebook, so the letter is ink
+      // a key written on a scrap of his notebook, so the letter is ink
       drawPlate(ctx, x, y, w, 11, { mat: 'paper', edge: 'rgba(120,96,58,0.45)' });
       drawText(ctx, k, x + w / 2, y + 2, { color: '#3a2f1e', align: 'center' });
       x += w + gap;
@@ -2098,8 +2098,8 @@ export class UI {
   }
 
   /**
-   * The bench. Her bag along the top, the recipe tree under it, and every
-   * card says in icons what it needs and whether she has it - so you can read
+   * The bench. His bag along the top, the recipe tree under it, and every
+   * card says in icons what it needs and whether he has it - so you can read
    * the whole tree without a word of explanation.
    */
   _craftTab(ctx, x, y, w, h) {
@@ -2112,7 +2112,7 @@ export class UI {
     drawText(ctx, 'IN HER PACK', x, y, { color: '#e2b74a' });
     let bx = x, by = y + 11;
     if (!bag.length) {
-      drawText(ctx, 'Nothing. Put her on a seam.', x, by, { color: FAINT });
+      drawText(ctx, 'Nothing. Put him on a seam.', x, by, { color: FAINT });
       by += 11;
     }
     for (const e of bag) {
@@ -2298,7 +2298,7 @@ export class UI {
             const isHand = !isB && def.hands
               && (icon === 'hand' || icon === 'paw' || icon === 'hammer');
             this.hover = isHand
-              ? { title: hand && hand.ok ? 'She can do this' : 'Nobody here can plant it',
+              ? { title: hand && hand.ok ? 'He can do this' : 'Nobody here can plant it',
                 body: hand && hand.ok ? def.hands.why : (hand ? hand.why : def.hands.why) }
               : def.needs && icon === NEEDS_ICON[def.needs]
                 ? { title: def.name, body: NEEDS_TEXT[def.needs] }
@@ -2641,24 +2641,24 @@ export class UI {
 
   _codexTab(ctx, x, y, w, h) {
     const g = this.game;
-    // They are her notes, in her notebook, in her hands. You have to be with
-    // her to read them, which is the whole reason to keep her around.
+    // They are his notes, in his notebook, in his hands. You have to be with
+    // him to read them, which is the whole reason to keep him around.
     if (!g.vessClose) {
       const d = Math.round(Math.abs(g.npc.x - g.crab.x) / 10);
       drawText(ctx, 'HER NOTEBOOK IS NOT HERE', x, y + 6, { color: '#e2b74a' });
-      wrapText(`The field notes are Dr. Vess's, and she is carrying them. Get to her - she is ${d}m ${g.npc.x > g.crab.x ? 'east' : 'west'} - and read over her shoulder.`, w - 4)
+      wrapText(`The field notes are Dr. Vess's, and he is carrying them. Get to him - he is ${d}m ${g.npc.x > g.crab.x ? 'east' : 'west'} - and read over his shoulder.`, w - 4)
         .forEach((l, i) => drawText(ctx, l, x, y + 20 + i * LINE_H, { color: DIM }));
-      wrapText('F calls her over. She will follow you, and ride on you once you are big enough to carry her.', w - 4)
+      wrapText('F calls him over. He will follow you, and ride on you once you are big enough to carry him.', w - 4)
         .forEach((l, i) => drawText(ctx, l, x, y + 62 + i * LINE_H, { color: FAINT }));
       return;
     }
     if (this.codexPick) return this._codexEntry(ctx, x, y, w, h);
     drawText(ctx, "VESS'S FIELD NOTES", x, y, { color: DIM });
-    drawText(ctx, 'watch a thing for long enough and she writes it down', x, y + 9, { color: FAINT });
+    drawText(ctx, 'watch a thing for long enough and he writes it down', x, y + 9, { color: FAINT });
     let ry = y + 22 - this.scroll;
     let total = 0;
 
-    // what she has worked out about the basin itself
+    // what he has worked out about the basin itself
     if (ry > y - 12 && ry < y + h) drawText(ctx, 'THE BASIN', x, ry, { color: '#7fd0dd' });
     ry += 11; total += 11;
     const found = g.world.found.size;
@@ -2702,7 +2702,7 @@ export class UI {
           }
           drawText(ctx, seen ? ellipsize(f.name, w - 40) : '???????', x + 2, ry,
             { color: seen ? INK : FAINT });
-          // a row of pips for how much she has written down
+          // a row of pips for how much he has written down
           for (let i = 0; i < OBSERVE_STEPS.length; i++) {
             ctx.fillStyle = i < level ? '#8cc468' : 'rgba(140,120,90,0.35)';
             ctx.fillRect(x + w - 30 + i * 6, ry + 1, 4, 4);

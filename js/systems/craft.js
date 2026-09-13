@@ -1,8 +1,8 @@
 // CRABDEN - the bag and the bench.
 //
-// The bag is hers. She is the one with hands, so everything mined goes into
-// her pack, and everything made comes out of it. That is deliberate: the whole
-// reason to take her over is that she can hold things and you cannot.
+// The bag is his. He is the one with hands, so everything mined goes into
+// his pack, and everything made comes out of it. That is deliberate: the whole
+// reason to take him over is that he can hold things and you cannot.
 //
 // A recipe needs what it needs and is worked where it is worked - in the hand,
 // at the kiln, or at the bench - and the kiln and the bench are both things
@@ -44,7 +44,7 @@ export class Craft {
       .sort((a, b) => (a.def.tier - b.def.tier) || a.def.name.localeCompare(b.def.name));
   }
 
-  /** The best pick she is carrying, as a power. Nothing means bare hands. */
+  /** The best pick he is carrying, as a power. Nothing means bare hands. */
   get pickPower() {
     let best = 0;
     for (const [id] of this.bag) {
@@ -60,7 +60,7 @@ export class Craft {
 
   /**
    * A station is available if the build it needs is standing on the shell.
-   * `hand` is always available, because hands are what she is for.
+   * `hand` is always available, because hands are what he is for.
    */
   stationUp(at) {
     const st = STATIONS[at];
@@ -86,7 +86,7 @@ export class Craft {
   }
 
   /**
-   * Start making something. It takes time and she has to stand still doing
+   * Start making something. It takes time and he has to stand still doing
    * it, which is what stops the bench being a vending machine.
    */
   start(id) {

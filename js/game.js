@@ -185,7 +185,7 @@ export class Game {
 
   get currentBiome() { return this.biome; }
 
-  /** Close enough to read over her shoulder, or she is riding you. */
+  /** Close enough to read over his shoulder, or he is riding you. */
   get vessClose() {
     return this.npc.riding || Math.abs(this.npc.x - this.crab.x) < 120;
   }
@@ -207,7 +207,7 @@ export class Game {
    * it, look at the coral, and choose where to lie down - and when you dig in,
    * the water starts leaving, and it takes a thousand years.
    *
-   * The second half is this morning, and a woman who has been wrong about a
+   * The second half is this morning, and a man who has been wrong about a
    * rock for eleven years.
    */
   startIntro() {
@@ -501,7 +501,7 @@ export class Game {
     this.sea.stop();
     // it is still under the sand, and stays there until it decides not to be
     this.buried = 1;
-    this.buryTarget = 0.90;          // a mound, not an animal, until she is close
+    this.buryTarget = 0.90;          // a mound, not an animal, until he is close
     this.weather.hour = 9.4;
     const c = this.crab;
     const npc = this.npc;
@@ -550,10 +550,10 @@ export class Game {
           N('Something is happening outside.');
         } },
         { at: 28.2, run: () => {
-          // She has walked right up to the mound and is standing over it -
-          // and she has to STOP. Leaving the old waypoint on her meant she
-          // kept drifting toward it, which flipped her facing, which sent the
-          // stream out of her back and away from the animal.
+          // He has walked right up to the mound and is standing over it -
+          // and he has to STOP. Leaving the old waypoint on him meant he
+          // kept drifting toward it, which flipped his facing, which sent the
+          // stream out of his back and away from the animal.
           npc.x = c.x + 22;
           npc.moveTo = undefined;
           npc.vx = 0;
@@ -567,7 +567,7 @@ export class Game {
           N('It is warm. That is the part it notices first.');
         } },
         { at: 30.0, run: () => {
-          // the lids come up, and there she is
+          // the lids come up, and there he is
           this.lids = 0.42;
           this.shot(c.x + 16, c.y - 10, this.autoZoom() * 2.4, 1.2, { z: 0.004 });
           this.audio.play('drip', { pitch: 0.9 });
@@ -656,7 +656,7 @@ export class Game {
     this.cam.cineCancel();
     this.cam.followEntity(this.crab, false);
     this.cam.targetZoom = this.autoZoom();
-    // she walks with you while she is teaching you
+    // he walks with you while he is teaching you
     this.npc.mode = 'follow';
     this.npc.keepAway = true;
     this.tutorial = 0;
@@ -666,7 +666,7 @@ export class Game {
   /**
    * Stand the animal and the archaeologist up in a storm and point a camera
    * at them. Nothing here is a separate scene: it is the world, paused, with
-   * the weather turned up and her given something to do with her hands.
+   * the weather turned up and him given something to do with his hands.
    */
   enterMenu() {
     this.menuReturn = this.state;
@@ -698,7 +698,7 @@ export class Game {
     this.menu.open();
   }
 
-  /** While the bottle is in the air her hand is empty, so the pose changes. */
+  /** While the bottle is in the air his hand is empty, so the pose changes. */
   _menuPose() {
     const b = this.menu.beer;
     const want = b.phase === 'throw' ? 'point' : b.phase === 'finish' ? 'survey' : 'beer';
@@ -777,9 +777,9 @@ export class Game {
   }
 
   /**
-   * The tutorial is Dr. Vess. There are no instruction cards: she walks with
+   * The tutorial is Dr. Vess. There are no instruction cards: he walks with
    * you for the first few minutes and tells you what to do next, one step at a
-   * time, in the same speech bubble she says everything else in. Each step
+   * time, in the same speech bubble he says everything else in. Each step
    * fires once, in order, and only when you have actually reached it.
    */
   teach(step) {
@@ -794,7 +794,7 @@ export class Game {
       case 4: say('It is a seed until it has drunk. Run the spring again and it will come up.', 0); break;
       case 5: say('There. When the bead shows, take it - nothing on you pays out on its own.', 13); break;
       case 6: say('That is the whole of it. Water, plants, genes, you. Walk east and I will keep up.', 6); break;
-      case 7: this.ui.say('E swings her pick. B opens the bench.', 6); break;
+      case 7: this.ui.say('E swings his pick. B opens the bench.', 6); break;
       default: break;
     }
   }
@@ -887,7 +887,7 @@ export class Game {
       this.input.endFrame();
       return;
     }
-    // Sitting down with her stops everything else. The world keeps breathing
+    // Sitting down with him stops everything else. The world keeps breathing
     // behind the conversation, but nothing you press reaches the animal.
     this.talk.update(dt);
     if (this.talk.on) {
@@ -947,8 +947,8 @@ export class Game {
       } else if (i.justPressed('e')) this.act();
       if (play && i.justPressed('r')) this.harvestAll();
       if (play && i.justPressed('f')) this.callVess();
-      // C sits you down in front of her - G is already the way into your own
-      // genome. So does clicking on her, which is what anyone tries first.
+      // C sits you down in front of him - G is already the way into your own
+      // genome. So does clicking on him, which is what anyone tries first.
       if (play && i.justPressed('c')) { i.consumeKey('c'); this.openTalk(); }
       if (play && i.clicked && !this.ui.busy && this.talk.near) {
         const sp = this.cam.worldToScreen(this.npc.x, this.npc.y - 14);
@@ -968,8 +968,8 @@ export class Game {
       }
       if (play && i.justPressed('l')) this.lureVess();
       if (play && i.justPressed('v')) this.sprayVess();
-      // While the spore has her, she is the one with the hands: the movement
-      // keys go to her instead of to you, and the dig key is her pick.
+      // While the spore has him, he is the one with the hands: the movement
+      // keys go to him instead of to you, and the dig key is his pick.
       if (play && this.mind.owned) {
         if (Math.abs(move) > 0.05) {
           this.npc.moveTo = undefined;
@@ -980,7 +980,7 @@ export class Game {
         if (i.justPressed('e')) { i.consumeKey('e'); this.mind.order('mine', this.npc.x + (this.npc.facing || 1) * 8); }
       }
       // T is the tap key: hold for a long tap, release for a short one. It
-      // means one thing out in the world and another sitting in front of her,
+      // means one thing out in the world and another sitting in front of him,
       // and the conversation gets it while the conversation is open.
       if (play && !this.talk.on) this.morse.update(sdt, i.key('t'));
       // Q is the claw. In HUNT it is the timed strike; anywhere else it is
@@ -1441,14 +1441,14 @@ export class Game {
     this.teach(5);
   }
 
-  /** Ask her to come along, get on, or get off. */
+  /** Ask him to come along, get on, or get off. */
   /**
-   * Put bait down in front of you. She cannot walk past an artefact lying on
+   * Put bait down in front of you. He cannot walk past an artefact lying on
    * the surface - eleven years of nothing has seen to that - so it is the one
-   * reliable way to get her head down and still.
+   * reliable way to get his head down and still.
    */
   lureVess() {
-    // close in: she has to end up inside spraying range, not just nearby
+    // close in: he has to end up inside spraying range, not just nearby
     const x = this.crab.x + (this.crab.facing || 1) * (this.crab.m.shellW * 0.5 + 16);
     const res = this.mind.lure(x);
     if (!res.ok) { this.ui.say(res.why, 3); this.audio.play('deny'); return false; }
@@ -1456,17 +1456,17 @@ export class Game {
     return true;
   }
 
-  /** The cloud. Close range, while she is down over the bait. */
+  /** The cloud. Close range, while he is down over the bait. */
   sprayVess() {
-    if (this.mind.owned) { this.mind.release(); this.ui.say('Let her go.', 2.5); return true; }
+    if (this.mind.owned) { this.mind.release(); this.ui.say('Let him go.', 2.5); return true; }
     const res = this.mind.spray();
     if (!res.ok) { this.ui.say(res.why, 3.5); this.audio.play('deny'); return false; }
     return true;
   }
 
   /**
-   * One swing of her pick. It takes a bite out of the ground whatever
-   * happens, and if there is a seam under it that her pick can touch, the
+   * One swing of his pick. It takes a bite out of the ground whatever
+   * happens, and if there is a seam under it that his pick can touch, the
    * seam gives something up.
    */
   mineSwing(x) {
@@ -1525,14 +1525,14 @@ export class Game {
   }
 
   onOwned() {
-    this.ui.say('Hers no longer.', 3);
+    this.ui.say('His no longer.', 3);
     this.teach(7);
   }
 
-  /** Sit down with her, if she is close enough and in a state to talk. */
+  /** Sit down with him, if he is close enough and in a state to talk. */
   openTalk() {
     if (!this.talk.near) {
-      this.ui.say('She is too far to hear you tap.', 2.2);
+      this.ui.say('He is too far to hear you tap.', 2.2);
       return;
     }
     if (this.mind?.owned) {
@@ -1724,7 +1724,7 @@ export class Game {
     if (e.genes.size >= 4) out.push('Genes expressing one after another. You are rewriting yourself in real time and I am taking notes.');
     if (this.wildlife.fleet.length) out.push("They follow you now. I don't think they know why either.");
     if (this.weather.nightMix > 0.5) out.push('Things come out at night that were not here in the day. Stay lit.');
-    // the further you have travelled with her, the more she has worked out
+    // the further you have travelled with him, the more he has worked out
     const found = this.world.found.size;
     for (const l of VESS_LORE) if (found >= l.need) out.push(l.line);
     return out.slice(-6);
@@ -1805,26 +1805,26 @@ export class Game {
    * Who can actually put this one in the ground. A crab is a magnificent
    * animal with a claw the size of a door and no way at all to hold a seed
    * the size of a grain of sand, so most of the interesting plants need
-   * somebody else: her hands, a real tool, or something that digs for a
+   * somebody else: his hands, a real tool, or something that digs for a
    * living. Returns the worker, or why there isn't one.
    */
   plantWorker(def) {
     const req = def.hands;
-    const her = this.npc && !this.npc.hidden && this.npc.alive !== false;
-    const herNear = her && Math.abs(this.npc.x - this.crab.x) < 420;
+    const there = this.npc && !this.npc.hidden && this.npc.alive !== false;
+    const near = there && Math.abs(this.npc.x - this.crab.x) < 420;
     if (!req) {
-      // anything you can do yourself, she will still do if she is on your back
+      // anything you can do yourself, he will still do if he is on your back
       return { by: this.npc.riding ? this.npc : this.crab, ok: true };
     }
     if (req.by === 'hands') {
-      if (!herNear) return { ok: false, why: `${req.why} Call her over (F).` };
+      if (!near) return { ok: false, why: `${req.why} Call him over (F).` };
       return { by: this.npc, ok: true };
     }
     if (req.by === 'tool') {
       const has = this.craft?.bag?.get('trowel') || this.craft?.bag?.get('copperpick')
         || this.craft?.bag?.get('ironpick');
-      if (!has) return { ok: false, why: `${req.why} Make one at her bench.` };
-      if (!herNear) return { ok: false, why: `${req.why} She has the tool - call her over (F).` };
+      if (!has) return { ok: false, why: `${req.why} Make one at his bench.` };
+      if (!near) return { ok: false, why: `${req.why} He has the tool - call him over (F).` };
       return { by: this.npc, ok: true };
     }
     if (req.by === 'digger') {
@@ -1867,7 +1867,7 @@ export class Game {
       this.npc.say(`${def.name}. Right. Give me a moment to get up there.`, 4);
     }
     this.teach(3);
-    return { ok: true, msg: `${def.name}: ${hand.by === this.npc ? 'she is on her way' : 'going in'}.` };
+    return { ok: true, msg: `${def.name}: ${hand.by === this.npc ? 'he is on his way' : 'going in'}.` };
   }
 
   /** Cancel whatever is being planted and hand the water back. */
@@ -1883,8 +1883,8 @@ export class Game {
   }
 
   /**
-   * The worker getting to the bed, and then doing the work. She has to climb
-   * on, because the garden is on your back and she is a person.
+   * The worker getting to the bed, and then doing the work. He has to climb
+   * on, because the garden is on your back and he is a person.
    */
   _plantTick(dt) {
     const j = this.planting;
@@ -1892,7 +1892,7 @@ export class Game {
     j.t += dt;
     const w = j.by;
     if (w === this.npc && (this.npc.hidden || this.mind?.owned)) {
-      this.stopPlanting('She cannot do it like this.');
+      this.stopPlanting('He cannot do it like this.');
       return;
     }
     if (w && w.alive === false) { this.stopPlanting('It died on the way.'); return; }
@@ -1904,8 +1904,8 @@ export class Game {
         const room = this.crab.m.shellW * 0.5 + 18;
         this.npc.moveTo = this.crab.x + Math.sign(this.npc.x - this.crab.x || 1) * room;
         if (Math.abs(this.npc.x - this.crab.x) < room + 16) this.npc.board();
-        // she is not going to jog for ever
-        if (j.t > 30) this.stopPlanting('She never got there.');
+        // he is not going to jog for ever
+        if (j.t > 30) this.stopPlanting('He never got there.');
         return;
       }
       // an animal of yours: it walks to you and that is close enough
@@ -2229,7 +2229,7 @@ export class Game {
       wreck: 'A hull. Kilometres from any sea, and the sea was yours.',
     }[lm.kind] || '';
     this.ui.say(lm.name, 4);
-    // she is the one who gets to be wordy about a place
+    // he is the one who gets to be wordy about a place
     this.npc.say(lm.kind === 'oasis'
       ? `Water. Mark it: ${lm.name}. Eleven years of survey undone in an afternoon.`
       : `${lm.name}. ${kindLine}`, 6);
@@ -2583,16 +2583,16 @@ export class Game {
    * The stream.
    *
    * It used to be four stroked beziers whose clock ticked inside the draw,
-   * anchored to the wrong side of her, which meant it hung in the air when the
-   * frame stalled and came out of her back when she turned round. It is drops
-   * now: real ones, with velocity, that leave her, arc, land on the shell,
+   * anchored to the wrong side of him, which meant it hung in the air when the
+   * frame stalled and came out of his back when he turned round. It is drops
+   * now: real ones, with velocity, that leave him, arc, land on the shell,
    * splash and steam, and stop existing when the beat is over. The clock lives
    * in update with everything else's.
    */
   _peeTick(dt) {
     this._peeDrops = this._peeDrops || [];
     const D = this._peeDrops;
-    // the drops that are already in the air do not care whether she is still
+    // the drops that are already in the air do not care whether he is still
     // going, so they run whether _pee is set or not
     for (let i = D.length - 1; i >= 0; i--) {
       const d = D[i];
@@ -2618,8 +2618,8 @@ export class Game {
     const run = clamp01(this._peeT * 2.4) * clamp01(4.4 - this._peeT * 0.6);
     if (run <= 0.02) return;
     const p = this.npc;
-    // aim at the animal rather than at whichever way she happens to be
-    // pointing: she is looking at it, so it goes at it
+    // aim at the animal rather than at whichever way he happens to be
+    // pointing: he is looking at it, so it goes at it
     const dir = Math.sign(this.crab.x - p.x) || (p.facing || -1);
     const ax = p.x + dir * 5, ay = p.y - 13;
     const n = Math.random() < run * 0.9 ? 2 : 1;
@@ -2641,7 +2641,7 @@ export class Game {
     if (!D || !D.length) return;
     const z = cam.zoom;
     const pp = pxSize(z);
-    // the patch where it has been landing, which grows while she goes
+    // the patch where it has been landing, which grows while he goes
     const patch = clamp01((this._peeT || 0) * 0.45);
     if (patch > 0.02) {
       const hit = this.crab.shellWorldAB(0.1, 0.5);
@@ -2745,22 +2745,26 @@ export class Game {
   }
 
   /**
-   * What she says, on a page out of her own notebook. This is the one piece
+   * What he says, on a page out of his own notebook. This is the one piece
    * of interface the game uses constantly, so it is not a rounded rectangle:
-   * it is cream paper with a ruled margin, a torn lower edge, her face pinned
+   * it is cream paper with a ruled margin, a torn lower edge, his face pinned
    * to it behind brass tacks, and a dog-eared corner pointing at whoever is
    * talking. Tapped code gets the same card in ink-blue, because a signal is
    * still something written down.
    */
   _drawSpeech(ctx, cam, who, code = false) {
     const s = cam.worldToScreen(who.x, who.y - 40);
-    // her face goes on the card at four times her walking size: the whole
-    // point of a close-up is that you can see what she thinks of you
-    const port = !code && who.portrait ? who.portrait() : null;
-    const pw = port ? 30 : 0;
+    // his face goes on the card at four times his walking size: the whole
+    // point of a close-up is that you can see what he thinks of you
+    // His face on the card is his own portrait, cropped to the head - a card
+    // two words wide has no room for shoulders, and the head is the part you
+    // are reading anyway.
+    const port = !code && who.portrait ? who.portrait(1) : null;
+    const pw = port ? 34 : 0;
     const lines = wrapText(who.speech, 132 - (port ? pw + 6 : 0));
     const w = Math.max(...lines.map((l) => textWidth(l))) + 14 + (port ? pw + 6 : 0);
-    const h = Math.max(lines.length * LINE_H + 10, port ? pw + 8 : 0);
+    // the card is at least as tall as his head, because his head is the point
+    const h = Math.max(lines.length * LINE_H + 10, port ? 48 : 0);
     const x = clamp(Math.round(s.x - w / 2), 3, this.renderer.vw - w - 3);
     const y = clamp(Math.round(s.y - h), 3, this.renderer.vh - h - 12);
     const tailX = clamp(Math.round(s.x), x + 8, x + w - 8);
@@ -2805,15 +2809,17 @@ export class Game {
 
     let tx = x + 7;
     if (port) {
-      // her face, pinned to the page behind four brass tacks
-      const ph = Math.min(pw, h - 8);
+      // his face, pinned to the page behind four brass tacks
+      const ph = Math.min(44, h - 6);
       const px = x + 4, py = y + 4;
       ctx.save();
       ctx.beginPath(); ctx.rect(px, py, pw, ph); ctx.clip();
       ctx.fillStyle = code ? '#0a1a1d' : '#c8b590';
       ctx.fillRect(px, py, pw, ph);
+      // the window lands on hat-brim to chin: at this size his mouth is half
+      // the information on the card
       ctx.drawImage(port.cv, Math.round(px + pw / 2 - port.ox),
-        Math.round(py + ph * 0.62 - port.oy + port.H * 0.66));
+        Math.round(py + ph * 0.44 - port.oy));
       ctx.restore();
       ctx.strokeStyle = 'rgba(60,44,26,0.55)';
       ctx.strokeRect(px - 0.5, py - 0.5, pw + 1, ph + 1);
@@ -2830,7 +2836,7 @@ export class Game {
     lines.forEach((l, i) => ctx.fillRect(tx, y + 5 + i * LINE_H + 8, w - (tx - x) - 6, 1));
     lines.forEach((l, i) => drawText(ctx, l, tx, y + 6 + i * LINE_H, { color: INKC }));
     if (code) {
-      drawText(ctx, this.morse.learned ? 'she is listening' : 'tapping',
+      drawText(ctx, this.morse.learned ? 'he is listening' : 'tapping',
         x + w / 2, y - 9, { color: 'rgba(159,232,212,0.5)', align: 'center' });
     }
     if (shout) {

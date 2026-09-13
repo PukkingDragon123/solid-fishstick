@@ -365,7 +365,7 @@ export const FAUNA = [
     notes: [
       'The sting does not kill. It disables the prey\'s motor ganglia and leaves everything else working.',
       'Digs a burrow first, hunts second, and can find the burrow again from two hundred metres.',
-      'If the prey is moved a few centimetres while she inspects the burrow, she starts the whole sequence again. Every time.',
+      'If the prey is moved a few centimetres while he inspects the burrow, he starts the whole sequence again. Every time.',
       'One egg per chamber. The larva eats the paralysed host in a survival-optimal order.',
       'It is not cruel. It has simply never had a reason to develop the concept.',
     ],

@@ -1,23 +1,23 @@
-// CRABDEN - sitting down with her.
+// CRABDEN - sitting down with him.
 //
-// Everything else she says, she says over her shoulder while you are both
+// Everything else he says, he says over his shoulder while you are both
 // doing something else. This is the one place where you both stop.
 //
 // The rule of it: you have no voice, so you tap. Every word you can say has
 // its code written underneath it, because the code IS the language and hiding
-// it would be like hiding the words. Tap it out on the key and she hears it.
+// it would be like hiding the words. Tap it out on the key and he hears it.
 // Point at it instead if your hands are busy - it is the same sentence either
-// way, and she does not treat you differently for pointing.
+// way, and he does not treat you differently for pointing.
 //
-// She answers a card at a time, with her face on each one. Some of the
+// He answers a card at a time, with his face on each one. Some of the
 // answers are lessons, and those are the only place in the game where you are
-// actually taught anything: not a tooltip, not a tutorial step, but a woman
+// actually taught anything: not a tooltip, not a tutorial step, but a man
 // who has been out here eleven years telling you how to grow a plant.
 
 import { clamp, clamp01, lerp, damp, TAU } from '../lib/math.js';
 import { drawText, textWidth, wrapText, ellipsize, LINE_H } from '../lib/font.js';
 import { drawPlate, drawNodeIcon } from './icons.js';
-import { portrait } from '../art/personart.js';
+import { facePortrait } from '../art/faces.js';
 import { CODE, TOPICS, TOPIC_BY_WORD, morseFor } from '../systems/talk.js';
 
 const INK = '#f2e4c2';
@@ -26,7 +26,7 @@ const FAINT = 'rgba(240,226,192,0.34)';
 const OUT = 'rgba(12,8,5,0.72)';
 const TAP = '#8fe0cc';
 
-/** How far she has to be for the conversation to be possible at all. */
+/** How far he has to be for the conversation to be possible at all. */
 export const TALK_RANGE = 64;
 
 export class TalkScreen {
@@ -39,7 +39,7 @@ export class TalkScreen {
     this.rows = [];          // the topic boxes, for the mouse
     this.said = new Set();   // which topics you have been through
 
-    // what she is in the middle of answering
+    // what he is in the middle of answering
     this.topic = null;
     this.line = 0;
     this.type = 0;           // how much of the current line has arrived
@@ -70,7 +70,7 @@ export class TalkScreen {
     this.word = '';
     this.rows = [];
     this.game.audio?.play('ui');
-    // she turns to face you, because you are talking to her
+    // he turns to face you, because you are talking to his
     const g = this.game;
     g.npc.setFacing(Math.sign(g.crab.x - g.npc.x) || -1);
     g.npc.moveTo = undefined;
@@ -95,7 +95,7 @@ export class TalkScreen {
   /**
    * The tap key, decoded locally. A short press is a dot, a long one a dash, a
    * pause ends the letter and a longer pause ends the word - and if the word
-   * is one she knows, that is what you said.
+   * is one he knows, that is what you said.
    */
   _tap(dt, held) {
     if (held && !this.down) { this.down = true; this.held = 0; }
@@ -122,7 +122,7 @@ export class TalkScreen {
     this.word += CODE[this.marks] || '?';
     this.marks = '';
     this.gap = 0;
-    // the moment the letters spell something she knows, she answers - there is
+    // the moment the letters spell something he knows, he answers - there is
     // no need to make you sit through the trailing pause
     const hit = TOPIC_BY_WORD[this.word];
     if (hit && this.list().includes(hit)) this._endWord();
@@ -141,13 +141,14 @@ export class TalkScreen {
       this.game.morse.learned = true;
       this.ask(hit, true);
     } else {
-      // she does not pretend to understand - she tells you she did not
+      // he does not pretend to understand - he tells you he did not
       this.topic = {
         id: '_miss', word,
         lines: [{ icon: 'close', t: `"${word}". I have no idea. Slower - long taps and short ones, and a gap between the letters.` }],
       };
       this.line = 0;
       this.type = 0;
+      this.game.npc.mood = 'blank';
       this.game.audio?.play('deny');
     }
   }
@@ -157,6 +158,7 @@ export class TalkScreen {
     this.topic = tp;
     this.line = 0;
     this.type = 0;
+    this._wear();
     this.said.add(tp.id);
     this.game.audio?.play(tapped ? 'discover' : 'uiBig');
     if (tp.id === 'bye') { this._byeAfter = true; }
@@ -172,12 +174,24 @@ export class TalkScreen {
     if (this.line < tp.lines.length - 1) {
       this.line++;
       this.type = 0;
+      this._wear();
       this.game.audio?.play('talk');
       return;
     }
     tp.then?.(this.game);
     this.topic = null;
     if (this._byeAfter) { this._byeAfter = false; this.close(); }
+  }
+
+  /**
+   * The face he is wearing for the line he is on. A line can name its own -
+   * some of them are written for one particular look - and anything that
+   * does not gets read the same way his shouted lines out in the desert do.
+   */
+  _wear() {
+    const ln = this.topic?.lines?.[this.line];
+    if (!ln) return;
+    this.game.npc.mood = ln.mood || this.game.npc._faceFor(ln.t);
   }
 
   // -- the frame ------------------------------------------------------------
@@ -190,7 +204,7 @@ export class TalkScreen {
     this.flash = Math.max(0, this.flash - dt * 2);
     if (this.type < 1) this.type = Math.min(1, this.type + dt * 2.4);
 
-    // walk away and the conversation ends, because she is a person standing
+    // walk away and the conversation ends, because he is a person standing
     // in a place and not a menu
     if (!this.near || g.state !== 'play') { this.close(); return; }
 
@@ -218,7 +232,7 @@ export class TalkScreen {
       if (i.clicked) { i.clicked = false; this.ask(this.list()[r.i]); }
       return;
     }
-    // clicking anywhere else while she is talking turns the card
+    // clicking anywhere else while he is talking turns the card
     if (i.clicked && this.topic) { i.clicked = false; this.advance(); }
   }
 
@@ -227,7 +241,7 @@ export class TalkScreen {
     const g = this.game;
     const a = clamp01(this.fade);
 
-    // ---- the world goes quiet behind her ---------------------------------
+    // ---- the world goes quiet behind him ---------------------------------
     ctx.globalAlpha = a * 0.72;
     ctx.fillStyle = '#0b0806';
     ctx.fillRect(0, 0, W, H);
@@ -239,33 +253,47 @@ export class TalkScreen {
     ctx.fillRect(0, H - lb, W, lb);
 
     // A phone held upright has no left-hand column to put anybody in. Wide,
-    // she stands at the side of the frame and what passes between you is next
-    // to her; narrow, she is at the top of it looking down at you and the
+    // he stands at the side of the frame and what passes between you is next
+    // to him; narrow, he is at the top of it looking down at you and the
     // talking happens underneath, which is also roughly what is happening.
     const narrow = W < 360;
-    const K = narrow ? Math.min(4.4, Math.max(3, W / 46)) : Math.min(5.6, Math.max(4, H / 52));
-    const spore = (g.mind?.blue || 0) > 0.35;
+    // The card is his portrait sheet, as large as the frame will take it -
+    // whole pixels only, so his hat has edges. Sitting down with somebody is
+    // the one time you get to look at their face.
+    // How large he gets is decided by what has to fit under him. Upright, his
+    // portrait is above everything, so a list of twelve words takes priority
+    // over a bigger face and a card of one sentence does not.
+    let K;
+    if (narrow) {
+      const rows = this.topic ? 3 : Math.ceil(this.list().length / 2);
+      const need = rows * 34 + 22;
+      K = Math.min(3, Math.floor((W - 24) / 66) || 1);
+      while (K > 1 && lb + 4 + 21 * K + 64 * K * 0.62 + need > H - 42) K--;
+    } else {
+      K = Math.max(1, Math.min(4, Math.floor(Math.min(W * 0.30 / 59, H * 0.58 / 64))));
+    }
+    const spore = (g.mind?.blue || 0) > 0.35 ? 1 : 0;
     let port = null;
-    try { port = portrait(g.npc.kind, g.npc.face | 0, K, spore); } catch { port = null; }
-    // far enough in that neither the brim of her hat nor her name runs off
+    try { port = facePortrait(g.npc.mood || 'flat', K, spore); } catch { port = null; }
+    // far enough in that neither the brim of his hat nor his name runs off
     // the left edge of a short, wide frame
     const px = Math.round(narrow ? W * 0.5
-      : Math.max(W * 0.085, (port ? port.ox : 0) + 4, textWidth('DR. ILSA VESS') / 2 + 4));
+      : Math.max(W * 0.085, (port ? port.ox : 0) + 4, textWidth('DR. ELIAS VESS') / 2 + 4));
     // narrow: hung from the top of the frame, so the hat is never cropped
     const py = Math.round(narrow ? lb + 4 + (port ? port.oy : 24) : H * 0.30);
     if (port) {
-      // a breath, so she is not a still image while she is talking
+      // a breath, so he is not a still image while he is talking
       const br = Math.sin(this.t * 1.4) * 0.6 + (this.type < 1 ? Math.sin(this.t * 16) * 0.5 : 0);
       ctx.drawImage(port.cv, Math.round(px - port.ox), Math.round(py - port.oy + br));
     }
     const nameY = Math.round(py + (port ? port.H * 0.62 : 30));
-    drawText(ctx, 'DR. ILSA VESS', px, nameY,
+    drawText(ctx, 'DR. ELIAS VESS', px, nameY,
       { color: DIM, align: 'center', outline: true, outlineColor: OUT });
 
-    // ---- what she is saying, or what you could say -----------------------
+    // ---- what he is saying, or what you could say -----------------------
     const cx = Math.round(W * (narrow ? 0.06 : 0.34));
     const cw = Math.round(W - cx - W * 0.06);
-    const cy = narrow ? nameY + 26 : Math.round(H * 0.30);
+    const cy = narrow ? nameY + 16 : Math.round(H * 0.30);
 
     if (this.topic) {
       this.rows = [];
@@ -282,13 +310,13 @@ export class TalkScreen {
     ctx.globalAlpha = 1;
   }
 
-  /** One card of her answer, with its icon and the line typing itself in. */
+  /** One card of his answer, with its icon and the line typing itself in. */
   _card(ctx, x, y, w, H) {
     const tp = this.topic;
     const ln = tp.lines[this.line];
     const lines = wrapText(ln.t, w - 34);
     const h = Math.max(46, lines.length * LINE_H + 20);
-    // what she says is on paper, because she is the one who writes things down
+    // what he says is on paper, because he is the one who writes things down
     drawPlate(ctx, x, y, w, h, { mat: 'paper', edge: 'rgba(120,96,58,0.5)', alpha: 0.98 });
 
     // the icon down the left of the card, on its own margin
@@ -296,12 +324,12 @@ export class TalkScreen {
       ctx.globalAlpha = 0.92;
       drawNodeIcon(ctx, ln.icon, x + 15, y + h / 2, '#7a5a2a', 2);
       ctx.globalAlpha = 1;
-      // a hairline between the icon's margin and what she is saying
+      // a hairline between the icon's margin and what he is saying
       ctx.fillStyle = 'rgba(168,64,52,0.35)';
       ctx.fillRect(x + 25, y + 6, 1, h - 12);
     }
     const tx = x + 28;
-    // the line arrives a character at a time - she is talking, not printing
+    // the line arrives a character at a time - he is talking, not printing
     const total = lines.join('').length;
     let budget = Math.ceil(total * this.type);
     lines.forEach((l, i) => {
@@ -330,7 +358,7 @@ export class TalkScreen {
 
   /**
    * Everything you could say, each with its code under it. The code is not a
-   * hint - it is the control. Tap it and she hears it; point at it and she
+   * hint - it is the control. Tap it and he hears it; point at it and he
    * hears the same thing.
    */
   _topics(ctx, x, y, w, H, narrow) {
@@ -376,7 +404,7 @@ export class TalkScreen {
     });
     this.rows = rows;
 
-    // what she is waiting for you to say, under the whole grid
+    // what he is waiting for you to say, under the whole grid
     const b = 0.4 + 0.6 * (0.5 + 0.5 * Math.sin(this.t * 2));
     ctx.globalAlpha = b;
     drawText(ctx, this.said.size ? '' : 'tap it, or point at it', x, y - 11, { color: FAINT });

@@ -67,7 +67,7 @@ const STROKE_GAIN = 0.24;     // how much of the job one good stroke takes off
 const CORE = 0.32;            // the middle of the band, worth more
 // Just holding it gets the job done in a bit under twice the time - so
 // somebody who cannot hit the band still finishes, and somebody who can is
-// twice as fast. Her doing it on her own is the slow number, and that is the
+// twice as fast. His doing it on his own is the slow number, and that is the
 // number you are meant to feel.
 const IDLE_RATE = 0.55;
 
@@ -80,8 +80,8 @@ export class Work {
   get live() { return !!this.job; }
 
   /**
-   * Start a job. `by` is whoever is doing it - you, or her while the spore has
-   * her, or a tamed animal. `onDone` gets the quality (0-1) so the thing you
+   * Start a job. `by` is whoever is doing it - you, or him while the spore has
+   * him, or a tamed animal. `onDone` gets the quality (0-1) so the thing you
    * dug up can come out chipped.
    */
   begin(kind, opts = {}) {
@@ -186,7 +186,7 @@ export class Work {
       w.lurch = (w.facing || 1) * (good ? 3 : 1.6);
       w.digging = 0.5;
     } else if (w.setPose) {
-      // her: the pose she is in says what she is doing, and the arm throws
+      // him: the pose he is in says what he is doing, and the arm throws
       w.swingT = 0.32;
       w.jv = Math.min(w.jv || 0, good ? -26 : -12);
     }
@@ -212,7 +212,7 @@ export class Work {
     if (!j) return;
     // somebody else doing the work does not need you holding a key down. The
     // band is still there and your strokes still help - you are the one with
-    // the reach - but her hands keep moving whether you join in or not.
+    // the reach - but his hands keep moving whether you join in or not.
     if (j.by && j.by !== this.game.crab) held = true;
     j.held = held;
     j.t += dt;

@@ -70,7 +70,7 @@ export const INSCRIPTIONS = [
   'Cut deep, and last: "WE WAITED."',
 ];
 
-/** Vess, on what she is looking at, unlocked as you find things. */
+/** Vess, on what he is looking at, unlocked as you find things. */
 export const VESS_LORE = [
   { need: 0, line: 'Eleven years I mapped this basin. You made it in an afternoon. I am fine.' },
   { need: 1, line: 'Every ruin out here was built by people who thought the water would come back.' },

@@ -295,7 +295,7 @@ export function drawTame(ctx, x, y, c, opts = {}) {
     if (def && def.headL) {
       ctx.drawImage(tameHead(def, S - 2), x + 1, y + 1);
     } else {
-      // Dr. Vess, when she is the one on the nerve, has no creature rig
+      // Dr. Vess, when he is the one on the nerve, has no creature rig
       ctx.fillStyle = on ? '#e8c3aa' : '#a8846a';
       ctx.fillRect(x + 5, y + 4, 6, 7);
       ctx.fillStyle = '#5b3a24';
@@ -890,13 +890,13 @@ export function drawGauge(ctx, x, y, w, h, f, col, opts = {}) {
  * floating as outlined text over the sky.
  */
 /**
- * Everything in the interface is made of something she actually has with her.
+ * Everything in the interface is made of something he actually has with him.
  *
  * There are three surfaces and no fourth. **Stone** is the default: a slab of
  * the same rock the mesas are cut from, knocked square, with the shape carved
  * into it as a sunk channel - that is what a readout is. **Paper** is a leaf
- * out of her field notebook, ruled, with a red margin and a torn bottom edge -
- * that is what anything she wrote is. **Scroll** is parchment with the roll
+ * out of his field notebook, ruled, with a red margin and a torn bottom edge -
+ * that is what anything he wrote is. **Scroll** is parchment with the roll
  * still on both ends - that is what a long list is.
  *
  * The surface is baked once per size and blitted, because a notebook page
@@ -976,7 +976,7 @@ function bakePlate(mat, w, h, seed) {
     g.fillRect(roll, 0, 2, h);
     g.fillRect(w - roll - 2, 0, 2, h);
   } else if (mat === 'leather') {
-    // her bag: dark hide with a stitched line just inside the edge
+    // his bag: dark hide with a stitched line just inside the edge
     g.fillStyle = '#3a2718';
     g.fillRect(0, 0, w, h);
     for (let i = 0; i < w * h * 0.05; i++) {

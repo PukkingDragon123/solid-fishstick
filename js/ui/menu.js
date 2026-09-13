@@ -2,8 +2,8 @@
 //
 // A title screen is a promise about the game behind it, so this one is the
 // game: your actual crab, out of your actual save, standing in a storm with
-// Dr. Vess beside it - and she is not posing. She is drinking a beer, and
-// when she finishes it she throws the bottle away, and then she opens
+// Dr. Vess beside it - and he is not posing. He is drinking a beer, and
+// when he finishes it he throws the bottle away, and then he opens
 // another, because there is nothing else to do out here and there has not
 // been for eleven years.
 //
@@ -35,7 +35,7 @@ export class Menu {
     this.pick = 0;
     this.page = 'main';        // main | settings | wipe
     this.fade = 1;
-    // her evening: drink, drink, finish it, throw it, open another
+    // his evening: drink, drink, finish it, throw it, open another
     this.beer = { t: 0, phase: 'drink', level: 1, bottle: null, thrown: 0 };
     this.gust = 0;
     this._rows = [];           // last frame's plate boxes, for the mouse
@@ -62,7 +62,7 @@ export class Menu {
 
   get hasSave() { return !!Save.readSave(); }
 
-  // -- her evening ----------------------------------------------------------
+  // -- his evening ----------------------------------------------------------
 
   _beer(dt) {
     const b = this.beer;
@@ -70,7 +70,7 @@ export class Menu {
     const npc = g.npc;
     b.t += dt;
     if (b.phase === 'drink') {
-      // a pull every couple of seconds, and the bottle empties as she takes them
+      // a pull every couple of seconds, and the bottle empties as he takes them
       if (b.t > 2.2) {
         b.t = 0;
         b.level = Math.max(0, b.level - 0.34);
@@ -78,7 +78,7 @@ export class Menu {
         if (b.level <= 0.001) { b.phase = 'finish'; b.t = 0; }
       }
     } else if (b.phase === 'finish') {
-      // she looks at the empty bottle for a moment, which is the joke
+      // he looks at the empty bottle for a moment, which is the joke
       if (b.t > 1.1) {
         b.phase = 'throw';
         b.t = 0;
@@ -239,7 +239,7 @@ export class Menu {
 
   // -- drawing --------------------------------------------------------------
 
-  /** The bottle, wherever it is: in her hand, in the air, or in the sand. */
+  /** The bottle, wherever it is: in his hand, in the air, or in the sand. */
   drawBottle(ctx, cam) {
     if (!this.on) return;
     const bo = this.beer.bottle;
