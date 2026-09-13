@@ -896,8 +896,25 @@ const cache = new Map();
  * limb differ only in how much light they get, so an arm on the far side of
  * the body reads as behind it without being redrawn.
  */
-/** The head on its own, for the art harness. */
-export function headSide(K = 1, opts = {}) { return paintHeadSide(K, false, opts.kind || 'vess', opts); }
+const sideHeads = new Map();
+
+/**
+ * The head at a given pixel size. The body sheet is drawn at the camera's
+ * pixel size, so the head has to be too - baking it at the rig's K and then
+ * blitting it unscaled made him a man with a tiny head, which is a different
+ * problem from the one this was meant to solve.
+ */
+export function headSide(K = 1, opts = {}) {
+  const k = `${Math.max(1, Math.round(K))}:${opts.kind || 'vess'}:${opts.mood | 0}:` +
+    `${opts.noHat ? 1 : 0}:${opts.spore ? 1 : 0}:${opts.far ? 1 : 0}`;
+  let v = sideHeads.get(k);
+  if (!v) {
+    v = paintHeadSide(K, !!opts.far, opts.kind || 'vess', opts);
+    if (sideHeads.size > 120) sideHeads.clear();
+    sideHeads.set(k, v);
+  }
+  return v;
+}
 
 export function buildPerson(kind = 'vess', K = 1) {
   const key = kind + ':' + K;

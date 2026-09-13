@@ -909,13 +909,33 @@ the spine, insects walk an alternating tripod, reptiles bask.
 
 ### Dr. Vess
 
-**He is designed from the sheets in `assets/`, and painted from scratch.**
-Those two reference sheets — a young field archaeologist and an old wanderer —
-are the design document: what he wears, what he carries, what his face does.
-Nothing in `assets/` is loaded at runtime. `js/art/personart.js` rebuilds that
-design the same way the crab is built — height fields, material ramps, one
-light and a hard outline — so he is lit by the same sun as the ground he is
-standing on, and can be **posed** rather than flipped through.
+**He is a sprite sheet, and everything else in this game is not.**
+
+He used to be built the way the crab is: a skeleton with painted parts hung off
+it, each one a height field that gets lit, solved with two-bone IK so his feet
+planted on slopes. That is the right way to build a fifty-pixel animal with
+eight legs. It is the wrong way to build a thirty-pixel person, and the reason
+is arithmetic: at thirty pixels a lit gradient is not shading, it is noise, and
+a rotated limb is not a limb, it is a staircase. The joints between the blobs
+were mush. No amount of tuning fixes that — a person this size has to be
+*drawn*.
+
+So `js/art/vessart.js` is eleven hand-laid frames — stand, a four-frame walk,
+hold, crouch, dig, sit, down, shock — written out as text, flat colour, one
+hard outline, every pixel placed. Three tones to a garment and no more: what a
+sprite this size has is a colour and an edge, and the edge does most of the
+work. His head is stamped on top at a **per-frame neck pixel**, so the
+twenty-one expressions still work and he can still lose his hat, and whatever
+he is holding goes on the hand pixel the same way.
+
+Three things survived the rig because they were never about joints: he pivots
+on the spot rather than mirroring (a squash through the turn), he squashes and
+stretches off the ground, and his head still leans — but as a **whole-pixel
+offset**, not a rotation, because rotating drawn art staircases the brim and
+doubles the outline, which is exactly the mush the sheet exists to remove.
+
+The design still comes off the sheets in `assets/` — nothing there is loaded at
+runtime; they are the document, not the asset.
 
 What comes off the sheet: a **wide tan bush hat** with a maroon band and brass
 goggles pushed up on it, a **cream shirt** with the sleeves already rolled, a

@@ -7125,6 +7125,17 @@ body {
     };
   }
   var cache4 = /* @__PURE__ */ new Map();
+  var sideHeads = /* @__PURE__ */ new Map();
+  function headSide(K = 1, opts = {}) {
+    const k = `${Math.max(1, Math.round(K))}:${opts.kind || "vess"}:${opts.mood | 0}:${opts.noHat ? 1 : 0}:${opts.spore ? 1 : 0}:${opts.far ? 1 : 0}`;
+    let v = sideHeads.get(k);
+    if (!v) {
+      v = paintHeadSide(K, !!opts.far, opts.kind || "vess", opts);
+      if (sideHeads.size > 120) sideHeads.clear();
+      sideHeads.set(k, v);
+    }
+    return v;
+  }
   function buildPerson(kind = "vess", K = 1) {
     const key2 = kind + ":" + K;
     if (cache4.has(key2)) return cache4.get(key2);
@@ -7184,6 +7195,392 @@ body {
     rig.standH = (rig.leg.near.upper.len + rig.leg.near.lower.len) * 0.955 + 1.9 * K;
     cache4.set(key2, rig);
     return rig;
+  }
+
+  // js/art/vessart.js
+  var BODY_W = 18;
+  var BODY_H = 21;
+  var KEY2 = {
+    o: "#1c1209",
+    // the outline, and it is the same one everywhere
+    c: "#d8caa4",
+    // shirt
+    C: "#f0e6c6",
+    // shirt, lit
+    v: "#a99a76",
+    // shirt, in shadow
+    l: "#4a3018",
+    // the leather placket down the front
+    L: "#5c3c1e",
+    // belt
+    g: "#c2954f",
+    // brass
+    b: "#8f3a2e",
+    // the maroon: neckerchief and bedroll
+    n: "#241c12",
+    // pack, deep
+    N: "#4b3c26",
+    // pack
+    p: "#5a5236",
+    // trousers
+    P: "#746a45",
+    // trousers, lit
+    k: "#2a1d12",
+    // boots
+    K: "#4a3320",
+    // boots, lit
+    s: "#cd8e69",
+    // skin
+    d: "#a56b4c"
+    // skin, in shadow
+  };
+  var ELDER_KEY = {
+    c: "#b9a586",
+    C: "#d8c9ad",
+    v: "#8e7c60",
+    p: "#4f3339",
+    P: "#66444a",
+    b: "#7c3226",
+    N: "#3d404d",
+    n: "#1e1f26"
+  };
+  var BODY = {
+    stand: [
+      "......occcco......",
+      ".....ocbbbbco.....",
+      "...oNNoCcclco.....",
+      "..oNbbNCcclcco....",
+      "..oNbbNCcclcco....",
+      "..onNNnCcclcco....",
+      "..onNNnCcclcsso...",
+      "..onNNnCccldsdo...",
+      "...onnoLLLLgo.....",
+      "....oopppppo......",
+      ".....oppoppo......",
+      ".....oppoppo......",
+      ".....oPpoppo......",
+      ".....oppoppo......",
+      ".....oppoppo......",
+      ".....oppoppo......",
+      ".....okkokko......",
+      "....oKkkoKkko.....",
+      "....okkkokkko.....",
+      "....ooooooooo.....",
+      ".................."
+    ],
+    walk0: [
+      "......occcco......",
+      ".....ocbbbbco.....",
+      "...oNNoCcclco.....",
+      "..oNbbNCcclccco...",
+      "..oNbbNCcclccco...",
+      "..onNNnCcclccco...",
+      "..onNNnCccldssdo..",
+      "..onNNnCccldo.....",
+      "...onnoLLLLgo.....",
+      "....oopppppo......",
+      "....oppoppo.......",
+      "....oppoppo.......",
+      "...oPpo.oppo......",
+      "...oppo..oppo.....",
+      "...opo...oppo.....",
+      "..oppo....opo.....",
+      "..okko....okko....",
+      ".oKkko....oKkko...",
+      ".okkko....okkko...",
+      ".ooooo....ooooo...",
+      ".................."
+    ],
+    walk1: [
+      "......occcco......",
+      ".....ocbbbbco.....",
+      "...oNNoCcclco.....",
+      "..oNbbNCcclcco....",
+      "..oNbbNCcclcco....",
+      "..onNNnCcclcco....",
+      "..onNNnCcclcsso...",
+      "..onNNnCccldsdo...",
+      "...onnoLLLLgo.....",
+      "....oopppppo......",
+      ".....oppoppo......",
+      ".....oppoppo......",
+      ".....oPpoppo......",
+      ".....oppoppo......",
+      ".....oppoppo......",
+      ".....oppoppo......",
+      ".....okkokko......",
+      "....oKkkoKkko.....",
+      "....okkkokkko.....",
+      "....ooooooooo.....",
+      ".................."
+    ],
+    walk2: [
+      "......occcco......",
+      ".....ocbbbbco.....",
+      "...oNNoCcclco.....",
+      "..oNbbNCccloo.....",
+      "..oNbbNCcclco.....",
+      "..onNNnCcclcco....",
+      "..onNNnCcclcsdo...",
+      "..onNNnCccldo.....",
+      "...onnoLLLLgo.....",
+      "....oopppppo......",
+      ".....oppoppo......",
+      ".....oppoppo......",
+      "....oppo.oPpo.....",
+      "...oppo...opo.....",
+      "...opo....oppo....",
+      "..oppo.....oppo...",
+      "..okko.....okko...",
+      ".oKkko.....oKkko..",
+      ".okkko.....okkko..",
+      ".ooooo.....ooooo..",
+      ".................."
+    ],
+    walk3: [
+      "......occcco......",
+      ".....ocbbbbco.....",
+      "...oNNoCcclco.....",
+      "..oNbbNCcclcco....",
+      "..oNbbNCcclcco....",
+      "..onNNnCcclcco....",
+      "..onNNnCcclcsso...",
+      "..onNNnCccldsdo...",
+      "...onnoLLLLgo.....",
+      "....oopppppo......",
+      ".....oppoppo......",
+      ".....oppoppo......",
+      ".....oPpoppo......",
+      ".....oppoppo......",
+      ".....oppoppo......",
+      ".....oppoppo......",
+      ".....okkokko......",
+      "....oKkkoKkko.....",
+      "....okkkokkko.....",
+      "....ooooooooo.....",
+      ".................."
+    ],
+    hold: [
+      "......occcco...o..",
+      ".....ocbbbbco.os..",
+      "...oNNoCcclcoosdo.",
+      "..oNbbNCcclcosso..",
+      "..oNbbNCcclccco...",
+      "..onNNnCcclcco....",
+      "..onNNnCccldo.....",
+      "..onNNnCccldo.....",
+      "...onnoLLLLgo.....",
+      "....oopppppo......",
+      ".....oppoppo......",
+      ".....oppoppo......",
+      ".....oPpoppo......",
+      ".....oppoppo......",
+      ".....oppoppo......",
+      ".....oppoppo......",
+      ".....okkokko......",
+      "....oKkkoKkko.....",
+      "....okkkokkko.....",
+      "....ooooooooo.....",
+      ".................."
+    ],
+    crouch: [
+      "..................",
+      "..................",
+      "..................",
+      "..................",
+      "..................",
+      "......occcco......",
+      ".....ocbbbbco.....",
+      "...oNNoCcclcco....",
+      "..oNbbNCcclcsso...",
+      "..oNbbNCccldsdo...",
+      "..onNNnCccldo.....",
+      "..onnoLLLLgo......",
+      "...ooppppppppo....",
+      "...opppppppppo....",
+      "...oppo..opppPo...",
+      "..oppo...opppPo...",
+      "..okko...oppppo...",
+      ".oKkko...oKkkkko..",
+      ".okkko...okkkkko..",
+      ".ooooo...okkkkko..",
+      ".........ooooooo.."
+    ],
+    dig: [
+      "..................",
+      "..................",
+      "..................",
+      "..............o...",
+      ".............oso..",
+      "......occcco.osdo.",
+      ".....ocbbbbcosso..",
+      "...oNNoCcclccco...",
+      "..oNbbNCcclcco....",
+      "..oNbbNCccldo.....",
+      "..onNNnCccldo.....",
+      "..onnoLLLLgo......",
+      "...ooppppppppo....",
+      "...opppppppppo....",
+      "...oppo..opppPo...",
+      "..oppo...opppPo...",
+      "..okko...oppppo...",
+      ".oKkko...oKkkkko..",
+      ".okkko...okkkkko..",
+      ".ooooo...okkkkko..",
+      ".........ooooooo.."
+    ],
+    sit: [
+      "..................",
+      "..................",
+      "..................",
+      "..................",
+      "......occcco......",
+      ".....ocbbbbco.....",
+      "...oNNoCcclco.....",
+      "..oNbbNCcclcco....",
+      "..oNbbNCcclcsso...",
+      "..onNNnCccldsdo...",
+      "..onNNnCccldo.....",
+      "..onnoLLLLgo......",
+      "...ooppppppppo....",
+      "...opppppppppo....",
+      "...oppppppppPo....",
+      "...ooooppppPPo....",
+      ".......oPPPPPo....",
+      ".......oooPPPo....",
+      "..........okkko...",
+      ".........oKkkko...",
+      ".........ooooooo.."
+    ],
+    down: [
+      "..................",
+      "..................",
+      "..................",
+      "..................",
+      "..................",
+      "..................",
+      "..................",
+      "..............o...",
+      ".............oso..",
+      "............osdo..",
+      "...........osso...",
+      ".oNNo.....occo....",
+      "oNbbNo...occco....",
+      "oNbbNoocccCcco....",
+      "onNNnoCcclccppo...",
+      ".onnoLLLLgpppPPo..",
+      "..ooopppppppPPPo..",
+      ".....ookkkkkkkko..",
+      ".......oKkkkkkko..",
+      ".......ooooooooo..",
+      ".................."
+    ],
+    shock: [
+      "o.................",
+      "so..............o.",
+      "sdo............oso",
+      "cso...........osdo",
+      "occo.........ocso.",
+      ".occo.......occo..",
+      "..occooocccoco....",
+      "...occcccccco.....",
+      "...ocbbbbbco......",
+      "..oNNoCcclco......",
+      ".oNbbNCcclco......",
+      ".oNbbNCcclco......",
+      ".onNNnLLLLgo......",
+      "..onnopppppo......",
+      "...oppoppo........",
+      "...oppoppo........",
+      "...oppoppo........",
+      "...okkokko........",
+      "..oKkkoKkko.......",
+      "..okkkokkko.......",
+      "..ooooooooo......."
+    ]
+  };
+  var NECK = {
+    stand: { x: 9, y: 0 },
+    walk0: { x: 9, y: 0 },
+    walk1: { x: 9, y: 0 },
+    walk2: { x: 9, y: 0 },
+    walk3: { x: 9, y: 0 },
+    hold: { x: 9, y: 0 },
+    crouch: { x: 9, y: 5 },
+    dig: { x: 9, y: 5 },
+    sit: { x: 9, y: 4 },
+    down: { x: 12, y: 11 },
+    shock: { x: 9, y: 6 }
+  };
+  var HAND = {
+    stand: { x: 13, y: 6 },
+    walk0: { x: 13, y: 6 },
+    walk1: { x: 13, y: 6 },
+    walk2: { x: 13, y: 6 },
+    walk3: { x: 13, y: 6 },
+    hold: { x: 15, y: 2 },
+    crouch: { x: 14, y: 9 },
+    dig: { x: 16, y: 4 },
+    sit: { x: 14, y: 9 },
+    down: { x: 14, y: 8 },
+    shock: { x: 15, y: 2 }
+  };
+  var cache5 = /* @__PURE__ */ new Map();
+  function bodyFrame(name, px = 1, opts = {}) {
+    const rows = BODY[name] || BODY.stand;
+    const p = Math.max(1, Math.round(px));
+    const elder = opts.kind === "elder";
+    const spore = Math.max(0, Math.min(1, opts.spore || 0));
+    const key2 = `${name}:${p}:${elder ? 1 : 0}:${opts.far ? 1 : 0}:${spore.toFixed(2)}`;
+    let cv = cache5.get(key2);
+    if (cv) return cv;
+    cv = makeCanvas2(BODY_W * p, BODY_H * p);
+    const g = cv.getContext("2d");
+    g.imageSmoothingEnabled = false;
+    for (let y = 0; y < rows.length; y++) {
+      const row = rows[y];
+      for (let x = 0; x < row.length; x++) {
+        const ch = row[x];
+        if (ch === "." || ch === " ") continue;
+        let col = elder && ELDER_KEY[ch] || KEY2[ch];
+        if (!col) continue;
+        if (spore > 0.01 && ch !== "o") col = mixHex(col, "#a26cd0", spore * 0.4);
+        if (opts.far) col = mixHex(col, "#8a7a63", 0.34);
+        g.fillStyle = col;
+        g.fillRect(x * p, y * p, p, p);
+      }
+    }
+    if (cache5.size > 160) cache5.clear();
+    cache5.set(key2, cv);
+    return cv;
+  }
+  function frameFor(pose, phase = 0) {
+    switch (pose) {
+      case "walk":
+      case "wander":
+        return ["walk0", "walk1", "walk2", "walk3"][Math.floor(phase * 4) & 3];
+      case "crouch":
+        return "crouch";
+      case "dig":
+        return "dig";
+      case "sit":
+      case "rest":
+        return "sit";
+      case "beer":
+      case "drink":
+      case "survey":
+      case "write":
+      case "point":
+      case "wave":
+      case "measure":
+        return "hold";
+      case "down":
+        return "down";
+      case "shock":
+        return "shock";
+      default:
+        return "stand";
+    }
   }
 
   // js/art/facedata.js
@@ -7264,7 +7661,7 @@ body {
   };
 
   // js/art/faces.js
-  var cache5 = /* @__PURE__ */ new Map();
+  var cache6 = /* @__PURE__ */ new Map();
   var INDEX2 = new Int8Array(128).fill(-1);
   for (let i = 0; i < FACE_ALPHA.length; i++) INDEX2[FACE_ALPHA.charCodeAt(i)] = i;
   function hasFace(name) {
@@ -7275,7 +7672,7 @@ body {
     const s = Math.max(1, Math.round(scale));
     const spore = Math.max(0, Math.min(1, opts.spore || 0));
     const key2 = `${name}:${s}:${spore.toFixed(2)}`;
-    let cv = cache5.get(key2);
+    let cv = cache6.get(key2);
     if (cv) return cv;
     const pal = spore > 0.01 ? FACE_PAL.map((c) => mixHex(c, "#a26cd0", spore * 0.55)) : FACE_PAL;
     cv = document.createElement("canvas");
@@ -7291,8 +7688,8 @@ body {
         g.fillRect(x * s, y * s, s, s);
       }
     }
-    if (cache5.size > 96) cache5.clear();
-    cache5.set(key2, cv);
+    if (cache6.size > 96) cache6.clear();
+    cache6.set(key2, cv);
     return cv;
   }
   var FACE_EYE = { x: 27, y: 21 };
@@ -7812,27 +8209,40 @@ body {
       this.game.fx?.footPuff(f.x, terr.surfaceY(f.x), Math.abs(this.vx) * 0.35, false);
     }
     // -------------------------------------------------------------------------
+    /**
+     * Him, on the ground, as a sprite.
+     *
+     * This used to solve a skeleton every frame and hang eleven shaded blobs off
+     * it. It draws two canvases now: a body frame off the sheet, and his head
+     * stamped on that frame's neck pixel. Everything that was an angle is a
+     * frame instead, which is what a thirty-pixel person can actually show.
+     *
+     * The three things that survived the rig are the three that matter: he
+     * pivots on the spot instead of mirroring (a squash through the turn), he
+     * squashes and stretches off the ground, and his head still tilts - but in
+     * whole steps, because a drawn sprite does not survive being rotated far.
+     */
     draw(ctx, cam) {
-      const rig = this.rig;
       const z = cam.zoom;
       const P = POSES[this.pose] || POSES.idle;
       const dir = this.faceT >= 0 ? 1 : -1;
       const t = Math.abs(this.faceT);
       const flat2 = TURN_MIN + (1 - TURN_MIN) * (t * t * (3 - 2 * t));
+      const px = Math.max(1, Math.round(z));
+      const blue = this.game.mind ? this.game.mind.blue : 0;
+      const spore = blue > 0.35 ? clamp01((blue - 0.35) / 0.4) : 0;
       const sa = this.game.weather ? this.game.weather.shadowAlpha : 0.35;
       if (sa > 0.02) {
         const s0 = cam.worldToScreen(this.x, this.y);
         ctx.globalAlpha = sa * 0.5;
         ctx.fillStyle = "#2a1a10";
-        ctx.beginPath();
-        ctx.ellipse(s0.x, s0.y, 7 * z, 2 * z, 0, 0, TAU);
-        ctx.fill();
+        pxEllipse(ctx, s0.x, s0.y, 7 * z, 2 * z, "#2a1a10", { p: px });
         ctx.globalAlpha = 1;
       }
       if (this.hatOff) {
         const h = this.hatOff;
         const hs = cam.worldToScreen(h.x, h.y);
-        const art = rig.hat;
+        const art = this.rig.hat;
         ctx.save();
         ctx.translate(Math.round(hs.x), Math.round(hs.y));
         ctx.scale(z, z);
@@ -7840,132 +8250,54 @@ body {
         ctx.drawImage(art.cv, -art.ox, -art.oy);
         ctx.restore();
       }
-      const drop = this.b.crouch * rig.standH * 0.62;
-      const bob = Math.abs(this.vx) > 6 ? Math.sin(this.step * TAU * 2) * 1.1 * rig.K : 0;
-      const breath = Math.sin(this.breathe) * 0.35 * rig.K;
-      const hipWorldY = this.y - rig.standH + drop + bob - this.jz;
-      const s = cam.worldToScreen(this.x, hipWorldY);
+      const name = frameFor(this.pose, this.step % 1);
+      const body = bodyFrame(name, px, { kind: this.kind, spore });
+      const neck = NECK[name] || NECK.stand;
+      const hand = HAND[name] || HAND.stand;
+      const head = headSide(px, {
+        kind: this.kind,
+        mood: this.face | 0,
+        goggles: P.tool === "lens" || P.tool === "canteen",
+        noHat: !!this.hatOff,
+        spore: spore > 0.5
+      });
+      const bob = Math.abs(this.vx) > 6 ? Math.sin(this.step * TAU * 2) * 0.9 : 0;
+      const breath = Math.sin(this.breathe) * 0.35;
+      const s = cam.worldToScreen(this.x, this.y + bob - this.jz);
       ctx.save();
-      ctx.translate(Math.round(s.x * 2) / 2, Math.round(s.y * 2) / 2);
-      ctx.scale(z, z);
+      ctx.translate(Math.round(s.x), Math.round(s.y));
       ctx.scale(dir * flat2, 1);
-      if (flat2 < 0.995) ctx.translate(0, -(1 - flat2) * 2.2 * rig.K);
-      if (Math.abs(this.squash) > 5e-3) {
-        ctx.scale(1 - this.squash * 0.5, 1 + this.squash);
-      }
-      const lean = this.b.lean;
-      const sh = rig.sockets.shoulder, nk = rig.sockets.neck;
-      const rot = (x, y, a) => ({ x: x * Math.cos(a) - y * Math.sin(a), y: x * Math.sin(a) + y * Math.cos(a) });
-      const shoulder = rot(sh.x, sh.y, lean);
-      const neck = rot(nk.x, nk.y, lean);
-      this._leg(ctx, rig.leg.far, this.feet[1], hipWorldY, dir, -1);
-      const bg = rot(rig.sockets.bag.x, rig.sockets.bag.y, lean);
-      const sway = Math.abs(this.vx) > 6 ? Math.sin(this.step * TAU * 2 + 0.9) * 0.7 * rig.K : 0;
-      ctx.save();
-      ctx.translate(bg.x, bg.y + breath + sway);
-      ctx.rotate(lean * 0.8);
-      ctx.drawImage(rig.pack.cv, -rig.pack.ox, -rig.pack.oy);
-      ctx.restore();
-      if (rig.tube) {
-        const tb = rot(rig.sockets.tube.x, rig.sockets.tube.y, lean);
+      if (Math.abs(this.squash) > 5e-3) ctx.scale(1 - this.squash * 0.5, 1 + this.squash);
+      const bx = -(BODY_W / 2) * px;
+      const by = -(BODY_H - 1) * px + Math.round(breath) * px;
+      ctx.drawImage(body, Math.round(bx), Math.round(by));
+      const hx = bx + neck.x * px;
+      const hy = by + neck.y * px;
+      const want = this.b.lean * 0.4 + this.b.look * 0.22 + (this.speech ? Math.sin(this.t * 5.5) * 0.035 : 0) + (P.work ? Math.sin(this.animT * 4) * 0.05 : 0);
+      const nod = clamp(Math.round(want * 5), -2, 2);
+      ctx.drawImage(
+        head.cv,
+        Math.round(hx) - head.ox + nod * px,
+        Math.round(hy) - head.oy + Math.max(0, nod) * px
+      );
+      const tool = P.tool && this.rig.props[P.tool];
+      if (tool) {
         ctx.save();
-        ctx.translate(tb.x, tb.y + breath);
-        ctx.rotate(lean + 1.02);
-        ctx.drawImage(rig.tube.cv, -rig.tube.ox, -rig.tube.oy);
+        ctx.translate(Math.round(bx + hand.x * px), Math.round(by + hand.y * px));
+        ctx.scale(px, px);
+        ctx.rotate(P.tool === "canteen" ? -1.5 : P.tool === "beer" ? -1.15 : P.tool === "peg" ? 1.2 : -0.25);
+        ctx.drawImage(tool.cv, -tool.ox, -tool.oy);
         ctx.restore();
       }
-      this._arm(ctx, rig.arm.far, shoulder, this.b.armF0, this.b.armF1, lean, -1, null);
-      ctx.save();
-      ctx.rotate(lean);
-      ctx.translate(0, breath);
-      const T = rig.torso.near;
-      ctx.drawImage(T.cv, -T.ox, -T.oy);
-      ctx.restore();
-      this._head(ctx, neck, lean, breath, flat2);
-      this._leg(ctx, rig.leg.near, this.feet[0], hipWorldY, dir, 1);
-      if (P.hold) {
-        const art = rig.props[P.hold];
-        if (art) {
-          const h = rot(rig.sockets.shoulder.x + 3.8 * rig.K, rig.sockets.shoulder.y + 6 * rig.K, lean);
-          ctx.save();
-          ctx.translate(h.x, h.y + breath);
-          ctx.rotate(-0.34);
-          ctx.drawImage(art.cv, -art.ox, -art.oy);
-          ctx.restore();
-        }
-      }
-      this._arm(ctx, rig.arm.near, shoulder, this.b.armN0, this.b.armN1, lean, 1, P.tool);
-      ctx.restore();
-    }
-    /** One arm, plus whatever is in the hand at the end of it. */
-    _arm(ctx, art, sh, a0, a1, lean, side, tool) {
-      const rig = this.rig;
-      const swing = (POSES[this.pose] || POSES.idle).swing || 0;
-      const sw = swing * Math.cos((this.step + (side > 0 ? 0 : 0.5)) * TAU) * 0.4;
-      const A = a0 + lean + sw;
-      const B = A - a1 - Math.abs(sw) * 0.22;
-      const u = art.upper, l = art.lower;
-      ctx.save();
-      ctx.translate(sh.x, sh.y);
-      ctx.rotate(A);
-      ctx.drawImage(u.cv, -u.ox, -u.oy);
-      ctx.translate(u.len, 0);
-      ctx.rotate(B - A);
-      ctx.drawImage(l.cv, -l.ox, -l.oy);
-      if (tool && rig.props[tool]) {
-        const p = rig.props[tool];
+      if (P.hold && this.rig.props[P.hold]) {
+        const art = this.rig.props[P.hold];
         ctx.save();
-        ctx.translate(l.len + 1.4 * rig.K, 0);
-        ctx.rotate(tool === "canteen" ? -1.5 : tool === "beer" ? -1.15 : tool === "peg" ? 1.2 : -0.25);
-        ctx.drawImage(p.cv, -p.ox, -p.oy);
+        ctx.translate(Math.round(bx + 11 * px), Math.round(by + 7 * px));
+        ctx.scale(px, px);
+        ctx.rotate(-0.34);
+        ctx.drawImage(art.cv, -art.ox, -art.oy);
         ctx.restore();
       }
-      ctx.restore();
-    }
-    /**
-     * One leg, solved to where its foot actually is in the world. `up` folds the
-     * knee forward, which is the only thing that separates a person from a bird.
-     */
-    _leg(ctx, art, foot, hipWorldY, dir, side) {
-      const rig = this.rig;
-      const hx = rig.sockets.hip.x * side * 0.6;
-      const hy = rig.sockets.hip.y;
-      const fx = (foot.x - this.x) * dir + hx * 0.2;
-      const fy = foot.y - hipWorldY;
-      const l1 = art.upper.len, l2 = art.lower.len;
-      const sol = ik2(hx, hy, fx - 0.6 * rig.K, fy - 1.8 * rig.K, l1, l2, 1);
-      const u = art.upper, l = art.lower;
-      ctx.save();
-      ctx.translate(hx, hy);
-      ctx.rotate(sol.a1);
-      ctx.drawImage(u.cv, -u.ox, -u.oy);
-      ctx.restore();
-      ctx.save();
-      ctx.translate(sol.kx, sol.ky);
-      ctx.rotate(sol.a2);
-      ctx.drawImage(l.cv, -l.ox, -l.oy);
-      ctx.restore();
-      const bt = side > 0 ? rig.boot.near : rig.boot.far;
-      const ax = sol.kx + Math.cos(sol.a2) * l2, ay = sol.ky + Math.sin(sol.a2) * l2;
-      ctx.save();
-      ctx.translate(ax, ay);
-      ctx.rotate(foot.air > 0 ? -0.38 * Math.sin(clamp01(1 - foot.air) * Math.PI) : 0);
-      ctx.drawImage(bt.cv, -bt.ox, -bt.oy);
-      ctx.restore();
-    }
-    _head(ctx, neck, lean, breath, flat2) {
-      const rig = this.rig;
-      const P = POSES[this.pose] || POSES.idle;
-      const want = lean * 0.4 + this.b.look * 0.22 + (this.speech ? Math.sin(this.t * 5.5) * 0.035 : 0) + (P.work ? Math.sin(this.animT * 4) * 0.05 : 0);
-      const STEP = 0.11;
-      const tilt = clamp(Math.round(want / STEP), -3, 3) * STEP;
-      const goggles = P.tool === "lens" || P.tool === "canteen";
-      const blue = this.game.mind ? this.game.mind.blue : 0;
-      const art = rig.headFor(this.face | 0, goggles, !!this.hatOff, blue > 0.35);
-      ctx.save();
-      ctx.translate(neck.x, neck.y + breath);
-      ctx.rotate(tilt);
-      ctx.drawImage(art.cv, -art.ox, -art.oy);
       ctx.restore();
     }
   };
@@ -9521,9 +9853,9 @@ body {
       }
     }
   }
-  var cache6 = /* @__PURE__ */ new Map();
+  var cache7 = /* @__PURE__ */ new Map();
   function buildCreature(def3) {
-    if (cache6.has(def3.id)) return cache6.get(def3.id);
+    if (cache7.has(def3.id)) return cache7.get(def3.id);
     const S = def3.scale ?? 1;
     const R = rng2(def3.seed || 5);
     const D = def3;
@@ -9605,18 +9937,18 @@ body {
     const stance2 = plan === "sprawler" ? 0.68 : plan === "insect" || plan === "arachnid" || plan === "myriapod" ? 0.58 : 0.84;
     rig.standH = D.legU ? (D.legU + D.legL) * S * stance2 + body.H * 0.4 : body.H * 0.5;
     rig.width = body.L;
-    cache6.set(def3.id, rig);
+    cache7.set(def3.id, rig);
     return rig;
   }
 
   // js/ui/icons.js
   var LIGHT5 = { lightX: -0.55, lightY: -0.68, lightZ: 0.42, ambient: 0.42, dither: 0.6 };
-  var cache7 = /* @__PURE__ */ new Map();
+  var cache8 = /* @__PURE__ */ new Map();
   var once = (key2, make) => {
-    let v = cache7.get(key2);
+    let v = cache8.get(key2);
     if (!v) {
       v = make();
-      cache7.set(key2, v);
+      cache8.set(key2, v);
     }
     return v;
   };
@@ -11371,7 +11703,7 @@ body {
       outline: "#1a1328"
     }
   });
-  var cache8 = /* @__PURE__ */ new Map();
+  var cache9 = /* @__PURE__ */ new Map();
   var bake2 = (p, ox, oy, outline = "#14101a", extra = {}) => ({
     cv: p.resolve(MATS2, { ...LIGHT6, outline: 1, outlineColor: outline }),
     ox,
@@ -11747,7 +12079,7 @@ body {
   }
   function reefArt(kind, S = 1, seed = 0) {
     const k = `${kind}:${S.toFixed(2)}:${seed}`;
-    let v = cache8.get(k);
+    let v = cache9.get(k);
     if (v) return v;
     const rng4 = mulberry32(seed * 2654435761 >>> 0);
     const PALETTE = {
@@ -11793,24 +12125,24 @@ body {
         v = paintBrain(S, rng4, mat);
         break;
     }
-    cache8.set(k, v);
+    cache9.set(k, v);
     return v;
   }
   function fishArt(kind, S = 1) {
     const k = `fish:${kind}:${S.toFixed(2)}`;
-    let v = cache8.get(k);
+    let v = cache9.get(k);
     if (!v) {
       v = paintFish(kind, S, mulberry32(99));
-      cache8.set(k, v);
+      cache9.set(k, v);
     }
     return v;
   }
   function jellyArt(S = 1) {
     const k = `jelly:${S.toFixed(2)}`;
-    let v = cache8.get(k);
+    let v = cache9.get(k);
     if (!v) {
       v = paintJelly(S);
-      cache8.set(k, v);
+      cache9.set(k, v);
     }
     return v;
   }
@@ -12043,19 +12375,19 @@ body {
   }
   function sharkArt(S = 1) {
     const k = `shark:${S.toFixed(2)}`;
-    let v = cache8.get(k);
+    let v = cache9.get(k);
     if (!v) {
       v = paintShark(S);
-      cache8.set(k, v);
+      cache9.set(k, v);
     }
     return v;
   }
   function whaleArt(S = 1) {
     const k = `whale:${S.toFixed(2)}`;
-    let v = cache8.get(k);
+    let v = cache9.get(k);
     if (!v) {
       v = paintWhale(S);
-      cache8.set(k, v);
+      cache9.set(k, v);
     }
     return v;
   }
@@ -15973,11 +16305,11 @@ body {
       p.rect(x - W * 0.46, y - 2.4 * K, W * 0.92, 2.6 * K, { mat: "rock", dome: 2.2 * K, tint: 0.06 });
     }
   };
-  var cache9 = /* @__PURE__ */ new Map();
+  var cache10 = /* @__PURE__ */ new Map();
   function buildStructure(def3, size = 1) {
     const K = Math.round(size * 20) / 20;
     const key2 = `${def3.id}|${K}`;
-    if (cache9.has(key2)) return cache9.get(key2);
+    if (cache10.has(key2)) return cache10.get(key2);
     const W = def3.w * K, H = def3.h * K;
     const pad = Math.ceil(6 * K) + 5;
     const p = new Painter(Math.ceil(W * 1.9) + pad * 2, Math.ceil(H) + pad * 2);
@@ -15987,7 +16319,7 @@ body {
     p.smoothHeight(1, 0.4);
     const cv = p.resolve(MATERIALS, { ...LIGHT7, outline: 1, outlineColor: "#170f09" });
     const out = { cv, ox: x, oy: y, w: W, h: H };
-    cache9.set(key2, out);
+    cache10.set(key2, out);
     return out;
   }
 
@@ -20234,7 +20566,7 @@ body {
     p.smoothHeight(1, 0.4);
     return { cv: bake3(p), ox: cx, oy: cy, r: R };
   }
-  var cache10 = /* @__PURE__ */ new Map();
+  var cache11 = /* @__PURE__ */ new Map();
   function rampFrom(hex, { lo = 0.1, hi = 1.55 } = {}) {
     const n = parseInt(hex.slice(1), 16);
     const r = n >> 16 & 255, g = n >> 8 & 255, b = n & 255;
@@ -20301,17 +20633,17 @@ body {
   function orbArt(hex, r, on) {
     const R = Math.max(2, Math.round(r * 2) / 2);
     const k = `orb:${hex}:${R}:${on ? 1 : 0}`;
-    let v = cache10.get(k);
+    let v = cache11.get(k);
     if (!v) {
       v = paintOrb(hex, R, on);
-      cache10.set(k, v);
+      cache11.set(k, v);
     }
     return v;
   }
   var key = (n, S, lv) => `${n}:${S.toFixed(2)}:${Math.round(lv * 4)}`;
   function organArt(name, S = 1, lv = 0) {
     const k = key(name, S, lv);
-    let v = cache10.get(k);
+    let v = cache11.get(k);
     if (v) return v;
     const q = Math.round(clamp01(lv) * 4) / 4;
     switch (name) {
@@ -20342,12 +20674,12 @@ body {
       default:
         v = paintHeart(S, q);
     }
-    cache10.set(k, v);
+    cache11.set(k, v);
     return v;
   }
 
   // js/art/crabpose.js
-  var cache11 = /* @__PURE__ */ new Map();
+  var cache12 = /* @__PURE__ */ new Map();
   function cv2(w, h) {
     const cv = document.createElement("canvas");
     cv.width = Math.max(1, Math.ceil(w));
@@ -20468,7 +20800,7 @@ body {
   }
   function crabPlates(stage = "adult", sc = 3) {
     const key2 = stage + ":" + sc;
-    if (cache11.has(key2)) return cache11.get(key2);
+    if (cache12.has(key2)) return cache12.get(key2);
     const rig = buildCrab(stage);
     const m = rig.m;
     const standH = m.faceH * 0.9 + m.shellW * 0.13;
@@ -20561,7 +20893,7 @@ body {
       // half-extents of the whole animal in sprite pixels, from the anchor
       ext: { l: ox / sc, r: (w - ox) / sc, t: oy / sc, b: (h - oy) / sc }
     };
-    cache11.set(key2, out);
+    cache12.set(key2, out);
     return out;
   }
 
