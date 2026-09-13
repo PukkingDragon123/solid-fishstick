@@ -1,7 +1,7 @@
 // CRABDEN - side-scrolling build. Owns the frame: update every system, then a
 // strict back-to-front draw.
 
-import { clamp, clamp01, lerp, damp, TAU } from './lib/math.js';
+import { clamp, clamp01, lerp, damp, TAU, easeOutCubic, mulberry32, hashStr } from './lib/math.js';
 import { pxGlow, pxDisc, pxEllipse, pxRing, pxArc, pxLine, pxSize } from './render/pix.js';
 import { Audio } from './lib/audio.js';
 import { drawText, drawTextBlock, textWidth, wrapText, LINE_H } from './lib/font.js';
@@ -161,6 +161,13 @@ export class Game {
     this.card = null;
     this.drift = null;
     this.tutorial = 0;
+    // the thousand years, as three numbers: how far the rock has come up out
+    // of the basin, how hard the ground is moving while it does, and how much
+    // has grown back on top of it afterwards
+    this.uplift = 0;
+    this.quake = 0;
+    this.lifeK = 0;
+    this._mesaList = null;
     this.attackT = 0;
     this.lids = 0;
     this.startIntro();
@@ -278,6 +285,20 @@ export class Game {
       this.cam.targetZoom = clamp(this.autoZoom() * 1.25, this.cam.minZoom, this.cam.maxZoom);
       N('You will never see one again. Nothing here will.');
     }
+    // the other thing that is bigger than you, and the only one that has
+    // ever had a reason to look at you
+    if (t > 31 && !this._pro2s) {
+      this._pro2s = 1;
+      const c = this.crab;
+      const top = this.sea.level(c.x), bed = this.terrain.surfaceY(c.x);
+      const sh = this.sea.sharks[0];
+      if (sh) {
+        sh.x = c.x - 260;
+        sh.y = top + (bed - top) * 0.42;
+        sh.dir = 1; sh.sp = 64; sh.turn = 14;
+      }
+      N('This one has been here longer than the reef has. It is not interested in you.');
+    }
     if (t > 36 && !this._pro2d) { this._pro2d = 1; N('Your kind does this once. You pick a hollow, and you stay in it.'); }
     if (t > 44 && !this._pro3) { this._pro3 = 1; this.dialog = null; }
     if (this.dialog) this.dialog.t += dt;
@@ -348,35 +369,217 @@ export class Game {
     });
     beat(16.2, () => { this.card = null; this.fromBlack(0.9); });
 
-    // ---- act three: the montage. Four held frames of the same mound, cut
-    // between rather than dissolved, each one further into the desert. ------
-    const SKY = [
-      { at: 16.4, hour: 19.5, say: 'It did not dream. There was nothing down there to dream about.' },
-      { at: 20.2, hour: 3.0, say: 'Sand went over it. Then more sand.' },
-      { at: 24.0, hour: 12.5, say: 'Then a desert.' },
-      { at: 27.8, hour: 17.5,
-        say: 'A thousand years is not a long time to something that was not counting.' },
-    ];
-    for (const f of SKY) {
-      beat(f.at, () => {
-        this.weather.hour = f.hour;
-        this.sleep = clamp01((f.at - 16) / 12);
-        // each frame is a slightly different angle on the same mound
-        const px = this.crab.x + (SKY.indexOf(f) % 2 ? 26 : -22);
-        this.cam.cineCancel();
-        this.cam.snapTo(px, this.terrain.surfaceY(this.crab.x) - 10 - SKY.indexOf(f) * 3);
-        this.cam.targetZoom = this.cam.zoom =
-          this.autoZoom() * (2.1 - SKY.indexOf(f) * 0.22);
-        this.drift = { x: SKY.indexOf(f) % 2 ? -3 : 3, y: 0, z: 0.004, after: 0 };
-        this.say('narrator', f.say);
-        this.fade = 0.85;                    // a one-frame black between cuts
-        this.fadeWant = 0;
-        this.fadeRate = 3.4;
+    // ---- act three: one wide shot, held, with the ground moving in it ----
+    //
+    // The old version of this was four close frames of the same mound cut
+    // together, and it said "time passed" without ever showing the thing that
+    // actually happened, which is that the floor of a sea came up out of the
+    // water and turned into a desert. So the camera goes all the way out, and
+    // stays out, and everything happens inside one frame: the salt dries, the
+    // basin shakes itself apart, the beds under it stand up as mesas, and
+    // then - a very long time later, and not very much of it - things grow.
+    beat(16.4, () => {
+      this.card = null;
+      this.fromBlack(1.2);
+      this.weather.hour = 19.5;
+      this.sleep = 0.4;
+      this.uplift = 0;
+      this.quake = 0;
+      this.lifeK = 0;
+      this._mesaList = null;
+      this.cam.cineCancel();
+      this.cam.snapTo(this.crab.x + 40, this.terrain.surfaceY(this.crab.x) - 90);
+      this.cam.targetZoom = this.cam.zoom = Math.max(0.30, this.autoZoom() * 0.30);
+      this.drift = { x: 2.2, y: 0, z: 0.0008, after: 0 };
+      this.say('narrator', 'It did not dream. There was nothing down there to dream about.');
+    });
+    beat(21.0, () => {
+      this.weather.hour = 4.0;
+      this.sleep = 0.7;
+      this.say('narrator', 'Sand went over it. Then more sand. Then the sand went hard.');
+    });
+
+    // the earthquake: five seconds of the whole frame moving
+    beat(25.4, () => {
+      this._quakeT = 0;
+      this.weather.hour = 8.0;
+      this.audio.play('hit', { pitch: 0.35 });
+      this.say('narrator', 'And then the basin remembered it was the bottom of something.');
+    });
+    if (t > 25.4 && t < 32.0) {
+      const q = t - 25.4;
+      // it builds, holds, and falls off - an earthquake is not a switch
+      this.quake = clamp01(Math.min(q / 1.4, (32.0 - t) / 2.2));
+      this.uplift = clamp01(q / 5.6);
+      this.cam.shake(this.quake * 2.6);
+      if (Math.random() < dt * 20 * this.quake) {
+        const wx = this.crab.x + (Math.random() - 0.5) * 1500;
+        this.fx.dust(wx, this.terrain.surfaceY(wx), 1 + Math.random() * 1.6);
+      }
+      if (Math.random() < dt * 1.6 * this.quake) this.audio.play('hit', { pitch: 0.3 + Math.random() * 0.2 });
+    }
+    beat(31.0, () => {
+      this.uplift = 1;
+      this.weather.hour = 12.5;
+      this.say('narrator', 'Two hundred metres of seabed, standing up in the sun.');
+    });
+
+    // and then, at last, the part that takes the longest and shows the least
+    beat(35.0, () => {
+      this.weather.hour = 17.0;
+      this.sleep = 1;
+      this.drift = { x: -1.8, y: 0, z: 0.0006, after: 0 };
+      this.say('narrator', 'Nothing lived here for four hundred years. And then a little did.');
+    });
+    if (t > 35.0) this.lifeK = clamp01((t - 35.0) / 4.5);
+    beat(40.4, () => {
+      this.say('narrator', 'A thousand years is not a long time to something that was not counting.');
+    });
+
+    beat(44.0, () => { this.toBlack(1.4); this.dialog = null; });
+    if (t > 45.8) { this.dialog = null; this.sleep = 0; this.startWake(); }
+  }
+
+  /**
+   * The rock that was not there before.
+   *
+   * The basin does not simply dry out - it comes up. Over the thousand years
+   * the whole floor of the sea is pushed out of the water and the hard beds
+   * under it stand up out of the salt as mesas, which is why this desert is
+   * full of flat-topped rock with sea shells in the top of it.
+   *
+   * It is one held wide shot with the ground moving in it. Seven of them come
+   * up on a stagger, so the skyline arrives in pieces rather than rising like
+   * a lift, and while they are moving the camera cannot hold still.
+   */
+  _mesas() {
+    if (this._mesaList) return this._mesaList;
+    const r = mulberry32(hashStr(`uplift:${this.seedKey || this.seed}`));
+    const cx = this.crab.x;
+    const out = [];
+    for (let i = 0; i < 7; i++) {
+      out.push({
+        x: cx - 980 + i * 320 + (r() - 0.5) * 140,
+        w: 58 + r() * 90,
+        h: 48 + r() * 84,
+        t: i * 0.085 + r() * 0.09,        // when in the rise it starts
+        tone: r(),
+        seed: Math.floor(r() * 9999),
       });
     }
+    // one of them is much bigger than the rest, because a skyline of equals
+    // is a fence and a skyline with a landmark in it is a place
+    out[3].w = 150; out[3].h = 168; out[3].t = 0.02;
+    this._mesaList = out;
+    return out;
+  }
 
-    beat(31.6, () => { this.toBlack(1.3); this.dialog = null; });
-    if (t > 33.2) { this.dialog = null; this.sleep = 0; this.startWake(); }
+  _drawUplift(ctx, cam) {
+    const K = clamp01(this.uplift || 0);
+    if (K <= 0.001) return;
+    const z = cam.zoom;
+    const px = Math.max(1, Math.round(z));
+    const vh = cam.vh;
+    for (const m of this._mesas()) {
+      const k = easeOutCubic(clamp01((K - m.t) / Math.max(0.08, 1 - m.t)));
+      if (k <= 0.001) continue;
+      const gy = this.terrain.surfaceY(m.x);
+      const H = m.h * k;
+      const hw = m.w / 2;
+      // Columns are stepped in SCREEN pixels, not world ones. Stepping in
+      // world units and filling one screen pixel each leaves a comb of gaps
+      // at any zoom under 1, which is exactly the zoom this shot is at.
+      const sL = cam.worldToScreen(m.x - hw, gy).x;
+      const sR = cam.worldToScreen(m.x + hw, gy).x;
+      if (sR < -20 || sL > cam.vw + 20) continue;
+      const sBot = cam.worldToScreen(m.x, gy + 10).y;
+      const x0 = Math.floor(Math.max(sL, -px) / px) * px;
+      const x1 = Math.min(sR, cam.vw + px);
+      for (let sx = x0; sx <= x1; sx += px) {
+        const u = clamp(((sx - sL) / Math.max(1, sR - sL)) * 2 - 1, -1, 1);
+        const a = Math.abs(u);
+        // a flat top, shoulders that fall away in two steps, and the odd
+        // notch out of the rim - a mesa is a broken thing, not a box
+        const shoulder = a > 0.82 ? (1 - a) / 0.18 : 1;
+        const step = a > 0.62 && a <= 0.82 ? 0.88 : 1;
+        const notch = Math.sin(u * 9 + m.seed) > 0.86 ? 0.9 : 1;
+        const topW = gy - H * Math.max(0, shoulder) * step * notch;
+        const sTop = Math.round(cam.worldToScreen(m.x, topW).y / px) * px;
+        if (sTop >= sBot) continue;
+        const edge = a > 0.9 ? -0.18 : a > 0.78 ? -0.09 : 0;
+        // and the weathering runs the other way: rain has cut gullies down
+        // the face, so the beds are crossed by verticals rather than being
+        // clean stripes on a cake
+        const flute = Math.sin(u * 23 + m.seed * 0.7) * 0.05
+          + (Math.sin(u * 41 + m.seed) > 0.88 ? -0.13 : 0);
+        // strata: the rock is in beds, and the beds are what you read it by
+        for (let y = sTop; y < sBot; y += px) {
+          const world = cam.ry + (y - vh / 2) / z;
+          const band = Math.floor((gy - world) / 11);
+          const lit = band % 3 === 0 ? 0.14 : band % 3 === 1 ? 0 : -0.10;
+          const v = clamp01(0.42 + m.tone * 0.14 + lit + edge + flute);
+          ctx.fillStyle = `rgb(${Math.round(96 + v * 120)},${Math.round(62 + v * 78)},${Math.round(56 + v * 62)})`;
+          ctx.fillRect(sx, y, px, px);
+        }
+        // the lip catches the light
+        ctx.fillStyle = 'rgba(238,206,168,0.45)';
+        ctx.fillRect(sx, sTop, px, px);
+      }
+      // while it is moving it throws everything it is pushing through
+      if (this.quake > 0.05 && Math.random() < this.quake * 0.5) {
+        this.fx?.dust(m.x + (Math.random() - 0.5) * m.w, gy + 2, 1.4 + Math.random());
+      }
+    }
+  }
+
+  /**
+   * What came back. Not a forest - a few tufts, a few stems, and a line of
+   * birds going somewhere, because the point of the shot is that this took a
+   * thousand years and is still almost nothing.
+   */
+  _drawNewLife(ctx, cam) {
+    const k = clamp01(this.lifeK || 0);
+    if (k <= 0.001) return;
+    const z = cam.zoom;
+    const px = Math.max(1, Math.round(z));
+    const b = cam.bounds(60);
+    const r = mulberry32(hashStr('newlife'));
+    for (let i = 0; i < 90; i++) {
+      const wx = this.crab.x - 900 + r() * 1800;
+      if (wx < b.x0 || wx > b.x1) { r(); r(); continue; }
+      const when = r();
+      const g = clamp01((k - when * 0.7) / 0.3);
+      if (g <= 0) { r(); continue; }
+      const gy = this.terrain.surfaceY(wx);
+      const h = (5 + r() * 9) * g;
+      const s = cam.worldToScreen(wx, gy);
+      const sway = Math.sin(this.time * 1.4 + wx * 0.05) * 1.4 * z;
+      ctx.fillStyle = `rgba(${Math.round(96 + g * 30)},${Math.round(118 + g * 40)},58,${0.5 + g * 0.4})`;
+      for (let bl = 0; bl < 3; bl++) {
+        const lean = (bl - 1) * 0.6;
+        for (let t = 0; t < h; t += 1) {
+          const x = s.x + (lean * t * 0.3 + sway * (t / h)) * z * 0.4;
+          ctx.fillRect(Math.round(x), Math.round(s.y - t * z), px, px);
+        }
+      }
+    }
+    // and a line of birds, high up, going somewhere else
+    if (k > 0.55) {
+      const fk = clamp01((k - 0.55) / 0.45);
+      const gy = this.terrain.surfaceY(this.crab.x);
+      for (let i = 0; i < 7; i++) {
+        const wx = this.crab.x - 500 + ((this.time * 42 + i * 46) % 1400);
+        const wy = gy - 230 - Math.sin(i * 1.1) * 26;
+        const s = cam.worldToScreen(wx, wy);
+        const flap = Math.sin(this.time * 7 + i) > 0 ? 1 : -1;
+        ctx.globalAlpha = fk * 0.7;
+        ctx.fillStyle = '#3a3128';
+        ctx.fillRect(Math.round(s.x), Math.round(s.y), px, px);
+        ctx.fillRect(Math.round(s.x - px * 2), Math.round(s.y - flap * px), px, px);
+        ctx.fillRect(Math.round(s.x + px * 2), Math.round(s.y - flap * px), px, px);
+        ctx.globalAlpha = 1;
+      }
+    }
   }
 
   /**
@@ -501,6 +704,12 @@ export class Game {
   startWake() {
     this.state = 'intro';
     this.sea.stop();
+    // the thousand years is over: the rock that came up in the wide shot was
+    // that shot's rock, and the world has its own now
+    this.uplift = 0;
+    this.quake = 0;
+    this.lifeK = 0;
+    this._mesaList = null;
     // it is still under the sand, and stays there until it decides not to be
     this.buried = 1;
     this.buryTarget = 0.90;          // a mound, not an animal, until he is close
@@ -772,8 +981,11 @@ export class Game {
         this.cam.ty += d.y * dt;
         this.cam.x += d.x * dt;
         this.cam.y += d.y * dt;
-        this.cam.targetZoom = clamp(this.cam.targetZoom + d.z * dt,
-          this.cam.minZoom, this.cam.maxZoom);
+        // A cutscene is not bound by the gameplay zoom floor. This clamp was
+        // quietly dragging every wide shot back to 1x the moment the drift
+        // took over, which is why the basin never actually looked wide.
+        const zmin = this.state === 'play' ? this.cam.minZoom : 0.22;
+        this.cam.targetZoom = clamp(this.cam.targetZoom + d.z * dt, zmin, this.cam.maxZoom);
       }
     }
   }
@@ -2333,6 +2545,9 @@ export class Game {
     this.backdrop.drawLayer(ctx, cam, this.weather, 'near', this.terrain);
     // the sea, if there is one, replaces the sky before anything in it is drawn
     if (this.seaShowing) this.sea.drawColumn(ctx, cam, r.vw, r.vh);
+    // the ground coming up out of the basin, drawn before the terrain so the
+    // dunes in front of it hide their feet
+    if (this.uplift) this._drawUplift(ctx, cam);
     this.world.drawProps(ctx, cam);
     this.terrain.draw(ctx, cam);
     this.world.drawWater(ctx, cam);
@@ -2354,6 +2569,7 @@ export class Game {
     this._drawCrab(ctx, cam);
     if (this.npc.riding && !this.npc.hidden) this.npc.draw(ctx, cam);
     if (this.state === 'title') this.menu.drawBottle(ctx, cam);
+    if (this.lifeK) this._drawNewLife(ctx, cam);
     if (this.sleep) this._drawSleep(ctx, cam);
     if (this.waking) this._drawWaking(ctx, cam);
     if (this._pee || this._peeDrops?.length) this._drawStream(ctx, cam);

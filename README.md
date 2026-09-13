@@ -2,7 +2,7 @@
 
 You are a crab. You have been asleep for a thousand years. The ocean you fell
 asleep in is gone, the seabed above you is now a desert, and the thing that
-woke you was an archaeologist relieving herself on what she took to be a rock.
+woke you was an archaeologist relieving himself on what he took to be a rock.
 
 There is a spring in your back. There used to be a sea here because of it.
 
@@ -47,8 +47,9 @@ npm run build     # -> dist/crabden.html + dist/crabden.body.html
 | build on your own back | click yourself | tap yourself |
 | put a parasite on something | `X` | — |
 | put a relic in your basin | `K` | — |
-| tap out a word | hold/release `T` | — |
-| sit down with her | `C`, or click her | tap her |
+| tap out a word | hold/release `T` | hold the key on the talk screen |
+| sit down with him | `C`, or click him | tap him |
+| ask him what needs doing | tap `WORK` on the talk screen | the same |
 | dig / pick / search | hold `E`, tap `E` on the band | hold, tap the band |
 | water a new seed | click the drop over it | tap the drop |
 | Vess: follow, get on, get off | `F` | — |
@@ -65,10 +66,10 @@ npm run build     # -> dist/crabden.html + dist/crabden.body.html
 | where to walk (ROAM) | click anywhere in the desert | the same |
 | sing back (taming) | `1`-`5` | the pitch keys |
 | the menu | it is where you start | the same |
-| lure her in | `L` | — |
-| spray the spore | `V` (again to let her go) | — |
-| her pick, once she is yours | `E` | — |
-| her bench | `B` | **SHOP**, then BENCH |
+| lure him in | `L` | — |
+| spray the spore | `V` (again to let him go) | — |
+| his pick, once he is yours | `E` | — |
+| his bench | `B` | **SHOP**, then BENCH |
 | pause / back out | `Esc`, or the chip in the top-right corner | the same chip |
 
 The chip in the corner is the only button that is always in the same place. It
@@ -95,7 +96,7 @@ held takes, a narrator who is interested rather than excited, and one moment
 where the camera pulls back to put the animal next to something that makes it
 look like nothing at all.
 
-That something is a **blue whale**, and her calf. They are painted the same way
+That something is a **blue whale**, and a calf. They are painted the same way
 as everything else — a long body with the mass forward of the middle, ventral
 pleats under the throat, a flipper swept back, a dorsal fin so small it is
 nearly an apology, and flukes wider than you are long. They cross the top of
@@ -109,6 +110,40 @@ for ever.
 >
 > You will never see one again. Nothing here will.
 
+Lower down, working the middle of the water column, there are **reef sharks**.
+They are the opposite shape to a whale in every detail — pointed snout, widest
+at the shoulder and tapering all the way back, a hooked dorsal, pectorals held
+out flat like wings, and a tail whose upper lobe is twice the lower — and they
+behave differently too. A whale crosses once and never turns round. A shark
+does a circuit: it runs, leans into a turn at the edge of the shot, changes
+depth and comes back, all day, every day of its life.
+
+> This one has been here longer than the reef has. It is not interested in you.
+
+### A thousand years, in one shot
+
+Then you dig in, and the sea goes, and the camera **goes all the way out and
+stays out**. Everything that happens over the next thousand years happens
+inside one held wide shot of the basin.
+
+The salt dries. The light wheels over the mound far too fast. And then the
+ground starts to move: five seconds of **earthquake** — the whole frame shaking,
+dust pouring off every slope, the sound of something enormous failing — and
+while it shakes, the hard beds under the old seabed **stand up out of the salt
+as mesas**, seven of them on a stagger so the skyline arrives in pieces rather
+than rising like a lift. They come up weathered: flat tops with notches out of
+the rim, shoulders that fall away in two steps, horizontal beds crossed by the
+vertical gullies the rain has cut into the faces.
+
+> And then the basin remembered it was the bottom of something.
+>
+> Two hundred metres of seabed, standing up in the sun.
+
+And then, at last, the part that takes the longest and shows the least: a few
+tufts of green along the ground line, and a line of birds going somewhere else.
+
+> Nothing lived here for four hundred years. And then a little did.
+
 ### You wake up in the dark
 
 You do not wake up looking at something. You wake up with one sense back before
@@ -120,7 +155,7 @@ place.
 Then it is warm. That is the part it notices first.
 
 Then the lids come up, and you are looking through a slit at a woman standing
-over you, mid-stream, apologising to what she still believes is a rock.
+over you, mid-stream, apologising to what he still believes is a rock.
 
 > Sorry. Sorry, rock.
 
@@ -234,7 +269,7 @@ walking, because the only thing out here worth having is over the next dune.**
    and the garden on your back larger in every sense.
 
 **Nobody explains this in a wall of text.** Dr. Vess teaches it, one line at a
-time, in her speech bubble, and only when you are actually standing in front of
+time, in his speech bubble, and only when you are actually standing in front of
 the thing: the spring the first time you look at it, your own back the first
 time you have water to spend, the bed the first time you are up there, the
 germination the first time a seed drinks, the bead the first time something
@@ -260,7 +295,7 @@ fruit off the stem, **searching** a ruin, **sinking** a plant and **pouring**
 water are all somebody kneeling down and doing something with their hands for a
 while. The tablet is drawn at the work rather than in a corner, because the
 thing you are looking at while you dig is the hole — and the quality pips on it
-are the number that matters: a fossil dug badly comes out in pieces, and she
+are the number that matters: a fossil dug badly comes out in pieces, and he
 tells you so.
 
 > You have broken it. It was eleven thousand years old and you have broken it.
@@ -273,10 +308,10 @@ You do not buy a plant. You pick the bed and the seed, and then **somebody has
 to walk over and put it in** — which for most of them is not you. A crab is a
 magnificent animal with a claw the size of a door and no way at all to hold a
 seed the size of a grain of sand, so **a plant can require particular hands**:
-hers, a real tool out of her bench, or something of yours that digs for a
+his, a real tool out of his bench, or something of yours that digs for a
 living. The seed card says which before you try, and says why.
 
-So she walks over, **climbs onto your back**, opens the ground, puts it in and
+So he walks over, **climbs onto your back**, opens the ground, puts it in and
 covers it, and the whole of that takes the better part of ten seconds you can
 watch and help with. The bed shows the hole deepening and the spoil heaped
 beside it. What goes in is a seed, and **a seed does nothing at all until it is
@@ -289,10 +324,10 @@ own job with its own band.
 
 There is a title screen, and it is the game rather than a picture of a logo:
 **your own crab**, out of your own save, standing in a sandstorm — and Dr. Vess
-beside it, **drinking a beer**. She takes a pull every couple of seconds, the
-bottle empties as she does, she looks at the empty one for a moment, and then
-she throws it — a real bottle on a real arc that spins, bounces once and lies in
-the sand until the desert takes it back. Then she opens another, because there
+beside it, **drinking a beer**. He takes a pull every couple of seconds, the
+bottle empties as he does, he looks at the empty one for a moment, and then
+he throws it — a real bottle on a real arc that spins, bounces once and lies in
+the sand until the desert takes it back. Then he opens another, because there
 is nothing else to do out here and there has not been for eleven years.
 
 The storm behind it is real weather with the wind turned up, blowing in gusts so
@@ -358,21 +393,21 @@ who is in range, and whether the spore would take in them, with the three ways i
 ### It is all made of something
 
 Nothing in the interface is a rounded rectangle. There are **three surfaces and
-no fourth**, and they are all things she actually has with her.
+no fourth**, and they are all things he actually has with him.
 
 **Stone** is the default: a slab of the same rock the mesas are cut from,
 knocked square, bedded, gritted, with the corners chipped off and the shape
 carved into it as a sunk channel — dark on the lit side, bright on the far one,
 so it reads as cut rather than drawn. That is what a readout is, and what the
-words you tap at her are, because you say them by hitting something hard.
+words you tap at his are, because you say them by hitting something hard.
 
-**Paper** is a leaf out of her field notebook: warm off-white with the fibre
+**Paper** is a leaf out of his field notebook: warm off-white with the fibre
 showing, ruled every nine pixels because that is the line height of the font, a
 red margin down the left and a torn bottom edge that bites differently every
-time. That is what anything she wrote or said is — so her answers come on it,
+time. That is what anything he wrote or said is — so his answers come on it,
 in ink.
 
-**Scroll** is parchment with the roll still on both ends. **Leather** is her
+**Scroll** is parchment with the roll still on both ends. **Leather** is his
 bag, stitched just inside the edge. Each surface is baked once per size and
 blitted, so a notebook page costs one draw rather than a hundred.
 
@@ -479,16 +514,16 @@ animal that is none of those throws it off, and remembers that you tried.
 and there is exactly one solution to it walking around the basin.
 
 It takes three steps, on purpose, so none of it happens by accident. **Lure**:
-put an artefact on the ground in front of you — she has been wrong about a rock
-for eleven years and she cannot walk past one — and she comes over and crouches
-down over it, which is the only time her head is low enough and still enough to
-reach. **Spray**: a spore, at close range, while she is down. There is a beat
-where she knows. **And then her eye goes blue and stays blue**, and she stops
+put an artefact on the ground in front of you — he has been wrong about a rock
+for eleven years and he cannot walk past one — and he comes over and crouches
+down over it, which is the only time his head is low enough and still enough to
+reach. **Spray**: a spore, at close range, while he is down. There is a beat
+where he knows. **And then his eye goes blue and stays blue**, and he stops
 talking, because there is nothing left in there doing the talking.
 
-While you have her she does what you point her at and nothing else. She walks
-on your keys. She swings a pick. She works the bench. Press `V` again and you
-let her go, and she comes round a hundred metres away having lost an hour, and
+While you have him he does what you point him at and nothing else. He walks
+on your keys. He swings a pick. He works the bench. Press `V` again and you
+let him go, and he comes round a hundred metres away having lost an hour, and
 says so.
 
 ### Mining
@@ -505,14 +540,14 @@ Every swing takes a bite out of the ground whether or not there is anything
 under it, so getting down to a deep seam is the work. Once a seam is open it
 takes hits, cracks a little more with each one, and then breaks.
 
-The ladder closes, so nothing needs a pick made out of itself: **her trowel gets
+The ladder closes, so nothing needs a pick made out of itself: **his trowel gets
 everything down to copper**, copper buys the **copper pick**, and the copper pick
 is what opens **iron and amber**. The iron pick is not a gate — it is just
 faster, and it drops an extra lump.
 
 ### Crafting, and a base on your back
 
-The bag is hers, because she is the one with hands. The tree is three tiers and
+The bag is his, because he is the one with hands. The tree is three tiers and
 it runs **through the garden**: ore melts into bar at the **kiln**, bar becomes
 part at the **bench**, part becomes the thing that goes on your back — and the
 kiln and the bench are both things you build on your own shell. So the loop is:
@@ -523,11 +558,11 @@ and iron go to **bars** at the kiln, silica and salt to **glass**. At the bench:
 **gears** out of copper, **pipe** out of iron, **pane** out of glass, and then
 the two picks and the **spore sprayer** that made all of it possible in the
 first place. Every card in the panel shows what it needs as icons, greyed with a
-reason when she cannot make it yet.
+reason when he cannot make it yet.
 
 | | |
 | --- | --- |
-| ![Hers no longer](docs/shot-15-owned.png) | ![The bench](docs/shot-16-bench.png) |
+| ![His no longer](docs/shot-15-owned.png) | ![The bench](docs/shot-16-bench.png) |
 
 ### Your genome
 
@@ -654,7 +689,7 @@ bead of amber catching the light from a long way off. Dig one up and it goes in
 your pack, and the ground it came out of goes everywhere: a low ring of smoke
 spreading outward along the sand, a column of it going up the middle, and a
 spray of actual grains thrown clear that bounce once and settle. Everything
-that digs in this game uses it — you, Vess over her trench, and the animal
+that digs in this game uses it — you, Vess over his trench, and the animal
 burying itself in the opening, where the same burst is silt instead of dust and
 drifts instead of settling.
 
@@ -716,14 +751,14 @@ furred survivors that never drink, three birds.
 
 You do not read their entries. You **watch** them, and Dr. Vess writes them
 down — five field notes per species, unlocked by observation, spoken aloud as
-she works them out. Real behaviour: the skink dives into a dune rather than
+he works them out. Real behaviour: the skink dives into a dune rather than
 running across it, the pebbler's spines comb dew into its own mouth, the digger
 wasp restarts its entire sequence if you move the prey a few centimetres.
 
-And they are **her** notes, in her notebook, in her hands. If she is not with
-you, the field-notes tab tells you how far away she is and which way. That is
-the point of keeping her: `F` calls her over, and once you are big enough to
-take her weight she rides the near rim of your shell and writes while you walk.
+And they are **his** notes, in his notebook, in his hands. If he is not with
+you, the field-notes tab tells you how far away he is and which way. That is
+the point of keeping him: `F` calls him over, and once you are big enough to
+take his weight he rides the near rim of your shell and writes while you walk.
 
 Hostiles do not bother a bare rock. Once you are carrying something worth
 taking they start arriving, faster at night: dune scorpions in pairs, a bone
@@ -849,22 +884,22 @@ the spine, insects walk an alternating tripod, reptiles bask.
 
 ### Dr. Vess
 
-**She is designed from the sheets in `assets/`, and painted from scratch.**
+**He is designed from the sheets in `assets/`, and painted from scratch.**
 Those two reference sheets — a young field archaeologist and an old wanderer —
-are the design document: what she wears, what she carries, what her face does.
+are the design document: what he wears, what he carries, what his face does.
 Nothing in `assets/` is loaded at runtime. `js/art/personart.js` rebuilds that
 design the same way the crab is built — height fields, material ramps, one
-light and a hard outline — so she is lit by the same sun as the ground she is
+light and a hard outline — so he is lit by the same sun as the ground he is
 standing on, and can be **posed** rather than flipped through.
 
 What comes off the sheet: a **wide tan bush hat** with a maroon band and brass
 goggles pushed up on it, a **cream shirt** with the sleeves already rolled, a
 leather placket and a belt with a brass buckle, **olive trousers** into heavy
 dark **boots with a turned-down cuff**, a **canvas pack** with a buckled flap
-and a bedroll strapped across the top, and the **maroon map tube** on her hip —
-the one saturated thing on her, and the first thing your eye lands on. Her
+and a bedroll strapped across the top, and the **maroon map tube** on his hip —
+the one saturated thing on him, and the first thing your eye lands on. His
 proportions come off the sheet too: the head with its hat is about a third of
-the figure, the legs are short, and the pack is nearly as wide as she is.
+the figure, the legs are short, and the pack is nearly as wide as he is.
 
 The head is laid out in whole units rather than fractions of a box, because a
 face is a set of distances: the eyes two units apart with a catchlight in each,
@@ -873,7 +908,7 @@ The hair is **chunks, not strands** — a fringe hanging out from under the brim
 with a ragged edge, two heavy locks past the cheek, a mass at the nape — and
 the crown is never painted at all, because the hat is sitting on it.
 
-**And she has fingers.** Four off the front of the palm, fanned across it and
+**And he has fingers.** Four off the front of the palm, fanned across it and
 shortening toward the little one, each with a knuckle in it, plus a thumb off
 the side that opposes them — and they curl. A hand with a pick in it closes on
 the pick; an empty one opens.
@@ -881,7 +916,7 @@ the pick; an empty one opens.
 The rig comes back in pieces: head, hat, pack, map tube, torso, four limb
 bones, and a boot that is its own part.
 
-Her gait is driven by one phase rather than by how far each foot has drifted
+His gait is driven by one phase rather than by how far each foot has drifted
 from a home position: at any moment one foot is planted and the other is
 swinging past it, and they swap every half cycle. The phase advances with
 distance covered rather than with time, so the feet never slide. That swap is
@@ -894,20 +929,20 @@ back all through the stance, which is a person walking backwards whichever way
 they happen to be facing. The arms hang off the same phase with a cosine, so
 each one is furthest back exactly when the leg on its side is furthest forward.
 
-**She does not flip when she turns round.** A facing change starts a pivot on its
+**He does not flip when he turns round.** A facing change starts a pivot on its
 own short clock, so every turn takes the same quarter second and ends cleanly,
-and her width only ever narrows to a bit over half — enough to read as turning
-through, never so thin it looks like a card being flipped over. Her feet shuffle
-across as she goes, she rises onto the ball of a foot halfway through, and the
+and his width only ever narrows to a bit over half — enough to read as turning
+through, never so thin it looks like a card being flipped over. His feet shuffle
+across as he goes, he rises onto the ball of a foot halfway through, and the
 weight going over scuffs a little dust.
 
-Because she is in pieces, she is **posed rather than flipped through**.
+Because he is in pieces, he is **posed rather than flipped through**.
 `js/entities/npc.js` is a skeleton: a pose is a set of joint targets — how far
-she is folded, how far the spine leans, where each shoulder and elbow sits, and
-what is in the near hand — and everything between poses is damped, so she never
-snaps, she settles. Her feet are planted in world space and solved with the
-same two-bone IK the crab's legs use, so she stands on slopes, tucks her feet
-under her when she crouches over a dig, and swings a leg through rather than
+he is folded, how far the spine leans, where each shoulder and elbow sits, and
+what is in the near hand — and everything between poses is damped, so he never
+snaps, he settles. His feet are planted in world space and solved with the
+same two-bone IK the crab's legs use, so he stands on slopes, tucks his feet
+under him when he crouches over a dig, and swings a leg through rather than
 sliding. The boot stays flat whatever the shin above it is doing.
 
 The face is the same painter with a `mood` argument. An expression is four
@@ -915,15 +950,15 @@ numbers — how far the lid is down, how the brow is angled, how wide the mouth
 opens, which way a closed mouth bows — plus two flags for a blush and a bead of
 sweat. **Fourteen of them**: level, wry, alarmed, delighted, sour, asking,
 proud, weary, shocked, laughing, thinking, stricken, grim, fond. They are baked
-on demand, so she wears the right face in the world as well as in the bubble,
-and the bubble's copy is painted at four times her walking scale.
+on demand, so he wears the right face in the world as well as in the bubble,
+and the bubble's copy is painted at four times his walking scale.
 
-She can also be **startled**, which is its own small piece of physics: she
-leaves the ground, squashes on the way out and stretches at the top, tucks her
-feet under her, lands with a thump and a puff of dust — and her hat comes off,
-spins away on its own arc, bounces once and stays where it lands. Her kit — bedroll, canteen, lantern, survey peg, skull,
+He can also be **startled**, which is its own small piece of physics: he
+leaves the ground, squashes on the way out and stretches at the top, tucks his
+feet under him, lands with a thump and a puff of dust — and his hat comes off,
+spins away on its own arc, bounces once and stays where it lands. His kit — bedroll, canteen, lantern, survey peg, skull,
 spoil heap, pick, brush — is painted the same way and scattered on the ground
-wherever she sets up to dig.
+wherever he sets up to dig.
 
 The **Elder** off the second sheet is the same rig with five ramps swapped and
 three shapes added: a red hat with a quill through the band, a pale shawl over
@@ -933,68 +968,113 @@ instead of drawing them — a second character costs a palette, not a sheet.
 Nothing in the game is a photograph of a sprite sheet, which is also why the
 whole build is 40% smaller than it was.
 
-She does three things now. On the ground she works — wanders, crouches, digs,
-writes. **Follow** and she keeps pace behind you. **Get on** (once you are big
-enough to take her weight) and she rides the near rim of your shell with her
-notebook out, which is the only way she gets to write while you are moving. She
-talks the whole time, in a bubble with a tail, about what she can see from up
+He does three things now. On the ground he works — wanders, crouches, digs,
+writes. **Follow** and he keeps pace behind you. **Get on** (once you are big
+enough to take his weight) and he rides the near rim of your shell with his
+notebook out, which is the only way he gets to write while you are moving. He
+talks the whole time, in a bubble with a tail, about what he can see from up
 there and about what you are carrying.
 
-And she listens. You have no voice and no hands you can write with, so you
+And he listens. You have no voice and no hands you can write with, so you
 **tap** — hold `T` for a long tap, release for a short one, pause to end a
-letter. Six taps in and she stops hearing noise and starts hearing language:
+letter. Six taps in and he stops hearing noise and starts hearing language:
 
 > Wait. Wait. That is not random. Long, short, long — that is code. You are
 > TAPPING AT ME. You are a person. Oh, you are a person.
 
-From then on you have a language. It is a terrible language. Tapped at her
-across the sand she answers every word she knows and reads back anything else
+From then on you have a language. It is a terrible language. Tapped at his
+across the sand he answers every word he knows and reads back anything else
 you spell, letter by letter.
 
-### Sitting down with her
+### Twenty-one faces
+
+His portrait sheet is his design document, and it is also, now, literally his
+face. Twenty-one expressions were box-sampled off it onto the game's own grid
+— 59x64 each, quantised to one shared 47-colour ramp — so his head is made of
+the same size of pixel as the sand he is standing on instead of being a smooth
+painting pasted over it. One crop box was used for all of them, so nothing
+jumps when the expression changes.
+
+They are not decoration. **A line picks the face it is said with**: he scowls
+at *no*, grins at water, peers at a question, goes flat and tired late in the
+day, and shouts with the shouting one. The talk screen holds the whole card as
+large as the frame will take it and changes it on every line of every answer;
+the speech bubble out in the desert gets the same face cropped to hat brim and
+chin, because at that size his mouth is half the information on the card.
+
+His name is **Dr. Elias Vess**, and he/him — the art was never ambiguous about
+that and neither is the game.
+
+### Sitting down with him
 
 And then there is the other kind of talking, the kind where you both stop.
-Press `C` beside her, or click on her, and the world goes quiet: her face at
-five times walking size on the left, a letterbox, and everything you could say
+Press `C` beside him, or click on him, and **the camera comes in on the pair of
+you** — a conversation is a two-shot, the wide shot is for walking. The world
+goes quiet: his portrait on the left, a letterbox, and everything you could say
 laid out as a grid.
 
 **Every word has its code written underneath it**, because the code is the
 language and hiding it would be like hiding the words. You answer two ways and
 they are the same answer: **tap it out for real** on the key — the wire along
 the bottom shows every mark the instant you make it, and the moment the letters
-spell something she knows she answers without waiting for the pause — or
-**point at it**, for when your hands are busy. She does not treat you
+spell something he knows he answers without waiting for the pause — or
+**point at it**, for when your hands are busy. He does not treat you
 differently for pointing.
 
-She answers a card at a time, each with its own icon and her face in the state
-that line puts her in, the words arriving as she says them rather than all at
+**The key** is the thing you say it with. You have no mouth and one hard claw,
+so there is a stone key across the bottom of the screen and you hold it down
+with the pincer: a short press is a dot, a long one a dash, let go for a moment
+and the letter lands. The mark grows from a dot into a dash under your own claw
+while you hold it, and the letter it spells appears right there — so the code is
+something happening in your hand rather than a table you have to remember.
+
+He answers a card at a time, each with its own icon and his face in the state
+that line puts him in, the words arriving as he says them rather than all at
 once. Pips in the corner say how much is left. And some of the answers are
 lessons — **this is the only place in the game where you are taught anything**.
-Not a tooltip and not a tutorial step: a woman who has been out here eleven
+Not a tooltip and not a tutorial step: a man who has been out here eleven
 years telling you how to grow a plant, how the seam under your feet works, why
 a spore will not take in something that owes you nothing, and what the sea did.
 
-Tap `PLANT` at her and you get the whole of it: your back is soil, drag a seed
+Tap `PLANT` at him and you get the whole of it: your back is soil, drag a seed
 onto a plot, water it, leave it alone, and pick it when the bead lifts. There
 are a dozen of them, and the ones that would not make sense yet are not on the
 table yet.
 
-![Sitting down with her](docs/shot-27-talk.png)
+![Sitting down with him](docs/shot-27-talk.png)
 
-### She notices things
+### He has work for you
 
-She is the only one of you who can read this desert, so she says so. A hostile
-inside a hundred and thirty and she **shouts** — and a shout is not a bigger
+Tap `WORK` and he tells you what he wants doing next. There are five of them,
+in order, and they are all things a man with two hands and no shell cannot do:
+
+| | |
+| --- | --- |
+| **FILL THE SHELL** | stand on the spring and hold the valve until it is full |
+| **SOMETHING ALIVE** | get one living thing growing on your back |
+| **A CLEAN BONE** | take a fossil out of a dig without cracking it |
+| **BRING IT BACK** | water dead ground until three things come up on their own |
+| **OPEN A SEAM** | find metal and get it out |
+
+When he has finished telling you about one, you are doing it. There is no
+marker floating over anything and nothing to turn in: the check runs on the
+world you already have, and while it is open the job sits on a scrap of his
+notebook in the corner and goes green for a few seconds when it is done.
+
+### He notices things
+
+He is the only one of you who can read this desert, so he says so. A hostile
+inside a hundred and thirty and he **shouts** — and a shout is not a bigger
 speech bubble, it is a different one: hot paper, red ink, a hard red edge, spikes
 round the outside and the whole card shaking on the spot, over the top of
-whatever she was in the middle of saying.
+whatever he was in the middle of saying.
 
 > **BEHIND YOU — DUNE SCORPION!**
 
-And when the spore takes her she does not simply switch over. **Her legs go
-first**, and then she is on the ground with it going through her, kicking up
-sand and telling you exactly what she thinks of it, for three or four seconds
-before she is quiet.
+And when the spore takes him he does not simply switch over. **His legs go
+first**, and then he is on the ground with it going through him, kicking up
+sand and telling you exactly what he thinks of it, for three or four seconds
+before he is quiet.
 
 > My legs. My legs have stopped — what have you PUT in me —
 >
@@ -1002,13 +1082,13 @@ before she is quiet.
 >
 > ...oh. Oh, that is quieter.
 
-She shouts when you are down to a third of your blood, and when the sand is
-coming. She remarks — quietly, at conversational volume — on a seam under your
+He shouts when you are down to a third of your blood, and when the sand is
+coming. He remarks — quietly, at conversational volume — on a seam under your
 feet, on a fossil sitting far higher in the section than it has any right to, on
 a plant about to die of thirst, on a tank nearly dry, on an animal that has
 decided it will sing with you, and on the sun going down. Each one has its own
-cooldown and its own memory, so she never says the same thing twice in a row and
-never talks over herself.
+cooldown and its own memory, so he never says the same thing twice in a row and
+never talks over himself.
 
 ### The rest
 
@@ -1055,7 +1135,7 @@ never talks over herself.
   **popups over the thing they happened to**, not banners. The controls are five
   **keycaps** along the bottom that fade out once you have been playing a few
   minutes, and come back if you reach for them. What is left of the writing is
-  spoken: Dr. Vess says it, in her bubble, with her face doing the work.
+  spoken: Dr. Vess says it, in his bubble, with his face doing the work.
 
 ### The interface is made of something
 
@@ -1067,24 +1147,52 @@ rather than as text floating over the sky. Gauges are **brass-bound glass**:
 end caps you could unscrew, a tick every quarter, a lit top edge on the fill, a
 shadow under it and a meniscus at the leading edge, so a level reads as a level.
 
-And when Dr. Vess talks, she talks on **a page out of her own notebook**: cream
+And when Dr. Vess talks, he talks on **a page out of his own notebook**: cream
 paper with a ruled red margin, a faint rule under every line, a torn lower edge,
-her face pinned to it behind four brass tacks, and a dog-eared corner pointing
+his face pinned to it behind four brass tacks, and a dog-eared corner pointing
 at whoever is speaking. Tapped code gets the same card in ink-blue, because a
 signal is still something written down.
+
+### On a phone
+
+The whole bottom of a phone screen is measured from one place, in two
+arrangements, because four different controls all want it and on a tall screen
+they used to land on top of each other.
+
+Upright they **stack**: the walking stick and the spring valve along the
+bottom, a row of action plates above them, and above that **the band** — one
+enormous stone strip that takes over for every timing bar in the game. The
+spring, the claw, the spore and every job are the same idea (a needle sweeping
+across a band you have to hit), so on touch they are one control, thumb-sized,
+in the one place a thumb already is. On its side they **spread**: stick in one
+corner, valve in the other, the band in the gap between the thumbs where
+neither one is resting.
+
+There is no letterbox. Capping the aspect gave a phone two fat black bars with
+the game floating between them, which was worse than the sky it was hiding, so
+the frame is the whole screen and the tallness is dealt with where it comes
+from: **the camera asks the interface how much room it is taking** and lifts the
+animal clear of it. Starting a job raises the shot instead of burying the hole
+under the band.
+
+The talk screen does the same thing. On a narrow frame he moves to the top and
+the words go underneath; the grid takes as many columns as it needs before it
+gives up any height, so every word he will listen to is always on the screen.
 
 ### Layout
 
 ```
 js/
-  art/       crabart crabpose personart floraart faunaart buildart anatomy
+  art/       crabart crabpose personart facedata faces floraart faunaart
+             buildart seaart anatomy
   core/      camera input save
-  data/      flora fauna progress lore
+  data/      flora fauna craft progress lore
   entities/  crab creature npc
   lib/       math font audio palette
-  render/    pixel renderer backdrop
-  systems/   garden economy wildlife encounters green digs talk pump fx
-  ui/        ui icons tree
+  render/    pixel pix renderer backdrop
+  systems/   garden economy wildlife encounters green digs talk pump work
+             quests mining craft mind combat taming hive sea critters fx
+  ui/        ui icons tree menu talkscreen
   world/     terrain biomes weather landmarks
 ```
 
@@ -1099,7 +1207,7 @@ js/
 | ![Your genome](docs/shot-04-tree.png) | ![Night](docs/shot-08-night.png) |
 | ![Dr. Vess at a dig](docs/shot-09-vess.png) | ![Water](docs/shot-07-water.png) |
 | ![Hunt](docs/shot-25-hunt.png) | ![Spore](docs/shot-26-spore.png) |
-| ![Sitting down with her](docs/shot-27-talk.png) | ![The front door](docs/shot-22-title.png) |
+| ![Sitting down with him](docs/shot-27-talk.png) | ![The front door](docs/shot-22-title.png) |
 
 ---
 

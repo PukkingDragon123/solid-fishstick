@@ -467,6 +467,125 @@ function paintWhale(S = 1) {
   };
 }
 
+/**
+ * A reef shark. It is not a whale and it must not read as a small one - so
+ * everything about it is the opposite shape: a pointed snout, a body whose
+ * widest point is right at the shoulder and which tapers all the way to the
+ * tail, a tall hooked dorsal fin, wing-like pectorals held out flat, and a
+ * tail that is a scythe rather than a pair of flukes. Grey over, white under,
+ * with the counter-shading line running the length of it.
+ *
+ * It patrols the drop-off: not interested in you, not interested in anything,
+ * doing the one long circuit it does every day of its life.
+ */
+function paintShark(S = 1) {
+  const L = 96 * S, H = 22 * S;
+  const pad = Math.ceil(10 * S);
+  const p = new Painter(Math.ceil(L + 30 * S) + pad * 2, Math.ceil(H * 2.6) + pad * 2);
+  const cy = p.h / 2;
+  const x0 = pad + 6 * S;
+
+  // the body: widest at a quarter and tapering hard to the peduncle
+  const N = 24;
+  const spine = [];
+  for (let i = 0; i <= N; i++) {
+    const t = i / N;
+    const taper = t < 0.22
+      ? Math.pow(t / 0.22, 0.62)
+      : Math.pow(1 - (t - 0.22) / 0.78, 1.25);
+    spine.push({ x: x0 + t * L, y: cy + t * 1.6 * S, r: taper * H * 0.5 + 0.8 * S });
+  }
+  for (let i = 1; i < spine.length; i++) {
+    const a2 = spine[i - 1], b2 = spine[i];
+    p.capsule(a2.x, a2.y, b2.x, b2.y, Math.max(0.8, a2.r), Math.max(0.8, b2.r),
+      { mat: 'whale', dome: Math.max(1, a2.r * 0.95), tint: -0.06 });
+  }
+  // the snout, which on a reef shark is a blunt point rather than a beak
+  p.capsule(x0 - 2 * S, cy - 0.6 * S, x0 + L * 0.10, cy, H * 0.14, H * 0.34,
+    { mat: 'whale', dome: H * 0.2, tint: 0.02 });
+  // Counter-shading, which is the whole read of a shark from the side: dark
+  // over, white under, and a hard wavering line between them.
+  p.field(x0 - 4 * S, cy - H * 0.6, x0 + L * 0.95, cy + H * 0.02, (x, y) => {
+    const t = clamp01((x - x0) / L);
+    const edge = cy + H * (0.04 + Math.sin(t * 2.4) * 0.04);
+    if (y > edge) return null;
+    return { h: 0, tint: -0.30 - clamp01((edge - y) / (H * 0.5)) * 0.16 };
+  }, { mat: 'whale', mask: true });
+  p.field(x0, cy + H * 0.02, x0 + L * 0.92, cy + H * 0.55, (x, y) => {
+    const t = (x - x0) / L;
+    const edge = cy + H * (0.04 + Math.sin(t * 2.4) * 0.04);
+    if (y < edge) return null;
+    return { h: 0, tint: 0.40 };
+  }, { mat: 'whale', mask: true });
+  // gill slits
+  for (let i = 0; i < 5; i++) {
+    const x = x0 + L * (0.19 + i * 0.028);
+    p.capsule(x, cy - H * 0.10, x - 0.6 * S, cy + H * 0.16, 0.55 * S, 0.5 * S,
+      { mat: 'whaleDark', mask: true, dome: 0.6, tint: -0.22 });
+  }
+  // the eye: small, black, and set forward on the side of the head
+  p.ellipse(x0 + L * 0.11, cy - H * 0.06, 1.3 * S, 1.1 * S,
+    { mat: 'eye', dome: 1.3 * S, tint: 0.06 });
+  // Every fin comes to a point. A fin with a flat end is a rectangle, and a
+  // rectangle stuck on a fish is the thing that makes it look like a toy.
+  // the dorsal: tall, raked hard back, hooked at the tip
+  p.poly([
+    { x: x0 + L * 0.32, y: cy - H * 0.40 },
+    { x: x0 + L * 0.47, y: cy - H * 1.22 },
+    { x: x0 + L * 0.49, y: cy - H * 1.18 },
+    { x: x0 + L * 0.50, y: cy - H * 0.36 },
+  ], { mat: 'whale', dome: 2.4 * S, feather: 1, tint: -0.22 });
+  // a second, small dorsal far back - the detail that says shark and not fish
+  p.poly([
+    { x: x0 + L * 0.75, y: cy - H * 0.18 },
+    { x: x0 + L * 0.83, y: cy - H * 0.46 },
+    { x: x0 + L * 0.84, y: cy - H * 0.16 },
+  ], { mat: 'whale', dome: 1.3 * S, feather: 0.8, tint: -0.20 });
+  // the pectorals, held out flat and swept, tapering to a tip
+  p.poly([
+    { x: x0 + L * 0.21, y: cy + H * 0.18 },
+    { x: x0 + L * 0.40, y: cy + H * 1.02 },
+    { x: x0 + L * 0.42, y: cy + H * 0.96 },
+    { x: x0 + L * 0.31, y: cy + H * 0.16 },
+  ], { mat: 'whaleDark', dome: 1.6 * S, feather: 0.9, tint: -0.04 });
+  // the anal fin
+  p.poly([
+    { x: x0 + L * 0.70, y: cy + H * 0.16 },
+    { x: x0 + L * 0.80, y: cy + H * 0.48 },
+    { x: x0 + L * 0.81, y: cy + H * 0.14 },
+  ], { mat: 'whaleDark', dome: 1.1 * S, feather: 0.8, tint: -0.02 });
+  // the tail: the upper lobe far longer than the lower, both to a point -
+  // the one silhouette nobody mistakes for anything else
+  const tx = x0 + L;
+  p.poly([
+    { x: tx - 5 * S, y: cy + 1 * S },
+    { x: tx + 26 * S, y: cy - 24 * S },
+    { x: tx + 27 * S, y: cy - 21 * S },
+    { x: tx + 5 * S, y: cy + 3 * S },
+  ], { mat: 'whale', dome: 2 * S, feather: 1, tint: -0.16 });
+  p.poly([
+    { x: tx - 5 * S, y: cy + 1 * S },
+    { x: tx + 15 * S, y: cy + 13 * S },
+    { x: tx + 15 * S, y: cy + 10 * S },
+    { x: tx + 3 * S, y: cy },
+  ], { mat: 'whale', dome: 1.6 * S, feather: 0.8, tint: -0.22 });
+
+  p.speckle('whale', { density: 0.05, amp: 0.18, seed: 23 });
+  p.grain('whale', { freq: 0.30, amp: 0.12, seed: 13, height: 0.5 });
+  p.smoothHeight(1, 0.4);
+  return {
+    cv: p.resolve(MATS, { ...LIGHT, ambient: 0.48, outline: 1, outlineColor: '#0b1f2c' }),
+    ox: x0, oy: cy, L, H,
+  };
+}
+
+export function sharkArt(S = 1) {
+  const k = `shark:${S.toFixed(2)}`;
+  let v = cache.get(k);
+  if (!v) { v = paintShark(S); cache.set(k, v); }
+  return v;
+}
+
 export function whaleArt(S = 1) {
   const k = `whale:${S.toFixed(2)}`;
   let v = cache.get(k);

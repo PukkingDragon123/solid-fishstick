@@ -17,7 +17,7 @@
 import { clamp, clamp01, lerp, damp, smoothstep, TAU, mulberry32, hashStr } from '../lib/math.js';
 import { pxRing } from '../render/pix.js';
 import { drawText, textWidth } from '../lib/font.js';
-import { reefArt, fishArt, jellyArt, whaleArt, REEF_KINDS, FLOOR_KINDS, FISH_KINDS } from '../art/seaart.js';
+import { reefArt, fishArt, jellyArt, whaleArt, sharkArt, REEF_KINDS, FLOOR_KINDS, FISH_KINDS } from '../art/seaart.js';
 
 const CELL = 90;               // one cell of reef, in world units
 const DEPTH = 150;             // how far the surface is above the seabed
@@ -34,6 +34,7 @@ export class Sea {
     this.jellies = [];
     this.bubbles = [];
     this.whales = [];          // the biggest animals that have ever lived
+    this.sharks = [];          // and the ones that were already old when they arrived
     this.snow = [];            // marine snow: the sea is full of falling bits
     this.cells = new Map();
     this.yearShow = 0;
@@ -52,6 +53,7 @@ export class Sea {
     this.jellies.length = 0;
     this.bubbles.length = 0;
     this.whales.length = 0;
+    this.sharks.length = 0;
     this.snow.length = 0;
     const cx = this.game.crab.x;
     for (let i = 0; i < 40; i++) this._spawnFish(cx + (Math.random() - 0.5) * 900);
@@ -63,6 +65,17 @@ export class Sea {
     const deep = (k) => top + (bed - top) * k;
     this.whales.push({ x: cx - 1500, y: deep(0.26), dir: 1, sp: 26, s: 1.0, ph: 0, blow: 0 });
     this.whales.push({ x: cx - 1660, y: deep(0.34), dir: 1, sp: 26, s: 0.52, ph: 1.2, blow: 0 });
+    // Sharks work the middle of the water column rather than the top of it,
+    // and they turn - a shark's day is one long circuit of the same drop-off,
+    // which is why they keep coming back past you instead of crossing once.
+    for (let i = 0; i < 3; i++) {
+      this.sharks.push({
+        x: cx + (i - 1) * 420 + (Math.random() - 0.5) * 200,
+        y: deep(0.48 + i * 0.09),
+        dir: i % 2 ? -1 : 1, sp: 46 + i * 7, s: 0.72 + i * 0.14,
+        ph: Math.random() * 6, turn: 4 + Math.random() * 5, bank: 0,
+      });
+    }
     // and the water is full of things falling through it
     for (let i = 0; i < 120; i++) {
       this.snow.push({
@@ -132,6 +145,27 @@ export class Sea {
       // and they never leave the water, whatever the camera is doing
       const t2 = this.level(wh.x), g2 = this.game.terrain.surfaceY(wh.x);
       wh.y = clamp(wh.y, t2 + 26, g2 - 60);
+    }
+    // The sharks. They do not hunt you - you are armoured, boring and on the
+    // bottom - they patrol, and the patrol is a circuit: they run, they lean
+    // into a turn at the edge of the shot, and they come back.
+    for (const sh of this.sharks) {
+      sh.x += sh.dir * sh.sp * dt;
+      sh.ph += dt * 1.6;
+      sh.turn -= dt;
+      sh.bank = damp(sh.bank, 0, 0.02, dt);
+      if (sh.turn <= 0 || sh.x < b.x0 - 700 || sh.x > b.x1 + 700) {
+        sh.dir *= -1;
+        sh.turn = 7 + Math.random() * 7;
+        sh.bank = 0.5 * sh.dir;
+        // a turn is also a change of depth, which is what stops them looking
+        // like three things on three rails
+        const t2 = this.level(sh.x), g2 = this.game.terrain.surfaceY(sh.x);
+        sh.y = t2 + (g2 - t2) * (0.34 + Math.random() * 0.42);
+      }
+      sh.y += Math.sin(sh.ph * 0.33) * 5 * dt;
+      const t3 = this.level(sh.x), g3 = this.game.terrain.surfaceY(sh.x);
+      sh.y = clamp(sh.y, t3 + 30, g3 - 14);
     }
     // marine snow, falling for ever
     for (const sn of this.snow) {
@@ -261,6 +295,25 @@ export class Sea {
       ctx.fillRect(Math.round(s.x), Math.round(s.y), sn.r, sn.r);
     }
     ctx.globalAlpha = 1;
+
+    // the sharks first: they work lower down and the whales pass over them
+    for (const sh of this.sharks) {
+      const s = cam.worldToScreen(sh.x, sh.y);
+      const art = sharkArt(1);
+      const k = z * 0.9 * sh.s;
+      const w = art.cv.width * k;
+      if (s.x + w < -80 || s.x - w > vw + 80) continue;
+      ctx.save();
+      ctx.globalAlpha = wet * 0.8;
+      ctx.translate(Math.round(s.x), Math.round(s.y));
+      ctx.scale(k * (sh.dir < 0 ? -1 : 1), k);
+      // the tail beat is a whole-body waggle on a shark, not a fluke stroke,
+      // and a turn puts it over on one side
+      ctx.rotate(Math.sin(sh.ph) * 0.05 + sh.bank * 0.5);
+      ctx.drawImage(art.cv, -art.ox, -art.oy);
+      ctx.restore();
+      ctx.globalAlpha = 1;
+    }
 
     for (const wh of this.whales) {
       const s = cam.worldToScreen(wh.x, wh.y);

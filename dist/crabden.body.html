@@ -12076,6 +12076,126 @@ body {
       H
     };
   }
+  function paintShark(S = 1) {
+    const L = 96 * S, H = 22 * S;
+    const pad = Math.ceil(10 * S);
+    const p = new Painter(Math.ceil(L + 30 * S) + pad * 2, Math.ceil(H * 2.6) + pad * 2);
+    const cy = p.h / 2;
+    const x0 = pad + 6 * S;
+    const N = 24;
+    const spine2 = [];
+    for (let i = 0; i <= N; i++) {
+      const t = i / N;
+      const taper = t < 0.22 ? Math.pow(t / 0.22, 0.62) : Math.pow(1 - (t - 0.22) / 0.78, 1.25);
+      spine2.push({ x: x0 + t * L, y: cy + t * 1.6 * S, r: taper * H * 0.5 + 0.8 * S });
+    }
+    for (let i = 1; i < spine2.length; i++) {
+      const a2 = spine2[i - 1], b2 = spine2[i];
+      p.capsule(
+        a2.x,
+        a2.y,
+        b2.x,
+        b2.y,
+        Math.max(0.8, a2.r),
+        Math.max(0.8, b2.r),
+        { mat: "whale", dome: Math.max(1, a2.r * 0.95), tint: -0.06 }
+      );
+    }
+    p.capsule(
+      x0 - 2 * S,
+      cy - 0.6 * S,
+      x0 + L * 0.1,
+      cy,
+      H * 0.14,
+      H * 0.34,
+      { mat: "whale", dome: H * 0.2, tint: 0.02 }
+    );
+    p.field(x0 - 4 * S, cy - H * 0.6, x0 + L * 0.95, cy + H * 0.02, (x, y) => {
+      const t = clamp01((x - x0) / L);
+      const edge = cy + H * (0.04 + Math.sin(t * 2.4) * 0.04);
+      if (y > edge) return null;
+      return { h: 0, tint: -0.3 - clamp01((edge - y) / (H * 0.5)) * 0.16 };
+    }, { mat: "whale", mask: true });
+    p.field(x0, cy + H * 0.02, x0 + L * 0.92, cy + H * 0.55, (x, y) => {
+      const t = (x - x0) / L;
+      const edge = cy + H * (0.04 + Math.sin(t * 2.4) * 0.04);
+      if (y < edge) return null;
+      return { h: 0, tint: 0.4 };
+    }, { mat: "whale", mask: true });
+    for (let i = 0; i < 5; i++) {
+      const x = x0 + L * (0.19 + i * 0.028);
+      p.capsule(
+        x,
+        cy - H * 0.1,
+        x - 0.6 * S,
+        cy + H * 0.16,
+        0.55 * S,
+        0.5 * S,
+        { mat: "whaleDark", mask: true, dome: 0.6, tint: -0.22 }
+      );
+    }
+    p.ellipse(
+      x0 + L * 0.11,
+      cy - H * 0.06,
+      1.3 * S,
+      1.1 * S,
+      { mat: "eye", dome: 1.3 * S, tint: 0.06 }
+    );
+    p.poly([
+      { x: x0 + L * 0.32, y: cy - H * 0.4 },
+      { x: x0 + L * 0.47, y: cy - H * 1.22 },
+      { x: x0 + L * 0.49, y: cy - H * 1.18 },
+      { x: x0 + L * 0.5, y: cy - H * 0.36 }
+    ], { mat: "whale", dome: 2.4 * S, feather: 1, tint: -0.22 });
+    p.poly([
+      { x: x0 + L * 0.75, y: cy - H * 0.18 },
+      { x: x0 + L * 0.83, y: cy - H * 0.46 },
+      { x: x0 + L * 0.84, y: cy - H * 0.16 }
+    ], { mat: "whale", dome: 1.3 * S, feather: 0.8, tint: -0.2 });
+    p.poly([
+      { x: x0 + L * 0.21, y: cy + H * 0.18 },
+      { x: x0 + L * 0.4, y: cy + H * 1.02 },
+      { x: x0 + L * 0.42, y: cy + H * 0.96 },
+      { x: x0 + L * 0.31, y: cy + H * 0.16 }
+    ], { mat: "whaleDark", dome: 1.6 * S, feather: 0.9, tint: -0.04 });
+    p.poly([
+      { x: x0 + L * 0.7, y: cy + H * 0.16 },
+      { x: x0 + L * 0.8, y: cy + H * 0.48 },
+      { x: x0 + L * 0.81, y: cy + H * 0.14 }
+    ], { mat: "whaleDark", dome: 1.1 * S, feather: 0.8, tint: -0.02 });
+    const tx = x0 + L;
+    p.poly([
+      { x: tx - 5 * S, y: cy + 1 * S },
+      { x: tx + 26 * S, y: cy - 24 * S },
+      { x: tx + 27 * S, y: cy - 21 * S },
+      { x: tx + 5 * S, y: cy + 3 * S }
+    ], { mat: "whale", dome: 2 * S, feather: 1, tint: -0.16 });
+    p.poly([
+      { x: tx - 5 * S, y: cy + 1 * S },
+      { x: tx + 15 * S, y: cy + 13 * S },
+      { x: tx + 15 * S, y: cy + 10 * S },
+      { x: tx + 3 * S, y: cy }
+    ], { mat: "whale", dome: 1.6 * S, feather: 0.8, tint: -0.22 });
+    p.speckle("whale", { density: 0.05, amp: 0.18, seed: 23 });
+    p.grain("whale", { freq: 0.3, amp: 0.12, seed: 13, height: 0.5 });
+    p.smoothHeight(1, 0.4);
+    return {
+      cv: p.resolve(MATS2, { ...LIGHT6, ambient: 0.48, outline: 1, outlineColor: "#0b1f2c" }),
+      ox: x0,
+      oy: cy,
+      L,
+      H
+    };
+  }
+  function sharkArt(S = 1) {
+    const k = `shark:${S.toFixed(2)}`;
+    let v = cache8.get(k);
+    if (!v) {
+      v = paintShark(S);
+      cache8.set(k, v);
+    }
+    return v;
+  }
   function whaleArt(S = 1) {
     const k = `whale:${S.toFixed(2)}`;
     let v = cache8.get(k);
@@ -12104,6 +12224,7 @@ body {
       this.jellies = [];
       this.bubbles = [];
       this.whales = [];
+      this.sharks = [];
       this.snow = [];
       this.cells = /* @__PURE__ */ new Map();
       this.yearShow = 0;
@@ -12124,6 +12245,7 @@ body {
       this.jellies.length = 0;
       this.bubbles.length = 0;
       this.whales.length = 0;
+      this.sharks.length = 0;
       this.snow.length = 0;
       const cx = this.game.crab.x;
       for (let i = 0; i < 40; i++) this._spawnFish(cx + (Math.random() - 0.5) * 900);
@@ -12132,6 +12254,18 @@ body {
       const deep = (k) => top + (bed - top) * k;
       this.whales.push({ x: cx - 1500, y: deep(0.26), dir: 1, sp: 26, s: 1, ph: 0, blow: 0 });
       this.whales.push({ x: cx - 1660, y: deep(0.34), dir: 1, sp: 26, s: 0.52, ph: 1.2, blow: 0 });
+      for (let i = 0; i < 3; i++) {
+        this.sharks.push({
+          x: cx + (i - 1) * 420 + (Math.random() - 0.5) * 200,
+          y: deep(0.48 + i * 0.09),
+          dir: i % 2 ? -1 : 1,
+          sp: 46 + i * 7,
+          s: 0.72 + i * 0.14,
+          ph: Math.random() * 6,
+          turn: 4 + Math.random() * 5,
+          bank: 0
+        });
+      }
       for (let i = 0; i < 120; i++) {
         this.snow.push({
           x: cx + (Math.random() - 0.5) * 1200,
@@ -12206,6 +12340,22 @@ body {
         }
         const t2 = this.level(wh.x), g2 = this.game.terrain.surfaceY(wh.x);
         wh.y = clamp(wh.y, t2 + 26, g2 - 60);
+      }
+      for (const sh of this.sharks) {
+        sh.x += sh.dir * sh.sp * dt;
+        sh.ph += dt * 1.6;
+        sh.turn -= dt;
+        sh.bank = damp(sh.bank, 0, 0.02, dt);
+        if (sh.turn <= 0 || sh.x < b.x0 - 700 || sh.x > b.x1 + 700) {
+          sh.dir *= -1;
+          sh.turn = 7 + Math.random() * 7;
+          sh.bank = 0.5 * sh.dir;
+          const t2 = this.level(sh.x), g2 = this.game.terrain.surfaceY(sh.x);
+          sh.y = t2 + (g2 - t2) * (0.34 + Math.random() * 0.42);
+        }
+        sh.y += Math.sin(sh.ph * 0.33) * 5 * dt;
+        const t3 = this.level(sh.x), g3 = this.game.terrain.surfaceY(sh.x);
+        sh.y = clamp(sh.y, t3 + 30, g3 - 14);
       }
       for (const sn of this.snow) {
         sn.y += sn.v * dt;
@@ -12339,6 +12489,21 @@ body {
         ctx.fillRect(Math.round(s.x), Math.round(s.y), sn.r, sn.r);
       }
       ctx.globalAlpha = 1;
+      for (const sh of this.sharks) {
+        const s = cam.worldToScreen(sh.x, sh.y);
+        const art = sharkArt(1);
+        const k = z * 0.9 * sh.s;
+        const w = art.cv.width * k;
+        if (s.x + w < -80 || s.x - w > vw + 80) continue;
+        ctx.save();
+        ctx.globalAlpha = wet * 0.8;
+        ctx.translate(Math.round(s.x), Math.round(s.y));
+        ctx.scale(k * (sh.dir < 0 ? -1 : 1), k);
+        ctx.rotate(Math.sin(sh.ph) * 0.05 + sh.bank * 0.5);
+        ctx.drawImage(art.cv, -art.ox, -art.oy);
+        ctx.restore();
+        ctx.globalAlpha = 1;
+      }
       for (const wh of this.whales) {
         const s = cam.worldToScreen(wh.x, wh.y);
         const art = whaleArt(1);
@@ -25228,6 +25393,10 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
       this.card = null;
       this.drift = null;
       this.tutorial = 0;
+      this.uplift = 0;
+      this.quake = 0;
+      this.lifeK = 0;
+      this._mesaList = null;
       this.attackT = 0;
       this.lids = 0;
       this.startIntro();
@@ -25351,6 +25520,20 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
         this.cam.targetZoom = clamp(this.autoZoom() * 1.25, this.cam.minZoom, this.cam.maxZoom);
         N("You will never see one again. Nothing here will.");
       }
+      if (t > 31 && !this._pro2s) {
+        this._pro2s = 1;
+        const c = this.crab;
+        const top = this.sea.level(c.x), bed = this.terrain.surfaceY(c.x);
+        const sh = this.sea.sharks[0];
+        if (sh) {
+          sh.x = c.x - 260;
+          sh.y = top + (bed - top) * 0.42;
+          sh.dir = 1;
+          sh.sp = 64;
+          sh.turn = 14;
+        }
+        N("This one has been here longer than the reef has. It is not interested in you.");
+      }
       if (t > 36 && !this._pro2d) {
         this._pro2d = 1;
         N("Your kind does this once. You pick a hollow, and you stay in it.");
@@ -25435,39 +25618,200 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
         this.card = null;
         this.fromBlack(0.9);
       });
-      const SKY = [
-        { at: 16.4, hour: 19.5, say: "It did not dream. There was nothing down there to dream about." },
-        { at: 20.2, hour: 3, say: "Sand went over it. Then more sand." },
-        { at: 24, hour: 12.5, say: "Then a desert." },
-        {
-          at: 27.8,
-          hour: 17.5,
-          say: "A thousand years is not a long time to something that was not counting."
+      beat(16.4, () => {
+        this.card = null;
+        this.fromBlack(1.2);
+        this.weather.hour = 19.5;
+        this.sleep = 0.4;
+        this.uplift = 0;
+        this.quake = 0;
+        this.lifeK = 0;
+        this._mesaList = null;
+        this.cam.cineCancel();
+        this.cam.snapTo(this.crab.x + 40, this.terrain.surfaceY(this.crab.x) - 90);
+        this.cam.targetZoom = this.cam.zoom = Math.max(0.3, this.autoZoom() * 0.3);
+        this.drift = { x: 2.2, y: 0, z: 8e-4, after: 0 };
+        this.say("narrator", "It did not dream. There was nothing down there to dream about.");
+      });
+      beat(21, () => {
+        this.weather.hour = 4;
+        this.sleep = 0.7;
+        this.say("narrator", "Sand went over it. Then more sand. Then the sand went hard.");
+      });
+      beat(25.4, () => {
+        this._quakeT = 0;
+        this.weather.hour = 8;
+        this.audio.play("hit", { pitch: 0.35 });
+        this.say("narrator", "And then the basin remembered it was the bottom of something.");
+      });
+      if (t > 25.4 && t < 32) {
+        const q = t - 25.4;
+        this.quake = clamp01(Math.min(q / 1.4, (32 - t) / 2.2));
+        this.uplift = clamp01(q / 5.6);
+        this.cam.shake(this.quake * 2.6);
+        if (Math.random() < dt * 20 * this.quake) {
+          const wx = this.crab.x + (Math.random() - 0.5) * 1500;
+          this.fx.dust(wx, this.terrain.surfaceY(wx), 1 + Math.random() * 1.6);
         }
-      ];
-      for (const f of SKY) {
-        beat(f.at, () => {
-          this.weather.hour = f.hour;
-          this.sleep = clamp01((f.at - 16) / 12);
-          const px = this.crab.x + (SKY.indexOf(f) % 2 ? 26 : -22);
-          this.cam.cineCancel();
-          this.cam.snapTo(px, this.terrain.surfaceY(this.crab.x) - 10 - SKY.indexOf(f) * 3);
-          this.cam.targetZoom = this.cam.zoom = this.autoZoom() * (2.1 - SKY.indexOf(f) * 0.22);
-          this.drift = { x: SKY.indexOf(f) % 2 ? -3 : 3, y: 0, z: 4e-3, after: 0 };
-          this.say("narrator", f.say);
-          this.fade = 0.85;
-          this.fadeWant = 0;
-          this.fadeRate = 3.4;
-        });
+        if (Math.random() < dt * 1.6 * this.quake) this.audio.play("hit", { pitch: 0.3 + Math.random() * 0.2 });
       }
-      beat(31.6, () => {
-        this.toBlack(1.3);
+      beat(31, () => {
+        this.uplift = 1;
+        this.weather.hour = 12.5;
+        this.say("narrator", "Two hundred metres of seabed, standing up in the sun.");
+      });
+      beat(35, () => {
+        this.weather.hour = 17;
+        this.sleep = 1;
+        this.drift = { x: -1.8, y: 0, z: 6e-4, after: 0 };
+        this.say("narrator", "Nothing lived here for four hundred years. And then a little did.");
+      });
+      if (t > 35) this.lifeK = clamp01((t - 35) / 4.5);
+      beat(40.4, () => {
+        this.say("narrator", "A thousand years is not a long time to something that was not counting.");
+      });
+      beat(44, () => {
+        this.toBlack(1.4);
         this.dialog = null;
       });
-      if (t > 33.2) {
+      if (t > 45.8) {
         this.dialog = null;
         this.sleep = 0;
         this.startWake();
+      }
+    }
+    /**
+     * The rock that was not there before.
+     *
+     * The basin does not simply dry out - it comes up. Over the thousand years
+     * the whole floor of the sea is pushed out of the water and the hard beds
+     * under it stand up out of the salt as mesas, which is why this desert is
+     * full of flat-topped rock with sea shells in the top of it.
+     *
+     * It is one held wide shot with the ground moving in it. Seven of them come
+     * up on a stagger, so the skyline arrives in pieces rather than rising like
+     * a lift, and while they are moving the camera cannot hold still.
+     */
+    _mesas() {
+      if (this._mesaList) return this._mesaList;
+      const r = mulberry32(hashStr(`uplift:${this.seedKey || this.seed}`));
+      const cx = this.crab.x;
+      const out = [];
+      for (let i = 0; i < 7; i++) {
+        out.push({
+          x: cx - 980 + i * 320 + (r() - 0.5) * 140,
+          w: 58 + r() * 90,
+          h: 48 + r() * 84,
+          t: i * 0.085 + r() * 0.09,
+          // when in the rise it starts
+          tone: r(),
+          seed: Math.floor(r() * 9999)
+        });
+      }
+      out[3].w = 150;
+      out[3].h = 168;
+      out[3].t = 0.02;
+      this._mesaList = out;
+      return out;
+    }
+    _drawUplift(ctx, cam) {
+      const K = clamp01(this.uplift || 0);
+      if (K <= 1e-3) return;
+      const z = cam.zoom;
+      const px = Math.max(1, Math.round(z));
+      const vh = cam.vh;
+      for (const m of this._mesas()) {
+        const k = easeOutCubic(clamp01((K - m.t) / Math.max(0.08, 1 - m.t)));
+        if (k <= 1e-3) continue;
+        const gy = this.terrain.surfaceY(m.x);
+        const H = m.h * k;
+        const hw = m.w / 2;
+        const sL = cam.worldToScreen(m.x - hw, gy).x;
+        const sR = cam.worldToScreen(m.x + hw, gy).x;
+        if (sR < -20 || sL > cam.vw + 20) continue;
+        const sBot = cam.worldToScreen(m.x, gy + 10).y;
+        const x0 = Math.floor(Math.max(sL, -px) / px) * px;
+        const x1 = Math.min(sR, cam.vw + px);
+        for (let sx = x0; sx <= x1; sx += px) {
+          const u = clamp((sx - sL) / Math.max(1, sR - sL) * 2 - 1, -1, 1);
+          const a = Math.abs(u);
+          const shoulder = a > 0.82 ? (1 - a) / 0.18 : 1;
+          const step = a > 0.62 && a <= 0.82 ? 0.88 : 1;
+          const notch = Math.sin(u * 9 + m.seed) > 0.86 ? 0.9 : 1;
+          const topW = gy - H * Math.max(0, shoulder) * step * notch;
+          const sTop = Math.round(cam.worldToScreen(m.x, topW).y / px) * px;
+          if (sTop >= sBot) continue;
+          const edge = a > 0.9 ? -0.18 : a > 0.78 ? -0.09 : 0;
+          const flute = Math.sin(u * 23 + m.seed * 0.7) * 0.05 + (Math.sin(u * 41 + m.seed) > 0.88 ? -0.13 : 0);
+          for (let y = sTop; y < sBot; y += px) {
+            const world = cam.ry + (y - vh / 2) / z;
+            const band = Math.floor((gy - world) / 11);
+            const lit = band % 3 === 0 ? 0.14 : band % 3 === 1 ? 0 : -0.1;
+            const v = clamp01(0.42 + m.tone * 0.14 + lit + edge + flute);
+            ctx.fillStyle = `rgb(${Math.round(96 + v * 120)},${Math.round(62 + v * 78)},${Math.round(56 + v * 62)})`;
+            ctx.fillRect(sx, y, px, px);
+          }
+          ctx.fillStyle = "rgba(238,206,168,0.45)";
+          ctx.fillRect(sx, sTop, px, px);
+        }
+        if (this.quake > 0.05 && Math.random() < this.quake * 0.5) {
+          this.fx?.dust(m.x + (Math.random() - 0.5) * m.w, gy + 2, 1.4 + Math.random());
+        }
+      }
+    }
+    /**
+     * What came back. Not a forest - a few tufts, a few stems, and a line of
+     * birds going somewhere, because the point of the shot is that this took a
+     * thousand years and is still almost nothing.
+     */
+    _drawNewLife(ctx, cam) {
+      const k = clamp01(this.lifeK || 0);
+      if (k <= 1e-3) return;
+      const z = cam.zoom;
+      const px = Math.max(1, Math.round(z));
+      const b = cam.bounds(60);
+      const r = mulberry32(hashStr("newlife"));
+      for (let i = 0; i < 90; i++) {
+        const wx = this.crab.x - 900 + r() * 1800;
+        if (wx < b.x0 || wx > b.x1) {
+          r();
+          r();
+          continue;
+        }
+        const when = r();
+        const g = clamp01((k - when * 0.7) / 0.3);
+        if (g <= 0) {
+          r();
+          continue;
+        }
+        const gy = this.terrain.surfaceY(wx);
+        const h = (5 + r() * 9) * g;
+        const s = cam.worldToScreen(wx, gy);
+        const sway = Math.sin(this.time * 1.4 + wx * 0.05) * 1.4 * z;
+        ctx.fillStyle = `rgba(${Math.round(96 + g * 30)},${Math.round(118 + g * 40)},58,${0.5 + g * 0.4})`;
+        for (let bl = 0; bl < 3; bl++) {
+          const lean = (bl - 1) * 0.6;
+          for (let t = 0; t < h; t += 1) {
+            const x = s.x + (lean * t * 0.3 + sway * (t / h)) * z * 0.4;
+            ctx.fillRect(Math.round(x), Math.round(s.y - t * z), px, px);
+          }
+        }
+      }
+      if (k > 0.55) {
+        const fk = clamp01((k - 0.55) / 0.45);
+        const gy = this.terrain.surfaceY(this.crab.x);
+        for (let i = 0; i < 7; i++) {
+          const wx = this.crab.x - 500 + (this.time * 42 + i * 46) % 1400;
+          const wy = gy - 230 - Math.sin(i * 1.1) * 26;
+          const s = cam.worldToScreen(wx, wy);
+          const flap = Math.sin(this.time * 7 + i) > 0 ? 1 : -1;
+          ctx.globalAlpha = fk * 0.7;
+          ctx.fillStyle = "#3a3128";
+          ctx.fillRect(Math.round(s.x), Math.round(s.y), px, px);
+          ctx.fillRect(Math.round(s.x - px * 2), Math.round(s.y - flap * px), px, px);
+          ctx.fillRect(Math.round(s.x + px * 2), Math.round(s.y - flap * px), px, px);
+          ctx.globalAlpha = 1;
+        }
       }
     }
     /**
@@ -25593,6 +25937,10 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
     startWake() {
       this.state = "intro";
       this.sea.stop();
+      this.uplift = 0;
+      this.quake = 0;
+      this.lifeK = 0;
+      this._mesaList = null;
       this.buried = 1;
       this.buryTarget = 0.9;
       this.weather.hour = 9.4;
@@ -25885,11 +26233,8 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
           this.cam.ty += d.y * dt;
           this.cam.x += d.x * dt;
           this.cam.y += d.y * dt;
-          this.cam.targetZoom = clamp(
-            this.cam.targetZoom + d.z * dt,
-            this.cam.minZoom,
-            this.cam.maxZoom
-          );
+          const zmin = this.state === "play" ? this.cam.minZoom : 0.22;
+          this.cam.targetZoom = clamp(this.cam.targetZoom + d.z * dt, zmin, this.cam.maxZoom);
         }
       }
     }
@@ -27508,6 +27853,7 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
       this.backdrop.drawLayer(ctx, cam, this.weather, "mid", this.terrain);
       this.backdrop.drawLayer(ctx, cam, this.weather, "near", this.terrain);
       if (this.seaShowing) this.sea.drawColumn(ctx, cam, r.vw, r.vh);
+      if (this.uplift) this._drawUplift(ctx, cam);
       this.world.drawProps(ctx, cam);
       this.terrain.draw(ctx, cam);
       this.world.drawWater(ctx, cam);
@@ -27525,6 +27871,7 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
       this._drawCrab(ctx, cam);
       if (this.npc.riding && !this.npc.hidden) this.npc.draw(ctx, cam);
       if (this.state === "title") this.menu.drawBottle(ctx, cam);
+      if (this.lifeK) this._drawNewLife(ctx, cam);
       if (this.sleep) this._drawSleep(ctx, cam);
       if (this.waking) this._drawWaking(ctx, cam);
       if (this._pee || this._peeDrops?.length) this._drawStream(ctx, cam);
