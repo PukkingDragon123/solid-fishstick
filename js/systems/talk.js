@@ -277,6 +277,37 @@ export const TOPICS = [
     ],
   },
   {
+    // The one topic whose answer is not written down anywhere: it is whatever
+    // he wants doing next. Ask and he tells you; when he has finished telling
+    // you, you are doing it.
+    id: 'work', word: 'WORK', group: 'him',
+    ask: 'What needs doing?',
+    build: (g) => {
+      const q = g.quests;
+      if (q.active) {
+        return [
+          { icon: 'map', mood: 'squint',
+            t: `You are in the middle of something. ${q.active.ask}` },
+          { icon: 'hand', mood: 'flat', t: 'Go and do that, and then come back and ask me again.' },
+        ];
+      }
+      const next = q.next();
+      if (!next) {
+        return [
+          { icon: 'sun', mood: 'laugh',
+            t: 'Nothing. You have done every single thing I could think of and two I could not.' },
+          { icon: 'seed', mood: 'grin',
+            t: 'Go and grow something for yourself. That is the job now.' },
+        ];
+      }
+      return [
+        { icon: 'hand', mood: 'talk', t: next.ask },
+        { icon: 'clock', mood: 'smug', t: 'Take your time. I have had eleven years of it.' },
+      ];
+    },
+    then: (g) => { const n = g.quests.next(); if (!g.quests.active && n) g.quests.take(n); },
+  },
+  {
     id: 'help', word: 'HELP', group: 'him',
     ask: 'Help me.',
     lines: [

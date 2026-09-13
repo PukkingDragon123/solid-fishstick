@@ -519,6 +519,7 @@ export class UI {
     // control, thumb-sized, in the one place a thumb already is
     if (this.game.work?.live && !this.touchEnabled) this._workBar(ctx, W, H);
     this._thumbBand(ctx, W, H);
+    this._questNote(ctx, W, H);
     if (this.toast) this._toast(ctx, W, H);
     if (this.game.taming?.live) this._songCard(ctx, W, H);
     if (this.drag) this._drawCarried(ctx, W, H);
@@ -610,6 +611,36 @@ export class UI {
     const h = clamp(Math.round(H * 0.14), 48, 76);
     const floor = this.buildOn ? H - 8 : this.buttonRowY(W, H) - 6;
     return { x: 6, y: Math.max(24, floor - h), w: W - 12, h };
+  }
+
+  /**
+   * What he asked you to do, on a scrap out of his notebook, pinned to the
+   * left edge under the shell. It is one line - the job, not a checklist -
+   * because he gives you one thing at a time and the thing itself is the
+   * objective. When it is done the scrap goes green for a few seconds and
+   * then it is gone, the way a note you can throw away should be.
+   */
+  _questNote(ctx, W, H) {
+    const q = this.game.quests;
+    if (!q) return;
+    const done = q.doneT > 0 ? q.justDone : null;
+    const job = done || q.active;
+    if (!job) return;
+    const note = done ? `${job.name}  ${job.gain}` : job.note;
+    const tw = Math.min(W - 24, textWidth(note) + 22);
+    const x = 6, y = this.build > 0.005 ? 6 : 56;
+    const h = 18;
+    drawPlate(ctx, x, y, tw, h, {
+      mat: 'paper',
+      edge: done ? '#9ad86a' : 'rgba(120,96,58,0.5)',
+      alpha: 0.94,
+    });
+    // a red margin rule, because it is a page out of the same notebook
+    ctx.fillStyle = done ? 'rgba(120,190,100,0.6)' : 'rgba(150,52,42,0.45)';
+    ctx.fillRect(x + 11, y + 3, 1, h - 6);
+    drawNodeIcon(ctx, done ? 'sun' : 'hand', x + 6, y + h / 2, done ? '#5f8a3a' : '#7a5a2a', 1);
+    drawText(ctx, ellipsize(note, tw - 20), x + 16, y + (h - 7) / 2,
+      { color: done ? '#3f6a2a' : '#3a2f1e' });
   }
 
   /**

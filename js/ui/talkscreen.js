@@ -75,13 +75,33 @@ export class TalkScreen {
     g.npc.setFacing(Math.sign(g.crab.x - g.npc.x) || -1);
     g.npc.moveTo = undefined;
     g.npc.speech = null;
+    // and the camera comes in on the pair of you. A conversation is a
+    // two-shot; the wide shot is for walking.
+    g.cam.follow = null;
+    g.cam.free = true;
   }
 
   close() {
     if (!this.on) return;
     this.on = false;
     this.topic = null;
-    this.game.audio?.play('ui', { pitch: 0.7 });
+    const g = this.game;
+    g.cam.free = false;
+    g.cam.followEntity(g.crab);
+    g.cam.targetZoom = g.autoZoom();
+    g.audio?.play('ui', { pitch: 0.7 });
+  }
+
+  /** Hold the two-shot: both of you in frame, closer than the game ever is. */
+  _hold() {
+    const g = this.game;
+    const cam = g.cam;
+    if (cam.cine) return;
+    cam.free = true;
+    cam.freeT = 9;
+    cam.tx = (g.crab.x + g.npc.x) / 2;
+    cam.ty = (g.crab.y + g.npc.y) / 2 - 16;
+    cam.targetZoom = clamp(g.autoZoom() * 1.5, 1.2, 3.2);
   }
 
   /** Which topics are on the table right now. */
@@ -155,7 +175,9 @@ export class TalkScreen {
 
   /** Say a topic, however you said it. */
   ask(tp, tapped = false) {
-    this.topic = tp;
+    // most answers are written down; one of them is whatever he wants doing
+    // next, which is only knowable at the moment you ask
+    this.topic = tp.build ? { ...tp, lines: tp.build(this.game) } : tp;
     this.line = 0;
     this.type = 0;
     this._wear();
@@ -207,9 +229,17 @@ export class TalkScreen {
     // walk away and the conversation ends, because he is a person standing
     // in a place and not a menu
     if (!this.near || g.state !== 'play') { this.close(); return; }
+    this._hold();
 
     const i = g.input;
-    this._tap(dt, i.key('t'));
+    // The key is held, not clicked, so it is read off the pointer being down
+    // inside it rather than off a click event - a click has no length and the
+    // length is the entire point.
+    const kb = this._keyBox(g.renderer.vw, g.renderer.vh, Math.round(g.renderer.vh * 0.055));
+    const onKey = i.sx >= kb.x && i.sx <= kb.x + kb.w && i.sy >= kb.y && i.sy <= kb.y + kb.h;
+    const pressing = onKey && i.down;
+    if (pressing) i.clicked = false;    // so it never also turns the card
+    this._tap(dt, i.key('t') || pressing);
 
     if (i.justPressed('Escape')) { i.consumeKey('Escape'); this.close(); return; }
     if (i.justPressed('Enter') || i.justPressed(' ')) {
@@ -268,7 +298,8 @@ export class TalkScreen {
       const rows = this.topic ? 3 : Math.ceil(this.list().length / 2);
       const need = rows * 34 + 22;
       K = Math.min(3, Math.floor((W - 24) / 66) || 1);
-      while (K > 1 && lb + 4 + 21 * K + 64 * K * 0.62 + need > H - 42) K--;
+      const limit = this._keyBox(W, H, lb).y - 6;
+      while (K > 1 && lb + 4 + 21 * K + 64 * K * 0.62 + need > limit) K--;
     } else {
       K = Math.max(1, Math.min(4, Math.floor(Math.min(W * 0.30 / 59, H * 0.58 / 64))));
     }
@@ -301,11 +332,12 @@ export class TalkScreen {
     } else {
       // a phone on its side has almost no height, so the grid starts right
       // under the letterbox instead of a fifth of the way down
-      const top = narrow ? cy : H < 210 ? lb + 14 : Math.round(H * 0.18);
+      const top = narrow ? cy : H < 210 ? lb + 6 : Math.round(H * 0.18);
       this._topics(ctx, cx, top, cw, H, narrow);
     }
 
-    // ---- and the wire you are talking on ---------------------------------
+    // ---- the key, and the wire you are talking on ------------------------
+    this._key(ctx, W, H, lb);
     this._wire(ctx, W, H, lb);
     ctx.globalAlpha = 1;
   }
@@ -363,18 +395,29 @@ export class TalkScreen {
    */
   _topics(ctx, x, y, w, H, narrow) {
     const list = this.list();
-    // a word you say with a thumb is a thumb tall - unless the screen is a
-    // phone on its side, where there is no such thing as a spare row
     const short = H < 210;
-    const cellH = short ? 24 : this.game.ui?.touchEnabled ? 30 : 21;
-    const floor = H - (short ? 22 : 40);
-    const fits = Math.max(1, Math.floor((floor - y) / (cellH + 4)));
-    // and if the words would fall off the bottom they go into more columns
-    // rather than quietly not existing
-    const maxCols = Math.max(1, Math.min(4, Math.floor(w / 84)));
+    // the key owns the bottom of the screen, so the words stop above it
+    const floor = this._keyBox(this.game.renderer.vw, H, Math.round(H * 0.055)).y - 6;
+    const room = Math.max(40, floor - y);
+    // A word you say with a thumb is a thumb tall, and every word he will
+    // listen to has to be on the screen - so the grid takes as many columns
+    // as it needs and only then starts giving up height.
+    const maxH = short ? 24 : this.game.ui?.touchEnabled ? 30 : 21;
+    const maxCols = Math.max(1, Math.min(4, Math.floor(w / 56)));
     let cols = narrow ? 1 : w > 300 ? 3 : 2;
-    while (cols < maxCols && Math.ceil(list.length / cols) > fits) cols++;
+    let cellH = maxH;
+    for (;;) {
+      const rows = Math.ceil(list.length / cols);
+      cellH = Math.min(maxH, Math.floor(room / rows) - 4);
+      if (cellH >= 22 || cols >= maxCols) break;
+      cols++;
+    }
+    cellH = Math.max(20, Math.min(maxH, cellH));
     const cellW = Math.floor((w - (cols - 1) * 6) / cols);
+    // the code goes under each word where it fits, and on one line of its own
+    // under the whole grid where it does not - it is never simply not there
+    const codeFits = Math.max(...list.map((tp) => textWidth(morseFor(tp.word)))) + 12 <= cellW
+      && cellH >= 24;
     const rows = [];
     list.forEach((tp, i) => {
       const col = i % cols, row = Math.floor(i / cols);
@@ -396,12 +439,23 @@ export class TalkScreen {
         ctx.fillStyle = '#e2b74a';
         ctx.fillRect(bx, by, 2, cellH);
       }
-      drawText(ctx, tp.word, bx + 6, by + (cellH - 19) / 2,
+      const wy = codeFits ? by + (cellH - 19) / 2 : by + (cellH - 7) / 2;
+      drawText(ctx, ellipsize(tp.word, cellW - 10), bx + 6, wy,
         { color: on ? '#f7ecd0' : done ? 'rgba(180,156,112,0.8)' : '#b49c70' });
       // its code, in the colour the tap channel uses everywhere else
-      drawText(ctx, morseFor(tp.word), bx + 6, by + (cellH - 19) / 2 + 10,
-        { color: on ? TAP : 'rgba(143,224,204,0.45)' });
+      if (codeFits) {
+        drawText(ctx, morseFor(tp.word), bx + 6, wy + 10,
+          { color: on ? TAP : 'rgba(143,224,204,0.45)' });
+      }
     });
+    if (!codeFits && rows.length) {
+      const last = rows[rows.length - 1];
+      const sel = list[this.pick];
+      if (sel) {
+        drawText(ctx, morseFor(sel.word), x + w / 2, last.y + last.h + 5,
+          { color: TAP, align: 'center' });
+      }
+    }
     this.rows = rows;
 
     // what he is waiting for you to say, under the whole grid
@@ -409,6 +463,64 @@ export class TalkScreen {
     ctx.globalAlpha = b;
     drawText(ctx, this.said.size ? '' : 'tap it, or point at it', x, y - 11, { color: FAINT });
     ctx.globalAlpha = 1;
+  }
+
+  /**
+   * THE KEY.
+   *
+   * You have no mouth. You have a claw, and the claw is hard, and there is a
+   * flat stone in front of you - which is how anybody without a voice has
+   * ever sent a sentence over a distance. So there is a key, and you hold it
+   * down with the pincer: a short press is a dot, a long one is a dash, and
+   * letting go for a moment ends the letter.
+   *
+   * It is one enormous plate because it is one thing you do with one thumb,
+   * and it is the only control on this screen that needs any timing at all.
+   */
+  _keyBox(W, H, lb) {
+    const touch = !!this.game.ui?.touchEnabled;
+    if (H < 210) {
+      // a phone on its side has no spare rows at all, so the key moves onto
+      // the bottom line beside the wire instead of sitting above it
+      const x = Math.round(W * 0.46);
+      const h = 28;
+      return { x, y: H - lb - h - 4, w: W - x - 8, h };
+    }
+    const w = Math.min(220, Math.max(120, Math.round(W * (touch ? 0.62 : 0.34))));
+    const h = touch ? 56 : 34;
+    return { x: Math.round(W / 2 - w / 2), y: H - lb - 24 - h, w, h };
+  }
+
+  _key(ctx, W, H, lb) {
+    const b = this._keyBox(W, H, lb);
+    const dash = this.down && this.held > 0.22;
+    drawPlate(ctx, b.x, b.y, b.w, b.h, {
+      mat: 'stone',
+      edge: this.down ? TAP : 'rgba(90,130,120,0.5)',
+      top: this.down ? 1 : undefined,
+    });
+    // the mark you are making right now, growing from a dot into a dash under
+    // your own claw - the whole language, happening in your hand
+    const tight = b.h < 34;
+    const cx = b.x + b.w / 2, cy = b.y + Math.round(b.h * (tight ? 0.34 : 0.42));
+    const grow = this.down ? clamp01(this.held / 0.22) : 0;
+    const mw = Math.round(4 + grow * (b.w * 0.28));
+    ctx.fillStyle = this.down ? (dash ? TAP : '#cfeee4') : 'rgba(120,160,150,0.4)';
+    ctx.fillRect(Math.round(cx - mw / 2), Math.round(cy - 2), mw, 5);
+    if (!this.down) {
+      // at rest it says what it is for, in the only two symbols it makes
+      drawText(ctx, 'TAP  .    HOLD  -', cx, cy + 8, { color: FAINT, align: 'center' });
+    } else {
+      drawText(ctx, dash ? 'DASH' : 'DOT', cx, cy + 8, { color: TAP, align: 'center' });
+    }
+    // and the letter it is spelling, right under the claw
+    const letter = CODE[this.marks];
+    if (this.marks) {
+      drawText(ctx, letter ? letter : this.marks, cx, b.y + b.h - (tight ? 8 : 12),
+        { color: letter ? '#f7ecd0' : 'rgba(200,120,110,0.9)',
+          align: 'center', scale: tight ? 1 : 2 });
+    }
+    return b;
   }
 
   /**

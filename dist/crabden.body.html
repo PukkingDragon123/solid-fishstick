@@ -8587,6 +8587,51 @@ body {
       ]
     },
     {
+      // The one topic whose answer is not written down anywhere: it is whatever
+      // he wants doing next. Ask and he tells you; when he has finished telling
+      // you, you are doing it.
+      id: "work",
+      word: "WORK",
+      group: "him",
+      ask: "What needs doing?",
+      build: (g) => {
+        const q = g.quests;
+        if (q.active) {
+          return [
+            {
+              icon: "map",
+              mood: "squint",
+              t: `You are in the middle of something. ${q.active.ask}`
+            },
+            { icon: "hand", mood: "flat", t: "Go and do that, and then come back and ask me again." }
+          ];
+        }
+        const next = q.next();
+        if (!next) {
+          return [
+            {
+              icon: "sun",
+              mood: "laugh",
+              t: "Nothing. You have done every single thing I could think of and two I could not."
+            },
+            {
+              icon: "seed",
+              mood: "grin",
+              t: "Go and grow something for yourself. That is the job now."
+            }
+          ];
+        }
+        return [
+          { icon: "hand", mood: "talk", t: next.ask },
+          { icon: "clock", mood: "smug", t: "Take your time. I have had eleven years of it." }
+        ];
+      },
+      then: (g) => {
+        const n = g.quests.next();
+        if (!g.quests.active && n) g.quests.take(n);
+      }
+    },
+    {
       id: "help",
       word: "HELP",
       group: "him",
@@ -10796,12 +10841,29 @@ body {
       g.npc.setFacing(Math.sign(g.crab.x - g.npc.x) || -1);
       g.npc.moveTo = void 0;
       g.npc.speech = null;
+      g.cam.follow = null;
+      g.cam.free = true;
     }
     close() {
       if (!this.on) return;
       this.on = false;
       this.topic = null;
-      this.game.audio?.play("ui", { pitch: 0.7 });
+      const g = this.game;
+      g.cam.free = false;
+      g.cam.followEntity(g.crab);
+      g.cam.targetZoom = g.autoZoom();
+      g.audio?.play("ui", { pitch: 0.7 });
+    }
+    /** Hold the two-shot: both of you in frame, closer than the game ever is. */
+    _hold() {
+      const g = this.game;
+      const cam = g.cam;
+      if (cam.cine) return;
+      cam.free = true;
+      cam.freeT = 9;
+      cam.tx = (g.crab.x + g.npc.x) / 2;
+      cam.ty = (g.crab.y + g.npc.y) / 2 - 16;
+      cam.targetZoom = clamp(g.autoZoom() * 1.5, 1.2, 3.2);
     }
     /** Which topics are on the table right now. */
     list() {
@@ -10868,7 +10930,7 @@ body {
     }
     /** Say a topic, however you said it. */
     ask(tp, tapped = false) {
-      this.topic = tp;
+      this.topic = tp.build ? { ...tp, lines: tp.build(this.game) } : tp;
       this.line = 0;
       this.type = 0;
       this._wear();
@@ -10922,8 +10984,13 @@ body {
         this.close();
         return;
       }
+      this._hold();
       const i = g.input;
-      this._tap(dt, i.key("t"));
+      const kb = this._keyBox(g.renderer.vw, g.renderer.vh, Math.round(g.renderer.vh * 0.055));
+      const onKey = i.sx >= kb.x && i.sx <= kb.x + kb.w && i.sy >= kb.y && i.sy <= kb.y + kb.h;
+      const pressing = onKey && i.down;
+      if (pressing) i.clicked = false;
+      this._tap(dt, i.key("t") || pressing);
       if (i.justPressed("Escape")) {
         i.consumeKey("Escape");
         this.close();
@@ -10982,7 +11049,8 @@ body {
         const rows = this.topic ? 3 : Math.ceil(this.list().length / 2);
         const need = rows * 34 + 22;
         K = Math.min(3, Math.floor((W - 24) / 66) || 1);
-        while (K > 1 && lb + 4 + 21 * K + 64 * K * 0.62 + need > H - 42) K--;
+        const limit = this._keyBox(W, H, lb).y - 6;
+        while (K > 1 && lb + 4 + 21 * K + 64 * K * 0.62 + need > limit) K--;
       } else {
         K = Math.max(1, Math.min(4, Math.floor(Math.min(W * 0.3 / 59, H * 0.58 / 64))));
       }
@@ -11014,9 +11082,10 @@ body {
         this.rows = [];
         this._card(ctx, cx, cy, cw, H);
       } else {
-        const top = narrow ? cy : H < 210 ? lb + 14 : Math.round(H * 0.18);
+        const top = narrow ? cy : H < 210 ? lb + 6 : Math.round(H * 0.18);
         this._topics(ctx, cx, top, cw, H, narrow);
       }
+      this._key(ctx, W, H, lb);
       this._wire(ctx, W, H, lb);
       ctx.globalAlpha = 1;
     }
@@ -11065,13 +11134,21 @@ body {
     _topics(ctx, x, y, w, H, narrow) {
       const list = this.list();
       const short = H < 210;
-      const cellH = short ? 24 : this.game.ui?.touchEnabled ? 30 : 21;
-      const floor = H - (short ? 22 : 40);
-      const fits = Math.max(1, Math.floor((floor - y) / (cellH + 4)));
-      const maxCols = Math.max(1, Math.min(4, Math.floor(w / 84)));
+      const floor = this._keyBox(this.game.renderer.vw, H, Math.round(H * 0.055)).y - 6;
+      const room = Math.max(40, floor - y);
+      const maxH = short ? 24 : this.game.ui?.touchEnabled ? 30 : 21;
+      const maxCols = Math.max(1, Math.min(4, Math.floor(w / 56)));
       let cols = narrow ? 1 : w > 300 ? 3 : 2;
-      while (cols < maxCols && Math.ceil(list.length / cols) > fits) cols++;
+      let cellH = maxH;
+      for (; ; ) {
+        const rows2 = Math.ceil(list.length / cols);
+        cellH = Math.min(maxH, Math.floor(room / rows2) - 4);
+        if (cellH >= 22 || cols >= maxCols) break;
+        cols++;
+      }
+      cellH = Math.max(20, Math.min(maxH, cellH));
       const cellW = Math.floor((w - (cols - 1) * 6) / cols);
+      const codeFits = Math.max(...list.map((tp) => textWidth(morseFor(tp.word)))) + 12 <= cellW && cellH >= 24;
       const rows = [];
       list.forEach((tp, i) => {
         const col = i % cols, row = Math.floor(i / cols);
@@ -11091,26 +11168,100 @@ body {
           ctx.fillStyle = "#e2b74a";
           ctx.fillRect(bx, by, 2, cellH);
         }
+        const wy = codeFits ? by + (cellH - 19) / 2 : by + (cellH - 7) / 2;
         drawText(
           ctx,
-          tp.word,
+          ellipsize(tp.word, cellW - 10),
           bx + 6,
-          by + (cellH - 19) / 2,
+          wy,
           { color: on ? "#f7ecd0" : done ? "rgba(180,156,112,0.8)" : "#b49c70" }
         );
-        drawText(
-          ctx,
-          morseFor(tp.word),
-          bx + 6,
-          by + (cellH - 19) / 2 + 10,
-          { color: on ? TAP : "rgba(143,224,204,0.45)" }
-        );
+        if (codeFits) {
+          drawText(
+            ctx,
+            morseFor(tp.word),
+            bx + 6,
+            wy + 10,
+            { color: on ? TAP : "rgba(143,224,204,0.45)" }
+          );
+        }
       });
+      if (!codeFits && rows.length) {
+        const last2 = rows[rows.length - 1];
+        const sel = list[this.pick];
+        if (sel) {
+          drawText(
+            ctx,
+            morseFor(sel.word),
+            x + w / 2,
+            last2.y + last2.h + 5,
+            { color: TAP, align: "center" }
+          );
+        }
+      }
       this.rows = rows;
       const b = 0.4 + 0.6 * (0.5 + 0.5 * Math.sin(this.t * 2));
       ctx.globalAlpha = b;
       drawText(ctx, this.said.size ? "" : "tap it, or point at it", x, y - 11, { color: FAINT });
       ctx.globalAlpha = 1;
+    }
+    /**
+     * THE KEY.
+     *
+     * You have no mouth. You have a claw, and the claw is hard, and there is a
+     * flat stone in front of you - which is how anybody without a voice has
+     * ever sent a sentence over a distance. So there is a key, and you hold it
+     * down with the pincer: a short press is a dot, a long one is a dash, and
+     * letting go for a moment ends the letter.
+     *
+     * It is one enormous plate because it is one thing you do with one thumb,
+     * and it is the only control on this screen that needs any timing at all.
+     */
+    _keyBox(W, H, lb) {
+      const touch = !!this.game.ui?.touchEnabled;
+      if (H < 210) {
+        const x = Math.round(W * 0.46);
+        const h2 = 28;
+        return { x, y: H - lb - h2 - 4, w: W - x - 8, h: h2 };
+      }
+      const w = Math.min(220, Math.max(120, Math.round(W * (touch ? 0.62 : 0.34))));
+      const h = touch ? 56 : 34;
+      return { x: Math.round(W / 2 - w / 2), y: H - lb - 24 - h, w, h };
+    }
+    _key(ctx, W, H, lb) {
+      const b = this._keyBox(W, H, lb);
+      const dash = this.down && this.held > 0.22;
+      drawPlate(ctx, b.x, b.y, b.w, b.h, {
+        mat: "stone",
+        edge: this.down ? TAP : "rgba(90,130,120,0.5)",
+        top: this.down ? 1 : void 0
+      });
+      const tight = b.h < 34;
+      const cx = b.x + b.w / 2, cy = b.y + Math.round(b.h * (tight ? 0.34 : 0.42));
+      const grow = this.down ? clamp01(this.held / 0.22) : 0;
+      const mw = Math.round(4 + grow * (b.w * 0.28));
+      ctx.fillStyle = this.down ? dash ? TAP : "#cfeee4" : "rgba(120,160,150,0.4)";
+      ctx.fillRect(Math.round(cx - mw / 2), Math.round(cy - 2), mw, 5);
+      if (!this.down) {
+        drawText(ctx, "TAP  .    HOLD  -", cx, cy + 8, { color: FAINT, align: "center" });
+      } else {
+        drawText(ctx, dash ? "DASH" : "DOT", cx, cy + 8, { color: TAP, align: "center" });
+      }
+      const letter = CODE[this.marks];
+      if (this.marks) {
+        drawText(
+          ctx,
+          letter ? letter : this.marks,
+          cx,
+          b.y + b.h - (tight ? 8 : 12),
+          {
+            color: letter ? "#f7ecd0" : "rgba(200,120,110,0.9)",
+            align: "center",
+            scale: tight ? 1 : 2
+          }
+        );
+      }
+      return b;
     }
     /**
      * The wire: what is currently on it. Every mark you make shows up here the
@@ -14033,6 +14184,132 @@ body {
       ctx.fillRect(0, 0, vw, vh);
       ctx.globalAlpha = 1;
       ctx.lineWidth = 1;
+    }
+  };
+
+  // js/systems/quests.js
+  var JOBS2 = [
+    {
+      id: "water",
+      name: "FILL THE SHELL",
+      ask: "Stand on the spring and hold the valve until that shell is full. All of it. I want to see the top of the water.",
+      note: "Fill your shell to the brim",
+      done: (g) => g.economy.water >= g.economy.stat("waterMax") - 1,
+      say: "Full. Eleven years I have been drinking out of a canteen and you are walking around with a lake.",
+      reward: (g) => {
+        g.economy.nutrients += 6;
+      },
+      gain: "+6 nutrients"
+    },
+    {
+      id: "plant",
+      name: "SOMETHING ALIVE",
+      ask: "Your back is soil. I want one living thing standing in it by tonight - I do not care what.",
+      note: "Get one plant growing on your shell",
+      done: (g) => g.garden.plots.some((p) => p.plant),
+      say: "There. That is the first thing to grow on that shell since the sea left. Do not let it die.",
+      reward: (g) => {
+        g.economy.nutrients += 10;
+      },
+      gain: "+10 nutrients"
+    },
+    {
+      id: "bone",
+      name: "A CLEAN BONE",
+      ask: "Find a dig and take what is in it out without breaking it. Steady strokes. A cracked vertebra tells me nothing.",
+      note: "Dig up a fossil without damaging it",
+      done: (g) => (g.quests.flags.cleanDig || 0) > 0,
+      say: "Not a mark on it. You have better hands than I do and you do not have hands.",
+      reward: (g) => {
+        g.economy.nutrients += 14;
+      },
+      gain: "+14 nutrients"
+    },
+    {
+      id: "green",
+      name: "BRING IT BACK",
+      ask: "Pick a patch of dead ground and pour water on it until something comes up on its own. Three things. Then I will believe it.",
+      note: "Water dead sand until three things grow",
+      done: (g) => g.green.plants.size >= 3,
+      say: "Three. Out of ground I surveyed and wrote off. I am going to have to write a letter about this.",
+      reward: (g) => {
+        g.economy.nutrients += 18;
+      },
+      gain: "+18 nutrients"
+    },
+    {
+      id: "seam",
+      name: "OPEN A SEAM",
+      ask: "There is metal in this basin. Find a seam, get it open, and put what is in it in my pack.",
+      note: "Take ore out of a seam",
+      done: (g) => g.craft && g.craft.list().length > 0,
+      say: "Copper. In a basin that is supposed to be nothing but sandstone. Nothing out here is what the survey says it is.",
+      reward: (g) => {
+        g.economy.nutrients += 16;
+      },
+      gain: "+16 nutrients"
+    }
+  ];
+  var QUEST_BY_ID = Object.fromEntries(JOBS2.map((j) => [j.id, j]));
+  var Quests = class {
+    constructor(game2) {
+      this.game = game2;
+      this.active = null;
+      this.done = /* @__PURE__ */ new Set();
+      this.flags = {};
+      this.t = 0;
+      this.justDone = null;
+      this.doneT = 0;
+    }
+    /** The next job he has not given you yet, or null when he is out of them. */
+    next() {
+      return JOBS2.find((j) => !this.done.has(j.id) && j.id !== this.active?.id) || null;
+    }
+    /** Whether there is anything to ask him for. */
+    get hasWork() {
+      return !!this.next() || !!this.active;
+    }
+    take(job) {
+      if (!job || this.done.has(job.id)) return false;
+      this.active = job;
+      this.game.audio?.play("discover");
+      return true;
+    }
+    /** Something happened that a check cannot see on its own. */
+    flag(key2, n = 1) {
+      this.flags[key2] = (this.flags[key2] || 0) + n;
+    }
+    update(dt) {
+      this.doneT = Math.max(0, this.doneT - dt);
+      const a = this.active;
+      if (!a || this.game.state !== "play") return;
+      this.t += dt;
+      if (this.t < 0.4) return;
+      this.t = 0;
+      let ok = false;
+      try {
+        ok = !!a.done(this.game);
+      } catch {
+        ok = false;
+      }
+      if (!ok) return;
+      this.active = null;
+      this.done.add(a.id);
+      this.justDone = a;
+      this.doneT = 4;
+      a.reward?.(this.game);
+      this.game.audio?.play("discover");
+      this.game.npc?.say(a.say, 6);
+      this.game.ui?.say(`${a.name} - ${a.gain}`, 4);
+    }
+    save() {
+      return { active: this.active?.id || null, done: [...this.done], flags: this.flags };
+    }
+    load(d) {
+      if (!d) return;
+      this.active = d.active ? QUEST_BY_ID[d.active] || null : null;
+      this.done = new Set(d.done || []);
+      this.flags = d.flags || {};
     }
   };
 
@@ -22306,6 +22583,7 @@ body {
       else if (this.touchEnabled) this._touchControls(ctx, W, H);
       if (this.game.work?.live && !this.touchEnabled) this._workBar(ctx, W, H);
       this._thumbBand(ctx, W, H);
+      this._questNote(ctx, W, H);
       if (this.toast) this._toast(ctx, W, H);
       if (this.game.taming?.live) this._songCard(ctx, W, H);
       if (this.drag) this._drawCarried(ctx, W, H);
@@ -22416,6 +22694,39 @@ body {
       const h = clamp(Math.round(H * 0.14), 48, 76);
       const floor = this.buildOn ? H - 8 : this.buttonRowY(W, H) - 6;
       return { x: 6, y: Math.max(24, floor - h), w: W - 12, h };
+    }
+    /**
+     * What he asked you to do, on a scrap out of his notebook, pinned to the
+     * left edge under the shell. It is one line - the job, not a checklist -
+     * because he gives you one thing at a time and the thing itself is the
+     * objective. When it is done the scrap goes green for a few seconds and
+     * then it is gone, the way a note you can throw away should be.
+     */
+    _questNote(ctx, W, H) {
+      const q = this.game.quests;
+      if (!q) return;
+      const done = q.doneT > 0 ? q.justDone : null;
+      const job = done || q.active;
+      if (!job) return;
+      const note = done ? `${job.name}  ${job.gain}` : job.note;
+      const tw = Math.min(W - 24, textWidth(note) + 22);
+      const x = 6, y = this.build > 5e-3 ? 6 : 56;
+      const h = 18;
+      drawPlate(ctx, x, y, tw, h, {
+        mat: "paper",
+        edge: done ? "#9ad86a" : "rgba(120,96,58,0.5)",
+        alpha: 0.94
+      });
+      ctx.fillStyle = done ? "rgba(120,190,100,0.6)" : "rgba(150,52,42,0.45)";
+      ctx.fillRect(x + 11, y + 3, 1, h - 6);
+      drawNodeIcon(ctx, done ? "sun" : "hand", x + 6, y + h / 2, done ? "#5f8a3a" : "#7a5a2a", 1);
+      drawText(
+        ctx,
+        ellipsize(note, tw - 20),
+        x + 16,
+        y + (h - 7) / 2,
+        { color: done ? "#3f6a2a" : "#3a2f1e" }
+      );
     }
     /**
      * THE BAND.
@@ -24896,6 +25207,7 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
       this.combat = new Combat(this);
       this.taming = new Taming(this);
       this.hive = new Hive(this);
+      this.quests = new Quests(this);
       this.critters = new Critters(this, this.seed);
       this.roamTarget = null;
       this.ui = new UI(this);
@@ -25828,6 +26140,7 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
       this.mining.update(sdt);
       this._plantTick(sdt);
       this.work.update(sdt, i.key("e") || !!this.ui.actHeld);
+      this.quests.update(sdt);
       this.craft.update(sdt);
       this.mind.update(sdt);
       this.combat.update(sdt);
@@ -26552,6 +26865,7 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
           if (broken) {
             this.npc.say("You have broken it. It was eleven thousand years old and you have broken it.", 6);
           } else if (r.clean) {
+            this.quests?.flag("cleanDig");
             this.npc.say(`Clean. Not a mark on it. ${res.relic.desc}`, 7);
           } else {
             this.npc.say(res.relic.desc, 7);
@@ -27140,7 +27454,8 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
         mining: this.mining.toJSON(),
         craft: this.craft.toJSON(),
         mind: this.mind.toJSON(),
-        combat: this.combat.toJSON()
+        combat: this.combat.toJSON(),
+        quests: this.quests.save()
       });
     }
     load(d) {
@@ -27169,6 +27484,7 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
         this.craft.fromJSON(d.craft);
         this.mind.fromJSON(d.mind);
         this.combat.fromJSON(d.combat);
+        this.quests.load(d.quests);
         this.relics = d.relics || {};
         if (d.mode) this.ui.mode = d.mode;
         this.economy.recomputeGenes();

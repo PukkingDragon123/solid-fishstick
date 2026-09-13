@@ -29,6 +29,7 @@ import { Mind } from './systems/mind.js';
 import { Combat } from './systems/combat.js';
 import { Taming } from './systems/taming.js';
 import { Hive } from './systems/hive.js';
+import { Quests } from './systems/quests.js';
 import { Critters } from './systems/critters.js';
 import { Menu } from './ui/menu.js';
 import { ITEM_BY_ID } from './data/craft.js';
@@ -135,6 +136,7 @@ export class Game {
     this.combat = new Combat(this);
     this.taming = new Taming(this);
     this.hive = new Hive(this);
+    this.quests = new Quests(this);
     this.critters = new Critters(this, this.seed);
     this.roamTarget = null;
     this.ui = new UI(this);
@@ -1040,6 +1042,7 @@ export class Game {
     this._plantTick(sdt);
     // a job is held with the same key that started it
     this.work.update(sdt, i.key('e') || !!this.ui.actHeld);
+    this.quests.update(sdt);
     this.craft.update(sdt);
     this.mind.update(sdt);
     this.combat.update(sdt);
@@ -1698,6 +1701,7 @@ export class Game {
         if (broken) {
           this.npc.say('You have broken it. It was eleven thousand years old and you have broken it.', 6);
         } else if (r.clean) {
+          this.quests?.flag('cleanDig');
           this.npc.say(`Clean. Not a mark on it. ${res.relic.desc}`, 7);
         } else {
           this.npc.say(res.relic.desc, 7);
@@ -2269,7 +2273,7 @@ export class Game {
       morse: this.morse.toJSON(), green: this.green.toJSON(), pump: this.pump.toJSON(),
       digs: this.digs.toJSON(), relics: this.relics,
       mining: this.mining.toJSON(), craft: this.craft.toJSON(), mind: this.mind.toJSON(),
-      combat: this.combat.toJSON(),
+      combat: this.combat.toJSON(), quests: this.quests.save(),
     });
   }
 
@@ -2301,6 +2305,7 @@ export class Game {
       this.craft.fromJSON(d.craft);
       this.mind.fromJSON(d.mind);
       this.combat.fromJSON(d.combat);
+      this.quests.load(d.quests);
       this.relics = d.relics || {};
       if (d.mode) this.ui.mode = d.mode;
       this.economy.recomputeGenes();
