@@ -84,12 +84,18 @@ export class Digs {
    * Open the ground and take what is in it. A broad claw finds more: without
    * one you can only reach the shallow sites at all.
    */
-  dig(site) {
+  /**
+   * Take it out of the ground. `check` asks whether you could, without doing
+   * it - the work system needs to know before it starts five seconds of
+   * somebody kneeling in the sand.
+   */
+  dig(site, check = false) {
     const e = this.game.economy;
     const power = e.stat('fossil');
     if (!power) return { ok: false, msg: 'You would need a claw made for digging.' };
     if (site.deep > 0.55 && power < 2) return { ok: false, msg: 'It is deeper than you can reach.' };
-    this.taken.add(site.id);
+    if (this.taken.has(site.id)) return { ok: false, msg: 'Already out.' };
+    if (!check) this.taken.add(site.id);
     return { ok: true, relic: site.relic };
   }
 

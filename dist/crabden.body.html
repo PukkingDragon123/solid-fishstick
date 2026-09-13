@@ -3647,6 +3647,7 @@ body {
       desc: "Fruits at dusk and glows faintly. Everything with a mouth wants one.",
       boon: { berryRate: 1.35, attract: 1.1 },
       boonText: "Fruit. More of it, and more visitors for it.",
+      hands: { by: "hands", why: "The seed is the size of a grain of sand. You have a claw the size of a door." },
       unlock: { genes: ["chlorophyll"] }
     },
     {
@@ -3668,6 +3669,7 @@ body {
       desc: "Photosynthesises in the blue end of the light. Casts real shade, which out here is a currency.",
       boon: { grow: 0.9 },
       boonText: "Real shade. Everything beside it matures sooner.",
+      hands: { by: "hands", why: "The rhizome goes in at an angle, and a claw cannot hold an angle." },
       unlock: { genes: ["chlorophyll"] }
     },
     {
@@ -3715,6 +3717,7 @@ body {
       desc: "Stores a week of water in each pad. Everyone in the desert knows this, including you.",
       boon: { waterMax: 40 },
       boonText: "Stores water in the pads. Your tank is bigger.",
+      hands: { by: "digger", why: "The taproot goes deeper than anything here reaches by hand." },
       unlock: { genes: ["chlorophyll"], seen: 3 }
     },
     {
@@ -3738,6 +3741,7 @@ body {
       desc: "Fruits only in shade, and puts out a mist at dawn that other plants drink.",
       boon: { upkeep: -0.12, grow: 0.94 },
       boonText: "Mists at dawn. The whole shell stops being thirsty.",
+      hands: { by: "hands", why: "Spawn. Touch it with a claw and there is no spawn." },
       unlock: { genes: ["shade"] }
     },
     {
@@ -3763,6 +3767,7 @@ body {
       desc: "The petals are actual glass. Nobody knows how. It rings faintly in the wind.",
       boon: { light: 0.4, attract: 1.15 },
       boonText: "Glows faintly. Night things approach, night things keep off.",
+      hands: { by: "hands", why: "The bulb has a skin on it you could break by looking at it." },
       unlock: { genes: ["pollen"] }
     },
     {
@@ -3809,6 +3814,7 @@ body {
       desc: "Whistles when the wind comes off the saltpan. The birds answer it.",
       boon: { pondGain: 0.02, attract: 1.12 },
       boonText: "Whistles. Birds answer reeds.",
+      hands: { by: "digger", why: "It wants a trench dug along the bed, not a hole punched in it." },
       unlock: { pond: 0.5 }
     },
     {
@@ -3834,6 +3840,7 @@ body {
       desc: "Wood so dense it sinks in water. A century of growth, if you keep it drinking.",
       boon: { armour: 0.08, hp: 30 },
       boonText: "Roots into the shell itself. You are harder to hurt.",
+      hands: { by: "tool", why: "That bed is hardpan. Somebody needs a real tool and a real swing." },
       unlock: { genes: ["reservoir"], nutrients: 60 }
     },
     {
@@ -3858,6 +3865,7 @@ body {
       desc: "Pale as bone and twice as patient. Its shade is measurably cooler than any other shade.",
       boon: { grow: 0.86, speed: 1.06 },
       boonText: "Deep shade. You move in the cool of your own canopy.",
+      hands: { by: "tool", why: "Hardpan again, and twice as deep." },
       unlock: { genes: ["shade", "mycelium"] }
     },
     {
@@ -3880,6 +3888,7 @@ body {
       desc: "It fruits things that are almost animals. They hatch looking for a nervous system, and yours is already taken.",
       boon: { trust: 1.15 },
       boonText: "Fruits parasites instead of food. They ride other animals for you.",
+      hands: { by: "hands", why: "Nobody is putting a mindcap in the ground with their mouth." },
       unlock: { genes: ["mycelium", "shade"], nutrients: 140 }
     },
     {
@@ -3905,6 +3914,7 @@ body {
       desc: "It opens once a day, for about a minute. Creatures come from kilometres away to see it.",
       boon: { attract: 1.45, yield: 1.15 },
       boonText: "Opens once a day. Things cross a desert for it.",
+      hands: { by: "tool", why: "It goes in a metre down or it does not go in at all." },
       unlock: { genes: ["luminance"], nutrients: 180 }
     },
     {
@@ -3928,6 +3938,7 @@ body {
       desc: "Grows down your shell and into the sand, and the sand under it comes back to life.",
       boon: { yield: 1.3, pondGain: 0.02, upkeep: -0.1 },
       boonText: "The sand under it comes back to life.",
+      hands: { by: "digger", why: "Something with claws has to open the whole bed first." },
       unlock: { genes: ["heartwood", "canopy"], nutrients: 320 }
     }
   ];
@@ -7351,7 +7362,8 @@ body {
     MEASURE: "measure",
     REST: "rest",
     SHOCK: "shock",
-    BEER: "beer"
+    BEER: "beer",
+    DOWN: "down"
   };
   var POSES = {
     idle: { crouch: 0, lean: 0.04, armN: [1.42, 0.16], armF: [1.5, 0.14], swing: 0.25 },
@@ -7374,6 +7386,9 @@ body {
     survey: { crouch: 0, lean: -0.04, armN: [0.22, 1.23], armF: [1.44, 0.18], tool: "lens", swing: 0 },
     measure: { crouch: 0.1, lean: 0.22, armN: [0.3, 0.42], armF: [0.5, 0.5], tool: "peg", swing: 0 },
     rest: { crouch: 0.94, lean: 0.24, armN: [1, 0.54], armF: [1.14, 0.5], swing: 0, sit: 1 },
+    // on the ground, and not calmly: the legs are folded wrong, one arm is out
+    // trying to push the world away and the other is somewhere under her
+    down: { crouch: 1.25, lean: 1.05, armN: [0.3, 0.1], armF: [2.1, 0.34], swing: 0, sit: 1, face: 0.2 },
     // both arms straight up, spine back: the shape a person makes when the rock
     // they have been sitting on turns out to be an animal
     shock: { crouch: 0.16, lean: -0.14, armN: [-1.3, 0.26], armF: [-1.46, 0.22], swing: 0 }
@@ -10312,33 +10327,145 @@ body {
       ctx.fillRect(x + Math.round(w * clamp01(opts.mark)), y - 2, 1, h + 4);
     }
   }
+  var plates = /* @__PURE__ */ new Map();
+  function bakePlate(mat, w, h, seed) {
+    const cv = makeCanvas2(w + 4, h + 6);
+    const g = cv.getContext("2d");
+    g.imageSmoothingEnabled = false;
+    const R = (n) => hash2i(n * 37, seed, 91);
+    g.fillStyle = "rgba(0,0,0,0.32)";
+    g.fillRect(2, 3, w, h);
+    if (mat === "paper") {
+      g.fillStyle = "#e6dcc0";
+      g.fillRect(0, 0, w, h);
+      for (let i = 0; i < w * h * 0.04; i++) {
+        const x = Math.floor(R(i * 3) * w), y = Math.floor(R(i * 3 + 1) * h);
+        g.fillStyle = R(i * 3 + 2) < 0.5 ? "rgba(198,184,150,0.5)" : "rgba(246,238,216,0.5)";
+        g.fillRect(x, y, 1, 1);
+      }
+      g.fillStyle = "rgba(120,140,150,0.26)";
+      for (let y = 8; y < h - 2; y += 9) g.fillRect(2, y, w - 4, 1);
+      if (w > 40) {
+        g.fillStyle = "rgba(168,64,52,0.40)";
+        g.fillRect(6, 1, 1, h - 2);
+      }
+      g.fillStyle = "rgba(0,0,0,0)";
+      g.clearRect(0, h - 1, w, 1);
+      g.fillStyle = "#e6dcc0";
+      for (let x = 0; x < w; x++) {
+        if (R(x + 500) < 0.55) g.fillRect(x, h - 1, 1, 1);
+      }
+      g.fillStyle = "rgba(150,132,96,0.55)";
+      for (let x = 0; x < w; x++) {
+        if (R(x + 900) < 0.35) g.fillRect(x, h - 2, 1, 1);
+      }
+      g.fillStyle = "rgba(120,100,66,0.18)";
+      g.fillRect(0, 0, w, 1);
+    } else if (mat === "scroll") {
+      const roll = Math.min(7, Math.max(4, Math.round(h * 0.34)));
+      g.fillStyle = "#dbc28c";
+      g.fillRect(roll, 0, w - roll * 2, h);
+      for (let i = 0; i < w * h * 0.05; i++) {
+        const x = roll + Math.floor(R(i * 3) * (w - roll * 2));
+        const y = Math.floor(R(i * 3 + 1) * h);
+        g.fillStyle = R(i * 3 + 2) < 0.5 ? "rgba(186,158,106,0.45)" : "rgba(240,220,174,0.4)";
+        g.fillRect(x, y, 1, 1);
+      }
+      for (const side of [0, 1]) {
+        const rx = side ? w - roll : 0;
+        g.fillStyle = "#8a6a3a";
+        g.fillRect(rx, 0, roll, h);
+        g.fillStyle = "#b08c50";
+        g.fillRect(rx + (side ? 0 : 1), 1, roll - 1, h - 2);
+        g.fillStyle = "rgba(244,226,180,0.6)";
+        g.fillRect(rx + (side ? 1 : roll - 2), 1, 1, h - 2);
+        g.fillStyle = "rgba(50,34,14,0.5)";
+        g.fillRect(side ? rx : rx + roll - 1, 0, 1, h);
+      }
+      g.fillStyle = "rgba(110,84,44,0.30)";
+      g.fillRect(roll, 0, 2, h);
+      g.fillRect(w - roll - 2, 0, 2, h);
+    } else if (mat === "leather") {
+      g.fillStyle = "#3a2718";
+      g.fillRect(0, 0, w, h);
+      for (let i = 0; i < w * h * 0.05; i++) {
+        const x = Math.floor(R(i * 3) * w), y = Math.floor(R(i * 3 + 1) * h);
+        g.fillStyle = R(i * 3 + 2) < 0.5 ? "rgba(24,16,10,0.5)" : "rgba(86,60,36,0.4)";
+        g.fillRect(x, y, 1, 1);
+      }
+      g.fillStyle = "rgba(198,162,106,0.34)";
+      for (let x = 3; x < w - 3; x += 4) {
+        g.fillRect(x, 2, 2, 1);
+        g.fillRect(x, h - 3, 2, 1);
+      }
+      for (let y = 3; y < h - 3; y += 4) {
+        g.fillRect(2, y, 1, 2);
+        g.fillRect(w - 3, y, 1, 2);
+      }
+      g.fillStyle = "rgba(240,214,164,0.18)";
+      g.fillRect(0, 0, w, 1);
+    } else {
+      g.fillStyle = "#4a4136";
+      g.fillRect(0, 0, w, h);
+      for (let y = 0; y < h; y++) {
+        const band = Math.sin(y * 0.7 + seed) * 0.5 + 0.5;
+        g.fillStyle = band > 0.62 ? "rgba(92,82,66,0.34)" : band < 0.22 ? "rgba(30,25,18,0.30)" : "rgba(0,0,0,0)";
+        if (g.fillStyle !== "rgba(0, 0, 0, 0)") g.fillRect(0, y, w, 1);
+      }
+      for (let i = 0; i < w * h * 0.05; i++) {
+        const x = Math.floor(R(i * 3) * w), y = Math.floor(R(i * 3 + 1) * h);
+        const r = R(i * 3 + 2);
+        g.fillStyle = r < 0.12 ? "rgba(196,186,162,0.5)" : r < 0.5 ? "rgba(28,23,17,0.45)" : "rgba(106,96,78,0.4)";
+        g.fillRect(x, y, 1, 1);
+      }
+      g.fillStyle = "rgba(150,138,112,0.55)";
+      g.fillRect(0, 0, w, 1);
+      g.fillRect(0, 0, 1, h);
+      g.fillStyle = "rgba(16,12,8,0.55)";
+      g.fillRect(0, h - 1, w, 1);
+      g.fillRect(w - 1, 0, 1, h);
+      if (w > 10 && h > 8) {
+        g.fillStyle = "rgba(20,16,11,0.5)";
+        g.fillRect(2, 2, w - 4, 1);
+        g.fillRect(2, 2, 1, h - 4);
+        g.fillStyle = "rgba(168,156,128,0.35)";
+        g.fillRect(2, h - 3, w - 4, 1);
+        g.fillRect(w - 3, 2, 1, h - 4);
+      }
+      for (const [cx, cy] of [[0, 0], [w - 1, 0], [0, h - 1], [w - 1, h - 1]]) {
+        if (R(cx + cy * 7) < 0.7) g.clearRect(cx, cy, 1, 1);
+      }
+    }
+    return cv;
+  }
+  function plateFor(mat, w, h) {
+    const key2 = `${mat}:${w}x${h}`;
+    let cv = plates.get(key2);
+    if (!cv) {
+      cv = bakePlate(mat, w, h, (w * 31 + h * 17) % 997);
+      if (plates.size > 220) plates.clear();
+      plates.set(key2, cv);
+    }
+    return cv;
+  }
   function drawPlate(ctx, x, y, w, h, opts = {}) {
     x = Math.round(x);
     y = Math.round(y);
     w = Math.round(w);
     h = Math.round(h);
-    const a = opts.alpha ?? 1;
+    if (w < 2 || h < 2) return;
+    const mat = opts.mat || "stone";
     ctx.save();
-    ctx.globalAlpha = a;
-    ctx.fillStyle = "rgba(0,0,0,0.28)";
-    ctx.fillRect(x + 1, y + 2, w, h);
-    const g = ctx.createLinearGradient(0, y, 0, y + h);
-    g.addColorStop(0, opts.top || "rgba(46,35,22,0.88)");
-    g.addColorStop(1, opts.bottom || "rgba(26,19,12,0.92)");
-    ctx.fillStyle = g;
-    ctx.fillRect(x, y, w, h);
-    ctx.fillStyle = "rgba(198,162,90,0.30)";
-    ctx.fillRect(x, y, w, 1);
-    ctx.strokeStyle = opts.edge || "rgba(148,118,68,0.55)";
-    ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
-    if (opts.rivets !== false) {
-      ctx.fillStyle = "rgba(206,170,96,0.65)";
-      for (const [rx, ry] of [
-        [x + 2, y + 2],
-        [x + w - 3, y + 2],
-        [x + 2, y + h - 3],
-        [x + w - 3, y + h - 3]
-      ]) ctx.fillRect(rx, ry, 1, 1);
+    ctx.globalAlpha = opts.alpha ?? 1;
+    ctx.drawImage(plateFor(mat, w, h), x, y);
+    if (opts.edge && opts.edge !== "none") {
+      ctx.strokeStyle = opts.edge;
+      ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+      if (opts.top) {
+        ctx.globalAlpha = (opts.alpha ?? 1) * 0.22;
+        ctx.fillStyle = opts.edge;
+        ctx.fillRect(x + 2, y + 2, w - 4, h - 4);
+      }
     }
     ctx.restore();
   }
@@ -10421,7 +10548,6 @@ body {
   }
 
   // js/ui/talkscreen.js
-  var INK = "#f2e4c2";
   var DIM = "rgba(240,226,192,0.66)";
   var FAINT = "rgba(240,226,192,0.34)";
   var OUT = "rgba(12,8,5,0.72)";
@@ -10671,12 +10797,12 @@ body {
       const ln = tp.lines[this.line];
       const lines = wrapText(ln.t, w - 34);
       const h = Math.max(46, lines.length * LINE_H + 20);
-      drawPlate(ctx, x, y, w, h, { edge: "#e2b74a", alpha: 0.96 });
+      drawPlate(ctx, x, y, w, h, { mat: "paper", edge: "rgba(120,96,58,0.5)", alpha: 0.98 });
       if (ln.icon) {
         ctx.globalAlpha = 0.92;
-        drawNodeIcon(ctx, ln.icon, x + 15, y + h / 2, "#e2b74a", 2);
+        drawNodeIcon(ctx, ln.icon, x + 15, y + h / 2, "#7a5a2a", 2);
         ctx.globalAlpha = 1;
-        ctx.fillStyle = "rgba(226,183,74,0.28)";
+        ctx.fillStyle = "rgba(168,64,52,0.35)";
         ctx.fillRect(x + 25, y + 6, 1, h - 12);
       }
       const tx = x + 28;
@@ -10686,16 +10812,16 @@ body {
         if (budget <= 0) return;
         const cut = l.slice(0, budget);
         budget -= l.length;
-        drawText(ctx, cut, tx, y + 10 + i * LINE_H, { color: INK });
+        drawText(ctx, cut, tx, y + 10 + i * LINE_H, { color: "#332a1c" });
       });
       const n = tp.lines.length;
       for (let i = 0; i < n; i++) {
-        ctx.fillStyle = i <= this.line ? "#e2b74a" : "rgba(120,96,58,0.5)";
+        ctx.fillStyle = i <= this.line ? "#7a5a2a" : "rgba(140,122,90,0.5)";
         ctx.fillRect(x + w - 8 - (n - i) * 5, y + h - 6, 3, 3);
       }
       const b = 0.5 + 0.5 * Math.sin(this.t * 4);
       ctx.globalAlpha = 0.3 + b * 0.6;
-      ctx.fillStyle = "#e2b74a";
+      ctx.fillStyle = "#7a5a2a";
       for (let k = 0; k < 4; k++) {
         ctx.fillRect(Math.round(x + w - 14 + k), Math.round(y + h + 4 + k), 4 - k, 1);
         ctx.fillRect(Math.round(x + w - 14 + k), Math.round(y + h + 4 - k), 4 - k, 1);
@@ -10723,9 +10849,9 @@ body {
         const lit = this.flash > 0 && this.word === "" && this.said.has(tp.id);
         rows.push({ i, x: bx, y: by, w: cellW, h: cellH });
         drawPlate(ctx, bx, by, cellW, cellH, {
-          edge: on ? "#e2b74a" : lit ? TAP : "rgba(120,96,58,0.4)",
-          top: on ? "rgba(58,46,28,0.96)" : void 0,
-          rivets: false
+          mat: "stone",
+          edge: on ? "#e2b74a" : lit ? TAP : "none",
+          top: on ? 1 : void 0
         });
         if (on) {
           ctx.fillStyle = "#e2b74a";
@@ -10944,6 +11070,22 @@ body {
       ao: 0.12,
       normalScale: 0.6,
       outline: "#180e28"
+    },
+    whale: {
+      ramp: ["#16303f", "#1e4257", "#28566e", "#356b85", "#45839c", "#5b9cb2", "#7cb8c9", "#a8d5e0"],
+      diffuse: 0.84,
+      rim: 0.26,
+      ao: 0.1,
+      normalScale: 0.45,
+      outline: "#0b1f2c"
+    },
+    whaleDark: {
+      ramp: ["#0e2130", "#152e41", "#1d3d53", "#264d66", "#325f79", "#42738d", "#598aa4", "#7aa8bd"],
+      diffuse: 0.8,
+      rim: 0.2,
+      ao: 0.14,
+      normalScale: 0.5,
+      outline: "#08161f"
     },
     weed: {
       ramp: ["#123322", "#1b4830", "#265e3e", "#33754d", "#438d5d", "#57a672", "#77c08e", "#a3dab2"],
@@ -11433,6 +11575,131 @@ body {
     }
     return v;
   }
+  function paintWhale(S = 1) {
+    const L = 210 * S, H = 46 * S;
+    const pad = Math.ceil(14 * S);
+    const p = new Painter(Math.ceil(L + 40 * S) + pad * 2, Math.ceil(H * 2.2) + pad * 2);
+    const cy = p.h / 2;
+    const x0 = pad + 8 * S;
+    const spine2 = [];
+    const N = 26;
+    for (let i = 0; i <= N; i++) {
+      const t = i / N;
+      spine2.push({
+        x: x0 + t * L,
+        y: cy + Math.sin(t * Math.PI) * -1.5 * S + t * 2.5 * S,
+        r: (1 - Math.pow(Math.abs(t - 0.26) / 0.74, 1.55)) * H * 0.5 + 1.2 * S
+      });
+    }
+    for (let i = 1; i < spine2.length; i++) {
+      const a2 = spine2[i - 1], b2 = spine2[i];
+      p.capsule(
+        a2.x,
+        a2.y,
+        b2.x,
+        b2.y,
+        Math.max(0.8, a2.r),
+        Math.max(0.8, b2.r),
+        { mat: "whale", dome: Math.max(1, a2.r * 0.9), tint: -0.02 }
+      );
+    }
+    p.capsule(
+      x0 + 2 * S,
+      cy - 1 * S,
+      x0 + L * 0.17,
+      cy,
+      H * 0.2,
+      H * 0.42,
+      { mat: "whale", dome: H * 0.24, tint: 0.04 }
+    );
+    for (let i = 0; i < 40; i++) {
+      const t = i / 39;
+      const x = x0 + t * L * 0.3;
+      p.rect(
+        x,
+        cy + H * (0.1 + t * 0.06),
+        Math.max(1, S),
+        Math.max(1, S),
+        { mat: "whaleDark", dome: 0.5, lift: 2 }
+      );
+    }
+    for (let i = 0; i < 11; i++) {
+      const t = i / 10;
+      const x = x0 + L * (0.05 + t * 0.26);
+      p.capsule(
+        x,
+        cy + H * 0.12,
+        x + 1.5 * S,
+        cy + H * 0.4,
+        0.7 * S,
+        0.5 * S,
+        { mat: "whaleDark", mask: true, dome: 0.6, tint: -0.18 }
+      );
+    }
+    p.ellipse(
+      x0 + L * 0.135,
+      cy + H * 0.13,
+      1.5 * S,
+      1.2 * S,
+      { mat: "eye", dome: 1.4 * S, tint: 0.1 }
+    );
+    p.capsule(
+      x0 + L * 0.1,
+      cy - H * 0.26,
+      x0 + L * 0.16,
+      cy - H * 0.27,
+      1.6 * S,
+      1.1 * S,
+      { mat: "whaleDark", dome: 1.2, tint: 0.06 }
+    );
+    p.curve(
+      [
+        { x: x0 + L * 0.24, y: cy + H * 0.22 },
+        { x: x0 + L * 0.33, y: cy + H * 0.55 },
+        { x: x0 + L * 0.4, y: cy + H * 0.72 }
+      ],
+      3.4 * S,
+      0.9 * S,
+      { mat: "whaleDark", dome: 2 * S, steps: 10, tint: -0.06 }
+    );
+    p.poly([
+      { x: x0 + L * 0.74, y: cy - H * 0.3 },
+      { x: x0 + L * 0.79, y: cy - H * 0.48 },
+      { x: x0 + L * 0.8, y: cy - H * 0.26 }
+    ], { mat: "whale", dome: 2 * S, feather: 1.5, tint: 0.02 });
+    const tx = x0 + L;
+    p.poly([
+      { x: tx - 6 * S, y: cy + 2 * S },
+      { x: tx + 24 * S, y: cy - 18 * S },
+      { x: tx + 30 * S, y: cy - 12 * S },
+      { x: tx + 6 * S, y: cy + 3 * S }
+    ], { mat: "whale", dome: 2.4 * S, feather: 1.6, tint: 0.05 });
+    p.poly([
+      { x: tx - 6 * S, y: cy + 2 * S },
+      { x: tx + 24 * S, y: cy + 20 * S },
+      { x: tx + 30 * S, y: cy + 14 * S },
+      { x: tx + 6 * S, y: cy + 1 * S }
+    ], { mat: "whale", dome: 2.4 * S, feather: 1.6, tint: -0.04 });
+    p.speckle("whale", { density: 0.1, amp: 0.3, seed: 41 });
+    p.grain("whale", { freq: 0.22, amp: 0.16, seed: 7, height: 0.5 });
+    p.smoothHeight(1, 0.4);
+    return {
+      cv: p.resolve(MATS2, { ...LIGHT6, ambient: 0.52, outline: 1, outlineColor: "#0b1f2c" }),
+      ox: x0,
+      oy: cy,
+      L,
+      H
+    };
+  }
+  function whaleArt(S = 1) {
+    const k = `whale:${S.toFixed(2)}`;
+    let v = cache7.get(k);
+    if (!v) {
+      v = paintWhale(S);
+      cache7.set(k, v);
+    }
+    return v;
+  }
   var REEF_KINDS = ["branch", "fan", "brain", "tubes", "anemone", "weed", "weed", "branch", "fan"];
   var FLOOR_KINDS = ["urchin", "star", "shell"];
   var FISH_KINDS = ["dart", "reef", "blue"];
@@ -11451,6 +11718,8 @@ body {
       this.fish = [];
       this.jellies = [];
       this.bubbles = [];
+      this.whales = [];
+      this.snow = [];
       this.cells = /* @__PURE__ */ new Map();
       this.yearShow = 0;
     }
@@ -11469,8 +11738,24 @@ body {
       this.fish.length = 0;
       this.jellies.length = 0;
       this.bubbles.length = 0;
+      this.whales.length = 0;
+      this.snow.length = 0;
       const cx = this.game.crab.x;
       for (let i = 0; i < 40; i++) this._spawnFish(cx + (Math.random() - 0.5) * 900);
+      const top = this.level(cx);
+      const bed = this.game.terrain.surfaceY(cx);
+      const deep = (k) => top + (bed - top) * k;
+      this.whales.push({ x: cx - 1500, y: deep(0.26), dir: 1, sp: 26, s: 1, ph: 0, blow: 0 });
+      this.whales.push({ x: cx - 1660, y: deep(0.34), dir: 1, sp: 26, s: 0.52, ph: 1.2, blow: 0 });
+      for (let i = 0; i < 120; i++) {
+        this.snow.push({
+          x: cx + (Math.random() - 0.5) * 1200,
+          y: -Math.random() * 420,
+          v: 3 + Math.random() * 9,
+          ph: Math.random() * TAU,
+          r: Math.random() < 0.18 ? 2 : 1
+        });
+      }
       for (let i = 0; i < 4; i++) {
         this.jellies.push({
           x: cx + (Math.random() - 0.5) * 800,
@@ -11523,6 +11808,29 @@ body {
       const cam = this.game.cam;
       const b = cam.bounds(260);
       const wet = this.wet;
+      for (const wh of this.whales) {
+        wh.x += wh.dir * wh.sp * dt;
+        wh.ph += dt * 0.42;
+        wh.y += Math.sin(wh.ph * 0.6) * 3 * dt;
+        wh.blow = Math.max(0, wh.blow - dt);
+        if (wh.x > b.x1 + 2600) {
+          wh.x = b.x0 - 2600;
+          const top2 = this.level(wh.x);
+          const bed2 = this.game.terrain.surfaceY(wh.x);
+          wh.y = top2 + (bed2 - top2) * (0.2 + Math.random() * 0.22);
+        }
+        const t2 = this.level(wh.x), g2 = this.game.terrain.surfaceY(wh.x);
+        wh.y = clamp(wh.y, t2 + 26, g2 - 60);
+      }
+      for (const sn of this.snow) {
+        sn.y += sn.v * dt;
+        sn.ph += dt * 0.7;
+        const ground = this.game.terrain.surfaceY(sn.x);
+        if (sn.y > ground - 2) {
+          sn.y = this.level(sn.x) - 20 - Math.random() * 200;
+          sn.x = b.x0 + Math.random() * (b.x1 - b.x0);
+        }
+      }
       for (let i = this.fish.length - 1; i >= 0; i--) {
         const f = this.fish[i];
         f.x += f.dir * f.sp * dt * (0.6 + wet * 0.4);
@@ -11627,6 +11935,48 @@ body {
         for (const it of this._cell(ci)) if (it.x >= x0 && it.x <= x1) out.push(it);
       }
       return out;
+    }
+    /**
+     * The giants, and the snow. Both go in behind everything else and a long
+     * way off: a whale is drawn at a fraction of the camera's zoom and hazed
+     * into the column, because a hundred feet of animal thirty metres over your
+     * head is mostly water between you and it.
+     */
+    drawDeep(ctx, cam, vw, vh) {
+      const wet = this.wet;
+      if (wet <= 0.02) return;
+      const z = cam.zoom;
+      ctx.globalAlpha = wet * 0.3;
+      for (const sn of this.snow) {
+        const s = cam.worldToScreen(sn.x + Math.sin(sn.ph) * 5, sn.y);
+        if (s.x < -8 || s.x > vw + 8 || s.y < -8 || s.y > vh + 8) continue;
+        ctx.fillStyle = sn.r > 1 ? "#dff4fa" : "#b8dbe6";
+        ctx.fillRect(Math.round(s.x), Math.round(s.y), sn.r, sn.r);
+      }
+      ctx.globalAlpha = 1;
+      for (const wh of this.whales) {
+        const s = cam.worldToScreen(wh.x, wh.y);
+        const art = whaleArt(1);
+        const k = z * 0.95 * wh.s;
+        const w = art.cv.width * k;
+        if (s.x + w < -80 || s.x - w > vw + 80) continue;
+        ctx.save();
+        ctx.globalAlpha = wet * 0.74;
+        ctx.translate(Math.round(s.x), Math.round(s.y + Math.sin(wh.ph) * 4 * z));
+        ctx.scale(k * (wh.dir < 0 ? -1 : 1), k);
+        ctx.rotate(Math.sin(wh.ph) * 0.035);
+        ctx.drawImage(art.cv, -art.ox, -art.oy);
+        ctx.restore();
+        ctx.globalAlpha = wet * 0.16;
+        ctx.fillStyle = "#cfeef8";
+        for (let i = 0; i < 7; i++) {
+          const t = i / 6;
+          const bx = s.x - wh.dir * (60 + t * 200) * k;
+          const by = s.y + Math.sin(wh.ph + t * 2) * 9 * z;
+          ctx.fillRect(Math.round(bx), Math.round(by), Math.max(1, Math.round(3 * z)), 1);
+        }
+        ctx.globalAlpha = 1;
+      }
     }
     /** Everything growing on the bottom. `far` is the layer behind the animal. */
     drawReef(ctx, cam, far) {
@@ -12066,12 +12416,18 @@ body {
      * Open the ground and take what is in it. A broad claw finds more: without
      * one you can only reach the shallow sites at all.
      */
-    dig(site) {
+    /**
+     * Take it out of the ground. `check` asks whether you could, without doing
+     * it - the work system needs to know before it starts five seconds of
+     * somebody kneeling in the sand.
+     */
+    dig(site, check = false) {
       const e = this.game.economy;
       const power = e.stat("fossil");
       if (!power) return { ok: false, msg: "You would need a claw made for digging." };
       if (site.deep > 0.55 && power < 2) return { ok: false, msg: "It is deeper than you can reach." };
-      this.taken.add(site.id);
+      if (this.taken.has(site.id)) return { ok: false, msg: "Already out." };
+      if (!check) this.taken.add(site.id);
       return { ok: true, relic: site.relic };
     }
     // -- incubation -----------------------------------------------------------
@@ -12291,6 +12647,258 @@ body {
     }
   };
 
+  // js/systems/work.js
+  var JOBS = {
+    dig: {
+      name: "Digging",
+      secs: 5.2,
+      band: 0.3,
+      sweep: 1.05,
+      care: 0.7,
+      verb: "dig",
+      pose: "dig",
+      sound: "claw",
+      icon: "spade",
+      tint: "#c9a24a",
+      hint: "Every stroke in the band is sand off it. Every stroke outside is a crack in it."
+    },
+    pick: {
+      name: "Picking",
+      secs: 1.9,
+      band: 0.42,
+      sweep: 1.5,
+      care: 0.25,
+      verb: "pick",
+      pose: "reach",
+      sound: "pickup",
+      icon: "hand",
+      tint: "#8cc468",
+      hint: "Take it off at the stem. Tearing it costs you the next one."
+    },
+    plant: {
+      name: "Planting",
+      secs: 7.5,
+      band: 0.34,
+      sweep: 0.9,
+      care: 0.35,
+      verb: "plant",
+      pose: "dig",
+      sound: "step",
+      icon: "seed",
+      tint: "#9ad86a",
+      hint: "A hole, a seed, and the sand back over it. It is not quick."
+    },
+    water: {
+      name: "Watering",
+      secs: 3.4,
+      band: 0.26,
+      sweep: 1.25,
+      care: 0.15,
+      verb: "water",
+      pose: "pour",
+      sound: "water",
+      icon: "drop",
+      tint: "#5fc6d8",
+      hint: "Pour it in the band. Too fast and it runs off the top."
+    },
+    mine: {
+      name: "Mining",
+      secs: 4.4,
+      band: 0.28,
+      sweep: 1.2,
+      care: 0.5,
+      verb: "mine",
+      pose: "swing",
+      sound: "hit",
+      icon: "bolt",
+      tint: "#c97a4a",
+      hint: "Hit the seam where it is already cracked."
+    },
+    search: {
+      name: "Searching",
+      secs: 3,
+      band: 0.38,
+      sweep: 1.1,
+      care: 0.1,
+      verb: "search",
+      pose: "crouch",
+      sound: "step",
+      icon: "map",
+      tint: "#b49c70",
+      hint: "Turn it over. Slowly."
+    }
+  };
+  var STROKE_GAIN = 0.24;
+  var CORE = 0.32;
+  var IDLE_RATE = 0.55;
+  var Work = class {
+    constructor(game2) {
+      this.game = game2;
+      this.job = null;
+    }
+    get live() {
+      return !!this.job;
+    }
+    /**
+     * Start a job. `by` is whoever is doing it - you, or her while the spore has
+     * her, or a tamed animal. `onDone` gets the quality (0-1) so the thing you
+     * dug up can come out chipped.
+     */
+    begin(kind, opts = {}) {
+      const def3 = JOBS[kind];
+      if (!def3) return false;
+      if (this.job && this.job.kind === kind && this.job.tag === opts.tag) return true;
+      const skill = opts.skill ?? 1;
+      this.job = {
+        kind,
+        def: def3,
+        tag: opts.tag ?? null,
+        x: opts.x ?? this.game.crab.x,
+        y: opts.y ?? this.game.terrain.surfaceY(opts.x ?? this.game.crab.x),
+        by: opts.by || this.game.crab,
+        onDone: opts.onDone || null,
+        onStroke: opts.onStroke || null,
+        label: opts.label || def3.name,
+        secs: def3.secs / clamp(skill, 0.4, 3),
+        t: 0,
+        // seconds spent
+        done: 0,
+        // 0..1
+        quality: 1,
+        // falls with every bad stroke
+        strokes: 0,
+        good: 0,
+        needle: 0,
+        // 0..1 across the bar
+        dir: 1,
+        centre: 0.5,
+        band: def3.band,
+        flash: 0,
+        // +1 on a good stroke, -1 on a bad one
+        shake: 0,
+        held: true,
+        idle: 0
+        // how long since you last did anything
+      };
+      this._reband();
+      this.game.audio?.play("ui");
+      return true;
+    }
+    /** Move the band somewhere new, so a rhythm never carries you through. */
+    _reband() {
+      const j = this.job;
+      const half = j.band / 2;
+      j.centre = lerp(half + 0.06, 1 - half - 0.06, Math.random());
+    }
+    stop(reason = "let go") {
+      const j = this.job;
+      this.job = null;
+      return j ? { ...j, reason } : null;
+    }
+    /**
+     * One stroke. Where the needle is when you press is the whole of it.
+     */
+    strike() {
+      const j = this.job;
+      if (!j) return { kind: "none" };
+      const d = Math.abs(j.needle - j.centre);
+      const half = j.band / 2;
+      j.strokes++;
+      const g = this.game;
+      const w = j.by;
+      if (d > half) {
+        j.quality = clamp01(j.quality - j.def.care * 0.16);
+        j.flash = -1;
+        j.shake = 1;
+        g.audio?.play("deny");
+        g.fx?.dust(j.x, j.y, 0.5);
+        this._swing(w, false);
+        j.idle = 0;
+        return { kind: "miss", quality: j.quality };
+      }
+      const core = d <= half * CORE;
+      j.good++;
+      j.done = clamp01(j.done + STROKE_GAIN * (core ? 1.45 : 1));
+      j.flash = 1;
+      j.idle = 0;
+      g.audio?.play(j.def.sound, { pitch: core ? 1.25 : 1 });
+      this._swing(w, true);
+      j.onStroke?.(core);
+      if (j.kind === "water") {
+        g.fx?.splash?.(j.x, j.y, core ? 1 : 0.6);
+        g.fx?.drift(j.x, j.y - 4, "#9de3ee", core ? 5 : 3);
+      } else {
+        g.fx?.dust(j.x, j.y, core ? 1.5 : 1);
+        if (j.kind === "dig" || j.kind === "plant") g.fx?.digSpray?.(j.x, j.y, core ? 1.2 : 0.8);
+      }
+      if (core) g.cam?.shake(1.2);
+      this._reband();
+      if (j.done >= 1) this._finish();
+      return { kind: core ? "core" : "hit", quality: j.quality };
+    }
+    /** Whoever is doing it actually moves. */
+    _swing(w, good) {
+      if (!w) return;
+      const j = this.job;
+      if (w === this.game.crab) {
+        w.clawOpen = 1;
+        w.lurch = (w.facing || 1) * (good ? 3 : 1.6);
+        w.digging = 0.5;
+      } else if (w.setPose) {
+        w.swingT = 0.32;
+        w.jv = Math.min(w.jv || 0, good ? -26 : -12);
+      }
+    }
+    _finish() {
+      const j = this.job;
+      this.job = null;
+      const g = this.game;
+      g.audio?.play("discover");
+      g.cam?.shake(2.4);
+      g.fx?.spark(j.x, j.y - 8, j.def.tint, 14, 44);
+      j.onDone?.({
+        quality: j.quality,
+        strokes: j.strokes,
+        good: j.good,
+        clean: j.strokes > 0 && j.good === j.strokes
+      });
+    }
+    update(dt, held) {
+      const j = this.job;
+      if (!j) return;
+      if (j.by && j.by !== this.game.crab) held = true;
+      j.held = held;
+      j.t += dt;
+      j.flash *= Math.pow(0.02, dt);
+      j.shake = Math.max(0, j.shake - dt * 3);
+      const w = j.by;
+      if (w && Math.abs(w.x - j.x) > 70) {
+        this.stop("walked off");
+        return;
+      }
+      if (w && w.alive === false) {
+        this.stop("died");
+        return;
+      }
+      if (!held) {
+        j.idle += dt;
+        if (j.idle > 6) this.stop("left it");
+        return;
+      }
+      j.needle += j.dir * j.def.sweep * dt;
+      if (j.needle > 1) {
+        j.needle = 1;
+        j.dir = -1;
+      }
+      if (j.needle < 0) {
+        j.needle = 0;
+        j.dir = 1;
+      }
+      j.done = clamp01(j.done + dt / j.secs * IDLE_RATE);
+      if (j.done >= 1) this._finish();
+    }
+  };
+
   // js/systems/craft.js
   var Craft = class {
     constructor(game2) {
@@ -12398,10 +13006,12 @@ body {
   var LURE_RANGE = 22;
   var SPRAY_RANGE = 60;
   var DOSE_SECS = 2.6;
+  var DOWN_SECS = 3.4;
   var Mind = class {
     constructor(game2) {
       this.game = game2;
       this.stage = "free";
+      this.downT = 0;
       this.bait = null;
       this.doseT = 0;
       this.blue = 0;
@@ -12416,6 +13026,10 @@ body {
     }
     get owned() {
       return this.stage === "owned";
+    }
+    /** On the ground with it going through her - not yours yet, not free either. */
+    get downed() {
+      return this.stage === "down";
     }
     // -- step one: the lure ---------------------------------------------------
     /**
@@ -12447,7 +13061,7 @@ body {
     // -- step two: the spray --------------------------------------------------
     spray() {
       if (this.stage === "owned") return { ok: false, why: "She is already yours." };
-      if (this.stage === "dosing") return { ok: false, why: "It is already in her." };
+      if (this.stage === "dosing" || this.stage === "down") return { ok: false, why: "It is already in her." };
       const e = this.game.economy;
       if (e.parasites < 1) return { ok: false, why: "No spore. Grow a mindcap and pick it." };
       const n = this.npc;
@@ -12524,12 +13138,55 @@ body {
           g.fx?.drift(n.x + (Math.random() - 0.5) * 10, n.y - 14 - Math.random() * 8, "#c98ade", 1);
         }
         if (k >= 1) {
-          this.stage = "owned";
+          this.stage = "down";
+          this.downT = 0;
           this.blue = 1;
           this.bait = null;
+          n.mode = "free";
+          n.moveTo = void 0;
+          n.keepAway = false;
+          n.setPose(POSE.DOWN);
+          n.jv = -120;
+          n.squash = -0.4;
+          n.say("My legs. My legs have stopped - what have you PUT in me -", 3.2, 8);
+          g.fx?.ring(n.x, n.y - 14, "#c98ade", 18);
+          g.fx?.dust(n.x, n.y, 1.6);
+          g.audio?.play("hurt");
+          g.cam?.shake(4);
+        }
+        return;
+      }
+      if (this.stage === "down") {
+        this.downT += dt;
+        const k = clamp01(this.downT / DOWN_SECS);
+        const fight = 1 - k;
+        if (Math.random() < dt * (7 + fight * 16)) {
+          g.fx?.dust(n.x + (Math.random() - 0.5) * 16, n.y, 0.3 + fight * 0.5);
+          g.fx?.drift(n.x + (Math.random() - 0.5) * 12, n.y - 12 - Math.random() * 10, "#c98ade", 1);
+        }
+        if (Math.random() < dt * 3.2 * (0.3 + fight)) {
+          n.jv = -40 - fight * 70;
+          n.squash = -0.25 * fight;
+          g.cam?.shake(1.4 * fight);
+          g.audio?.play("step");
+        }
+        if (this.downT > 1.3 && !this._d1) {
+          this._d1 = 1;
+          n.say("I can see it. I can SEE it, it is in the back of my - ", 2.6, 2);
+        }
+        if (this.downT > 2.5 && !this._d2) {
+          this._d2 = 1;
+          n.say("...oh. Oh, that is quieter.", 2.4, 7);
+        }
+        if (k >= 1) {
+          this._d1 = 0;
+          this._d2 = 0;
+          this.stage = "owned";
+          this.blue = 1;
           n.mode = "owned";
           n.keepAway = false;
           n.setPose(POSE.IDLE);
+          n.jv = -30;
           n.say("", 0);
           g.fx?.ring(n.x, n.y - 14, "#6fd8ee", 18);
           g.audio?.play("discover");
@@ -12585,7 +13242,7 @@ body {
       }
     }
     toJSON() {
-      return { stage: this.stage === "dosing" ? "free" : this.stage };
+      return { stage: this.stage === "dosing" || this.stage === "down" ? "free" : this.stage };
     }
     fromJSON(d) {
       if (!d) return;
@@ -12601,7 +13258,7 @@ body {
   // js/systems/combat.js
   var BASE_SPEED2 = 1.15;
   var BASE_BAND2 = 0.26;
-  var CORE = 0.34;
+  var CORE2 = 0.34;
   var MAX_COMBO2 = 6;
   var OPEN_SECS = 0.85;
   var Combat = class {
@@ -12698,7 +13355,7 @@ body {
         return { kind: "miss" };
       }
       const off = Math.abs(p - this.band) / (this.width / 2);
-      const core = off <= CORE;
+      const core = off <= CORE2;
       this.combo++;
       this.best = Math.max(this.best, this.combo);
       this.flash = 1;
@@ -14247,6 +14904,30 @@ body {
     ring(x, y, color = "#b6de8f", r = 14) {
       this._add({ k: "ring", x, y, r0: 2, r1: r, life: 0.5, t: 0, color });
     }
+    /**
+     * Earth coming out of a hole. Not dust - clods, thrown up and back over the
+     * shoulder of whoever is digging, landing and staying landed.
+     */
+    digSpray(x, y, power = 1, dir = -1) {
+      const n = Math.round(4 + power * 7);
+      for (let i = 0; i < n; i++) {
+        const a = -Math.PI * (0.22 + Math.random() * 0.42);
+        const sp = (40 + Math.random() * 90) * power;
+        this.p.push({
+          kind: Math.random() < 0.3 ? "dust" : "chip",
+          x: x + (Math.random() - 0.5) * 5,
+          y: y - 1,
+          vx: Math.cos(a) * sp * dir,
+          vy: Math.sin(a) * sp,
+          grav: 460,
+          r: Math.random() < 0.35 ? 2 : 1,
+          life: 0.5 + Math.random() * 0.7,
+          t: 0,
+          color: Math.random() < 0.5 ? "#8a5f38" : "#a67848"
+        });
+      }
+      this.dust(x, y, power * 0.7);
+    }
     spark(x, y, color = "#ffe9a8", n = 6, power = 40) {
       for (let i = 0; i < n; i++) {
         const a = Math.random() * TAU;
@@ -14481,7 +15162,7 @@ body {
             break;
           case "chip":
             ctx.globalAlpha = a;
-            ctx.fillStyle = "#8d4a3a";
+            ctx.fillStyle = q.color || "#8d4a3a";
             ctx.fillRect(Math.round(s.x), Math.round(s.y), q.r * z, q.r * z);
             break;
           case "dust":
@@ -14907,6 +15588,7 @@ body {
       if (!plot || plot.plant || plot.build || !def3) return null;
       if (def3.needsPond && !(plot.wet && this.pond > 0.35)) return null;
       if (plot.wet && !def3.needsPond) return null;
+      plot.pending = null;
       plot.plant = {
         id: floraId,
         def: def3,
@@ -15106,7 +15788,7 @@ body {
       const wind = this.game.weather ? this.game.weather.windSpeed : 0.3;
       ctx.save();
       ctx.rotate(crab.bodyAngle + crab.roll);
-      const list = this.plots.filter((p) => (p.plant || p.build) && (p.b < -0.05 ? 0 : 1) === row).sort((x, y) => x.b - y.b);
+      const list = this.plots.filter((p) => (p.plant || p.build || p.pending) && (p.b < -0.05 ? 0 : 1) === row).sort((x, y) => x.b - y.b);
       for (const plot of list) {
         const sp = crab.rig.shellSurface(plot.a, plot.b);
         const depth = (plot.b + 1) / 2;
@@ -15116,6 +15798,36 @@ body {
         ctx.save();
         ctx.translate(sp.x, sp.y + 1);
         ctx.rotate(tilt + sway);
+        if (plot.pending) {
+          const w = this.game.work;
+          const j = w && w.job && w.job.tag === "plant:" + plot.i ? w.job : null;
+          const k = j ? clamp01(j.done) : 0;
+          const r = 1.8 + crab.m.rx * 0.022;
+          pxEllipse(
+            ctx,
+            0,
+            0,
+            r * (1 + k * 0.8),
+            r * 0.5 * (1 + k * 0.6),
+            "rgba(30,22,13,0.85)",
+            { p: 1 }
+          );
+          pxEllipse(
+            ctx,
+            r * 1.4,
+            -r * 0.2,
+            r * (0.5 + k * 0.7),
+            r * 0.35,
+            "#8a5f38",
+            { p: 1, soft: 0.4 }
+          );
+          if (k < 0.8) {
+            ctx.fillStyle = "#957e42";
+            ctx.fillRect(Math.round(-r * 1.5), Math.round(-r * 0.4), 2, 2);
+          }
+          ctx.restore();
+          continue;
+        }
         if (plot.plant && plot.plant.soaked < 1) {
           const pl = plot.plant;
           const r = 1.6 + crab.m.rx * 0.02;
@@ -20815,7 +21527,7 @@ body {
   };
 
   // js/ui/ui.js
-  var INK2 = "#f2e4c2";
+  var INK = "#f2e4c2";
   var DIM2 = "rgba(240,226,192,0.66)";
   var FAINT2 = "rgba(240,226,192,0.36)";
   var OUT2 = "rgba(12,8,5,0.72)";
@@ -21358,12 +22070,84 @@ body {
       if (this.placing) this._placingHud(ctx, W, H);
       if (this.drawer > 5e-3) this._panel(ctx, W, H);
       else if (this.touchEnabled) this._touchControls(ctx, W, H);
+      if (this.game.work?.live) this._workBar(ctx, W, H);
       if (this.toast) this._toast(ctx, W, H);
       if (this.game.taming?.live) this._songCard(ctx, W, H);
       if (this.drag) this._drawCarried(ctx, W, H);
       this._exitChip(ctx, W, H);
       if (this.paused) this._pauseCard(ctx, W, H);
       if (this.hover && !this.drag) this._tooltip(ctx, W, H);
+    }
+    /**
+     * The job you are in the middle of. It is drawn at the work, not in a
+     * corner, because the thing you are looking at while you dig is the hole.
+     *
+     * A stone tablet with a sunk bar in it: a band where the stroke lands, a
+     * brighter core inside that, and a needle sweeping. Under it, how much of
+     * the job is done and how well it is going - and the "how well" is the
+     * number that matters, because a fossil dug badly comes out in pieces.
+     */
+    _workBar(ctx, W, H) {
+      const wk = this.game.work;
+      const j = wk && wk.job;
+      if (!j) return;
+      const cam = this.game.cam;
+      const s = cam.worldToScreen(j.x, j.y);
+      const w = 104, h = 30;
+      const sh = j.shake > 0 ? Math.round(Math.sin(this.t * 46) * j.shake * 2) : 0;
+      const x = Math.round(clamp(s.x - w / 2, 6, W - w - 6)) + sh;
+      const y = Math.round(clamp(s.y - 56 * cam.zoom, 20, H - h - 40));
+      drawPlate(ctx, x, y, w, h, { mat: "stone", edge: "none" });
+      drawNodeIcon(ctx, j.def.icon, x + 9, y + 8, j.def.tint, 1);
+      drawText(
+        ctx,
+        ellipsize(j.label.toUpperCase(), w - 34),
+        x + 18,
+        y + 4,
+        { color: "#e6dcc0" }
+      );
+      const bx = x + 5, by = y + 15, bw = w - 10, bh = 7;
+      ctx.fillStyle = "rgba(14,11,7,0.92)";
+      ctx.fillRect(bx, by, bw, bh);
+      ctx.fillStyle = "rgba(150,138,112,0.25)";
+      ctx.fillRect(bx, by + bh, bw, 1);
+      const half = j.band / 2;
+      const b0 = Math.round(bx + clamp01(j.centre - half) * bw);
+      const b1 = Math.round(bx + clamp01(j.centre + half) * bw);
+      ctx.fillStyle = j.def.tint;
+      ctx.globalAlpha = 0.3;
+      ctx.fillRect(b0, by, b1 - b0, bh);
+      const c0 = Math.round(bx + clamp01(j.centre - half * 0.32) * bw);
+      const c1 = Math.round(bx + clamp01(j.centre + half * 0.32) * bw);
+      ctx.globalAlpha = 0.62;
+      ctx.fillRect(c0, by, Math.max(1, c1 - c0), bh);
+      ctx.globalAlpha = 1;
+      const nx = Math.round(bx + clamp01(j.needle) * bw);
+      ctx.fillStyle = j.flash > 0.05 ? "#fff2cf" : j.flash < -0.05 ? "#e2564f" : "#f2e4c2";
+      ctx.fillRect(nx, by - 2, 1, bh + 4);
+      ctx.fillRect(nx - 1, by - 3, 3, 1);
+      ctx.fillStyle = "rgba(14,11,7,0.8)";
+      ctx.fillRect(x + 5, y + h - 5, w - 10, 2);
+      ctx.fillStyle = j.def.tint;
+      ctx.fillRect(x + 5, y + h - 5, Math.round((w - 10) * clamp01(j.done)), 2);
+      const pips = 5;
+      for (let i = 0; i < pips; i++) {
+        const lost = j.quality < (pips - i) / pips;
+        ctx.fillStyle = lost ? "rgba(226,86,79,0.7)" : "#e6dcc0";
+        ctx.fillRect(x + w - 8 - i * 3, y + 5, 2, 2);
+      }
+      if (!j.held) {
+        const b = 0.4 + 0.6 * (0.5 + 0.5 * Math.sin(this.t * 3));
+        ctx.globalAlpha = b;
+        drawText(
+          ctx,
+          "HOLD E",
+          x + w / 2,
+          y + h + 3,
+          { color: FAINT2, align: "center", outline: true, outlineColor: OUT2 }
+        );
+        ctx.globalAlpha = 1;
+      }
     }
     /**
      * The mode bar. Five of them down the left-hand edge - a glyph each, lit in
@@ -21493,7 +22277,7 @@ body {
       });
       ctx.globalAlpha = dim ? 0.45 : 1;
       drawGlyph(ctx, glyph, x + 9, y + h / 2, { color: opts.tint || "#e2b74a", scale: 1 });
-      drawText(ctx, label, x + 17, y + 3, { color: dim ? DIM2 : INK2 });
+      drawText(ctx, label, x + 17, y + 3, { color: dim ? DIM2 : INK });
       if (key2) drawText(ctx, key2, x + w - 4, y + 3, { color: FAINT2, align: "right" });
       ctx.globalAlpha = 1;
       if (hot && !dim) this.hover = opts.hover || null;
@@ -21707,7 +22491,7 @@ Coming back.` };
         l,
         W / 2 + 1,
         by + 4 + i * LINE_H,
-        { color: INK2, align: "center" }
+        { color: INK, align: "center" }
       ));
       ctx.restore();
     }
@@ -21784,7 +22568,7 @@ Coming back.` };
           label,
           bx + bw / 2,
           by + 4,
-          { color: i === 2 && this._confirmNew ? "#e08c9c" : INK2, align: "center" }
+          { color: i === 2 && this._confirmNew ? "#e08c9c" : INK, align: "center" }
         );
         if (hot && this.game.input.clicked) {
           this.game.input.clicked = false;
@@ -21825,7 +22609,7 @@ Coming back.` };
           `${Math.round(e.water)} water   ${Math.round(e.nutrients)} growth`,
           W - 5,
           4,
-          { color: INK2, align: "right", outline: true, outlineColor: OUT2 }
+          { color: INK, align: "right", outline: true, outlineColor: OUT2 }
         );
         this._pumpStub(ctx, W, H);
         return;
@@ -21854,7 +22638,7 @@ Coming back.` };
           `${Math.round(e.water)}`,
           L + sh.w / 2,
           4 + sh.h - 1,
-          { color: INK2, align: "center", outline: true, outlineColor: OUT2 }
+          { color: INK, align: "center", outline: true, outlineColor: OUT2 }
         );
         if (this._hit(L, 4, sh.w, sh.h)) this.hover = { title: "Spring", body: `${Math.round(e.water)} / ${Math.round(maxW)}` };
       }
@@ -21867,7 +22651,7 @@ Coming back.` };
         `${Math.round(e.nutrients)}`,
         bx + 17,
         4 + sh.h - 1,
-        { color: INK2, align: "center", outline: true, outlineColor: OUT2 }
+        { color: INK, align: "center", outline: true, outlineColor: OUT2 }
       );
       if (this._hit(bx, 2, 34, 40)) {
         this.hover = { title: "Growth", body: `${Math.round(e.nutrients)} banked` };
@@ -22040,7 +22824,7 @@ Coming back.` };
       if (this.touchEnabled) return;
       const hint = g.actionHint();
       if (hint && !this.touchEnabled) {
-        drawText(ctx, hint, W / 2, H - 30, { color: INK2, align: "center", outline: true, outlineColor: OUT2 });
+        drawText(ctx, hint, W / 2, H - 30, { color: INK, align: "center", outline: true, outlineColor: OUT2 });
       }
       if (!this.touchEnabled) this._keys(ctx, W, H);
       if (this.selected) {
@@ -22080,8 +22864,8 @@ Coming back.` };
       ctx.globalAlpha = Math.min(1, a);
       caps.forEach(([k, word], i) => {
         const w = capW[i];
-        drawPlate(ctx, x, y, w, 11, { edge: "rgba(180,146,86,0.45)" });
-        drawText(ctx, k, x + w / 2, y + 2, { color: "#e6d5ad", align: "center" });
+        drawPlate(ctx, x, y, w, 11, { mat: "paper", edge: "rgba(120,96,58,0.45)" });
+        drawText(ctx, k, x + w / 2, y + 2, { color: "#3a2f1e", align: "center" });
         x += w + gap;
         drawText(
           ctx,
@@ -22103,7 +22887,7 @@ Coming back.` };
       ctx.fillRect(x, y, bw, bh);
       ctx.strokeStyle = "rgba(214,186,138,0.55)";
       ctx.strokeRect(x + 0.5, y + 0.5, bw - 1, bh - 1);
-      drawText(ctx, "CLIMB DOWN", x + bw / 2, y + (bh - 7) / 2, { color: INK2, align: "center" });
+      drawText(ctx, "CLIMB DOWN", x + bw / 2, y + (bh - 7) / 2, { color: INK, align: "center" });
     }
     /**
      * The pump. It is a valve in your own shell, so it is drawn as one, and it
@@ -22427,7 +23211,7 @@ Coming back.` };
       ctx.beginPath();
       ctx.arc(sx, sy, 4.2, 0, TAU);
       ctx.fill();
-      drawText(ctx, `DAY ${day}`, cx - R - 4, cy - 8, { color: INK2, align: "right" });
+      drawText(ctx, `DAY ${day}`, cx - R - 4, cy - 8, { color: INK, align: "right" });
       drawText(
         ctx,
         `${String(Math.floor(hour)).padStart(2, "0")}:${String(Math.floor(hour % 1 * 60)).padStart(2, "0")}`,
@@ -22476,7 +23260,7 @@ Coming back.` };
           lm.name,
           x,
           y - 12,
-          { color: INK2, align: "center", outline: true, outlineColor: OUT2 }
+          { color: INK, align: "center", outline: true, outlineColor: OUT2 }
         );
       }
     }
@@ -22495,8 +23279,24 @@ Coming back.` };
       const g = this.game;
       const i = g.input;
       let pickHit = null;
+      let waterHit = null;
       for (const plot of g.garden.plots) {
         const pl = plot.plant;
+        if (pl && pl.soaked < 1) {
+          const w2 = g.garden.plotWorld(plot);
+          const s2 = cam.worldToScreen(w2.x, w2.y - 8);
+          if (s2.x < -20 || s2.x > g.renderer.vw + 20) continue;
+          const hot2 = Math.hypot(i.sx - s2.x, i.sy - s2.y) < 12;
+          if (hot2) waterHit = plot;
+          const b = 0.5 + 0.5 * Math.sin(this.t * 3.2 + plot.i);
+          ctx.globalAlpha = 0.45 + b * 0.5;
+          drawNodeIcon(ctx, "drop", s2.x, s2.y - 2 - b * 1.5, hot2 ? "#cdf2fa" : "#5fc6d8", 1);
+          ctx.globalAlpha = 1;
+          if (cam.zoom > 1.3) {
+            drawGauge(ctx, s2.x - 6, s2.y + 5, 12, 2, pl.soaked, "#5fc6d8");
+          }
+          continue;
+        }
         if (!pl || pl.stage < 3) continue;
         const w = g.garden.plotWorld(plot);
         const s = cam.worldToScreen(w.x, w.y - 9);
@@ -22509,20 +23309,9 @@ Coming back.` };
           const bob = Math.sin(this.t * 3.4 + plot.i) * 1.6;
           const r = 4 + Math.sin(this.t * 5 + plot.i) * 0.6;
           ctx.globalAlpha = 0.9;
-          const gr = ctx.createRadialGradient(s.x, s.y + bob, 0, s.x, s.y + bob, r * 3);
-          gr.addColorStop(0, "rgba(226,240,168,0.85)");
-          gr.addColorStop(1, "rgba(140,196,104,0)");
-          ctx.fillStyle = gr;
-          ctx.beginPath();
-          ctx.arc(s.x, s.y + bob, r * 3, 0, TAU);
-          ctx.fill();
-          ctx.fillStyle = hot ? "#f6ffd8" : "#cfe89a";
-          ctx.beginPath();
-          ctx.arc(s.x, s.y + bob, r, 0, TAU);
-          ctx.fill();
-          ctx.strokeStyle = "rgba(20,30,10,0.8)";
-          ctx.lineWidth = 1;
-          ctx.stroke();
+          pxGlow(ctx, s.x, s.y + bob, r * 3, "#e2f0a8", 0.85, { p: 1, steps: 3 });
+          pxDisc(ctx, s.x, s.y + bob, r + 1, "rgba(20,30,10,0.8)", { p: 1 });
+          pxDisc(ctx, s.x, s.y + bob, r, hot ? "#f6ffd8" : "#cfe89a", { p: 1 });
           ctx.globalAlpha = 1;
         } else if (cam.zoom > 1.4) {
           ctx.globalAlpha = met ? 0.75 : 0.5;
@@ -22535,11 +23324,17 @@ Coming back.` };
           ctx.globalAlpha = 1;
         }
       }
-      if (pickHit && i.clicked) {
+      if (waterHit && i.clicked) {
+        i.clicked = false;
+        g.startWatering(waterHit);
+      } else if (pickHit && i.clicked) {
         i.clicked = false;
         g.harvestPlot(pickHit);
       }
-      this.cropHot = !!pickHit;
+      if (waterHit) {
+        this.hover = { title: `${waterHit.plant.def.name}`, body: "Dry. Click to pour - land it in the band or it runs off the top." };
+      }
+      this.cropHot = !!pickHit || !!waterHit;
     }
     /** Called from the game draw so the ghost sits in the world, not on the HUD. */
     drawGhost(ctx, cam) {
@@ -22611,7 +23406,7 @@ Coming back.` };
       const cost = kind === "flora" ? `${def3.cost} water` : `${def3.cost} water + ${def3.nut} nutrients`;
       const ok = kind === "flora" ? e.water >= def3.cost : e.canBuild(def3.id);
       const line = `${def3.name}  -  ${cost}`;
-      drawText(ctx, line, W / 2, 6, { color: ok ? INK2 : "#e08c9c", align: "center", outline: true, outlineColor: OUT2 });
+      drawText(ctx, line, W / 2, 6, { color: ok ? INK : "#e08c9c", align: "center", outline: true, outlineColor: OUT2 });
       drawText(
         ctx,
         "click a marked bed to plant   shift to keep placing   esc to stop",
@@ -22657,7 +23452,7 @@ Coming back.` };
         const lw = tabW >= 58 ? textWidth(t.name) : 0;
         const gx = tx + Math.round((tabW - 1 - (18 + (lw ? 2 + lw : 0))) / 2);
         drawTab(ctx, t.icon, gx, inY + 3);
-        if (lw) drawText(ctx, t.name, gx + 20, inY + 7, { color: on ? INK2 : DIM2 });
+        if (lw) drawText(ctx, t.name, gx + 20, inY + 7, { color: on ? INK : DIM2 });
         ctx.globalAlpha = k;
         if (hot && this.game.input.clicked) {
           this.game.input.clicked = false;
@@ -22725,7 +23520,7 @@ Coming back.` };
         }
         drawPlate(ctx, bx, by, cw - 2, 12, { rivets: false });
         drawGlyph(ctx, e.def.icon, bx + 6, by + 6, { color: e.def.tint, scale: 1 });
-        drawText(ctx, `${e.n}`, bx + cw - 5, by + 3, { color: INK2, align: "right" });
+        drawText(ctx, `${e.n}`, bx + cw - 5, by + 3, { color: INK, align: "right" });
         if (this._hit(bx, by, cw - 2, 12)) {
           this.hover = { title: `${e.def.name} x${e.n}`, body: e.def.desc };
         }
@@ -22758,7 +23553,7 @@ Coming back.` };
           `${out.name}${r.out[1] > 1 ? ` x${r.out[1]}` : ""}`,
           x + 18,
           by + 2,
-          { color: can ? INK2 : DIM2 }
+          { color: can ? INK : DIM2 }
         );
         let cx2 = x + 18;
         for (const [id, n] of r.need) {
@@ -22822,7 +23617,7 @@ She has to be yours to make it.` };
         }
         ctx.globalAlpha = k * (on ? 1 : 0.6);
         drawTab(ctx, t.icon, tx + 2, ry + 1);
-        drawText(ctx, t.name, tx + 20, ry + 6, { color: on ? INK2 : DIM2 });
+        drawText(ctx, t.name, tx + 20, ry + 6, { color: on ? INK : DIM2 });
         ctx.globalAlpha = k;
         if (hot && g.input.clicked) {
           g.input.clicked = false;
@@ -22868,7 +23663,7 @@ She has to be yours to make it.` };
         const isB = this.buildTab === "build";
         const unlock = isB ? { ok: true } : g.unlockOf(def3);
         const afford = isB ? g.economy.canBuild(def3.id) : g.economy.water >= def3.cost;
-        drawText(ctx, ellipsize(def3.name, inW - 4), inX + 2, cy + 2, { color: unlock.ok ? INK2 : FAINT2 });
+        drawText(ctx, ellipsize(def3.name, inW - 4), inX + 2, cy + 2, { color: unlock.ok ? INK : FAINT2 });
         if (!unlock.ok) {
           drawNodeIcon(ctx, "link", inX + 7, cy + 20, "#e2b74a", 1);
           wrapText(unlock.why, inW - 20).slice(0, 2).forEach((l, i) => drawText(ctx, l, inX + 15, cy + 14 + i * LINE_H, { color: "#e2b74a" }));
@@ -22883,6 +23678,14 @@ She has to be yours to make it.` };
             ["weight", def3.mass.toFixed(1), "rgba(214,186,138,0.6)"]
           ];
           if (!isB && def3.needs) chips.push([NEEDS_ICON[def3.needs] || "sun", "", "#e2b74a"]);
+          const hand = !isB && def3.hands ? g.plantWorker(def3) : null;
+          if (!isB && def3.hands) {
+            chips.push([
+              def3.hands.by === "digger" ? "paw" : def3.hands.by === "tool" ? "hammer" : "hand",
+              "",
+              hand && hand.ok ? "#8cc468" : "#e2564f"
+            ]);
+          }
           let chx = inX + 2, row = 0;
           for (const [icon, label, col] of chips) {
             const lw = label ? textWidth(label) : 0;
@@ -22897,7 +23700,11 @@ She has to be yours to make it.` };
             drawNodeIcon(ctx, icon, chx + 4, chy + 4, col, 1);
             if (label) drawText(ctx, label, chx + 10, chy + 1, { color: col });
             if (this._hit(chx - 1, chy - 1, cw + 2, 11)) {
-              this.hover = def3.needs && icon === NEEDS_ICON[def3.needs] ? { title: def3.name, body: NEEDS_TEXT[def3.needs] } : { title: def3.name, body: `${def3.cost} water  \xB7  pays ${def3.pay} every ${Math.round(def3.ripen)}s  \xB7  weighs ${def3.mass.toFixed(1)}` };
+              const isHand = !isB && def3.hands && (icon === "hand" || icon === "paw" || icon === "hammer");
+              this.hover = isHand ? {
+                title: hand && hand.ok ? "She can do this" : "Nobody here can plant it",
+                body: hand && hand.ok ? def3.hands.why : hand ? hand.why : def3.hands.why
+              } : def3.needs && icon === NEEDS_ICON[def3.needs] ? { title: def3.name, body: NEEDS_TEXT[def3.needs] } : { title: def3.name, body: `${def3.cost} water  \xB7  pays ${def3.pay} every ${Math.round(def3.ripen)}s  \xB7  weighs ${def3.mass.toFixed(1)}` };
             }
             chx += cw + 3;
           }
@@ -22907,12 +23714,13 @@ She has to be yours to make it.` };
           ctx.fillRect(inX, by, inW, bh);
           ctx.strokeStyle = afford ? "rgba(242,228,194,0.6)" : "rgba(200,66,92,0.5)";
           ctx.strokeRect(inX + 0.5, by + 0.5, inW - 1, bh - 1);
+          const blocked = !isB && hand && !hand.ok;
           drawText(
             ctx,
-            afford ? "PLACE IT" : "NOT ENOUGH",
+            !afford ? "NOT ENOUGH" : blocked ? "NO HANDS FOR IT" : !isB && def3.hands ? "SHE WILL PLANT IT" : "PLACE IT",
             inX + inW / 2,
             by + 4,
-            { color: afford ? "#12200c" : "#e08c9c", align: "center" }
+            { color: afford && !blocked ? "#12200c" : "#e08c9c", align: "center" }
           );
           if (hot && afford && g.input.clicked) {
             g.input.clicked = false;
@@ -23065,7 +23873,7 @@ She has to be yours to make it.` };
         ctx.fillRect(x, by, w, ch);
         ctx.fillStyle = puppet ? "#b46ad0" : c.onShell ? "#8cc468" : "#e2b74a";
         ctx.fillRect(x, by, 2, ch);
-        drawText(ctx, ellipsize(c.name, w - 60), x + 6, by + 3, { color: INK2 });
+        drawText(ctx, ellipsize(c.name, w - 60), x + 6, by + 3, { color: INK });
         drawText(
           ctx,
           puppet ? "RIDDEN" : c.onShell ? "aboard" : "out there",
@@ -23251,7 +24059,7 @@ ${d}m ${m.x > g.crab.x ? "east" : "west"}` : `${d}m ${m.x > g.crab.x ? "east" : 
       for (const [name, body] of WORLD_NOTES) {
         const lines = wrapText(body, w - 6);
         if (ry > y - 30 && ry < y + h) {
-          drawText(ctx, name, x + 2, ry, { color: INK2 });
+          drawText(ctx, name, x + 2, ry, { color: INK });
           lines.forEach((l, i) => drawText(ctx, l, x + 2, ry + 9 + i * LINE_H, { color: FAINT2 }));
         }
         const dh = 11 + lines.length * LINE_H;
@@ -23267,7 +24075,7 @@ ${d}m ${m.x > g.crab.x ? "east" : "west"}` : `${d}m ${m.x > g.crab.x ? "east" : 
         const open = found >= i * 2;
         const lines = wrapText(open ? e.text : "Not pieced together yet.", w - 6);
         if (ry > y - 40 && ry < y + h) {
-          drawText(ctx, open ? e.name : "???", x + 2, ry, { color: open ? INK2 : FAINT2 });
+          drawText(ctx, open ? e.name : "???", x + 2, ry, { color: open ? INK : FAINT2 });
           lines.forEach((l, k) => drawText(ctx, l, x + 2, ry + 9 + k * LINE_H, { color: open ? DIM2 : FAINT2 }));
         }
         const dh = 11 + lines.length * LINE_H + 3;
@@ -23297,7 +24105,7 @@ ${d}m ${m.x > g.crab.x ? "east" : "west"}` : `${d}m ${m.x > g.crab.x ? "east" : 
               seen ? ellipsize(f.name, w - 40) : "???????",
               x + 2,
               ry,
-              { color: seen ? INK2 : FAINT2 }
+              { color: seen ? INK : FAINT2 }
             );
             for (let i = 0; i < OBSERVE_STEPS.length; i++) {
               ctx.fillStyle = i < level ? "#8cc468" : "rgba(140,120,90,0.35)";
@@ -23387,7 +24195,7 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
       }
       drawText(ctx, "< back", x, y, { color: DIM2 });
       let ry = y + 14 - this.scroll;
-      drawText(ctx, f.name, x, ry, { color: INK2 });
+      drawText(ctx, f.name, x, ry, { color: INK });
       ry += 10;
       drawText(ctx, f.sci, x, ry, { color: FAINT2 });
       ry += 12;
@@ -23484,7 +24292,7 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
       const cx = this.stick ? this.stick.ox : sx + R;
       const cy = this.stick ? this.stick.oy : sy + R;
       ctx.globalAlpha = this.stick ? 0.55 : 0.3;
-      ctx.strokeStyle = INK2;
+      ctx.strokeStyle = INK;
       ctx.lineWidth = 2;
       ctx.beginPath();
       ctx.arc(cx, cy, R, 0, TAU);
@@ -23495,7 +24303,7 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
       ctx.arc(cx, cy, R - 5, 0, TAU);
       ctx.stroke();
       ctx.globalAlpha = 0.3;
-      ctx.fillStyle = INK2;
+      ctx.fillStyle = INK;
       for (const d of [-1, 1]) {
         const ax = cx + d * (R - 7);
         ctx.beginPath();
@@ -23538,7 +24346,7 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
           label,
           bx + bw / 2,
           by + (bh - 7) / 2,
-          { color: colour || INK2, align: "center" }
+          { color: colour || INK, align: "center" }
         );
         if (hot && this.game.input.clicked) {
           this.game.input.clicked = false;
@@ -23556,7 +24364,7 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
           hint,
           rightEdge,
           by - 10,
-          { color: INK2, align: "right", outline: true, outlineColor: OUT2 }
+          { color: INK, align: "right", outline: true, outlineColor: OUT2 }
         );
       }
     }
@@ -23577,7 +24385,7 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
       ctx.fillRect(x, y, w, h);
       ctx.strokeStyle = "rgba(214,186,138,0.4)";
       ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
-      if (t.title) drawText(ctx, t.title, x + 5, y + 4, { color: INK2 });
+      if (t.title) drawText(ctx, t.title, x + 5, y + 4, { color: INK });
       lines.forEach((l, k) => drawText(ctx, l, x + 5, y + (t.title ? 15 : 4) + k * LINE_H, { color: DIM2 }));
     }
   };
@@ -23635,6 +24443,7 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
       this.green = new Green(this);
       this.digs = new Digs(this, this.seed);
       this.mining = new Mining(this, this.seed);
+      this.work = new Work(this);
       this.craft = new Craft(this);
       this.mind = new Mind(this);
       this.combat = new Combat(this);
@@ -23661,6 +24470,7 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
       this.drift = null;
       this.tutorial = 0;
       this.attackT = 0;
+      this.lids = 0;
       this.startIntro();
     }
     /** Frame the crab sensibly whatever shape the window is. */
@@ -23720,23 +24530,59 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
       this.npc.x = this.crab.x + 900;
       this.cam.followEntity(this.crab, true);
       this.cam.targetZoom = this.cam.zoom = clamp(this.autoZoom() * 1.25, this.cam.minZoom, this.cam.maxZoom);
-      this.say("narrator", "Thirty metres of water, and every one of them warm.");
+      this.say("narrator", "Thirty metres of water. Every one of them warm.");
       this._proT = 0;
+      this._whaleShot = 0;
     }
-    /** While you are still choosing a spot. */
+    /**
+     * While you are still choosing a spot.
+     *
+     * It is shot like a nature film, because that is what it is: long held
+     * takes, a narrator who is interested rather than excited, and one moment
+     * where the camera pulls back to put the animal in the frame next to
+     * something that makes it look like nothing at all.
+     */
     _runPrologue(dt) {
       this.sea.update(dt);
       this._proT = (this._proT || 0) + dt;
       const t = this._proT;
+      const N = (line) => this.say("narrator", line);
       if (t > 6 && !this._pro1) {
         this._pro1 = 1;
-        this.say("narrator", "Everything here is alive, and most of it is smaller than you.");
+        N("Everything here is alive. Most of it is smaller than your claw.");
       }
       if (t > 13 && !this._pro2) {
         this._pro2 = 1;
-        this.say("narrator", "Your kind does this once. You pick a hollow, and you stay in it.");
+        N("And some of it is not.");
+        this._whaleShot = 1;
+        const c = this.crab;
+        for (const wh of this.sea.whales) {
+          wh.x = c.x - 620 - (wh.s < 0.8 ? 210 : 0);
+          const top = this.sea.level(c.x);
+          const bed = this.terrain.surfaceY(c.x);
+          wh.y = top + (bed - top) * (wh.s < 0.8 ? 0.34 : 0.26);
+          wh.dir = 1;
+          wh.sp = 62;
+        }
+        this.cam.cineTo(c.x + 60, c.y - 150, Math.max(this.cam.minZoom, this.autoZoom() * 0.46), 4.2);
       }
-      if (t > 19 && !this._pro3) {
+      if (t > 20 && !this._pro2b) {
+        this._pro2b = 1;
+        N("Two hundred tonnes of animal, and it has never once had to hide from anything.");
+      }
+      if (t > 28 && !this._pro2c) {
+        this._pro2c = 1;
+        this._whaleShot = 0;
+        for (const wh of this.sea.whales) wh.sp = 26;
+        this.cam.followEntity(this.crab);
+        this.cam.targetZoom = clamp(this.autoZoom() * 1.25, this.cam.minZoom, this.cam.maxZoom);
+        N("You will never see one again. Nothing here will.");
+      }
+      if (t > 36 && !this._pro2d) {
+        this._pro2d = 1;
+        N("Your kind does this once. You pick a hollow, and you stay in it.");
+      }
+      if (t > 44 && !this._pro3) {
         this._pro3 = 1;
         this.dialog = null;
       }
@@ -23884,6 +24730,55 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
      * drawn rather than simulated: this happens once, and it wants to look right
      * once.
      */
+    /**
+     * The inside of a shut eye.
+     *
+     * You do not wake up looking at something. You wake up in the dark, with
+     * one sense back before the others, and the last thing that arrives is the
+     * picture. So for a few seconds the frame is two lids, almost closed, with
+     * a slit of the world between them - and the sound has already told you
+     * more than you wanted to know.
+     *
+     * They are drawn as lids rather than as letterbox bars: the inner edge
+     * curves, there is a rim of wet along it, and the lashes break the line.
+     */
+    _drawLids(ctx, vw, vh) {
+      const k = clamp01(this.lids || 0);
+      if (k <= 2e-3) return;
+      const mid = vh * 0.5;
+      const reach = mid * k;
+      ctx.save();
+      ctx.fillStyle = "#050302";
+      for (const side of [-1, 1]) {
+        ctx.beginPath();
+        ctx.moveTo(0, side > 0 ? 0 : vh);
+        for (let x = 0; x <= vw; x += 4) {
+          const t = x / vw;
+          const bow = Math.sin(t * Math.PI) * reach * 0.14;
+          ctx.lineTo(x, mid - side * (reach - bow));
+        }
+        ctx.lineTo(vw, side > 0 ? 0 : vh);
+        ctx.closePath();
+        ctx.fill();
+      }
+      ctx.globalAlpha = 0.55 * k;
+      for (const side of [-1, 1]) {
+        for (let x = 0; x <= vw; x += 1) {
+          const t = x / vw;
+          const bow = Math.sin(t * Math.PI) * reach * 0.14;
+          const y = Math.round(mid - side * (reach - bow));
+          ctx.fillStyle = "#6a5236";
+          ctx.fillRect(x, y + (side > 0 ? 0 : -1), 1, 1);
+          if ((x * 7 + side) % 11 === 0) {
+            const len = 2 + x * 13 % 3;
+            ctx.fillStyle = "rgba(12,8,5,0.9)";
+            ctx.fillRect(x, side > 0 ? y - len : y, 1, len);
+          }
+        }
+      }
+      ctx.globalAlpha = 1;
+      ctx.restore();
+    }
     _drawWaking(ctx, cam) {
       const k = clamp01(this.waking || 0);
       if (k <= 2e-3) return;
@@ -23977,32 +24872,56 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
             npc.setPose(POSE.SIT);
             V("Eleven years. Nobody is watching. Nobody has been watching for a thousand years.", 7);
           } },
+          // ---- you are still asleep, and the first thing you get back is
+          // hearing. The lids stay shut through all of this.
           { at: 25, run: () => {
-            this.shot(c.x + 10, c.y - 16, this.autoZoom() * 1.8, 1.6, { z: 0.01 });
-            N("...");
+            this.lids = 1;
+            this.shot(c.x + 6, c.y - 14, this.autoZoom() * 2.2, 1.4, { z: 6e-3 });
+            N("");
           } },
-          { at: 26.8, run: () => {
+          { at: 26.4, run: () => {
+            this.audio.play("water");
+            N("Something is happening outside.");
+          } },
+          { at: 28.2, run: () => {
+            npc.x = c.x + 22;
+            npc.setFacing(-1);
+            npc.setPose(POSE.REST);
             this._pee = 1;
             this._peeT = 0;
-            this.audio.play("water");
+            this.audio.play("water", { pitch: 0.8 });
+            this.lids = 0.93;
+            N("It is warm. That is the part it notices first.");
+          } },
+          { at: 30, run: () => {
+            this.lids = 0.42;
+            this.shot(c.x + 16, c.y - 10, this.autoZoom() * 2.4, 1.2, { z: 4e-3 });
+            this.audio.play("drip", { pitch: 0.9 });
             N("The first water to touch this animal in a thousand years is not, strictly, rain.");
           } },
-          // ---- the wake itself. Four beats, and not one of them is the
-          // eruption: the eye, the breath, the sand, and only then the animal.
-          { at: 30.4, run: () => {
+          { at: 31.6, run: () => {
+            this.lids = 0;
+            V("Sorry. Sorry, rock.", 0);
+          } },
+          { at: 33, run: () => {
+            this._pee = 0;
+            npc.setPose(POSE.IDLE);
+            V("Four thousand days and I still apologise to the geology.", 4);
+          } },
+          { at: 34.6, run: () => {
             this._pee = 0;
             this.shot(c.x - 4, c.y - 18, this.autoZoom() * 2.9, 1.4, { z: 0.012 });
             this.waking = 1e-3;
             N("It has been waiting a very long time for that.");
           } },
-          { at: 31.8, run: () => {
+          { at: 36, run: () => {
             this.crab.blink = 1;
             this.waking = 0.35;
             this.audio.play("drip", { pitch: 0.5 });
             this.fx.drift(c.x - 8, c.y - 16, "#d8c49a", 3);
             N("");
           } },
-          { at: 33.4, run: () => {
+          { at: 37.6, run: () => {
             this.waking = 0.7;
             this.audio.play("growl", { pitch: 0.42 });
             this.cam.shake(1.6);
@@ -24017,7 +24936,7 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
             }
             N("Something under the sand takes a breath.");
           } },
-          { at: 35, run: () => {
+          { at: 39.2, run: () => {
             this.waking = 1;
             this.shot(c.x + 12, c.y - 18, this.autoZoom() * 1.5, 1.1, { z: -0.012 });
             this.cam.shake(3);
@@ -24025,7 +24944,7 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
             this.audio.play("hit", { pitch: 0.5 });
             N("");
           } },
-          { at: 36.4, run: () => {
+          { at: 40.6, run: () => {
             this.shot(c.x, c.y - 20, this.autoZoom() * 0.95, 0.7, { z: -0.02 });
             this.cam.shake(9);
             this.terrain.deform(c.x, 6, 40);
@@ -24034,38 +24953,39 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
             npc.setFacing(-1);
             this.buryTarget = 0;
           } },
-          { at: 37, run: () => {
+          { at: 41.2, run: () => {
             npc.startle(1.25);
             this.cam.shake(4);
             N("");
           } },
-          { at: 37.7, run: () => {
+          { at: 41.9, run: () => {
             npc.moveTo = c.x + 108;
             npc.setPose(POSE.WALK);
             V("NOT A ROCK. NOT A ROCK. THAT IS NOT A ROCK -", 8);
           } },
-          { at: 40.4, run: () => {
+          { at: 44.6, run: () => {
             npc.moveTo = void 0;
             npc.setPose(POSE.IDLE);
             npc.setFacing(-1);
             this.shot(c.x + 34, c.y - 14, this.autoZoom() * 1.25, 1.8, { z: 4e-3 });
             V("...you are awake.", 2);
           } },
-          { at: 43.2, run: () => {
+          { at: 47.4, run: () => {
             npc.setPose(POSE.TALK);
-            V("Oh. Oh, that is what the water table was for. It was never the rainfall. It was you.", 3);
+            V("And I have just urinated on you.", 4);
           } },
-          { at: 47.4, run: () => V("You lay down in a sea and the sea kept coming, because you were in it.", 5) },
-          { at: 51.6, run: () => {
+          { at: 50.4, run: () => V("Oh. Oh, that is what the water table was for. It was never the rainfall. It was you.", 3) },
+          { at: 54.6, run: () => V("You lay down in a sea and the sea kept coming, because you were in it.", 5) },
+          { at: 58.8, run: () => {
             npc.setPose(POSE.POINT);
             V("There is a spring in your back. I can hear it from here and it is the loudest thing in this desert.", 3);
           } },
-          { at: 55.8, run: () => {
+          { at: 63, run: () => {
             npc.setPose(POSE.TALK);
             V("So get up. Walk. Put it back.", 6);
           } },
-          { at: 59, run: () => V("I have eleven years of notes, one canteen, and absolutely nothing else to do.", 1) },
-          { at: 62.4, run: () => this.endIntro() }
+          { at: 66.2, run: () => V("I have eleven years of notes, one canteen, and absolutely nothing else to do.", 1) },
+          { at: 69.6, run: () => this.endIntro() }
         ],
         i: 0
       };
@@ -24255,6 +25175,7 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
       this.buried = 0;
       this.buryTarget = 0;
       this._pee = 0;
+      this.lids = 0;
       this.ocean = null;
       this.npc.hidden = false;
       this.npc.hatOff = null;
@@ -24430,6 +25351,8 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
       this.green.tick(sdt);
       this.digs.update(sdt);
       this.mining.update(sdt);
+      this._plantTick(sdt);
+      this.work.update(sdt, i.key("e") || !!this.ui.actHeld);
       this.craft.update(sdt);
       this.mind.update(sdt);
       this.combat.update(sdt);
@@ -24778,8 +25701,32 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
       return null;
     }
     /** Pick the ripest thing on your back, if anything is ready. */
+    /**
+     * Picking. One bed at a time, and taking it off the stem properly is the
+     * difference between this fruit and the next one - a torn plant sulks.
+     */
     harvestAll() {
       const ready = this.garden.plots.filter((p) => p.plant && p.plant.ripe >= 1);
+      if (ready.length) {
+        const plot = ready[0];
+        const w = this.garden.plotWorld(plot);
+        this.work.begin("pick", {
+          tag: "pick:" + plot.i,
+          x: w.x,
+          y: w.y,
+          label: plot.plant.def.name,
+          skill: 1 + this.economy.stat("yield") * 0.2,
+          onDone: (r) => {
+            const paid = this.harvestPlot(plot, true, r.quality);
+            if (r.quality < 0.5) {
+              this.fx.popup(w.x, w.y - 14, "torn", "#d8a09a");
+              plot.plant.sulk = 1;
+            }
+            if (this.garden.ripeCount) this.harvestAll();
+          }
+        });
+        return 0;
+      }
       if (!ready.length) {
         const soon = this.garden.plots.filter((p) => p.plant && p.plant.stage >= 3).sort((a, b) => b.plant.ripe - a.plant.ripe)[0];
         if (!soon) this.ui.say("Nothing grown yet.", 2);
@@ -24793,13 +25740,14 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
       for (const plot of ready) total += this.harvestPlot(plot, true);
       return total;
     }
-    /** Pick one bed. Returns what it paid. */
-    harvestPlot(plot, quiet = false) {
+    /** Pick one bed. Returns what it paid, which a clean pick improves. */
+    harvestPlot(plot, quiet = false, quality = 1) {
       const res = this.garden.harvest(plot);
       if (!res.ok) {
         if (!quiet) this.ui.say(res.msg);
         return 0;
       }
+      res.amount = Math.max(1, Math.round(res.amount * (0.55 + quality * 0.55)));
       this.economy.nutrients += res.amount;
       if (res.parasite) {
         this.economy.parasites += res.parasite;
@@ -25024,30 +25972,20 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
         this.economy.markDirty();
       }
     }
+    /**
+     * The action key. If a job is already running this is another stroke of it;
+     * otherwise it is whatever is in front of you, and most of those are jobs
+     * rather than instants now.
+     */
     act() {
       const c = this.crab;
+      if (this.work.live) {
+        this.work.strike();
+        return;
+      }
       const site = this.digs.reachable(c.x);
       if (site) {
-        const res = this.digs.dig(site);
-        if (!res.ok) {
-          this.ui.say(res.msg);
-          return;
-        }
-        this.relics = this.relics || {};
-        this.relics[res.relic.id] = (this.relics[res.relic.id] || 0) + 1;
-        this.terrain.deform(site.x, 5, 22);
-        this.fx.digBurst(site.x, this.terrain.surfaceY(site.x), 1.8, false);
-        this.fx.spark(
-          site.x,
-          this.terrain.surfaceY(site.x) - 6,
-          res.relic.kind === "amber" ? "#eec66c" : "#c6bea7",
-          16,
-          40
-        );
-        this.fx.popup(site.x, this.terrain.surfaceY(site.x) - 14, res.relic.name, "#dcd6c3");
-        this.audio.play("discover");
-        this.ui.say(`${res.relic.name}. Put it in your basin (K) and keep the water up.`, 6);
-        this.npc.say(res.relic.desc, 7);
+        this.startDig(site);
         return;
       }
       if (this.garden.ripeCount) {
@@ -25076,11 +26014,76 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
         return;
       }
       if (this.encounters.active) {
-        const line = this.encounters.interact();
-        if (line) this.ui.say(line, 5);
+        const site2 = this.encounters.active;
+        this.work.begin("search", {
+          tag: "search:" + (site2.id ?? site2.x ?? 0),
+          x: site2.x ?? c.x,
+          y: this.terrain.surfaceY(site2.x ?? c.x),
+          label: site2.name || "What is left of it",
+          onDone: () => {
+            const line = this.encounters.interact();
+            if (line) this.ui.say(line, 5);
+          }
+        });
         return;
       }
       if (Math.abs(this.npc.x - c.x) < 46) this.talkToVess();
+    }
+    /**
+     * A fossil comes out of the ground over about five seconds of somebody
+     * kneeling in the sand, and how it comes out depends on how you dug. Strike
+     * in the band and you are taking sand off it; strike outside and that is a
+     * crack, and a cracked relic is worth less and reads as broken.
+     */
+    startDig(site) {
+      const can = this.digs.dig(site, true);
+      if (!can.ok) {
+        this.ui.say(can.msg);
+        return;
+      }
+      const gy = this.terrain.surfaceY(site.x);
+      this.work.begin("dig", {
+        tag: site.id,
+        x: site.x,
+        y: gy,
+        by: this.mind?.owned ? this.npc : this.crab,
+        label: site.relic.kind === "amber" ? "Amber" : site.relic.name,
+        skill: 0.8 + this.economy.stat("fossil") * 0.25,
+        onStroke: () => {
+          this.terrain.deform(site.x, 2, 5);
+        },
+        onDone: (r) => {
+          const res = this.digs.dig(site);
+          if (!res.ok) return;
+          this.relics = this.relics || {};
+          this.relics[res.relic.id] = (this.relics[res.relic.id] || 0) + 1;
+          this.terrain.deform(site.x, 6, 26);
+          this.fx.digBurst(site.x, gy, 1.8, false);
+          this.fx.spark(
+            site.x,
+            gy - 6,
+            res.relic.kind === "amber" ? "#eec66c" : "#c6bea7",
+            16,
+            40
+          );
+          const broken = r.quality < 0.55;
+          this.fx.popup(
+            site.x,
+            gy - 14,
+            broken ? `${res.relic.name} (cracked)` : res.relic.name,
+            broken ? "#d8a09a" : "#dcd6c3"
+          );
+          this.audio.play("discover");
+          if (broken) {
+            this.npc.say("You have broken it. It was eleven thousand years old and you have broken it.", 6);
+          } else if (r.clean) {
+            this.npc.say(`Clean. Not a mark on it. ${res.relic.desc}`, 7);
+          } else {
+            this.npc.say(res.relic.desc, 7);
+          }
+          this.ui.say(`${res.relic.name}. Put it in your basin (K) and keep the water up.`, 6);
+        }
+      });
     }
     talkToVess() {
       const lines = this._vessLines();
@@ -25178,20 +26181,189 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
       } else this.audio.play("claw");
       this.fx.dust(fx, c.y + c.standH * 0.6, 1);
     }
+    /**
+     * Who can actually put this one in the ground. A crab is a magnificent
+     * animal with a claw the size of a door and no way at all to hold a seed
+     * the size of a grain of sand, so most of the interesting plants need
+     * somebody else: her hands, a real tool, or something that digs for a
+     * living. Returns the worker, or why there isn't one.
+     */
+    plantWorker(def3) {
+      const req = def3.hands;
+      const her = this.npc && !this.npc.hidden && this.npc.alive !== false;
+      const herNear = her && Math.abs(this.npc.x - this.crab.x) < 420;
+      if (!req) {
+        return { by: this.npc.riding ? this.npc : this.crab, ok: true };
+      }
+      if (req.by === "hands") {
+        if (!herNear) return { ok: false, why: `${req.why} Call her over (F).` };
+        return { by: this.npc, ok: true };
+      }
+      if (req.by === "tool") {
+        const has = this.craft?.bag?.get("trowel") || this.craft?.bag?.get("copperpick") || this.craft?.bag?.get("ironpick");
+        if (!has) return { ok: false, why: `${req.why} Make one at her bench.` };
+        if (!herNear) return { ok: false, why: `${req.why} She has the tool - call her over (F).` };
+        return { by: this.npc, ok: true };
+      }
+      if (req.by === "digger") {
+        const dig = this.wildlife.fleet.find((c) => c.alive && (c.def.role === "digger" || c.def.role === "forager" || c.def.dig));
+        if (!dig) return { ok: false, why: `${req.why} You would need something of yours that digs.` };
+        return { by: dig, ok: true };
+      }
+      return { by: this.crab, ok: true };
+    }
+    /**
+     * Planting is not a purchase. You pick the bed and the seed, and then
+     * somebody walks over, climbs up, opens the ground, puts it in and covers
+     * it - and that takes the better part of ten seconds of real work you can
+     * help with. What goes in is a seed, and a seed does nothing until it has
+     * been watered.
+     */
     tryPlant(id, plotIndex) {
       const def3 = FLORA_BY_ID[id];
       if (!def3) return { ok: false, msg: "No such seed." };
       const plot = plotIndex !== void 0 ? this.garden.plots[plotIndex] : this.garden.freeFor(def3);
       if (!plot) return { ok: false, msg: def3.needsPond ? "No free pool bed." : "Nowhere left to put it." };
+      if (plot.pending) return { ok: false, msg: "Something is already going in there." };
+      if (this.planting) return { ok: false, msg: "One bed at a time." };
       if (def3.needsPond && this.garden.pond < 0.35) return { ok: false, msg: "That one needs standing water." };
       if (this.economy.water < def3.cost) return { ok: false, msg: `Needs ${def3.cost} water.` };
-      if (!this.garden.plant(plot.i, id)) return { ok: false, msg: "It will not take there." };
+      if (plot.plant || plot.build) return { ok: false, msg: "It will not take there." };
+      const hand = this.plantWorker(def3);
+      if (!hand.ok) return { ok: false, msg: hand.why };
       this.economy.water -= def3.cost;
       this.economy.markDirty();
-      const g = this.garden;
-      if (g.load > g.capacity) this.ui.say("Overloaded.", 2.5);
+      plot.pending = { id, def: def3, by: hand.by };
+      this.planting = { plot, def: def3, by: hand.by, phase: "coming", t: 0 };
+      if (hand.by === this.npc) {
+        this.npc.mode = "follow";
+        this.npc.keepAway = false;
+        this.npc.say(`${def3.name}. Right. Give me a moment to get up there.`, 4);
+      }
       this.teach(3);
-      return { ok: true, msg: `${def3.name} planted.` };
+      return { ok: true, msg: `${def3.name}: ${hand.by === this.npc ? "she is on her way" : "going in"}.` };
+    }
+    /** Cancel whatever is being planted and hand the water back. */
+    stopPlanting(why) {
+      const j = this.planting;
+      if (!j) return;
+      j.plot.pending = null;
+      this.planting = null;
+      if (this.work.live && this.work.job.kind === "plant") this.work.stop(why);
+      this.economy.water += j.def.cost;
+      this.economy.markDirty();
+      this.ui.say(why || "Left it.", 3);
+    }
+    /**
+     * The worker getting to the bed, and then doing the work. She has to climb
+     * on, because the garden is on your back and she is a person.
+     */
+    _plantTick(dt) {
+      const j = this.planting;
+      if (!j) return;
+      j.t += dt;
+      const w = j.by;
+      if (w === this.npc && (this.npc.hidden || this.mind?.owned)) {
+        this.stopPlanting("She cannot do it like this.");
+        return;
+      }
+      if (w && w.alive === false) {
+        this.stopPlanting("It died on the way.");
+        return;
+      }
+      if (j.phase === "coming") {
+        if (w === this.crab) {
+          j.phase = "working";
+          return;
+        }
+        if (w === this.npc) {
+          if (this.npc.riding) {
+            j.phase = "working";
+            return;
+          }
+          const room = this.crab.m.shellW * 0.5 + 18;
+          this.npc.moveTo = this.crab.x + Math.sign(this.npc.x - this.crab.x || 1) * room;
+          if (Math.abs(this.npc.x - this.crab.x) < room + 16) this.npc.board();
+          if (j.t > 30) this.stopPlanting("She never got there.");
+          return;
+        }
+        w.commanded = { x: this.crab.x };
+        if (Math.abs(w.x - this.crab.x) < this.crab.m.shellW * 0.7) j.phase = "working";
+        else if (j.t > 30) this.stopPlanting("It never came.");
+        return;
+      }
+      if (j.phase === "working") {
+        if (this.work.live) return;
+        const pw = this.garden.plotWorld(j.plot);
+        const plot = j.plot;
+        this.work.begin("plant", {
+          tag: "plant:" + plot.i,
+          x: pw.x,
+          y: pw.y,
+          by: w,
+          label: j.def.name,
+          skill: w === this.npc ? 1.25 : 1,
+          onDone: (r) => {
+            this.planting = null;
+            plot.pending = null;
+            const pl = this.garden.plant(plot.i, j.def.id);
+            if (!pl) {
+              this.ui.say("It would not take.", 3);
+              return;
+            }
+            pl.health = 0.55 + r.quality * 0.45;
+            this.fx.spark(pw.x, pw.y - 4, "#9ad86a", 16, 40);
+            this.fx.popup(pw.x, pw.y - 12, r.clean ? "well in" : "in", "#cfe89a");
+            if (this.garden.load > this.garden.capacity) this.ui.say("Overloaded.", 2.5);
+            if (w === this.npc) {
+              this.npc.say(r.clean ? "In, and in properly. Now water it, or all of that was me digging a hole." : "In. Not my finest hole. Water it.", 6);
+            } else {
+              this.ui.say("In. Now water it - nothing happens until you do.", 5);
+            }
+            this.teach(4);
+          }
+        });
+        j.phase = "busy";
+        return;
+      }
+      if (j.phase === "busy" && !this.work.live) this.planting = null;
+    }
+    /**
+     * Watering a bed. Pour in the band and it soaks; pour badly and it runs off
+     * the top of the hole and you have wasted it.
+     */
+    startWatering(plot) {
+      if (!plot || !plot.plant) return;
+      if (this.work.live) return;
+      const need = plot.plant.soaked < 1;
+      if (!need) {
+        this.ui.say("That one has had enough.", 2);
+        return;
+      }
+      if (this.economy.water < 8) {
+        this.ui.say("Nothing in the basin to pour.", 2.5);
+        return;
+      }
+      const pw = this.garden.plotWorld(plot);
+      this.work.begin("water", {
+        tag: "water:" + plot.i,
+        x: pw.x,
+        y: pw.y,
+        label: plot.plant.def.name,
+        onStroke: (core) => {
+          const pour = core ? 0.3 : 0.18;
+          plot.plant.soaked = clamp01((plot.plant.soaked || 0) + pour);
+          this.economy.water = Math.max(0, this.economy.water - (core ? 3 : 4));
+          this.economy.markDirty();
+        },
+        onDone: () => {
+          plot.plant.soaked = 1;
+          plot.plant.thirst = 0;
+          this.fx.splash(pw.x, pw.y, 8, 20);
+          this.fx.popup(pw.x, pw.y - 12, "soaked", "#9de3ee");
+          this.audio.play("splash");
+        }
+      });
     }
     tryBuild(id, plotIndex) {
       const b = BUILD_BY_ID[id];
@@ -25551,6 +26723,7 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
       this.terrain.drawSand(ctx, cam);
       this.green.drawGround(ctx, cam, this.terrain);
       this.world.drawScatter(ctx, cam, "far");
+      if (this.seaShowing) this.sea.drawDeep(ctx, cam, r.vw, r.vh);
       if (this.seaShowing) this.sea.drawReef(ctx, cam, true);
       this.encounters.draw(ctx, cam);
       if (this.state === "play") this.mining.draw(ctx, cam);
@@ -25610,6 +26783,7 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
         this.fx.drawDust(ui, cam, r.vw, r.vh, this.weather);
       }
       if (this.state === "play") this.hive.drawDream(ui, cam, r.vw, r.vh);
+      if (this.lids > 2e-3) this._drawLids(ui, r.vw, r.vh);
       if (this.state === "title") {
         this.menu.draw(ui, r.vw, r.vh);
       } else if (this.state === "intro" || this.state === "burying") this._drawCutscene(ui, r);

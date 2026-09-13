@@ -22,6 +22,10 @@ const MATS = withMaterials({
     diffuse: 0.80, rim: 0.36, ao: 0.11, normalScale: 0.6, outline: '#06211f' },
   coralViolet: { ramp: ['#2c1c46', '#402860', '#55377a', '#6b4894', '#845dab', '#9e79c0', '#b99bd4', '#d7c4e8'],
     diffuse: 0.78, rim: 0.38, ao: 0.12, normalScale: 0.6, outline: '#180e28' },
+  whale: { ramp: ['#16303f', '#1e4257', '#28566e', '#356b85', '#45839c', '#5b9cb2', '#7cb8c9', '#a8d5e0'],
+    diffuse: 0.84, rim: 0.26, ao: 0.10, normalScale: 0.45, outline: '#0b1f2c' },
+  whaleDark: { ramp: ['#0e2130', '#152e41', '#1d3d53', '#264d66', '#325f79', '#42738d', '#598aa4', '#7aa8bd'],
+    diffuse: 0.80, rim: 0.20, ao: 0.14, normalScale: 0.5, outline: '#08161f' },
   weed: { ramp: ['#123322', '#1b4830', '#265e3e', '#33754d', '#438d5d', '#57a672', '#77c08e', '#a3dab2'],
     diffuse: 0.80, rim: 0.34, ao: 0.10, normalScale: 0.5, outline: '#0a1d13' },
   scaleSilver: { ramp: ['#20303c', '#2f4553', '#425c6c', '#587687', '#7191a1', '#8fadba', '#b2c9d2', '#dceaef'],
@@ -366,6 +370,107 @@ export function jellyArt(S = 1) {
   const k = `jelly:${S.toFixed(2)}`;
   let v = cache.get(k);
   if (!v) { v = paintJelly(S); cache.set(k, v); }
+  return v;
+}
+
+/**
+ * A blue whale, which is the largest animal that has ever lived and is
+ * therefore the correct thing to put over the head of a crab the size of a
+ * dinner plate. Painted long and low with the mouth line running most of its
+ * length, ventral pleats under the throat, a dorsal fin so small it is nearly
+ * an apology, and flukes wider than the crab is long.
+ *
+ * The point of it is scale. It is drawn at one size and then thrown across the
+ * top of the column a very long way off, moving slowly, and the only thing you
+ * are supposed to take from it is that you are small.
+ */
+function paintWhale(S = 1) {
+  const L = 210 * S, H = 46 * S;
+  const pad = Math.ceil(14 * S);
+  const p = new Painter(Math.ceil(L + 40 * S) + pad * 2, Math.ceil(H * 2.2) + pad * 2);
+  const cy = p.h / 2;
+  const x0 = pad + 8 * S;
+
+  // the spine: a long curve with the mass forward of the middle
+  const spine = [];
+  const N = 26;
+  for (let i = 0; i <= N; i++) {
+    const t = i / N;
+    spine.push({
+      x: x0 + t * L,
+      y: cy + Math.sin(t * Math.PI) * -1.5 * S + t * 2.5 * S,
+      r: (1 - Math.pow(Math.abs(t - 0.26) / 0.74, 1.55)) * H * 0.5 + 1.2 * S,
+    });
+  }
+  for (let i = 1; i < spine.length; i++) {
+    const a2 = spine[i - 1], b2 = spine[i];
+    p.capsule(a2.x, a2.y, b2.x, b2.y, Math.max(0.8, a2.r), Math.max(0.8, b2.r),
+      { mat: 'whale', dome: Math.max(1, a2.r * 0.9), tint: -0.02 });
+  }
+  // the rostrum: the head is a flattened wedge, not a point
+  p.capsule(x0 + 2 * S, cy - 1 * S, x0 + L * 0.17, cy, H * 0.20, H * 0.42,
+    { mat: 'whale', dome: H * 0.24, tint: 0.04 });
+  // the mouth line, running back past the eye
+  for (let i = 0; i < 40; i++) {
+    const t = i / 39;
+    const x = x0 + t * L * 0.30;
+    p.rect(x, cy + H * (0.10 + t * 0.06), Math.max(1, S), Math.max(1, S),
+      { mat: 'whaleDark', dome: 0.5, lift: 2 });
+  }
+  // ventral pleats under the throat, which is what makes it a rorqual
+  for (let i = 0; i < 11; i++) {
+    const t = i / 10;
+    const x = x0 + L * (0.05 + t * 0.26);
+    p.capsule(x, cy + H * 0.12, x + 1.5 * S, cy + H * 0.40, 0.7 * S, 0.5 * S,
+      { mat: 'whaleDark', mask: true, dome: 0.6, tint: -0.18 });
+  }
+  // the eye, small and low and behind the jaw
+  p.ellipse(x0 + L * 0.135, cy + H * 0.13, 1.5 * S, 1.2 * S,
+    { mat: 'eye', dome: 1.4 * S, tint: 0.1 });
+  // the blowhole ridge
+  p.capsule(x0 + L * 0.10, cy - H * 0.26, x0 + L * 0.16, cy - H * 0.27, 1.6 * S, 1.1 * S,
+    { mat: 'whaleDark', dome: 1.2, tint: 0.06 });
+  // the flipper, long and thin and swept back
+  p.curve([{ x: x0 + L * 0.24, y: cy + H * 0.22 },
+    { x: x0 + L * 0.33, y: cy + H * 0.55 },
+    { x: x0 + L * 0.40, y: cy + H * 0.72 }], 3.4 * S, 0.9 * S,
+    { mat: 'whaleDark', dome: 2 * S, steps: 10, tint: -0.06 });
+  // the dorsal fin, tiny and three quarters of the way back
+  p.poly([
+    { x: x0 + L * 0.74, y: cy - H * 0.30 },
+    { x: x0 + L * 0.79, y: cy - H * 0.48 },
+    { x: x0 + L * 0.80, y: cy - H * 0.26 },
+  ], { mat: 'whale', dome: 2 * S, feather: 1.5, tint: 0.02 });
+  // the peduncle flattens, and then the flukes
+  const tx = x0 + L;
+  p.poly([
+    { x: tx - 6 * S, y: cy + 2 * S },
+    { x: tx + 24 * S, y: cy - 18 * S },
+    { x: tx + 30 * S, y: cy - 12 * S },
+    { x: tx + 6 * S, y: cy + 3 * S },
+  ], { mat: 'whale', dome: 2.4 * S, feather: 1.6, tint: 0.05 });
+  p.poly([
+    { x: tx - 6 * S, y: cy + 2 * S },
+    { x: tx + 24 * S, y: cy + 20 * S },
+    { x: tx + 30 * S, y: cy + 14 * S },
+    { x: tx + 6 * S, y: cy + 1 * S },
+  ], { mat: 'whale', dome: 2.4 * S, feather: 1.6, tint: -0.04 });
+
+  // mottling: a blue whale is grey with a wash of paler blotches, and that
+  // pattern is how individuals are told apart
+  p.speckle('whale', { density: 0.10, amp: 0.30, seed: 41 });
+  p.grain('whale', { freq: 0.22, amp: 0.16, seed: 7, height: 0.5 });
+  p.smoothHeight(1, 0.4);
+  return {
+    cv: p.resolve(MATS, { ...LIGHT, ambient: 0.52, outline: 1, outlineColor: '#0b1f2c' }),
+    ox: x0, oy: cy, L, H,
+  };
+}
+
+export function whaleArt(S = 1) {
+  const k = `whale:${S.toFixed(2)}`;
+  let v = cache.get(k);
+  if (!v) { v = paintWhale(S); cache.set(k, v); }
   return v;
 }
 

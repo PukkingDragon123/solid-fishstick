@@ -17,7 +17,7 @@
 import { clamp, clamp01, lerp, damp, smoothstep, TAU, mulberry32, hashStr } from '../lib/math.js';
 import { pxRing } from '../render/pix.js';
 import { drawText, textWidth } from '../lib/font.js';
-import { reefArt, fishArt, jellyArt, REEF_KINDS, FLOOR_KINDS, FISH_KINDS } from '../art/seaart.js';
+import { reefArt, fishArt, jellyArt, whaleArt, REEF_KINDS, FLOOR_KINDS, FISH_KINDS } from '../art/seaart.js';
 
 const CELL = 90;               // one cell of reef, in world units
 const DEPTH = 150;             // how far the surface is above the seabed
@@ -33,6 +33,8 @@ export class Sea {
     this.fish = [];
     this.jellies = [];
     this.bubbles = [];
+    this.whales = [];          // the biggest animals that have ever lived
+    this.snow = [];            // marine snow: the sea is full of falling bits
     this.cells = new Map();
     this.yearShow = 0;
   }
@@ -49,8 +51,26 @@ export class Sea {
     this.fish.length = 0;
     this.jellies.length = 0;
     this.bubbles.length = 0;
+    this.whales.length = 0;
+    this.snow.length = 0;
     const cx = this.game.crab.x;
     for (let i = 0; i < 40; i++) this._spawnFish(cx + (Math.random() - 0.5) * 900);
+    // two of them, a long way up, crossing in opposite directions - a mother
+    // and a calf, because that is what you see and because one of them being
+    // smaller is the only way the size of the other one lands
+    const top = this.level(cx);
+    const bed = this.game.terrain.surfaceY(cx);
+    const deep = (k) => top + (bed - top) * k;
+    this.whales.push({ x: cx - 1500, y: deep(0.26), dir: 1, sp: 26, s: 1.0, ph: 0, blow: 0 });
+    this.whales.push({ x: cx - 1660, y: deep(0.34), dir: 1, sp: 26, s: 0.52, ph: 1.2, blow: 0 });
+    // and the water is full of things falling through it
+    for (let i = 0; i < 120; i++) {
+      this.snow.push({
+        x: cx + (Math.random() - 0.5) * 1200, y: -Math.random() * 420,
+        v: 3 + Math.random() * 9, ph: Math.random() * TAU,
+        r: Math.random() < 0.18 ? 2 : 1,
+      });
+    }
     for (let i = 0; i < 4; i++) {
       this.jellies.push({
         x: cx + (Math.random() - 0.5) * 800, y: -60 - Math.random() * 90,
@@ -94,6 +114,32 @@ export class Sea {
     const cam = this.game.cam;
     const b = cam.bounds(260);
     const wet = this.wet;
+
+    // the whales: they do not react to you and they do not turn round. They
+    // cross, and while they are crossing nothing else in the frame matters.
+    for (const wh of this.whales) {
+      wh.x += wh.dir * wh.sp * dt;
+      wh.ph += dt * 0.42;
+      wh.y += Math.sin(wh.ph * 0.6) * 3 * dt;
+      wh.blow = Math.max(0, wh.blow - dt);
+      // once they are well past, put them back a long way behind
+      if (wh.x > b.x1 + 2600) {
+        wh.x = b.x0 - 2600;
+        const top2 = this.level(wh.x);
+        const bed2 = this.game.terrain.surfaceY(wh.x);
+        wh.y = top2 + (bed2 - top2) * (0.2 + Math.random() * 0.22);
+      }
+      // and they never leave the water, whatever the camera is doing
+      const t2 = this.level(wh.x), g2 = this.game.terrain.surfaceY(wh.x);
+      wh.y = clamp(wh.y, t2 + 26, g2 - 60);
+    }
+    // marine snow, falling for ever
+    for (const sn of this.snow) {
+      sn.y += sn.v * dt;
+      sn.ph += dt * 0.7;
+      const ground = this.game.terrain.surfaceY(sn.x);
+      if (sn.y > ground - 2) { sn.y = this.level(sn.x) - 20 - Math.random() * 200; sn.x = b.x0 + Math.random() * (b.x1 - b.x0); }
+    }
 
     // fish: they cruise, they turn at the edge of where you can see, and as
     // the water goes they go with it
@@ -193,6 +239,55 @@ export class Sea {
       for (const it of this._cell(ci)) if (it.x >= x0 && it.x <= x1) out.push(it);
     }
     return out;
+  }
+
+  /**
+   * The giants, and the snow. Both go in behind everything else and a long
+   * way off: a whale is drawn at a fraction of the camera's zoom and hazed
+   * into the column, because a hundred feet of animal thirty metres over your
+   * head is mostly water between you and it.
+   */
+  drawDeep(ctx, cam, vw, vh) {
+    const wet = this.wet;
+    if (wet <= 0.02) return;
+    const z = cam.zoom;
+
+    // marine snow first, so the whale passes in front of it
+    ctx.globalAlpha = wet * 0.30;
+    for (const sn of this.snow) {
+      const s = cam.worldToScreen(sn.x + Math.sin(sn.ph) * 5, sn.y);
+      if (s.x < -8 || s.x > vw + 8 || s.y < -8 || s.y > vh + 8) continue;
+      ctx.fillStyle = sn.r > 1 ? '#dff4fa' : '#b8dbe6';
+      ctx.fillRect(Math.round(s.x), Math.round(s.y), sn.r, sn.r);
+    }
+    ctx.globalAlpha = 1;
+
+    for (const wh of this.whales) {
+      const s = cam.worldToScreen(wh.x, wh.y);
+      const art = whaleArt(1);
+      // they are far off, so they are drawn small and washed into the water
+      const k = z * 0.95 * wh.s;
+      const w = art.cv.width * k;
+      if (s.x + w < -80 || s.x - w > vw + 80) continue;
+      ctx.save();
+      ctx.globalAlpha = wet * 0.74;
+      ctx.translate(Math.round(s.x), Math.round(s.y + Math.sin(wh.ph) * 4 * z));
+      ctx.scale(k * (wh.dir < 0 ? -1 : 1), k);
+      // the fluke beat: the whole body rolls slowly through it
+      ctx.rotate(Math.sin(wh.ph) * 0.035);
+      ctx.drawImage(art.cv, -art.ox, -art.oy);
+      ctx.restore();
+      // and the water it is pushing, which is how you know it is enormous
+      ctx.globalAlpha = wet * 0.16;
+      ctx.fillStyle = '#cfeef8';
+      for (let i = 0; i < 7; i++) {
+        const t = i / 6;
+        const bx = s.x - wh.dir * (60 + t * 200) * k;
+        const by = s.y + Math.sin(wh.ph + t * 2) * 9 * z;
+        ctx.fillRect(Math.round(bx), Math.round(by), Math.max(1, Math.round(3 * z)), 1);
+      }
+      ctx.globalAlpha = 1;
+    }
   }
 
   /** Everything growing on the bottom. `far` is the layer behind the animal. */

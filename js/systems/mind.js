@@ -26,11 +26,13 @@ import { POSE } from '../entities/npc.js';
 const LURE_RANGE = 22;        // how close to the bait counts as "at it"
 const SPRAY_RANGE = 60;       // how close you have to be to spray her
 const DOSE_SECS = 2.6;        // cloud to blue eye
+const DOWN_SECS = 3.4;        // and then she is on the ground, fighting it
 
 export class Mind {
   constructor(game) {
     this.game = game;
-    this.stage = 'free';      // free | lured | dosing | owned
+    this.stage = 'free';      // free | lured | dosing | down | owned
+    this.downT = 0;
     this.bait = null;         // { x, y, t }
     this.doseT = 0;
     this.blue = 0;            // 0..1, how far the eye has gone over
@@ -43,6 +45,8 @@ export class Mind {
 
   get npc() { return this.game.npc; }
   get owned() { return this.stage === 'owned'; }
+  /** On the ground with it going through her - not yours yet, not free either. */
+  get downed() { return this.stage === 'down'; }
 
   // -- step one: the lure ---------------------------------------------------
 
@@ -78,7 +82,7 @@ export class Mind {
 
   spray() {
     if (this.stage === 'owned') return { ok: false, why: 'She is already yours.' };
-    if (this.stage === 'dosing') return { ok: false, why: 'It is already in her.' };
+    if (this.stage === 'dosing' || this.stage === 'down') return { ok: false, why: 'It is already in her.' };
     const e = this.game.economy;
     if (e.parasites < 1) return { ok: false, why: 'No spore. Grow a mindcap and pick it.' };
     const n = this.npc;
@@ -158,12 +162,60 @@ export class Mind {
         g.fx?.drift(n.x + (Math.random() - 0.5) * 10, n.y - 14 - Math.random() * 8, '#c98ade', 1);
       }
       if (k >= 1) {
-        this.stage = 'owned';
+        // it does not simply take. Her legs go first, and then she is on the
+        // ground with it going through her, and that takes a few seconds she
+        // spends telling you exactly what she thinks of it.
+        this.stage = 'down';
+        this.downT = 0;
         this.blue = 1;
         this.bait = null;
+        n.mode = 'free';
+        n.moveTo = undefined;
+        n.keepAway = false;
+        n.setPose(POSE.DOWN);
+        n.jv = -120;
+        n.squash = -0.4;
+        n.say('My legs. My legs have stopped - what have you PUT in me -', 3.2, 8);
+        g.fx?.ring(n.x, n.y - 14, '#c98ade', 18);
+        g.fx?.dust(n.x, n.y, 1.6);
+        g.audio?.play('hurt');
+        g.cam?.shake(4);
+      }
+      return;
+    }
+
+    if (this.stage === 'down') {
+      this.downT += dt;
+      const k = clamp01(this.downT / DOWN_SECS);
+      // she thrashes, and the thrashing gets weaker
+      const fight = 1 - k;
+      if (Math.random() < dt * (7 + fight * 16)) {
+        g.fx?.dust(n.x + (Math.random() - 0.5) * 16, n.y, 0.3 + fight * 0.5);
+        g.fx?.drift(n.x + (Math.random() - 0.5) * 12, n.y - 12 - Math.random() * 10, '#c98ade', 1);
+      }
+      // the kick: she comes up off the sand and goes back down, less each time
+      if (Math.random() < dt * 3.2 * (0.3 + fight)) {
+        n.jv = -40 - fight * 70;
+        n.squash = -0.25 * fight;
+        g.cam?.shake(1.4 * fight);
+        g.audio?.play('step');
+      }
+      if (this.downT > 1.3 && !this._d1) {
+        this._d1 = 1;
+        n.say('I can see it. I can SEE it, it is in the back of my - ', 2.6, 2);
+      }
+      if (this.downT > 2.5 && !this._d2) {
+        this._d2 = 1;
+        n.say('...oh. Oh, that is quieter.', 2.4, 7);
+      }
+      if (k >= 1) {
+        this._d1 = 0; this._d2 = 0;
+        this.stage = 'owned';
+        this.blue = 1;
         n.mode = 'owned';
         n.keepAway = false;
         n.setPose(POSE.IDLE);
+        n.jv = -30;
         n.say('', 0);
         g.fx?.ring(n.x, n.y - 14, '#6fd8ee', 18);
         g.audio?.play('discover');
@@ -222,7 +274,7 @@ export class Mind {
     }
   }
 
-  toJSON() { return { stage: this.stage === 'dosing' ? 'free' : this.stage }; }
+  toJSON() { return { stage: (this.stage === 'dosing' || this.stage === 'down') ? 'free' : this.stage }; }
 
   fromJSON(d) {
     if (!d) return;

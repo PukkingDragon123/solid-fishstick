@@ -276,15 +276,16 @@ export class TalkScreen {
     const ln = tp.lines[this.line];
     const lines = wrapText(ln.t, w - 34);
     const h = Math.max(46, lines.length * LINE_H + 20);
-    drawPlate(ctx, x, y, w, h, { edge: '#e2b74a', alpha: 0.96 });
+    // what she says is on paper, because she is the one who writes things down
+    drawPlate(ctx, x, y, w, h, { mat: 'paper', edge: 'rgba(120,96,58,0.5)', alpha: 0.98 });
 
     // the icon down the left of the card, on its own margin
     if (ln.icon) {
       ctx.globalAlpha = 0.92;
-      drawNodeIcon(ctx, ln.icon, x + 15, y + h / 2, '#e2b74a', 2);
+      drawNodeIcon(ctx, ln.icon, x + 15, y + h / 2, '#7a5a2a', 2);
       ctx.globalAlpha = 1;
       // a hairline between the icon's margin and what she is saying
-      ctx.fillStyle = 'rgba(226,183,74,0.28)';
+      ctx.fillStyle = 'rgba(168,64,52,0.35)';
       ctx.fillRect(x + 25, y + 6, 1, h - 12);
     }
     const tx = x + 28;
@@ -295,19 +296,19 @@ export class TalkScreen {
       if (budget <= 0) return;
       const cut = l.slice(0, budget);
       budget -= l.length;
-      drawText(ctx, cut, tx, y + 10 + i * LINE_H, { color: INK });
+      drawText(ctx, cut, tx, y + 10 + i * LINE_H, { color: '#332a1c' });
     });
 
     // how far through the answer you are, as pips rather than "3 / 5"
     const n = tp.lines.length;
     for (let i = 0; i < n; i++) {
-      ctx.fillStyle = i <= this.line ? '#e2b74a' : 'rgba(120,96,58,0.5)';
+      ctx.fillStyle = i <= this.line ? '#7a5a2a' : 'rgba(140,122,90,0.5)';
       ctx.fillRect(x + w - 8 - (n - i) * 5, y + h - 6, 3, 3);
     }
     // a caret that breathes, meaning there is more
     const b = 0.5 + 0.5 * Math.sin(this.t * 4);
     ctx.globalAlpha = 0.3 + b * 0.6;
-    ctx.fillStyle = '#e2b74a';
+    ctx.fillStyle = '#7a5a2a';
     for (let k = 0; k < 4; k++) {
       ctx.fillRect(Math.round(x + w - 14 + k), Math.round(y + h + 4 + k), 4 - k, 1);
       ctx.fillRect(Math.round(x + w - 14 + k), Math.round(y + h + 4 - k), 4 - k, 1);
@@ -335,10 +336,12 @@ export class TalkScreen {
       const done = this.said.has(tp.id);
       const lit = this.flash > 0 && this.word === '' && this.said.has(tp.id);
       rows.push({ i, x: bx, y: by, w: cellW, h: cellH });
+      // what you can say is cut into stone, because you say it by hitting
+      // something hard with a claw
       drawPlate(ctx, bx, by, cellW, cellH, {
-        edge: on ? '#e2b74a' : lit ? TAP : 'rgba(120,96,58,0.4)',
-        top: on ? 'rgba(58,46,28,0.96)' : undefined,
-        rivets: false,
+        mat: 'stone',
+        edge: on ? '#e2b74a' : lit ? TAP : 'none',
+        top: on ? 1 : undefined,
       });
       if (on) {
         ctx.fillStyle = '#e2b74a';

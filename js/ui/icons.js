@@ -5,7 +5,7 @@
 // Everything here is baked once with the same painter that makes the world, so
 // the HUD is lit by the same sun as the desert behind it.
 
-import { Painter, makeCanvas } from '../render/pixel.js';
+import { Painter, makeCanvas, hash2i } from '../render/pixel.js';
 import { buildCreature } from '../art/faunaart.js';
 import { MATERIALS } from '../lib/palette.js';
 import { clamp, clamp01, lerp, TAU } from '../lib/math.js';
@@ -864,26 +864,179 @@ export function drawGauge(ctx, x, y, w, h, f, col, opts = {}) {
  * weather is doing, what time it is - sits on one of these rather than
  * floating as outlined text over the sky.
  */
+/**
+ * Everything in the interface is made of something she actually has with her.
+ *
+ * There are three surfaces and no fourth. **Stone** is the default: a slab of
+ * the same rock the mesas are cut from, knocked square, with the shape carved
+ * into it as a sunk channel - that is what a readout is. **Paper** is a leaf
+ * out of her field notebook, ruled, with a red margin and a torn bottom edge -
+ * that is what anything she wrote is. **Scroll** is parchment with the roll
+ * still on both ends - that is what a long list is.
+ *
+ * The surface is baked once per size and blitted, because a notebook page
+ * rebuilt out of a hundred fill calls every frame is a notebook page nobody
+ * can afford. The lit edge and the selection colour go on top, uncached,
+ * because those change while you are looking at them.
+ */
+const plates = new Map();
+
+function bakePlate(mat, w, h, seed) {
+  const cv = makeCanvas(w + 4, h + 6);
+  const g = cv.getContext('2d');
+  g.imageSmoothingEnabled = false;
+  const R = (n) => hash2i(n * 37, seed, 91);
+
+  // the shadow it throws, on every surface
+  g.fillStyle = 'rgba(0,0,0,0.32)';
+  g.fillRect(2, 3, w, h);
+
+  if (mat === 'paper') {
+    // a leaf out of the notebook: off-white, slightly warm, never pure
+    g.fillStyle = '#e6dcc0';
+    g.fillRect(0, 0, w, h);
+    // the fibre, as a scatter of slightly darker and lighter specks
+    for (let i = 0; i < w * h * 0.04; i++) {
+      const x = Math.floor(R(i * 3) * w), y = Math.floor(R(i * 3 + 1) * h);
+      g.fillStyle = R(i * 3 + 2) < 0.5 ? 'rgba(198,184,150,0.5)' : 'rgba(246,238,216,0.5)';
+      g.fillRect(x, y, 1, 1);
+    }
+    // the rule, every nine pixels, which is the line height of the font
+    g.fillStyle = 'rgba(120,140,150,0.26)';
+    for (let y = 8; y < h - 2; y += 9) g.fillRect(2, y, w - 4, 1);
+    // and the margin down the left
+    if (w > 40) {
+      g.fillStyle = 'rgba(168,64,52,0.40)';
+      g.fillRect(6, 1, 1, h - 2);
+    }
+    // a torn bottom edge: one-pixel bites, never the same twice
+    g.fillStyle = 'rgba(0,0,0,0)';
+    g.clearRect(0, h - 1, w, 1);
+    g.fillStyle = '#e6dcc0';
+    for (let x = 0; x < w; x++) {
+      if (R(x + 500) < 0.55) g.fillRect(x, h - 1, 1, 1);
+    }
+    g.fillStyle = 'rgba(150,132,96,0.55)';
+    for (let x = 0; x < w; x++) {
+      if (R(x + 900) < 0.35) g.fillRect(x, h - 2, 1, 1);
+    }
+    // a soft shadow along the top, so the page reads as lying on something
+    g.fillStyle = 'rgba(120,100,66,0.18)';
+    g.fillRect(0, 0, w, 1);
+  } else if (mat === 'scroll') {
+    // parchment, with the roll still on both ends
+    const roll = Math.min(7, Math.max(4, Math.round(h * 0.34)));
+    g.fillStyle = '#dbc28c';
+    g.fillRect(roll, 0, w - roll * 2, h);
+    for (let i = 0; i < w * h * 0.05; i++) {
+      const x = roll + Math.floor(R(i * 3) * (w - roll * 2));
+      const y = Math.floor(R(i * 3 + 1) * h);
+      g.fillStyle = R(i * 3 + 2) < 0.5 ? 'rgba(186,158,106,0.45)' : 'rgba(240,220,174,0.4)';
+      g.fillRect(x, y, 1, 1);
+    }
+    // the two rolls: darker at the core, lit along the top of the curl
+    for (const side of [0, 1]) {
+      const rx = side ? w - roll : 0;
+      g.fillStyle = '#8a6a3a';
+      g.fillRect(rx, 0, roll, h);
+      g.fillStyle = '#b08c50';
+      g.fillRect(rx + (side ? 0 : 1), 1, roll - 1, h - 2);
+      g.fillStyle = 'rgba(244,226,180,0.6)';
+      g.fillRect(rx + (side ? 1 : roll - 2), 1, 1, h - 2);
+      g.fillStyle = 'rgba(50,34,14,0.5)';
+      g.fillRect(side ? rx : rx + roll - 1, 0, 1, h);
+    }
+    // and the parchment curls into shadow where it leaves each roll
+    g.fillStyle = 'rgba(110,84,44,0.30)';
+    g.fillRect(roll, 0, 2, h);
+    g.fillRect(w - roll - 2, 0, 2, h);
+  } else if (mat === 'leather') {
+    // her bag: dark hide with a stitched line just inside the edge
+    g.fillStyle = '#3a2718';
+    g.fillRect(0, 0, w, h);
+    for (let i = 0; i < w * h * 0.05; i++) {
+      const x = Math.floor(R(i * 3) * w), y = Math.floor(R(i * 3 + 1) * h);
+      g.fillStyle = R(i * 3 + 2) < 0.5 ? 'rgba(24,16,10,0.5)' : 'rgba(86,60,36,0.4)';
+      g.fillRect(x, y, 1, 1);
+    }
+    g.fillStyle = 'rgba(198,162,106,0.34)';
+    for (let x = 3; x < w - 3; x += 4) { g.fillRect(x, 2, 2, 1); g.fillRect(x, h - 3, 2, 1); }
+    for (let y = 3; y < h - 3; y += 4) { g.fillRect(2, y, 1, 2); g.fillRect(w - 3, y, 1, 2); }
+    g.fillStyle = 'rgba(240,214,164,0.18)';
+    g.fillRect(0, 0, w, 1);
+  } else {
+    // stone: a slab knocked square out of the same rock as the mesas
+    g.fillStyle = '#4a4136';
+    g.fillRect(0, 0, w, h);
+    // bedding, running across it the way the cliffs do
+    for (let y = 0; y < h; y++) {
+      const band = Math.sin(y * 0.7 + seed) * 0.5 + 0.5;
+      g.fillStyle = band > 0.62 ? 'rgba(92,82,66,0.34)'
+        : band < 0.22 ? 'rgba(30,25,18,0.30)' : 'rgba(0,0,0,0)';
+      if (g.fillStyle !== 'rgba(0, 0, 0, 0)') g.fillRect(0, y, w, 1);
+    }
+    // grit, and the odd bright grain of quartz
+    for (let i = 0; i < w * h * 0.05; i++) {
+      const x = Math.floor(R(i * 3) * w), y = Math.floor(R(i * 3 + 1) * h);
+      const r = R(i * 3 + 2);
+      g.fillStyle = r < 0.12 ? 'rgba(196,186,162,0.5)'
+        : r < 0.5 ? 'rgba(28,23,17,0.45)' : 'rgba(106,96,78,0.4)';
+      g.fillRect(x, y, 1, 1);
+    }
+    // the bevel: lit along the top and the left, in shadow the other two
+    g.fillStyle = 'rgba(150,138,112,0.55)';
+    g.fillRect(0, 0, w, 1); g.fillRect(0, 0, 1, h);
+    g.fillStyle = 'rgba(16,12,8,0.55)';
+    g.fillRect(0, h - 1, w, 1); g.fillRect(w - 1, 0, 1, h);
+    // the carved channel: a groove sunk a pixel in from the edge, dark on the
+    // side the light comes from and lit on the far side, which is what makes
+    // it read as cut into the stone rather than drawn on it
+    if (w > 10 && h > 8) {
+      g.fillStyle = 'rgba(20,16,11,0.5)';
+      g.fillRect(2, 2, w - 4, 1); g.fillRect(2, 2, 1, h - 4);
+      g.fillStyle = 'rgba(168,156,128,0.35)';
+      g.fillRect(2, h - 3, w - 4, 1); g.fillRect(w - 3, 2, 1, h - 4);
+    }
+    // and the corners are knocked off, because nobody dressed this stone
+    for (const [cx, cy] of [[0, 0], [w - 1, 0], [0, h - 1], [w - 1, h - 1]]) {
+      if (R(cx + cy * 7) < 0.7) g.clearRect(cx, cy, 1, 1);
+    }
+  }
+  return cv;
+}
+
+function plateFor(mat, w, h) {
+  const key = `${mat}:${w}x${h}`;
+  let cv = plates.get(key);
+  if (!cv) {
+    cv = bakePlate(mat, w, h, (w * 31 + h * 17) % 997);
+    if (plates.size > 220) plates.clear();
+    plates.set(key, cv);
+  }
+  return cv;
+}
+
+/**
+ * A slab, a page or a scroll. `mat` picks which; everything else is the
+ * highlight, which is never baked because it moves.
+ */
 export function drawPlate(ctx, x, y, w, h, opts = {}) {
   x = Math.round(x); y = Math.round(y); w = Math.round(w); h = Math.round(h);
-  const a = opts.alpha ?? 1;
+  if (w < 2 || h < 2) return;
+  const mat = opts.mat || 'stone';
   ctx.save();
-  ctx.globalAlpha = a;
-  ctx.fillStyle = 'rgba(0,0,0,0.28)';
-  ctx.fillRect(x + 1, y + 2, w, h);
-  const g = ctx.createLinearGradient(0, y, 0, y + h);
-  g.addColorStop(0, opts.top || 'rgba(46,35,22,0.88)');
-  g.addColorStop(1, opts.bottom || 'rgba(26,19,12,0.92)');
-  ctx.fillStyle = g;
-  ctx.fillRect(x, y, w, h);
-  ctx.fillStyle = 'rgba(198,162,90,0.30)';
-  ctx.fillRect(x, y, w, 1);
-  ctx.strokeStyle = opts.edge || 'rgba(148,118,68,0.55)';
-  ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
-  if (opts.rivets !== false) {
-    ctx.fillStyle = 'rgba(206,170,96,0.65)';
-    for (const [rx, ry] of [[x + 2, y + 2], [x + w - 3, y + 2],
-      [x + 2, y + h - 3], [x + w - 3, y + h - 3]]) ctx.fillRect(rx, ry, 1, 1);
+  ctx.globalAlpha = opts.alpha ?? 1;
+  ctx.drawImage(plateFor(mat, w, h), x, y);
+  // the selection: the carved channel fills with light, which is how a stone
+  // tablet gets to look pressed
+  if (opts.edge && opts.edge !== 'none') {
+    ctx.strokeStyle = opts.edge;
+    ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+    if (opts.top) {
+      ctx.globalAlpha = (opts.alpha ?? 1) * 0.22;
+      ctx.fillStyle = opts.edge;
+      ctx.fillRect(x + 2, y + 2, w - 4, h - 4);
+    }
   }
   ctx.restore();
 }

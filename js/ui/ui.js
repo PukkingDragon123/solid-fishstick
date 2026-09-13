@@ -8,6 +8,7 @@
 
 import { clamp, clamp01, lerp, damp, TAU, easeOutCubic } from '../lib/math.js';
 import * as Save from '../core/save.js';
+import { pxDisc, pxGlow } from '../render/pix.js';
 import { drawText, textWidth, wrapText, ellipsize, LINE_H } from '../lib/font.js';
 import { FLORA, FLORA_BY_ID, NEEDS_TEXT, NEEDS_ICON } from '../data/flora.js';
 import { ITEM_BY_ID, STATIONS } from '../data/craft.js';
@@ -514,12 +515,85 @@ export class UI {
     if (this.drawer > 0.005) this._panel(ctx, W, H);
     else if (this.touchEnabled) this._touchControls(ctx, W, H);
 
+    if (this.game.work?.live) this._workBar(ctx, W, H);
     if (this.toast) this._toast(ctx, W, H);
     if (this.game.taming?.live) this._songCard(ctx, W, H);
     if (this.drag) this._drawCarried(ctx, W, H);
     this._exitChip(ctx, W, H);
     if (this.paused) this._pauseCard(ctx, W, H);
     if (this.hover && !this.drag) this._tooltip(ctx, W, H);
+  }
+
+  /**
+   * The job you are in the middle of. It is drawn at the work, not in a
+   * corner, because the thing you are looking at while you dig is the hole.
+   *
+   * A stone tablet with a sunk bar in it: a band where the stroke lands, a
+   * brighter core inside that, and a needle sweeping. Under it, how much of
+   * the job is done and how well it is going - and the "how well" is the
+   * number that matters, because a fossil dug badly comes out in pieces.
+   */
+  _workBar(ctx, W, H) {
+    const wk = this.game.work;
+    const j = wk && wk.job;
+    if (!j) return;
+    const cam = this.game.cam;
+    const s = cam.worldToScreen(j.x, j.y);
+    const w = 104, h = 30;
+    const sh = j.shake > 0 ? Math.round(Math.sin(this.t * 46) * j.shake * 2) : 0;
+    const x = Math.round(clamp(s.x - w / 2, 6, W - w - 6)) + sh;
+    const y = Math.round(clamp(s.y - 56 * cam.zoom, 20, H - h - 40));
+
+    drawPlate(ctx, x, y, w, h, { mat: 'stone', edge: 'none' });
+    // what is being done, and what it is being done to
+    drawNodeIcon(ctx, j.def.icon, x + 9, y + 8, j.def.tint, 1);
+    drawText(ctx, ellipsize(j.label.toUpperCase(), w - 34), x + 18, y + 4,
+      { color: '#e6dcc0' });
+
+    // the sunk bar
+    const bx = x + 5, by = y + 15, bw = w - 10, bh = 7;
+    ctx.fillStyle = 'rgba(14,11,7,0.92)';
+    ctx.fillRect(bx, by, bw, bh);
+    ctx.fillStyle = 'rgba(150,138,112,0.25)';
+    ctx.fillRect(bx, by + bh, bw, 1);
+    // the band, and the core of it
+    const half = j.band / 2;
+    const b0 = Math.round(bx + clamp01(j.centre - half) * bw);
+    const b1 = Math.round(bx + clamp01(j.centre + half) * bw);
+    ctx.fillStyle = j.def.tint;
+    ctx.globalAlpha = 0.30;
+    ctx.fillRect(b0, by, b1 - b0, bh);
+    const c0 = Math.round(bx + clamp01(j.centre - half * 0.32) * bw);
+    const c1 = Math.round(bx + clamp01(j.centre + half * 0.32) * bw);
+    ctx.globalAlpha = 0.62;
+    ctx.fillRect(c0, by, Math.max(1, c1 - c0), bh);
+    ctx.globalAlpha = 1;
+    // the needle
+    const nx = Math.round(bx + clamp01(j.needle) * bw);
+    ctx.fillStyle = j.flash > 0.05 ? '#fff2cf' : j.flash < -0.05 ? '#e2564f' : '#f2e4c2';
+    ctx.fillRect(nx, by - 2, 1, bh + 4);
+    ctx.fillRect(nx - 1, by - 3, 3, 1);
+
+    // how far through, as a line filling along the bottom of the tablet
+    ctx.fillStyle = 'rgba(14,11,7,0.8)';
+    ctx.fillRect(x + 5, y + h - 5, w - 10, 2);
+    ctx.fillStyle = j.def.tint;
+    ctx.fillRect(x + 5, y + h - 5, Math.round((w - 10) * clamp01(j.done)), 2);
+    // and how well, as pips lost off the right
+    const pips = 5;
+    for (let i = 0; i < pips; i++) {
+      const lost = j.quality < (pips - i) / pips;
+      ctx.fillStyle = lost ? 'rgba(226,86,79,0.7)' : '#e6dcc0';
+      ctx.fillRect(x + w - 8 - i * 3, y + 5, 2, 2);
+    }
+    // if it has been put down, say so rather than leaving it looking broken
+    if (!j.held) {
+      const b = 0.4 + 0.6 * (0.5 + 0.5 * Math.sin(this.t * 3));
+      ctx.globalAlpha = b;
+      drawText(ctx, 'HOLD E', x + w / 2, y + h + 3,
+        { color: FAINT, align: 'center', outline: true, outlineColor: OUT });
+      ctx.globalAlpha = 1;
+    }
   }
 
   /**
@@ -1206,8 +1280,9 @@ export class UI {
     ctx.globalAlpha = Math.min(1, a);
     caps.forEach(([k, word], i) => {
       const w = capW[i];
-      drawPlate(ctx, x, y, w, 11, { edge: 'rgba(180,146,86,0.45)' });
-      drawText(ctx, k, x + w / 2, y + 2, { color: '#e6d5ad', align: 'center' });
+      // a key written on a scrap of her notebook, so the letter is ink
+      drawPlate(ctx, x, y, w, 11, { mat: 'paper', edge: 'rgba(120,96,58,0.45)' });
+      drawText(ctx, k, x + w / 2, y + 2, { color: '#3a2f1e', align: 'center' });
       x += w + gap;
       drawText(ctx, word, x, y + 2,
         { color: 'rgba(196,172,128,0.92)', outline: true, outlineColor: OUT });
@@ -1625,8 +1700,26 @@ export class UI {
     const g = this.game;
     const i = g.input;
     let pickHit = null;
+    let waterHit = null;
     for (const plot of g.garden.plots) {
       const pl = plot.plant;
+      // a seed that has gone in and not been watered is the loudest thing on
+      // your back, because nothing at all happens to it until you pour
+      if (pl && pl.soaked < 1) {
+        const w = g.garden.plotWorld(plot);
+        const s = cam.worldToScreen(w.x, w.y - 8);
+        if (s.x < -20 || s.x > g.renderer.vw + 20) continue;
+        const hot = Math.hypot(i.sx - s.x, i.sy - s.y) < 12;
+        if (hot) waterHit = plot;
+        const b = 0.5 + 0.5 * Math.sin(this.t * 3.2 + plot.i);
+        ctx.globalAlpha = 0.45 + b * 0.5;
+        drawNodeIcon(ctx, 'drop', s.x, s.y - 2 - b * 1.5, hot ? '#cdf2fa' : '#5fc6d8', 1);
+        ctx.globalAlpha = 1;
+        if (cam.zoom > 1.3) {
+          drawGauge(ctx, s.x - 6, s.y + 5, 12, 2, pl.soaked, '#5fc6d8');
+        }
+        continue;
+      }
       if (!pl || pl.stage < 3) continue;
       const w = g.garden.plotWorld(plot);
       const s = cam.worldToScreen(w.x, w.y - 9);
@@ -1641,16 +1734,9 @@ export class UI {
         const bob = Math.sin(this.t * 3.4 + plot.i) * 1.6;
         const r = 4.0 + Math.sin(this.t * 5 + plot.i) * 0.6;
         ctx.globalAlpha = 0.9;
-        const gr = ctx.createRadialGradient(s.x, s.y + bob, 0, s.x, s.y + bob, r * 3);
-        gr.addColorStop(0, 'rgba(226,240,168,0.85)');
-        gr.addColorStop(1, 'rgba(140,196,104,0)');
-        ctx.fillStyle = gr;
-        ctx.beginPath(); ctx.arc(s.x, s.y + bob, r * 3, 0, TAU); ctx.fill();
-        ctx.fillStyle = hot ? '#f6ffd8' : '#cfe89a';
-        ctx.beginPath(); ctx.arc(s.x, s.y + bob, r, 0, TAU); ctx.fill();
-        ctx.strokeStyle = 'rgba(20,30,10,0.8)';
-        ctx.lineWidth = 1;
-        ctx.stroke();
+        pxGlow(ctx, s.x, s.y + bob, r * 3, '#e2f0a8', 0.85, { p: 1, steps: 3 });
+        pxDisc(ctx, s.x, s.y + bob, r + 1, 'rgba(20,30,10,0.8)', { p: 1 });
+        pxDisc(ctx, s.x, s.y + bob, r, hot ? '#f6ffd8' : '#cfe89a', { p: 1 });
         ctx.globalAlpha = 1;
       } else if (cam.zoom > 1.4) {
         // still filling: a short bar, and a mark if its condition is not met
@@ -1664,11 +1750,17 @@ export class UI {
         ctx.globalAlpha = 1;
       }
     }
-    if (pickHit && i.clicked) {
+    if (waterHit && i.clicked) {
+      i.clicked = false;
+      g.startWatering(waterHit);
+    } else if (pickHit && i.clicked) {
       i.clicked = false;
       g.harvestPlot(pickHit);
     }
-    this.cropHot = !!pickHit;
+    if (waterHit) {
+      this.hover = { title: `${waterHit.plant.def.name}`, body: 'Dry. Click to pour - land it in the band or it runs off the top.' };
+    }
+    this.cropHot = !!pickHit || !!waterHit;
   }
 
   /** Called from the game draw so the ghost sits in the world, not on the HUD. */
@@ -2008,6 +2100,15 @@ export class UI {
             ['clock', `${Math.round(def.ripen)}s`, 'rgba(214,186,138,0.8)'],
             ['weight', def.mass.toFixed(1), 'rgba(214,186,138,0.6)']];
         if (!isB && def.needs) chips.push([NEEDS_ICON[def.needs] || 'sun', '', '#e2b74a']);
+        // and who has to put it in, which is the one that stops you rather
+        // than just costing you
+        const hand = !isB && def.hands ? g.plantWorker(def) : null;
+        if (!isB && def.hands) {
+          chips.push([
+            def.hands.by === 'digger' ? 'paw' : def.hands.by === 'tool' ? 'hammer' : 'hand',
+            '', hand && hand.ok ? '#8cc468' : '#e2564f',
+          ]);
+        }
         let chx = inX + 2, row = 0;
         for (const [icon, label, col] of chips) {
           const lw = label ? textWidth(label) : 0;
@@ -2019,9 +2120,14 @@ export class UI {
           drawNodeIcon(ctx, icon, chx + 4, chy + 4, col, 1);
           if (label) drawText(ctx, label, chx + 10, chy + 1, { color: col });
           if (this._hit(chx - 1, chy - 1, cw + 2, 11)) {
-            this.hover = def.needs && icon === NEEDS_ICON[def.needs]
-              ? { title: def.name, body: NEEDS_TEXT[def.needs] }
-              : { title: def.name, body: `${def.cost} water  ·  pays ${def.pay} every ${Math.round(def.ripen)}s  ·  weighs ${def.mass.toFixed(1)}` };
+            const isHand = !isB && def.hands
+              && (icon === 'hand' || icon === 'paw' || icon === 'hammer');
+            this.hover = isHand
+              ? { title: hand && hand.ok ? 'She can do this' : 'Nobody here can plant it',
+                body: hand && hand.ok ? def.hands.why : (hand ? hand.why : def.hands.why) }
+              : def.needs && icon === NEEDS_ICON[def.needs]
+                ? { title: def.name, body: NEEDS_TEXT[def.needs] }
+                : { title: def.name, body: `${def.cost} water  ·  pays ${def.pay} every ${Math.round(def.ripen)}s  ·  weighs ${def.mass.toFixed(1)}` };
           }
           chx += cw + 3;
         }
@@ -2032,8 +2138,11 @@ export class UI {
         ctx.fillRect(inX, by, inW, bh);
         ctx.strokeStyle = afford ? 'rgba(242,228,194,0.6)' : 'rgba(200,66,92,0.5)';
         ctx.strokeRect(inX + 0.5, by + 0.5, inW - 1, bh - 1);
-        drawText(ctx, afford ? 'PLACE IT' : 'NOT ENOUGH', inX + inW / 2, by + 4,
-          { color: afford ? '#12200c' : '#e08c9c', align: 'center' });
+        const blocked = !isB && hand && !hand.ok;
+        drawText(ctx, !afford ? 'NOT ENOUGH' : blocked ? 'NO HANDS FOR IT'
+          : !isB && def.hands ? 'SHE WILL PLANT IT' : 'PLACE IT',
+          inX + inW / 2, by + 4,
+          { color: afford && !blocked ? '#12200c' : '#e08c9c', align: 'center' });
         if (hot && afford && g.input.clicked) {
           g.input.clicked = false;
           this.placing = { kind: this.buildTab === 'build' ? 'build' : 'flora', id: def.id };

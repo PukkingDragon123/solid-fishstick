@@ -23,6 +23,7 @@ import { Sea } from './systems/sea.js';
 import { Green } from './systems/green.js';
 import { Digs, RELIC_BY_ID } from './systems/digs.js';
 import { Mining } from './systems/mining.js';
+import { Work } from './systems/work.js';
 import { Craft } from './systems/craft.js';
 import { Mind } from './systems/mind.js';
 import { Combat } from './systems/combat.js';
@@ -104,6 +105,7 @@ export class Game {
     this.green = new Green(this);
     this.digs = new Digs(this, this.seed);
     this.mining = new Mining(this, this.seed);
+    this.work = new Work(this);
     this.craft = new Craft(this);
     this.mind = new Mind(this);
     this.combat = new Combat(this);
@@ -134,6 +136,7 @@ export class Game {
     this.drift = null;
     this.tutorial = 0;
     this.attackT = 0;
+    this.lids = 0;
     this.startIntro();
   }
 
@@ -182,19 +185,59 @@ export class Game {
     this.npc.x = this.crab.x + 900;
     this.cam.followEntity(this.crab, true);
     this.cam.targetZoom = this.cam.zoom = clamp(this.autoZoom() * 1.25, this.cam.minZoom, this.cam.maxZoom);
-    this.say('narrator', 'Thirty metres of water, and every one of them warm.');
+    this.say('narrator', 'Thirty metres of water. Every one of them warm.');
     this._proT = 0;
+    this._whaleShot = 0;
   }
 
-  /** While you are still choosing a spot. */
+  /**
+   * While you are still choosing a spot.
+   *
+   * It is shot like a nature film, because that is what it is: long held
+   * takes, a narrator who is interested rather than excited, and one moment
+   * where the camera pulls back to put the animal in the frame next to
+   * something that makes it look like nothing at all.
+   */
   _runPrologue(dt) {
     this.sea.update(dt);
     this._proT = (this._proT || 0) + dt;
     const t = this._proT;
-    // three lines, spaced out, and then it stops talking and lets you look
-    if (t > 6 && !this._pro1) { this._pro1 = 1; this.say('narrator', 'Everything here is alive, and most of it is smaller than you.'); }
-    if (t > 13 && !this._pro2) { this._pro2 = 1; this.say('narrator', 'Your kind does this once. You pick a hollow, and you stay in it.'); }
-    if (t > 19 && !this._pro3) { this._pro3 = 1; this.dialog = null; }
+    const N = (line) => this.say('narrator', line);
+    if (t > 6 && !this._pro1) { this._pro1 = 1; N('Everything here is alive. Most of it is smaller than your claw.'); }
+    if (t > 13 && !this._pro2) {
+      this._pro2 = 1;
+      N('And some of it is not.');
+      // the shot: pull out and up, and bring them across
+      this._whaleShot = 1;
+      const c = this.crab;
+      for (const wh of this.sea.whales) {
+        // near enough to cross the whole frame inside the shot, and high
+        // enough that they are clearly above everything on the bottom
+        wh.x = c.x - 620 - (wh.s < 0.8 ? 210 : 0);
+        // a quarter of the way down from the surface: under the light, well
+        // over the reef, and unmistakably in the water rather than on it
+        const top = this.sea.level(c.x);
+        const bed = this.terrain.surfaceY(c.x);
+        wh.y = top + (bed - top) * (wh.s < 0.8 ? 0.34 : 0.26);
+        wh.dir = 1;
+        wh.sp = 62;
+      }
+      this.cam.cineTo(c.x + 60, c.y - 150, Math.max(this.cam.minZoom, this.autoZoom() * 0.46), 4.2);
+    }
+    if (t > 20 && !this._pro2b) {
+      this._pro2b = 1;
+      N('Two hundred tonnes of animal, and it has never once had to hide from anything.');
+    }
+    if (t > 28 && !this._pro2c) {
+      this._pro2c = 1;
+      this._whaleShot = 0;
+      for (const wh of this.sea.whales) wh.sp = 26;
+      this.cam.followEntity(this.crab);
+      this.cam.targetZoom = clamp(this.autoZoom() * 1.25, this.cam.minZoom, this.cam.maxZoom);
+      N('You will never see one again. Nothing here will.');
+    }
+    if (t > 36 && !this._pro2d) { this._pro2d = 1; N('Your kind does this once. You pick a hollow, and you stay in it.'); }
+    if (t > 44 && !this._pro3) { this._pro3 = 1; this.dialog = null; }
     if (this.dialog) this.dialog.t += dt;
     this.crab.pumping = 0;
     // bubbles come off you while you walk
@@ -331,6 +374,60 @@ export class Game {
    * drawn rather than simulated: this happens once, and it wants to look right
    * once.
    */
+  /**
+   * The inside of a shut eye.
+   *
+   * You do not wake up looking at something. You wake up in the dark, with
+   * one sense back before the others, and the last thing that arrives is the
+   * picture. So for a few seconds the frame is two lids, almost closed, with
+   * a slit of the world between them - and the sound has already told you
+   * more than you wanted to know.
+   *
+   * They are drawn as lids rather than as letterbox bars: the inner edge
+   * curves, there is a rim of wet along it, and the lashes break the line.
+   */
+  _drawLids(ctx, vw, vh) {
+    const k = clamp01(this.lids || 0);
+    if (k <= 0.002) return;
+    const mid = vh * 0.5;
+    // how far each lid reaches toward the middle
+    const reach = mid * k;
+    ctx.save();
+    ctx.fillStyle = '#050302';
+    for (const side of [-1, 1]) {
+      ctx.beginPath();
+      ctx.moveTo(0, side > 0 ? 0 : vh);
+      for (let x = 0; x <= vw; x += 4) {
+        const t = x / vw;
+        // the lid sags in the middle, the way a lid does
+        const bow = Math.sin(t * Math.PI) * reach * 0.14;
+        ctx.lineTo(x, mid - side * (reach - bow));
+      }
+      ctx.lineTo(vw, side > 0 ? 0 : vh);
+      ctx.closePath();
+      ctx.fill();
+    }
+    // the wet rim along each edge, and the lashes coming off it
+    ctx.globalAlpha = 0.55 * k;
+    for (const side of [-1, 1]) {
+      for (let x = 0; x <= vw; x += 1) {
+        const t = x / vw;
+        const bow = Math.sin(t * Math.PI) * reach * 0.14;
+        const y = Math.round(mid - side * (reach - bow));
+        ctx.fillStyle = '#6a5236';
+        ctx.fillRect(x, y + (side > 0 ? 0 : -1), 1, 1);
+        // lashes: short, irregular, only every few pixels
+        if ((x * 7 + side) % 11 === 0) {
+          const len = 2 + ((x * 13) % 3);
+          ctx.fillStyle = 'rgba(12,8,5,0.9)';
+          ctx.fillRect(x, side > 0 ? y - len : y, 1, len);
+        }
+      }
+    }
+    ctx.globalAlpha = 1;
+    ctx.restore();
+  }
+
   _drawWaking(ctx, cam) {
     const k = clamp01(this.waking || 0);
     if (k <= 0.002) return;
@@ -401,18 +498,51 @@ export class Game {
         { at: 14.4, run: () => { npc.setPose(POSE.IDLE); V('There was an inland sea here. I can prove it. I have the shells, the terraces, the strandlines.', 10); } },
         { at: 18.2, run: () => V('What I do not have is water. Which is, apparently, the only part anybody funds.', 12) },
         { at: 21.6, run: () => { npc.setFacing(1); npc.setPose(POSE.SIT); V('Eleven years. Nobody is watching. Nobody has been watching for a thousand years.', 7); } },
-        { at: 25.0, run: () => { this.shot(c.x + 10, c.y - 16, this.autoZoom() * 1.8, 1.6, { z: 0.010 }); N('...'); } },
-        { at: 26.8, run: () => { this._pee = 1; this._peeT = 0; this.audio.play('water'); N('The first water to touch this animal in a thousand years is not, strictly, rain.'); } },
-        // ---- the wake itself. Four beats, and not one of them is the
-        // eruption: the eye, the breath, the sand, and only then the animal.
-        { at: 30.4, run: () => {
+        // ---- you are still asleep, and the first thing you get back is
+        // hearing. The lids stay shut through all of this.
+        { at: 25.0, run: () => {
+          this.lids = 1;
+          this.shot(c.x + 6, c.y - 14, this.autoZoom() * 2.2, 1.4, { z: 0.006 });
+          N('');
+        } },
+        { at: 26.4, run: () => {
+          this.audio.play('water');
+          N('Something is happening outside.');
+        } },
+        { at: 28.2, run: () => {
+          // she has walked right up to the mound and is standing over it
+          npc.x = c.x + 22;
+          npc.setFacing(-1);
+          npc.setPose(POSE.REST);
+          this._pee = 1; this._peeT = 0;
+          this.audio.play('water', { pitch: 0.8 });
+          this.lids = 0.93;
+          N('It is warm. That is the part it notices first.');
+        } },
+        { at: 30.0, run: () => {
+          // the lids come up, and there she is
+          this.lids = 0.42;
+          this.shot(c.x + 16, c.y - 10, this.autoZoom() * 2.4, 1.2, { z: 0.004 });
+          this.audio.play('drip', { pitch: 0.9 });
+          N('The first water to touch this animal in a thousand years is not, strictly, rain.');
+        } },
+        { at: 31.6, run: () => {
+          this.lids = 0;
+          V('Sorry. Sorry, rock.', 0);
+        } },
+        { at: 33.0, run: () => {
+          this._pee = 0;
+          npc.setPose(POSE.IDLE);
+          V('Four thousand days and I still apologise to the geology.', 4);
+        } },
+        { at: 34.6, run: () => {
           this._pee = 0;
           // in very close, on the part of it that is about to move
           this.shot(c.x - 4, c.y - 18, this.autoZoom() * 2.9, 1.4, { z: 0.012 });
           this.waking = 0.001;
           N('It has been waiting a very long time for that.');
         } },
-        { at: 31.8, run: () => {
+        { at: 36.0, run: () => {
           // the eye. One slow open, and nothing else in the frame moves.
           this.crab.blink = 1;
           this.waking = 0.35;
@@ -420,7 +550,7 @@ export class Game {
           this.fx.drift(c.x - 8, c.y - 16, '#d8c49a', 3);
           N('');
         } },
-        { at: 33.4, run: () => {
+        { at: 37.6, run: () => {
           // the first breath in a thousand years, and the sand that has been
           // lying on it since slides off in sheets
           this.waking = 0.7;
@@ -433,7 +563,7 @@ export class Game {
           }
           N('Something under the sand takes a breath.');
         } },
-        { at: 35.0, run: () => {
+        { at: 39.2, run: () => {
           // it braces. The shot pulls out to leave room for what is coming.
           this.waking = 1;
           this.shot(c.x + 12, c.y - 18, this.autoZoom() * 1.5, 1.1, { z: -0.012 });
@@ -442,7 +572,7 @@ export class Game {
           this.audio.play('hit', { pitch: 0.5 });
           N('');
         } },
-        { at: 36.4, run: () => {
+        { at: 40.6, run: () => {
           // the eruption: snap wider and shake, so the animal has room to be big
           this.shot(c.x, c.y - 20, this.autoZoom() * 0.95, 0.7, { z: -0.02 });
           this.cam.shake(9);
@@ -453,19 +583,20 @@ export class Game {
           // a thousand years of sand comes off it
           this.buryTarget = 0;
         } },
-        { at: 37.0, run: () => { npc.startle(1.25); this.cam.shake(4); N(''); } },
-        { at: 37.7, run: () => { npc.moveTo = c.x + 108; npc.setPose(POSE.WALK); V('NOT A ROCK. NOT A ROCK. THAT IS NOT A ROCK -', 8); } },
-        { at: 40.4, run: () => {
+        { at: 41.2, run: () => { npc.startle(1.25); this.cam.shake(4); N(''); } },
+        { at: 41.9, run: () => { npc.moveTo = c.x + 108; npc.setPose(POSE.WALK); V('NOT A ROCK. NOT A ROCK. THAT IS NOT A ROCK -', 8); } },
+        { at: 44.6, run: () => {
           npc.moveTo = undefined; npc.setPose(POSE.IDLE); npc.setFacing(-1);
           this.shot(c.x + 34, c.y - 14, this.autoZoom() * 1.25, 1.8, { z: 0.004 });
           V('...you are awake.', 2);
         } },
-        { at: 43.2, run: () => { npc.setPose(POSE.TALK); V('Oh. Oh, that is what the water table was for. It was never the rainfall. It was you.', 3); } },
-        { at: 47.4, run: () => V('You lay down in a sea and the sea kept coming, because you were in it.', 5) },
-        { at: 51.6, run: () => { npc.setPose(POSE.POINT); V('There is a spring in your back. I can hear it from here and it is the loudest thing in this desert.', 3); } },
-        { at: 55.8, run: () => { npc.setPose(POSE.TALK); V('So get up. Walk. Put it back.', 6); } },
-        { at: 59.0, run: () => V('I have eleven years of notes, one canteen, and absolutely nothing else to do.', 1) },
-        { at: 62.4, run: () => this.endIntro() },
+        { at: 47.4, run: () => { npc.setPose(POSE.TALK); V('And I have just urinated on you.', 4); } },
+        { at: 50.4, run: () => V('Oh. Oh, that is what the water table was for. It was never the rainfall. It was you.', 3) },
+        { at: 54.6, run: () => V('You lay down in a sea and the sea kept coming, because you were in it.', 5) },
+        { at: 58.8, run: () => { npc.setPose(POSE.POINT); V('There is a spring in your back. I can hear it from here and it is the loudest thing in this desert.', 3); } },
+        { at: 63.0, run: () => { npc.setPose(POSE.TALK); V('So get up. Walk. Put it back.', 6); } },
+        { at: 66.2, run: () => V('I have eleven years of notes, one canteen, and absolutely nothing else to do.', 1) },
+        { at: 69.6, run: () => this.endIntro() },
       ],
       i: 0,
     };
@@ -641,6 +772,7 @@ export class Game {
     this.buried = 0;
     this.buryTarget = 0;
     this._pee = 0;
+    this.lids = 0;
     this.ocean = null;
     this.npc.hidden = false;
     this.npc.hatOff = null;
@@ -843,6 +975,9 @@ export class Game {
     this.green.tick(sdt);
     this.digs.update(sdt);
     this.mining.update(sdt);
+    this._plantTick(sdt);
+    // a job is held with the same key that started it
+    this.work.update(sdt, i.key('e') || !!this.ui.actHeld);
     this.craft.update(sdt);
     this.mind.update(sdt);
     this.combat.update(sdt);
@@ -1173,8 +1308,32 @@ export class Game {
   }
 
   /** Pick the ripest thing on your back, if anything is ready. */
+  /**
+   * Picking. One bed at a time, and taking it off the stem properly is the
+   * difference between this fruit and the next one - a torn plant sulks.
+   */
   harvestAll() {
     const ready = this.garden.plots.filter((p) => p.plant && p.plant.ripe >= 1);
+    if (ready.length) {
+      const plot = ready[0];
+      const w = this.garden.plotWorld(plot);
+      this.work.begin('pick', {
+        tag: 'pick:' + plot.i, x: w.x, y: w.y,
+        label: plot.plant.def.name,
+        skill: 1 + this.economy.stat('yield') * 0.2,
+        onDone: (r) => {
+          const paid = this.harvestPlot(plot, true, r.quality);
+          if (r.quality < 0.5) {
+            this.fx.popup(w.x, w.y - 14, 'torn', '#d8a09a');
+            plot.plant.sulk = 1;
+          }
+          // and straight on to the next one that is ready, so a row of them
+          // is a rhythm rather than five separate button presses
+          if (this.garden.ripeCount) this.harvestAll();
+        },
+      });
+      return 0;
+    }
     if (!ready.length) {
       const soon = this.garden.plots
         .filter((p) => p.plant && p.plant.stage >= 3)
@@ -1191,10 +1350,11 @@ export class Game {
     return total;
   }
 
-  /** Pick one bed. Returns what it paid. */
-  harvestPlot(plot, quiet = false) {
+  /** Pick one bed. Returns what it paid, which a clean pick improves. */
+  harvestPlot(plot, quiet = false, quality = 1) {
     const res = this.garden.harvest(plot);
     if (!res.ok) { if (!quiet) this.ui.say(res.msg); return 0; }
+    res.amount = Math.max(1, Math.round(res.amount * (0.55 + quality * 0.55)));
     this.economy.nutrients += res.amount;
     if (res.parasite) {
       this.economy.parasites += res.parasite;
@@ -1400,26 +1560,19 @@ export class Game {
     }
   }
 
+  /**
+   * The action key. If a job is already running this is another stroke of it;
+   * otherwise it is whatever is in front of you, and most of those are jobs
+   * rather than instants now.
+   */
   act() {
     const c = this.crab;
+    if (this.work.live) { this.work.strike(); return; }
+
     // something in the ground right under you comes first: it is the only
     // thing here you can lose by walking past
     const site = this.digs.reachable(c.x);
-    if (site) {
-      const res = this.digs.dig(site);
-      if (!res.ok) { this.ui.say(res.msg); return; }
-      this.relics = this.relics || {};
-      this.relics[res.relic.id] = (this.relics[res.relic.id] || 0) + 1;
-      this.terrain.deform(site.x, 5, 22);
-      this.fx.digBurst(site.x, this.terrain.surfaceY(site.x), 1.8, false);
-      this.fx.spark(site.x, this.terrain.surfaceY(site.x) - 6,
-        res.relic.kind === 'amber' ? '#eec66c' : '#c6bea7', 16, 40);
-      this.fx.popup(site.x, this.terrain.surfaceY(site.x) - 14, res.relic.name, '#dcd6c3');
-      this.audio.play('discover');
-      this.ui.say(`${res.relic.name}. Put it in your basin (K) and keep the water up.`, 6);
-      this.npc.say(res.relic.desc, 7);
-      return;
-    }
+    if (site) { this.startDig(site); return; }
     if (this.garden.ripeCount) { this.harvestAll(); return; }
     const foe = this.wildlife.nearest(c.x, c.y, 44, (q) => q.hostile);
     if (foe) { this.attack(); return; }
@@ -1434,11 +1587,62 @@ export class Game {
       return;
     }
     if (this.encounters.active) {
-      const line = this.encounters.interact();
-      if (line) this.ui.say(line, 5);
+      // searching a ruin is not a glance. You turn the place over.
+      const site = this.encounters.active;
+      this.work.begin('search', {
+        tag: 'search:' + (site.id ?? site.x ?? 0),
+        x: site.x ?? c.x, y: this.terrain.surfaceY(site.x ?? c.x),
+        label: site.name || 'What is left of it',
+        onDone: () => {
+          const line = this.encounters.interact();
+          if (line) this.ui.say(line, 5);
+        },
+      });
       return;
     }
     if (Math.abs(this.npc.x - c.x) < 46) this.talkToVess();
+  }
+
+  /**
+   * A fossil comes out of the ground over about five seconds of somebody
+   * kneeling in the sand, and how it comes out depends on how you dug. Strike
+   * in the band and you are taking sand off it; strike outside and that is a
+   * crack, and a cracked relic is worth less and reads as broken.
+   */
+  startDig(site) {
+    const can = this.digs.dig(site, true);
+    if (!can.ok) { this.ui.say(can.msg); return; }
+    const gy = this.terrain.surfaceY(site.x);
+    this.work.begin('dig', {
+      tag: site.id, x: site.x, y: gy,
+      by: this.mind?.owned ? this.npc : this.crab,
+      label: site.relic.kind === 'amber' ? 'Amber' : site.relic.name,
+      skill: 0.8 + this.economy.stat('fossil') * 0.25,
+      onStroke: () => { this.terrain.deform(site.x, 2, 5); },
+      onDone: (r) => {
+        const res = this.digs.dig(site);
+        if (!res.ok) return;
+        this.relics = this.relics || {};
+        this.relics[res.relic.id] = (this.relics[res.relic.id] || 0) + 1;
+        this.terrain.deform(site.x, 6, 26);
+        this.fx.digBurst(site.x, gy, 1.8, false);
+        this.fx.spark(site.x, gy - 6,
+          res.relic.kind === 'amber' ? '#eec66c' : '#c6bea7', 16, 40);
+        const broken = r.quality < 0.55;
+        this.fx.popup(site.x, gy - 14,
+          broken ? `${res.relic.name} (cracked)` : res.relic.name,
+          broken ? '#d8a09a' : '#dcd6c3');
+        this.audio.play('discover');
+        if (broken) {
+          this.npc.say('You have broken it. It was eleven thousand years old and you have broken it.', 6);
+        } else if (r.clean) {
+          this.npc.say(`Clean. Not a mark on it. ${res.relic.desc}`, 7);
+        } else {
+          this.npc.say(res.relic.desc, 7);
+        }
+        this.ui.say(`${res.relic.name}. Put it in your basin (K) and keep the water up.`, 6);
+      },
+    });
   }
 
   talkToVess() {
@@ -1535,21 +1739,184 @@ export class Game {
     this.fx.dust(fx, c.y + c.standH * 0.6, 1);
   }
 
+  /**
+   * Who can actually put this one in the ground. A crab is a magnificent
+   * animal with a claw the size of a door and no way at all to hold a seed
+   * the size of a grain of sand, so most of the interesting plants need
+   * somebody else: her hands, a real tool, or something that digs for a
+   * living. Returns the worker, or why there isn't one.
+   */
+  plantWorker(def) {
+    const req = def.hands;
+    const her = this.npc && !this.npc.hidden && this.npc.alive !== false;
+    const herNear = her && Math.abs(this.npc.x - this.crab.x) < 420;
+    if (!req) {
+      // anything you can do yourself, she will still do if she is on your back
+      return { by: this.npc.riding ? this.npc : this.crab, ok: true };
+    }
+    if (req.by === 'hands') {
+      if (!herNear) return { ok: false, why: `${req.why} Call her over (F).` };
+      return { by: this.npc, ok: true };
+    }
+    if (req.by === 'tool') {
+      const has = this.craft?.bag?.get('trowel') || this.craft?.bag?.get('copperpick')
+        || this.craft?.bag?.get('ironpick');
+      if (!has) return { ok: false, why: `${req.why} Make one at her bench.` };
+      if (!herNear) return { ok: false, why: `${req.why} She has the tool - call her over (F).` };
+      return { by: this.npc, ok: true };
+    }
+    if (req.by === 'digger') {
+      const dig = this.wildlife.fleet.find((c) => c.alive
+        && (c.def.role === 'digger' || c.def.role === 'forager' || c.def.dig));
+      if (!dig) return { ok: false, why: `${req.why} You would need something of yours that digs.` };
+      return { by: dig, ok: true };
+    }
+    return { by: this.crab, ok: true };
+  }
+
+  /**
+   * Planting is not a purchase. You pick the bed and the seed, and then
+   * somebody walks over, climbs up, opens the ground, puts it in and covers
+   * it - and that takes the better part of ten seconds of real work you can
+   * help with. What goes in is a seed, and a seed does nothing until it has
+   * been watered.
+   */
   tryPlant(id, plotIndex) {
     const def = FLORA_BY_ID[id];
     if (!def) return { ok: false, msg: 'No such seed.' };
     const plot = plotIndex !== undefined ? this.garden.plots[plotIndex] : this.garden.freeFor(def);
     if (!plot) return { ok: false, msg: def.needsPond ? 'No free pool bed.' : 'Nowhere left to put it.' };
+    if (plot.pending) return { ok: false, msg: 'Something is already going in there.' };
+    if (this.planting) return { ok: false, msg: 'One bed at a time.' };
     if (def.needsPond && this.garden.pond < 0.35) return { ok: false, msg: 'That one needs standing water.' };
     if (this.economy.water < def.cost) return { ok: false, msg: `Needs ${def.cost} water.` };
-    if (!this.garden.plant(plot.i, id)) return { ok: false, msg: 'It will not take there.' };
+    if (plot.plant || plot.build) return { ok: false, msg: 'It will not take there.' };
+
+    const hand = this.plantWorker(def);
+    if (!hand.ok) return { ok: false, msg: hand.why };
+
     this.economy.water -= def.cost;
     this.economy.markDirty();
-    // nothing forbids overloading yourself; you are just told what you did
-    const g = this.garden;
-    if (g.load > g.capacity) this.ui.say('Overloaded.', 2.5);
+    plot.pending = { id, def, by: hand.by };
+    this.planting = { plot, def, by: hand.by, phase: 'coming', t: 0 };
+    if (hand.by === this.npc) {
+      this.npc.mode = 'follow';
+      this.npc.keepAway = false;
+      this.npc.say(`${def.name}. Right. Give me a moment to get up there.`, 4);
+    }
     this.teach(3);
-    return { ok: true, msg: `${def.name} planted.` };
+    return { ok: true, msg: `${def.name}: ${hand.by === this.npc ? 'she is on her way' : 'going in'}.` };
+  }
+
+  /** Cancel whatever is being planted and hand the water back. */
+  stopPlanting(why) {
+    const j = this.planting;
+    if (!j) return;
+    j.plot.pending = null;
+    this.planting = null;
+    if (this.work.live && this.work.job.kind === 'plant') this.work.stop(why);
+    this.economy.water += j.def.cost;
+    this.economy.markDirty();
+    this.ui.say(why || 'Left it.', 3);
+  }
+
+  /**
+   * The worker getting to the bed, and then doing the work. She has to climb
+   * on, because the garden is on your back and she is a person.
+   */
+  _plantTick(dt) {
+    const j = this.planting;
+    if (!j) return;
+    j.t += dt;
+    const w = j.by;
+    if (w === this.npc && (this.npc.hidden || this.mind?.owned)) {
+      this.stopPlanting('She cannot do it like this.');
+      return;
+    }
+    if (w && w.alive === false) { this.stopPlanting('It died on the way.'); return; }
+
+    if (j.phase === 'coming') {
+      if (w === this.crab) { j.phase = 'working'; return; }
+      if (w === this.npc) {
+        if (this.npc.riding) { j.phase = 'working'; return; }
+        const room = this.crab.m.shellW * 0.5 + 18;
+        this.npc.moveTo = this.crab.x + Math.sign(this.npc.x - this.crab.x || 1) * room;
+        if (Math.abs(this.npc.x - this.crab.x) < room + 16) this.npc.board();
+        // she is not going to jog for ever
+        if (j.t > 30) this.stopPlanting('She never got there.');
+        return;
+      }
+      // an animal of yours: it walks to you and that is close enough
+      w.commanded = { x: this.crab.x };
+      if (Math.abs(w.x - this.crab.x) < this.crab.m.shellW * 0.7) j.phase = 'working';
+      else if (j.t > 30) this.stopPlanting('It never came.');
+      return;
+    }
+
+    if (j.phase === 'working') {
+      if (this.work.live) return;
+      const pw = this.garden.plotWorld(j.plot);
+      const plot = j.plot;
+      this.work.begin('plant', {
+        tag: 'plant:' + plot.i, x: pw.x, y: pw.y, by: w,
+        label: j.def.name,
+        skill: w === this.npc ? 1.25 : 1,
+        onDone: (r) => {
+          this.planting = null;
+          plot.pending = null;
+          const pl = this.garden.plant(plot.i, j.def.id);
+          if (!pl) { this.ui.say('It would not take.', 3); return; }
+          // a bed opened badly is a bed the plant starts behind in
+          pl.health = 0.55 + r.quality * 0.45;
+          this.fx.spark(pw.x, pw.y - 4, '#9ad86a', 16, 40);
+          this.fx.popup(pw.x, pw.y - 12, r.clean ? 'well in' : 'in', '#cfe89a');
+          if (this.garden.load > this.garden.capacity) this.ui.say('Overloaded.', 2.5);
+          if (w === this.npc) {
+            this.npc.say(r.clean
+              ? 'In, and in properly. Now water it, or all of that was me digging a hole.'
+              : 'In. Not my finest hole. Water it.', 6);
+          } else {
+            this.ui.say('In. Now water it - nothing happens until you do.', 5);
+          }
+          this.teach(4);
+        },
+      });
+      j.phase = 'busy';
+      return;
+    }
+
+    // busy: the work system owns it now, and if the job went away so did this
+    if (j.phase === 'busy' && !this.work.live) this.planting = null;
+  }
+
+  /**
+   * Watering a bed. Pour in the band and it soaks; pour badly and it runs off
+   * the top of the hole and you have wasted it.
+   */
+  startWatering(plot) {
+    if (!plot || !plot.plant) return;
+    if (this.work.live) return;
+    const need = plot.plant.soaked < 1;
+    if (!need) { this.ui.say('That one has had enough.', 2); return; }
+    if (this.economy.water < 8) { this.ui.say('Nothing in the basin to pour.', 2.5); return; }
+    const pw = this.garden.plotWorld(plot);
+    this.work.begin('water', {
+      tag: 'water:' + plot.i, x: pw.x, y: pw.y,
+      label: plot.plant.def.name,
+      onStroke: (core) => {
+        const pour = core ? 0.30 : 0.18;
+        plot.plant.soaked = clamp01((plot.plant.soaked || 0) + pour);
+        this.economy.water = Math.max(0, this.economy.water - (core ? 3 : 4));
+        this.economy.markDirty();
+      },
+      onDone: () => {
+        plot.plant.soaked = 1;
+        plot.plant.thirst = 0;
+        this.fx.splash(pw.x, pw.y, 8, 20);
+        this.fx.popup(pw.x, pw.y - 12, 'soaked', '#9de3ee');
+        this.audio.play('splash');
+      },
+    });
   }
 
   tryBuild(id, plotIndex) {
@@ -1905,6 +2272,9 @@ export class Game {
     this.terrain.drawSand(ctx, cam);
     this.green.drawGround(ctx, cam, this.terrain);
     this.world.drawScatter(ctx, cam, 'far');
+    // the giants go behind even the far reef: they are thirty metres up and
+    // several hundred metres off, and everything on the bottom is in front
+    if (this.seaShowing) this.sea.drawDeep(ctx, cam, r.vw, r.vh);
     if (this.seaShowing) this.sea.drawReef(ctx, cam, true);
     this.encounters.draw(ctx, cam);
     if (this.state === 'play') this.mining.draw(ctx, cam);
@@ -1972,6 +2342,7 @@ export class Game {
     // The title is not a separate screen. It is the world, with the weather
     // turned up and a menu laid over the top of it, so what you are looking at
     // on the front door is the animal you are about to play.
+    if (this.lids > 0.002) this._drawLids(ui, r.vw, r.vh);
     if (this.state === 'title') { this.menu.draw(ui, r.vw, r.vh); }
     else if (this.state === 'intro' || this.state === 'burying') this._drawCutscene(ui, r);
     else if (this.state === 'prologue') this._drawPrologue(ui, r);

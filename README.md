@@ -49,6 +49,8 @@ npm run build     # -> dist/crabden.html + dist/crabden.body.html
 | put a relic in your basin | `K` | — |
 | tap out a word | hold/release `T` | — |
 | sit down with her | `C`, or click her | tap her |
+| dig / pick / search | hold `E`, tap `E` on the band | hold, tap the band |
+| water a new seed | click the drop over it | tap the drop |
 | Vess: follow, get on, get off | `F` | — |
 | act — dig, win over, strike | `E` | **ACT** |
 | map / fleet / field notes | `1` / `2` / `3` | **SHOP**, then a tab |
@@ -84,6 +86,48 @@ The game autosaves every twenty seconds and reloads where you left off.
 ---
 
 ## The opening
+
+### Shot like a nature film
+
+The sea is not a loading screen. It is the world with water in it, and for the
+first minute it is filmed the way a wildlife documentary films a reef: long
+held takes, a narrator who is interested rather than excited, and one moment
+where the camera pulls back to put the animal next to something that makes it
+look like nothing at all.
+
+That something is a **blue whale**, and her calf. They are painted the same way
+as everything else — a long body with the mass forward of the middle, ventral
+pleats under the throat, a flipper swept back, a dorsal fin so small it is
+nearly an apology, and flukes wider than you are long. They cross the top of
+the column, slowly, pushing water ahead of them, and they do not react to you
+and do not turn round. Under them the water is full of **marine snow** falling
+for ever.
+
+> And some of it is not.
+>
+> Two hundred tonnes of animal, and it has never once had to hide from anything.
+>
+> You will never see one again. Nothing here will.
+
+### You wake up in the dark
+
+You do not wake up looking at something. You wake up with one sense back before
+the others, and the picture arrives last. So for a few seconds the frame is
+**two eyelids**, almost shut — the inner edge sagging the way a lid does, a wet
+rim along it, lashes breaking the line — and all you have is a sound you cannot
+place.
+
+Then it is warm. That is the part it notices first.
+
+Then the lids come up, and you are looking through a slit at a woman standing
+over you, mid-stream, apologising to what she still believes is a rock.
+
+> Sorry. Sorry, rock.
+
+| | |
+| --- | --- |
+| ![A blue whale going over](docs/shot-28-whale.png) | ![Waking up](docs/shot-29-eyes.png) |
+
 
 The game does not start in the desert, and it does not start with a film. It
 starts thirty metres under water, **and you can walk around in it**.
@@ -199,6 +243,48 @@ once, and growing is something you can watch happen — the husk splits on a rin
 of light, every stage up **springs** the plant with an overshoot that settles,
 and a mature one goes off with a ring and its name.
 
+### Nothing comes out of the ground by itself
+
+Everything this desert had used to arrive the instant you pressed a key. Press
+E and a fossil that had been in the ground eleven thousand years was in your
+hand. **Work takes time now**, and while it is taking time you are holding it.
+
+A job has a length, a worker and a bar, and across that bar a needle sweeps.
+Land your stroke in the band and the work goes faster and cleaner; land it in
+the narrow core and faster still; land it outside and you have wasted the swing
+— and on something fragile, cracked a piece off it. Let go and the job waits
+where it is, because putting the trowel down is allowed.
+
+It is one system because it is one idea: **digging** a fossil out, **picking**
+fruit off the stem, **searching** a ruin, **sinking** a plant and **pouring**
+water are all somebody kneeling down and doing something with their hands for a
+while. The tablet is drawn at the work rather than in a corner, because the
+thing you are looking at while you dig is the hole — and the quality pips on it
+are the number that matters: a fossil dug badly comes out in pieces, and she
+tells you so.
+
+> You have broken it. It was eleven thousand years old and you have broken it.
+
+![Digging something out](docs/shot-30-work.png)
+
+### Planting is a job somebody does
+
+You do not buy a plant. You pick the bed and the seed, and then **somebody has
+to walk over and put it in** — which for most of them is not you. A crab is a
+magnificent animal with a claw the size of a door and no way at all to hold a
+seed the size of a grain of sand, so **a plant can require particular hands**:
+hers, a real tool out of her bench, or something of yours that digs for a
+living. The seed card says which before you try, and says why.
+
+So she walks over, **climbs onto your back**, opens the ground, puts it in and
+covers it, and the whole of that takes the better part of ten seconds you can
+watch and help with. The bed shows the hole deepening and the spoil heaped
+beside it. What goes in is a seed, and **a seed does nothing at all until it is
+watered** — there is a drop bobbing over it until you pour, and pouring is its
+own job with its own band.
+
+> In, and in properly. Now water it, or all of that was me digging a hole.
+
 ### The front door
 
 There is a title screen, and it is the game rather than a picture of a logo:
@@ -268,6 +354,27 @@ who is in range, and whether the spore would take in them, with the three ways i
 (hurt it, feed it, or earn it) shown as chips that fill in.
 
 **HIVE** is everything on your nerve, and the nerve itself.
+
+### It is all made of something
+
+Nothing in the interface is a rounded rectangle. There are **three surfaces and
+no fourth**, and they are all things she actually has with her.
+
+**Stone** is the default: a slab of the same rock the mesas are cut from,
+knocked square, bedded, gritted, with the corners chipped off and the shape
+carved into it as a sunk channel — dark on the lit side, bright on the far one,
+so it reads as cut rather than drawn. That is what a readout is, and what the
+words you tap at her are, because you say them by hitting something hard.
+
+**Paper** is a leaf out of her field notebook: warm off-white with the fibre
+showing, ruled every nine pixels because that is the line height of the font, a
+red margin down the left and a torn bottom edge that bites differently every
+time. That is what anything she wrote or said is — so her answers come on it,
+in ink.
+
+**Scroll** is parchment with the roll still on both ends. **Leather** is her
+bag, stitched just inside the edge. Each surface is baked once per size and
+blitted, so a notebook page costs one draw rather than a hundred.
 
 ### The frame takes the colour of your hand
 
@@ -883,6 +990,17 @@ round the outside and the whole card shaking on the spot, over the top of
 whatever she was in the middle of saying.
 
 > **BEHIND YOU — DUNE SCORPION!**
+
+And when the spore takes her she does not simply switch over. **Her legs go
+first**, and then she is on the ground with it going through her, kicking up
+sand and telling you exactly what she thinks of it, for three or four seconds
+before she is quiet.
+
+> My legs. My legs have stopped — what have you PUT in me —
+>
+> I can see it. I can SEE it, it is in the back of my —
+>
+> ...oh. Oh, that is quieter.
 
 She shouts when you are down to a third of your blood, and when the sand is
 coming. She remarks — quietly, at conversational volume — on a seam under your

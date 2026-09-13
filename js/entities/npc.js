@@ -22,6 +22,7 @@ export const POSE = {
   WRITE: 'write', POINT: 'point', DRINK: 'drink', WAVE: 'wave',
   SIT: 'sit', TALK: 'talk', WANDER: 'wander', TIRED: 'tired',
   SURVEY: 'survey', MEASURE: 'measure', REST: 'rest', SHOCK: 'shock', BEER: 'beer',
+  DOWN: 'down',
 };
 
 /**
@@ -56,6 +57,9 @@ const POSES = {
   survey: { crouch: 0, lean: -0.04, armN: [0.22, 1.23], armF: [1.44, 0.18], tool: 'lens', swing: 0 },
   measure: { crouch: 0.10, lean: 0.22, armN: [0.30, 0.42], armF: [0.50, 0.50], tool: 'peg', swing: 0 },
   rest: { crouch: 0.94, lean: 0.24, armN: [1.00, 0.54], armF: [1.14, 0.50], swing: 0, sit: 1 },
+  // on the ground, and not calmly: the legs are folded wrong, one arm is out
+  // trying to push the world away and the other is somewhere under her
+  down: { crouch: 1.25, lean: 1.05, armN: [0.30, 0.10], armF: [2.10, 0.34], swing: 0, sit: 1, face: 0.2 },
   // both arms straight up, spine back: the shape a person makes when the rock
   // they have been sitting on turns out to be an animal
   shock: { crouch: 0.16, lean: -0.14, armN: [-1.30, 0.26], armF: [-1.46, 0.22], swing: 0 },

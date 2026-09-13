@@ -192,6 +192,28 @@ export class Fx {
     this._add({ k: 'ring', x, y, r0: 2, r1: r, life: 0.5, t: 0, color });
   }
 
+  /**
+   * Earth coming out of a hole. Not dust - clods, thrown up and back over the
+   * shoulder of whoever is digging, landing and staying landed.
+   */
+  digSpray(x, y, power = 1, dir = -1) {
+    const n = Math.round(4 + power * 7);
+    for (let i = 0; i < n; i++) {
+      const a = -Math.PI * (0.22 + Math.random() * 0.42);
+      const sp = (40 + Math.random() * 90) * power;
+      this.p.push({
+        kind: Math.random() < 0.3 ? 'dust' : 'chip',
+        x: x + (Math.random() - 0.5) * 5, y: y - 1,
+        vx: Math.cos(a) * sp * dir, vy: Math.sin(a) * sp,
+        grav: 460,
+        r: Math.random() < 0.35 ? 2 : 1,
+        life: 0.5 + Math.random() * 0.7, t: 0,
+        color: Math.random() < 0.5 ? '#8a5f38' : '#a67848',
+      });
+    }
+    this.dust(x, y, power * 0.7);
+  }
+
   spark(x, y, color = '#ffe9a8', n = 6, power = 40) {
     for (let i = 0; i < n; i++) {
       const a = Math.random() * TAU;
@@ -430,7 +452,7 @@ export class Fx {
           break;
         case 'chip':
           ctx.globalAlpha = a;
-          ctx.fillStyle = '#8d4a3a';
+          ctx.fillStyle = q.color || '#8d4a3a';
           ctx.fillRect(Math.round(s.x), Math.round(s.y), q.r * z, q.r * z);
           break;
         case 'dust':

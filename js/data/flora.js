@@ -31,6 +31,7 @@ export const FLORA = [
     gene: 'sugar', attracts: ['saltlark', 'glasswing', 'quilljerboa'],
     desc: 'Fruits at dusk and glows faintly. Everything with a mouth wants one.',
     boon: { berryRate: 1.35, attract: 1.10 }, boonText: 'Fruit. More of it, and more visitors for it.',
+    hands: { by: "hands", why: "The seed is the size of a grain of sand. You have a claw the size of a door." },
     unlock: { genes: ['chlorophyll'] },
   },
   {
@@ -40,6 +41,7 @@ export const FLORA = [
     gene: 'shade', attracts: ['glasswing', 'glasstail'],
     desc: 'Photosynthesises in the blue end of the light. Casts real shade, which out here is a currency.',
     boon: { grow: 0.90 }, boonText: 'Real shade. Everything beside it matures sooner.',
+    hands: { by: "hands", why: "The rhizome goes in at an angle, and a claw cannot hold an angle." },
     unlock: { genes: ['chlorophyll'] },
   },
   {
@@ -59,6 +61,7 @@ export const FLORA = [
     gene: 'reservoir', attracts: ['quilljerboa', 'ridgeback'],
     desc: 'Stores a week of water in each pad. Everyone in the desert knows this, including you.',
     boon: { waterMax: 40 }, boonText: 'Stores water in the pads. Your tank is bigger.',
+    hands: { by: "digger", why: "The taproot goes deeper than anything here reaches by hand." },
     unlock: { genes: ['chlorophyll'], seen: 3 },
   },
   {
@@ -68,6 +71,7 @@ export const FLORA = [
     gene: 'mycelium', attracts: ['glasstail', 'lanternbeetle'],
     desc: 'Fruits only in shade, and puts out a mist at dawn that other plants drink.',
     boon: { upkeep: -0.12, grow: 0.94 }, boonText: 'Mists at dawn. The whole shell stops being thirsty.',
+    hands: { by: "hands", why: "Spawn. Touch it with a claw and there is no spawn." },
     unlock: { genes: ['shade'] },
   },
   {
@@ -78,6 +82,7 @@ export const FLORA = [
     gene: 'luminance', attracts: ['sunmoth', 'lanternbeetle'],
     desc: 'The petals are actual glass. Nobody knows how. It rings faintly in the wind.',
     boon: { light: 0.4, attract: 1.15 }, boonText: 'Glows faintly. Night things approach, night things keep off.',
+    hands: { by: "hands", why: "The bulb has a skin on it you could break by looking at it." },
     unlock: { genes: ['pollen'] },
   },
   {
@@ -96,6 +101,7 @@ export const FLORA = [
     gene: 'ocean', attracts: ['boneheron', 'saltlark'],
     desc: 'Whistles when the wind comes off the saltpan. The birds answer it.',
     boon: { pondGain: 0.02, attract: 1.12 }, boonText: 'Whistles. Birds answer reeds.',
+    hands: { by: "digger", why: "It wants a trench dug along the bed, not a hole punched in it." },
     unlock: { pond: 0.5 },
   },
   {
@@ -106,6 +112,7 @@ export const FLORA = [
     gene: 'heartwood', attracts: ['ridgeback', 'saltlark', 'boneheron'],
     desc: 'Wood so dense it sinks in water. A century of growth, if you keep it drinking.',
     boon: { armour: 0.08, hp: 30 }, boonText: 'Roots into the shell itself. You are harder to hurt.',
+    hands: { by: "tool", why: "That bed is hardpan. Somebody needs a real tool and a real swing." },
     unlock: { genes: ['reservoir'], nutrients: 60 },
   },
   {
@@ -116,6 +123,7 @@ export const FLORA = [
     gene: 'canopy', attracts: ['boneheron', 'sunmoth', 'glasswing'],
     desc: 'Pale as bone and twice as patient. Its shade is measurably cooler than any other shade.',
     boon: { grow: 0.86, speed: 1.06 }, boonText: 'Deep shade. You move in the cool of your own canopy.',
+    hands: { by: "tool", why: "Hardpan again, and twice as deep." },
     unlock: { genes: ['shade', 'mycelium'] },
   },
   {
@@ -126,6 +134,7 @@ export const FLORA = [
     desc: 'It fruits things that are almost animals. They hatch looking for a nervous system, '
       + 'and yours is already taken.',
     boon: { trust: 1.15 }, boonText: 'Fruits parasites instead of food. They ride other animals for you.',
+    hands: { by: "hands", why: "Nobody is putting a mindcap in the ground with their mouth." },
     unlock: { genes: ['mycelium', 'shade'], nutrients: 140 },
   },
   {
@@ -136,6 +145,7 @@ export const FLORA = [
     gene: 'bloom', attracts: ['sunmoth', 'lanternbeetle', 'saltlark'],
     desc: 'It opens once a day, for about a minute. Creatures come from kilometres away to see it.',
     boon: { attract: 1.45, yield: 1.15 }, boonText: 'Opens once a day. Things cross a desert for it.',
+    hands: { by: "tool", why: "It goes in a metre down or it does not go in at all." },
     unlock: { genes: ['luminance'], nutrients: 180 },
   },
   {
@@ -145,6 +155,7 @@ export const FLORA = [
     gene: 'genesis', attracts: ['ridgeback', 'boneheron', 'saltlark'],
     desc: 'Grows down your shell and into the sand, and the sand under it comes back to life.',
     boon: { yield: 1.30, pondGain: 0.02, upkeep: -0.10 }, boonText: 'The sand under it comes back to life.',
+    hands: { by: "digger", why: "Something with claws has to open the whole bed first." },
     unlock: { genes: ['heartwood', 'canopy'], nutrients: 320 },
   },
 ];

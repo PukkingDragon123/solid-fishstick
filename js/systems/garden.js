@@ -125,6 +125,7 @@ export class Garden {
     if (plot.wet && !def.needsPond) return null;
     // a seed goes in as a seed. It does nothing at all until it is watered,
     // which is what the spring in your back is for.
+    plot.pending = null;
     plot.plant = {
       id: floraId, def, stage: 0, growth: 0, health: 1, thirst: 0,
       age: 0, born: this.t, ripe: 0, soaked: 0,
@@ -335,7 +336,7 @@ export class Garden {
     ctx.save();
     ctx.rotate(crab.bodyAngle + crab.roll);
     const list = this.plots
-      .filter((p) => (p.plant || p.build) && (p.b < -0.05 ? 0 : 1) === row)
+      .filter((p) => (p.plant || p.build || p.pending) && (p.b < -0.05 ? 0 : 1) === row)
       .sort((x, y) => x.b - y.b);
     for (const plot of list) {
       const sp = crab.rig.shellSurface(plot.a, plot.b);
@@ -348,6 +349,26 @@ export class Garden {
       ctx.save();
       ctx.translate(sp.x, sp.y + 1);
       ctx.rotate(tilt + sway);
+      if (plot.pending) {
+        // a bed being opened: a hole with the spoil heaped beside it and the
+        // seed waiting on the lip, so you can see the job before it is done
+        const w = this.game.work;
+        const j = w && w.job && w.job.tag === 'plant:' + plot.i ? w.job : null;
+        const k = j ? clamp01(j.done) : 0;
+        const r = 1.8 + crab.m.rx * 0.022;
+        pxEllipse(ctx, 0, 0, r * (1 + k * 0.8), r * 0.5 * (1 + k * 0.6),
+          'rgba(30,22,13,0.85)', { p: 1 });
+        // the spoil, thrown to one side and growing as the hole deepens
+        pxEllipse(ctx, r * 1.4, -r * 0.2, r * (0.5 + k * 0.7), r * 0.35,
+          '#8a5f38', { p: 1, soft: 0.4 });
+        // the seed on the lip, until it goes in
+        if (k < 0.8) {
+          ctx.fillStyle = '#957e42';
+          ctx.fillRect(Math.round(-r * 1.5), Math.round(-r * 0.4), 2, 2);
+        }
+        ctx.restore();
+        continue;
+      }
       if (plot.plant && plot.plant.soaked < 1) {
         // a seed: a husk sitting in the bed, with how wet it is around it
         const pl = plot.plant;
