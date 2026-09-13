@@ -6136,11 +6136,18 @@ body {
   };
 
   // js/art/personart.js
-  var LIGHT3 = { lightX: -0.58, lightY: -0.66, lightZ: 0.42, ambient: 0.42, dither: 0.62 };
-  var FAR = { ...LIGHT3, ambient: 0.28 };
+  var LIGHT3 = { lightX: -0.58, lightY: -0.66, lightZ: 0.42, ambient: 0.46, dither: 0 };
+  var FAR = { ...LIGHT3, ambient: 0.32 };
+  function flat(ramp, n = 3, lo = 1, hi = 6) {
+    const pick = [];
+    for (let i = 0; i < n; i++) pick.push(ramp[Math.round(lo + (hi - lo) * (i / (n - 1)))]);
+    const out = [];
+    for (let i = 0; i < 8; i++) out.push(pick[Math.min(n - 1, Math.floor(i / 8 * n))]);
+    return out;
+  }
   var BASE = {
     skin: {
-      ramp: ["#5e3627", "#7a4733", "#985c42", "#b47353", "#cd8e69", "#e0a982", "#eec39d", "#f7dcbc"],
+      ramp: flat(["#5e3627", "#7a4733", "#985c42", "#b47353", "#cd8e69", "#e0a982", "#eec39d", "#f7dcbc"]),
       diffuse: 0.8,
       rim: 0.3,
       spec: 0.1,
@@ -6149,7 +6156,7 @@ body {
       outline: "#3a1f16"
     },
     hair: {
-      ramp: ["#120b08", "#1e130d", "#2c1d14", "#3d291c", "#4f3626", "#654733", "#7d5a43", "#987258"],
+      ramp: flat(["#120b08", "#1e130d", "#2c1d14", "#3d291c", "#4f3626", "#654733", "#7d5a43", "#987258"]),
       diffuse: 0.7,
       rim: 0.46,
       ao: 0.13,
@@ -6157,7 +6164,7 @@ body {
       outline: "#0b0605"
     },
     shirt: {
-      ramp: ["#5c503c", "#73664d", "#8b7d60", "#a39575", "#bbad8c", "#d2c5a6", "#e6dcc2", "#f6efdc"],
+      ramp: flat(["#5c503c", "#73664d", "#8b7d60", "#a39575", "#bbad8c", "#d2c5a6", "#e6dcc2", "#f6efdc"]),
       diffuse: 0.82,
       rim: 0.24,
       ao: 0.11,
@@ -6165,7 +6172,7 @@ body {
       outline: "#332c20"
     },
     leather: {
-      ramp: ["#1c110b", "#2b1a10", "#3d2717", "#51351f", "#674629", "#7e5935", "#976f46", "#b08a5e"],
+      ramp: flat(["#1c110b", "#2b1a10", "#3d2717", "#51351f", "#674629", "#7e5935", "#976f46", "#b08a5e"]),
       diffuse: 0.74,
       rim: 0.32,
       spec: 0.18,
@@ -6174,7 +6181,7 @@ body {
       outline: "#100906"
     },
     trouser: {
-      ramp: ["#2e2b1d", "#3f3b28", "#524d34", "#666043", "#7c7554", "#948c68", "#ada481", "#c6bd9f"],
+      ramp: flat(["#2e2b1d", "#3f3b28", "#524d34", "#666043", "#7c7554", "#948c68", "#ada481", "#c6bd9f"]),
       diffuse: 0.78,
       rim: 0.26,
       ao: 0.12,
@@ -6182,7 +6189,7 @@ body {
       outline: "#1c1a11"
     },
     hat: {
-      ramp: ["#4a3a24", "#5f4c30", "#76603e", "#8e764e", "#a88e61", "#c0a878", "#d6c095", "#ecd9b6"],
+      ramp: flat(["#4a3a24", "#5f4c30", "#76603e", "#8e764e", "#a88e61", "#c0a878", "#d6c095", "#ecd9b6"]),
       diffuse: 0.78,
       rim: 0.28,
       ao: 0.12,
@@ -6190,7 +6197,7 @@ body {
       outline: "#2a2014"
     },
     pack: {
-      ramp: ["#3c3020", "#4e402b", "#635337", "#786745", "#8e7c55", "#a59367", "#bcab80", "#d3c3a0"],
+      ramp: flat(["#241c12", "#2f2417", "#3c301e", "#4b3c26", "#5c4a2f", "#6f5a39", "#846c45", "#9a8054"]),
       diffuse: 0.76,
       rim: 0.26,
       ao: 0.14,
@@ -6198,7 +6205,7 @@ body {
       outline: "#241c12"
     },
     maroon: {
-      ramp: ["#2c0f0e", "#401614", "#571f1b", "#6f2a23", "#88372c", "#a04a3a", "#b7644e", "#cd8368"],
+      ramp: flat(["#2c0f0e", "#401614", "#571f1b", "#6f2a23", "#88372c", "#a04a3a", "#b7644e", "#cd8368"]),
       diffuse: 0.78,
       rim: 0.36,
       ao: 0.11,
@@ -6206,7 +6213,7 @@ body {
       outline: "#1a0807"
     },
     brass: {
-      ramp: ["#372413", "#4d331b", "#664526", "#805831", "#9c6f3e", "#b88a50", "#d2a768", "#e8c68c"],
+      ramp: flat(["#372413", "#4d331b", "#664526", "#805831", "#9c6f3e", "#b88a50", "#d2a768", "#e8c68c"]),
       diffuse: 0.7,
       rim: 0.55,
       spec: 0.7,
@@ -6215,7 +6222,7 @@ body {
       outline: "#201406"
     },
     lens: {
-      ramp: ["#13303a", "#1b4450", "#265c68", "#337781", "#43929a", "#5db0b6", "#84cfd3", "#bceaec"],
+      ramp: flat(["#13303a", "#1b4450", "#265c68", "#337781", "#43929a", "#5db0b6", "#84cfd3", "#bceaec"]),
       diffuse: 0.52,
       rim: 0.82,
       spec: 0.95,
@@ -6224,7 +6231,7 @@ body {
       outline: "#0a1a20"
     },
     boot: {
-      ramp: ["#170f0a", "#241811", "#342319", "#463022", "#5a402d", "#70543b", "#886b4c", "#a28763"],
+      ramp: flat(["#170f0a", "#241811", "#342319", "#463022", "#5a402d", "#70543b", "#886b4c", "#a28763"]),
       diffuse: 0.72,
       rim: 0.3,
       spec: 0.22,
@@ -6233,7 +6240,7 @@ body {
       outline: "#0c0705"
     },
     paper: {
-      ramp: ["#544f45", "#6d675a", "#868070", "#9f9887", "#b7b09e", "#cfc8b6", "#e4dece", "#f6f2e6"],
+      ramp: flat(["#544f45", "#6d675a", "#868070", "#9f9887", "#b7b09e", "#cfc8b6", "#e4dece", "#f6f2e6"]),
       diffuse: 0.84,
       rim: 0.2,
       ao: 0.08,
@@ -6242,7 +6249,7 @@ body {
     },
     // what the eye goes when the spore is in it: a cold blue that lights itself
     spore: {
-      ramp: ["#06202c", "#0a3244", "#0f4a60", "#16667e", "#20889c", "#35aebd", "#68d6e2", "#b4f2f8"],
+      ramp: flat(["#06202c", "#0a3244", "#0f4a60", "#16667e", "#20889c", "#35aebd", "#68d6e2", "#b4f2f8"]),
       diffuse: 0.34,
       rim: 0.9,
       spec: 0.9,
@@ -6253,7 +6260,7 @@ body {
   };
   var ELDER = {
     hair: {
-      ramp: ["#4c4740", "#605b53", "#767068", "#8d867d", "#a49d93", "#bcb5ab", "#d3cdc4", "#eae6df"],
+      ramp: flat(["#4c4740", "#605b53", "#767068", "#8d867d", "#a49d93", "#bcb5ab", "#d3cdc4", "#eae6df"]),
       diffuse: 0.78,
       rim: 0.42,
       ao: 0.1,
@@ -6261,7 +6268,7 @@ body {
       outline: "#2c2823"
     },
     shirt: {
-      ramp: ["#5b4b3a", "#72604b", "#8a765d", "#a28d70", "#b9a586", "#cfbd9f", "#e2d3ba", "#f2e7d4"],
+      ramp: flat(["#5b4b3a", "#72604b", "#8a765d", "#a28d70", "#b9a586", "#cfbd9f", "#e2d3ba", "#f2e7d4"]),
       diffuse: 0.82,
       rim: 0.24,
       ao: 0.11,
@@ -6269,7 +6276,7 @@ body {
       outline: "#332920"
     },
     trouser: {
-      ramp: ["#2a1418", "#3c1d21", "#51282c", "#673439", "#7e4347", "#955557", "#ac6d6c", "#c48d8a"],
+      ramp: flat(["#2a1418", "#3c1d21", "#51282c", "#673439", "#7e4347", "#955557", "#ac6d6c", "#c48d8a"]),
       diffuse: 0.76,
       rim: 0.28,
       ao: 0.12,
@@ -6277,7 +6284,7 @@ body {
       outline: "#190b0e"
     },
     leather: {
-      ramp: ["#1e1f26", "#2c2e38", "#3d404d", "#4f5364", "#65697c", "#7d8296", "#989db0", "#b5bac9"],
+      ramp: flat(["#1e1f26", "#2c2e38", "#3d404d", "#4f5364", "#65697c", "#7d8296", "#989db0", "#b5bac9"]),
       diffuse: 0.76,
       rim: 0.32,
       ao: 0.12,
@@ -6285,7 +6292,7 @@ body {
       outline: "#12131a"
     },
     hat: {
-      ramp: ["#35110f", "#4b1a15", "#63251d", "#7c3226", "#954232", "#ad5743", "#c3735c", "#d7947c"],
+      ramp: flat(["#35110f", "#4b1a15", "#63251d", "#7c3226", "#954232", "#ad5743", "#c3735c", "#d7947c"]),
       diffuse: 0.76,
       rim: 0.32,
       ao: 0.12,
@@ -6383,9 +6390,6 @@ body {
         { mat: "shirt", dome: W * 0.24, tint: sx < 0 ? -0.05 : 0.09 }
       );
     }
-    p.grain("leather", { freq: 0.55 / K, amp: 0.13, seed: 7 });
-    p.grain("shirt", { freq: 0.85 / K, amp: 0.13, seed: 11 });
-    p.ridges("shirt", { angle: 1.42, freq: 0.9 / K, amp: 0.1, height: 0.45 * K, seed: 3, warp: 1.4 });
     for (const [sx, tint] of [[-0.3, -0.02], [0.22, 0.1]]) {
       p.capsule(
         cx + W * sx,
@@ -6512,263 +6516,107 @@ body {
     // fond
   ];
   var FACE_COUNT = FACES.length;
-  function paintHead(K, far, kind, opts = {}) {
-    const u = K;
-    const W = 8.6 * K, H = 8.8 * K;
-    const pad = Math.ceil(10 * K) + 6;
-    const p = new Painter(Math.ceil(16 * K) + pad, Math.ceil(18 * K) + pad);
-    const cx = Math.round(p.w * 0.46), cy = Math.round(p.h * 0.54);
-    const X = (n) => cx + n * u, Y = (n) => cy + n * u;
+  var HEAD_KEY = {
+    o: "#1c1209",
+    // outline
+    h: "#3d291c",
+    // hair
+    H: "#654733",
+    // hair, lit
+    s: "#cd8e69",
+    // skin
+    S: "#e6b189",
+    // skin, lit
+    d: "#a56b4c",
+    // skin, shaded
+    t: "#bda471",
+    // hat canvas
+    T: "#e4d0a4",
+    // hat, lit
+    u: "#8a7148",
+    // hat, shaded
+    b: "#8f3a2e",
+    // the band
+    g: "#c2954f",
+    // brass
+    l: "#7aa9c8",
+    // lens
+    L: "#c6e2f0",
+    // lens, catching the sun
+    e: "#241609",
+    // eye
+    m: "#6f2a23"
+    // mouth
+  };
+  var HEAD_ART = [
+    "......oooo......",
+    "....ootTTToo....",
+    "....otTTTTto....",
+    "....obbbbbbo....",
+    ".ottttttttggoo..",
+    ".ouuuuuuuuullo..",
+    "..oohhhhhhssdo..",
+    "..ohhhhhoLlsssdo",
+    "..ohhhhholldsSso",
+    "..ohhhhhssssSSso",
+    "..ohhhhhsssmmsdo",
+    "...ohhhhssssssdo",
+    "...ohhhhsssssdo.",
+    "....ooohssssdo..",
+    ".......oddddo..."
+  ];
+  var HEAD_SHUT = {
+    7: "..ohhhhhooosssdo",
+    8: "..ohhhhhosssdSso"
+  };
+  var HEAD_OPEN = {
+    10: "..ohhhhhssommsdo",
+    11: "...ohhhhsssommdo"
+  };
+  function paintHeadSide(K, far, kind, opts = {}) {
+    const px = Math.max(1, Math.round(K));
+    const rows = HEAD_ART.slice();
     const mood = opts.mood | 0;
-    const F = FACES[mood] || FACES[0];
+    const shut = mood === 7 || mood === 11;
+    const open = mood === 2 || mood === 8 || mood === 9 || mood === 3;
+    const patch = shut ? HEAD_SHUT : open ? HEAD_OPEN : null;
+    if (patch) for (const k of Object.keys(patch)) rows[+k] = patch[k];
+    const W = rows[0].length, H = rows.length;
+    const cv = makeCanvas2(W * px, H * px);
+    const g = cv.getContext("2d");
+    g.imageSmoothingEnabled = false;
     const elder = kind === "elder";
-    const bare = !!opts.noHat;
-    const neckY = Y(4.8);
-    p.capsule(
-      X(-0.5),
-      Y(2.6),
-      X(-0.1),
-      neckY,
-      1.5 * u,
-      1.6 * u,
-      { mat: "skin", dome: 1.3 * u, tint: -0.28 }
-    );
-    p.ellipse(X(-1), Y(-1), 3.6 * u, 3.6 * u, { mat: "hair", dome: 2.4 * u, tint: -0.03 });
-    p.ellipse(X(-2.6), Y(1.2), 1.5 * u, 1.8 * u, { mat: "hair", dome: 1.6 * u, tint: 0.02 });
-    p.field(X(-4.6), Y(-4.6), X(4.8), Y(4), (x, y) => {
-      const v = (y - cy - 0.2 * u) / (3.5 * u);
-      const taper = v > 0 ? 1 - Math.pow(v, 3) * 0.26 : 1 - v * v * 0.16;
-      const hw = 4 * u * taper;
-      const d = (x - cx) / hw;
-      if (Math.abs(d) > 1) return null;
-      return {
-        h: Math.sqrt(clamp01(1 - d * d)) * 3.4 * u * taper,
-        tint: 0.04 - Math.max(0, v) * 0.05 + (d < -0.5 ? -0.09 : 0)
-      };
-    }, { mat: "skin" });
-    p.ellipse(X(-3.3), Y(-0.1), 0.8 * u, 1 * u, { mat: "skin", dome: 1 * u, tint: 0.02 });
-    p.capsule(
-      X(3.3),
-      Y(0.5),
-      X(3.9),
-      Y(1),
-      0.75 * u,
-      0.55 * u,
-      { mat: "skin", dome: 1.5 * u, tint: 0.22 }
-    );
-    p.field(X(-4.2), Y(1.6), X(4.2), Y(4), (x, y) => ({ h: 0, tint: -clamp01((y - Y(1.6)) / (2.2 * u)) * 0.2 }), { mat: "skin", mask: true });
-    p.speckle("skin", { density: 0.04, amp: 0.16, seed: 19 });
-    if (!elder) {
-      p.field(X(-4.4), Y(-4.9), X(4.4), Y(-1.2), (x, y) => {
-        const t = (x - cx) / (4.2 * u);
-        if (Math.abs(t) > 1) return null;
-        const edge = Y(-2.1 - Math.abs(Math.sin(t * 4.2)) * 0.5 + t * 0.25);
-        if (y > edge || y < Y(-4.7 + t * t * 0.7)) return null;
-        return { h: 1.7 * u * Math.sqrt(clamp01(1 - t * t * 0.7)), tint: 0.06 - t * 0.05 };
-      }, { mat: "hair" });
-      for (const [x0, y0, x1, y1, r] of [[-3.2, -2.4, -3.8, 1.6, 1.3], [3, -2.2, 3.4, -0.2, 0.85]]) {
-        p.curve(
-          [
-            { x: X(x0), y: Y(y0) },
-            { x: X((x0 + x1) / 2 - 0.4), y: Y((y0 + y1) / 2) },
-            { x: X(x1), y: Y(y1) }
-          ],
-          r * u,
-          0.4 * u,
-          { mat: "hair", dome: r * 0.9 * u, steps: 9, tint: 0.08 }
-        );
-      }
-    } else {
-      p.field(X(-3.2), Y(0), X(4), Y(3.6), (x, y) => {
-        const v = clamp01((y - Y(0)) / (3.6 * u));
-        const hw = lerp(3.4, 1.4, v * v) * u;
-        const d = (x - X(0.3)) / hw;
-        if (Math.abs(d) > 1) return null;
-        return { h: Math.sqrt(clamp01(1 - d * d)) * 1.9 * u, tint: -0.1 - v * 0.06 };
-      }, { mat: "hair" });
-      p.capsule(
-        X(0.2),
-        Y(0.5),
-        X(3.4),
-        Y(0.8),
-        1.2 * u,
-        0.85 * u,
-        { mat: "hair", dome: 1.1 * u, tint: 0.14 }
-      );
-      p.capsule(
-        X(-0.4),
-        Y(-2.2),
-        X(3),
-        Y(-1.9),
-        1.2 * u,
-        0.85 * u,
-        { mat: "hair", dome: 1 * u, tint: 0.12 }
-      );
-    }
-    const open = clamp01(1 - F.lid);
-    const EYES = elder ? [[1.8, 0.6]] : [[2.05, 1], [-1.15, 0.78]];
-    for (const [ex, sc] of EYES) {
-      if (opts.goggles) break;
-      const ew = (1.05 + F.wide * 0.3) * u * sc, eh = 1.6 * u * open * sc;
-      if (eh < 0.6) {
-        p.curve(
-          [{ x: X(ex) - ew, y: Y(-0.4) }, { x: X(ex), y: Y(-0.15) }, { x: X(ex) + ew, y: Y(-0.4) }],
-          0.6 * u,
-          0.5 * u,
-          { mat: "hair", mask: true, dome: 0.5 * u, steps: 7, tint: 0.04 }
-        );
-        continue;
-      }
-      p.ellipse(X(ex), Y(-0.35), ew, eh, { mat: "paper", dome: 1.5 * u, tint: 0.32 });
-      if (opts.spore) {
-        p.ellipse(
-          X(ex + 0.1),
-          Y(-0.3),
-          ew * 0.86,
-          eh * 0.92,
-          { mat: "spore", dome: 1.7 * u, tint: 0.3, emissive: 0.9 }
-        );
-        p.ellipse(
-          X(ex + 0.1),
-          Y(-0.3),
-          ew * 0.46,
-          eh * 0.5,
-          { mat: "spore", mask: true, dome: 1.7 * u, tint: 0.85, emissive: 1 }
-        );
-      } else {
-        p.ellipse(X(ex + 0.22), Y(-0.28), ew * 0.62, eh * 0.84, { mat: "eye", dome: 1.7 * u, tint: -0.04 });
-        p.ellipse(
-          X(ex - 0.18),
-          Y(-0.72),
-          ew * 0.32,
-          eh * 0.28,
-          { mat: "eye", mask: true, dome: 1.7 * u, tint: 0.8 }
-        );
-      }
-      p.capsule(
-        X(ex) - ew,
-        Y(-1),
-        X(ex) + ew * 0.9,
-        Y(-1.05),
-        0.5 * u,
-        0.42 * u,
-        { mat: "hair", dome: 0.5 * u, tint: 0.02 }
-      );
-    }
-    if (!elder && !opts.goggles) {
-      for (const [bx, sc] of [[2.05, 1], [-1.15, 0.8]]) {
-        p.capsule(
-          X(bx - 0.9 * sc),
-          Y(-2 - F.brow * 8),
-          X(bx + 0.9 * sc),
-          Y(-1.8 - F.brow * 5),
-          0.7 * u,
-          0.55 * u,
-          { mat: "hair", mask: true, dome: 0.7 * u, tint: 0.1 }
-        );
+    for (let y = 0; y < H; y++) {
+      for (let x = 0; x < W; x++) {
+        const ch = rows[y][x];
+        if (ch === ".") continue;
+        let col = HEAD_KEY[ch];
+        if (!col) continue;
+        if (elder) {
+          if (ch === "t") col = "#95412f";
+          else if (ch === "T") col = "#c3735c";
+          else if (ch === "u") col = "#63251d";
+          else if (ch === "b") col = "#3d2a20";
+          else if (ch === "h") col = "#8d867d";
+          else if (ch === "H") col = "#bcb5ab";
+        }
+        if (opts.spore && (ch === "l" || ch === "L" || ch === "e")) {
+          col = ch === "L" ? "#d8b4ff" : "#a86cd8";
+        }
+        if (far) col = mixHex(col, "#8a7a63", 0.34);
+        g.fillStyle = col;
+        g.fillRect(x * px, y * px, px, px);
       }
     }
-    const mx = X(2), my = Y(1.55);
-    if (F.open > 0.12) {
-      p.ellipse(
-        mx,
-        my + F.open * 0.4 * u,
-        (0.65 + F.open * 0.45) * u,
-        (0.4 + F.open * 1) * u,
-        { mat: "eye", dome: -1.1 * u, tint: -0.34 }
-      );
-      p.ellipse(
-        mx,
-        my + (0.35 + F.open * 0.5) * u,
-        0.45 * u,
-        0.3 * u * F.open,
-        { mat: "maroon", mask: true, dome: 0.8 * u, tint: 0.18 }
-      );
-    } else {
-      p.curve(
-        [
-          { x: mx - 0.8 * u, y: my },
-          { x: mx, y: my + F.curl * 8 * u },
-          { x: mx + 0.8 * u, y: my }
-        ],
-        0.58 * u,
-        0.44 * u,
-        { mat: "skin", mask: true, dome: -1 * u, steps: 8, tint: -0.36 }
-      );
-    }
-    if (F.blush) {
-      for (const bx of [2.5, -0.5]) {
-        p.ellipse(
-          X(bx),
-          Y(0.6),
-          0.9 * u,
-          0.42 * u,
-          { mat: "skin", mask: true, dome: 0.6 * u, tint: 0.26 }
-        );
-      }
-    }
-    if (F.sweat) {
-      p.ellipse(X(-0.2), Y(-3.6), 0.5 * u, 0.7 * u, { mat: "lens", dome: 1.3 * u, tint: 0.34 });
-    }
-    if (!opts.noGoggles && !elder) {
-      const gy = opts.goggles ? Y(-0.35) : Y(bare ? -3.5 : -4);
-      p.capsule(
-        X(-3.4),
-        gy,
-        X(3.4),
-        gy,
-        1.3 * u,
-        1.3 * u,
-        { mat: "leather", dome: 1.1 * u, tint: -0.04 }
-      );
-      for (const [gx, sc] of [[2.05, 1], [-1.15, 0.8]]) {
-        p.ellipse(X(gx), gy, 1.35 * u * sc, 1.25 * u * sc, { mat: "brass", dome: 1.9 * u, tint: 0.12 });
-        p.ellipse(X(gx), gy, 0.95 * u * sc, 0.88 * u * sc, { mat: "lens", dome: 1.6 * u, tint: 0.1 });
-        p.ellipse(
-          X(gx - 0.4),
-          gy - 0.4 * u,
-          0.4 * u * sc,
-          0.3 * u * sc,
-          { mat: "lens", mask: true, dome: 1.5 * u, tint: 0.62 }
-        );
-      }
-    }
-    if (!bare) {
-      const hy = Y(-3.6);
-      p.ellipse(X(0), hy, 6 * u, 0.95 * u, { mat: "hat", dome: 1.1 * u, tint: 0.05 });
-      p.ellipse(X(3.4), hy + 0.45 * u, 2.9 * u, 0.65 * u, { mat: "hat", dome: 0.9 * u, tint: -0.07 });
-      p.ellipse(X(-3.6), hy + 0.35 * u, 2.4 * u, 0.55 * u, { mat: "hat", dome: 0.8 * u, tint: -0.13 });
-      p.ellipse(X(-0.3), hy - 1.8 * u, 3.1 * u, 2 * u, { mat: "hat", dome: 3.4 * u, tint: 0.11 });
-      p.ellipse(
-        X(-1.2),
-        hy - 2.9 * u,
-        1.3 * u,
-        0.6 * u,
-        { mat: "hat", mask: true, dome: -2 * u, tint: -0.22 }
-      );
-      p.rect(
-        X(-3.3),
-        hy - 1 * u,
-        6.3 * u,
-        1.4 * u,
-        { mat: elder ? "leather" : "maroon", mask: true, dome: 1.3 * u, tint: 0.08 }
-      );
-      if (elder) {
-        p.curve(
-          [
-            { x: X(-1.8), y: hy - 1 * u },
-            { x: X(-3), y: hy - 4 * u },
-            { x: X(-3.4), y: hy - 7.2 * u }
-          ],
-          1 * u,
-          0.3 * u,
-          { mat: "paper", dome: 1 * u, steps: 9, tint: 0.22 }
-        );
-      }
-      p.grain("hat", { freq: 0.55 / K, amp: 0.13, seed: 23 });
-    }
-    p.smoothHeight(1, 0.4);
-    return bake(p, cx, neckY, far, kind, { W, H, eye: { x: 2.05 * u, y: -0.35 * u } });
+    if (opts.noHat) g.clearRect(0, 0, W * px, 6 * px);
+    return {
+      cv,
+      ox: W / 2 * px,
+      oy: (H - 1) * px,
+      W: W * px,
+      H: H * px,
+      eye: { x: 2 * px, y: -6.5 * px }
+    };
   }
   function paintBone(len, r0, r1, mat, K, far, kind, opts = {}) {
     const pad = Math.ceil(Math.max(r0, r1) * 2 + 6);
@@ -6848,7 +6696,6 @@ body {
     if (opts.knee) {
       p.ellipse(x0, cy, r0 * 1.14, r0 * 1.08, { mat, mask: true, dome: r0 * 0.6, tint: ft + 0.1 });
     }
-    p.grain(mat, { freq: 0.6 / K, amp: 0.1, seed: 31 });
     return bake(p, pad, cy, far, kind, { len });
   }
   function paintHat(K, far, kind) {
@@ -6886,7 +6733,6 @@ body {
       p.ellipse(cx + W * 0.22, cy - H * 0.09, W * 0.15, H * 0.12, { mat: "brass", dome: 1.7 * K, tint: 0.1 });
       p.ellipse(cx + W * 0.22, cy - H * 0.09, W * 0.11, H * 0.085, { mat: "lens", dome: 1.4 * K, tint: 0.14 });
     }
-    p.grain("hat", { freq: 0.55 / K, amp: 0.14, seed: 23 });
     p.smoothHeight(1, 0.4);
     return bake(p, cx, cy, far, kind);
   }
@@ -6956,7 +6802,6 @@ body {
       { mat: "boot", mask: true, dome: 0.8 * K, tint: ft + 0.16 }
     );
     p.rect(ax + 0.6 * K, ay - 0.4 * K, 1.5 * K, 1.1 * K, { mat: "brass", dome: 0.9 * K, tint: 0.12 });
-    p.grain("boot", { freq: 0.6 / K, amp: 0.11, seed: 37 });
     return bake(p, ax, ay, far, kind);
   }
   function paintPack(K, far, kind) {
@@ -6971,7 +6816,6 @@ body {
       if (Math.abs(d) > 1) return null;
       return { h: Math.sqrt(clamp01(1 - d * d)) * W * 0.44, tint: -0.02 + (d < -0.4 ? -0.08 : 0) };
     }, { mat: "pack" });
-    p.ridges("pack", { angle: 0.08, freq: 1 / K, amp: 0.13, height: 0.55 * K, seed: 5, warp: 0.6 });
     p.field(x0, y0, x0 + W, y0 + H * 0.42, (x, y) => {
       const u = (x - x0) / W, v = (y - y0) / (H * 0.42);
       const d = (u - 0.5) * 2 / (1 - v * v * 0.18);
@@ -7003,7 +6847,7 @@ body {
       y0 - H * 0.03,
       2.4 * K,
       2.4 * K,
-      { mat: "shirt", dome: 2.2 * K, tint: 0.08 }
+      { mat: "maroon", dome: 2.2 * K, tint: 0.1 }
     );
     for (const sx of [0.26, 0.72]) {
       p.capsule(
@@ -7021,16 +6865,15 @@ body {
       y0 - H * 0.03,
       2.2 * K,
       2.3 * K,
-      { mat: "shirt", dome: -1.4 * K, tint: -0.14 }
+      { mat: "maroon", dome: -1.4 * K, tint: -0.2 }
     );
     p.rect(
       x0 + W * 0.58,
       y0 + H * 0.58,
       W * 0.38,
       H * 0.26,
-      { mat: "pack", dome: 1.8 * K, tint: 0.1 }
+      { mat: "leather", dome: 1.8 * K, tint: 0.06 }
     );
-    p.ellipse(x0 + W * 0.18, y0 + H * 0.86, 2 * K, 1.8 * K, { mat: "brass", dome: 1.5 * K, tint: 0.08 });
     p.smoothHeight(1, 0.4);
     return bake(p, cx, cy, far, kind);
   }
@@ -7059,7 +6902,6 @@ body {
       0.7 * K,
       { mat: "leather", mask: true, dome: 0.7 * K, tint: 0.12 }
     );
-    p.grain("maroon", { freq: 0.7 / K, amp: 0.1, seed: 41 });
     return bake(p, cx, cy, far, kind);
   }
   function paintProps(K, kind) {
@@ -7324,7 +7166,7 @@ body {
       const k = `${mood}:${goggles ? 1 : 0}:${bare ? 1 : 0}:${spore ? 1 : 0}`;
       let v = heads.get(k);
       if (!v) {
-        v = paintHead(K, false, kind, { mood, goggles, noHat: bare, spore });
+        v = paintHeadSide(K, false, kind, { mood, goggles, noHat: bare, spore });
         heads.set(k, v);
       }
       return v;
@@ -7976,7 +7818,7 @@ body {
       const P = POSES[this.pose] || POSES.idle;
       const dir = this.faceT >= 0 ? 1 : -1;
       const t = Math.abs(this.faceT);
-      const flat = TURN_MIN + (1 - TURN_MIN) * (t * t * (3 - 2 * t));
+      const flat2 = TURN_MIN + (1 - TURN_MIN) * (t * t * (3 - 2 * t));
       const sa = this.game.weather ? this.game.weather.shadowAlpha : 0.35;
       if (sa > 0.02) {
         const s0 = cam.worldToScreen(this.x, this.y);
@@ -8006,8 +7848,8 @@ body {
       ctx.save();
       ctx.translate(Math.round(s.x * 2) / 2, Math.round(s.y * 2) / 2);
       ctx.scale(z, z);
-      ctx.scale(dir * flat, 1);
-      if (flat < 0.995) ctx.translate(0, -(1 - flat) * 2.2 * rig.K);
+      ctx.scale(dir * flat2, 1);
+      if (flat2 < 0.995) ctx.translate(0, -(1 - flat2) * 2.2 * rig.K);
       if (Math.abs(this.squash) > 5e-3) {
         ctx.scale(1 - this.squash * 0.5, 1 + this.squash);
       }
@@ -8039,7 +7881,7 @@ body {
       const T = rig.torso.near;
       ctx.drawImage(T.cv, -T.ox, -T.oy);
       ctx.restore();
-      this._head(ctx, neck, lean, breath, flat);
+      this._head(ctx, neck, lean, breath, flat2);
       this._leg(ctx, rig.leg.near, this.feet[0], hipWorldY, dir, 1);
       if (P.hold) {
         const art = rig.props[P.hold];
@@ -8111,10 +7953,12 @@ body {
       ctx.drawImage(bt.cv, -bt.ox, -bt.oy);
       ctx.restore();
     }
-    _head(ctx, neck, lean, breath, flat) {
+    _head(ctx, neck, lean, breath, flat2) {
       const rig = this.rig;
       const P = POSES[this.pose] || POSES.idle;
-      const tilt = lean * 0.4 + this.b.look * 0.22 + (this.speech ? Math.sin(this.t * 5.5) * 0.035 : 0) + (P.work ? Math.sin(this.animT * 4) * 0.05 : 0);
+      const want = lean * 0.4 + this.b.look * 0.22 + (this.speech ? Math.sin(this.t * 5.5) * 0.035 : 0) + (P.work ? Math.sin(this.animT * 4) * 0.05 : 0);
+      const STEP = 0.11;
+      const tilt = clamp(Math.round(want / STEP), -3, 3) * STEP;
       const goggles = P.tool === "lens" || P.tool === "canteen";
       const blue = this.game.mind ? this.game.mind.blue : 0;
       const art = rig.headFor(this.face | 0, goggles, !!this.hatOff, blue > 0.35);
@@ -8921,7 +8765,7 @@ body {
     }
     p.ellipse(x - r * 0.36, y - r * 0.4, r * 0.32, r * 0.28, { mat: "eye", mask: true, dome: r, tint: 0.72 });
   }
-  function paintHead2(D, S, R) {
+  function paintHead(D, S, R) {
     const L = D.headL * S, H = D.headH * S;
     const pad = Math.ceil(Math.max(L, H) * 0.7) + 6;
     const p = new Painter(Math.ceil(L * 1.6) + pad * 2, Math.ceil(H * 2) + pad * 2);
@@ -9750,7 +9594,7 @@ body {
       plan,
       arm,
       body,
-      head: paintHead2(D, S, R),
+      head: paintHead(D, S, R),
       neck: (D.neck || 0) > 2 ? paintLimb((D.neck + 2) * S, (D.neckR ?? 2.6) * S, (D.neckR ?? 2.6) * S * 0.86, D, S, false, { bow: 0.6 * S }) : null,
       legs,
       legPairs: sockets.legs.length,
@@ -25407,6 +25251,9 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
       this.quake = 0;
       this.lifeK = 0;
       this._mesaList = null;
+      this.cam.free = false;
+      this.cam.freeT = 0;
+      this.cam.followEntity(this.crab, true);
       this.attackT = 0;
       this.lids = 0;
       this.startIntro();
@@ -25628,63 +25475,83 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
         this.card = null;
         this.fromBlack(0.9);
       });
+      const GY = this.terrain.surfaceY(this.crab.x);
+      const WIDE = Math.max(0.26, this.autoZoom() * 0.26);
       beat(16.4, () => {
         this.card = null;
-        this.fromBlack(1.2);
-        this.weather.hour = 19.5;
+        this.weather.hour = 19.2;
         this.sleep = 0.4;
         this.uplift = 0;
         this.quake = 0;
         this.lifeK = 0;
         this._mesaList = null;
-        this.cam.cineCancel();
-        this.cam.snapTo(this.crab.x + 40, this.terrain.surfaceY(this.crab.x) - 90);
-        this.cam.targetZoom = this.cam.zoom = Math.max(0.3, this.autoZoom() * 0.3);
-        this.drift = { x: 2.2, y: 0, z: 8e-4, after: 0 };
+        this.cutTo(this.crab.x - 300, GY - 120, WIDE, { x: 3, z: 6e-4, in: 1.1 });
         this.say("narrator", "It did not dream. There was nothing down there to dream about.");
       });
-      beat(21, () => {
-        this.weather.hour = 4;
+      beat(20.8, () => {
+        this.weather.hour = 2.6;
         this.sleep = 0.7;
+        this.cutTo(this.crab.x + 260, GY - 60, WIDE * 1.15, { x: -2.4, z: 5e-4 });
         this.say("narrator", "Sand went over it. Then more sand. Then the sand went hard.");
       });
-      beat(25.4, () => {
-        this._quakeT = 0;
-        this.weather.hour = 8;
-        this.audio.play("hit", { pitch: 0.35 });
-        this.say("narrator", "And then the basin remembered it was the bottom of something.");
+      beat(24.8, () => {
+        this.weather.hour = 7.6;
+        this.cutTo(this.crab.x + 620, GY - 150, WIDE * 0.92, { x: 0.6, z: -4e-4 });
+        this.audio.play("hit", { pitch: 0.3 });
+        this.cam.shake(3.2);
+        this.say("narrator", "Then something a long way underneath it let go.");
       });
-      if (t > 25.4 && t < 32) {
-        const q = t - 25.4;
-        this.quake = clamp01(Math.min(q / 1.4, (32 - t) / 2.2));
-        this.uplift = clamp01(q / 5.6);
-        this.cam.shake(this.quake * 2.6);
-        if (Math.random() < dt * 20 * this.quake) {
-          const wx = this.crab.x + (Math.random() - 0.5) * 1500;
-          this.fx.dust(wx, this.terrain.surfaceY(wx), 1 + Math.random() * 1.6);
+      if (t > 24.8 && t < 26.4) {
+        if (Math.random() < dt * 5) {
+          const wx = this.crab.x + 300 + Math.random() * 700;
+          this.fx.drift(wx, this.terrain.surfaceY(wx) - 8, "#d8c49a", 1);
         }
-        if (Math.random() < dt * 1.6 * this.quake) this.audio.play("hit", { pitch: 0.3 + Math.random() * 0.2 });
       }
-      beat(31, () => {
+      beat(26.4, () => {
+        this.audio.play("growl", { pitch: 0.28 });
+        this.say("narrator", "");
+      });
+      if (t > 26.4 && t < 33.2) {
+        const q = t - 26.4;
+        this.quake = q < 1.2 ? clamp01(q / 1.2) * 0.55 : q < 4.6 ? 1 : clamp01((6.8 - q) / 2.2);
+        this.uplift = clamp01((q - 0.8) / 4.2);
+        this.cam.shake(this.quake * 3.2);
+        this.cam.tx += Math.sin(t * 5.3) * this.quake * 26 * dt;
+        this.cam.ty += Math.sin(t * 3.1 + 1.2) * this.quake * 18 * dt;
+        if (Math.random() < dt * 26 * this.quake) {
+          const wx = this.crab.x + 100 + Math.random() * 1300;
+          this.fx.dust(wx, this.terrain.surfaceY(wx), 1.4 + Math.random() * 1.8);
+        }
+        if (Math.random() < dt * 2.2 * this.quake) {
+          this.audio.play("hit", { pitch: 0.26 + Math.random() * 0.2 });
+        }
+        if (q > 1.2 && q < 1.32) {
+          this.cam.shake(9);
+          this.audio.play("growl", { pitch: 0.2 });
+        }
+      }
+      beat(33.4, () => {
         this.uplift = 1;
-        this.weather.hour = 12.5;
+        this.quake = 0;
+        this.weather.hour = 12.4;
+        this.cutTo(this.crab.x - 520, GY - 190, WIDE * 0.85, { x: 2, z: 4e-4 });
         this.say("narrator", "Two hundred metres of seabed, standing up in the sun.");
       });
-      beat(35, () => {
-        this.weather.hour = 17;
+      beat(37.8, () => {
+        this.weather.hour = 17.4;
         this.sleep = 1;
-        this.drift = { x: -1.8, y: 0, z: 6e-4, after: 0 };
+        this.cutTo(this.crab.x + 120, GY - 130, WIDE * 1.05, { x: -1.6, z: 5e-4 });
         this.say("narrator", "Nothing lived here for four hundred years. And then a little did.");
       });
-      if (t > 35) this.lifeK = clamp01((t - 35) / 4.5);
-      beat(40.4, () => {
+      if (t > 37.8) this.lifeK = clamp01((t - 37.8) / 4.2);
+      beat(42.4, () => {
         this.say("narrator", "A thousand years is not a long time to something that was not counting.");
       });
-      beat(44, () => {
+      beat(46.2, () => {
         this.toBlack(1.4);
         this.dialog = null;
       });
-      if (t > 45.8) {
+      if (t > 48) {
         this.dialog = null;
         this.sleep = 0;
         this.startWake();
@@ -25870,8 +25737,8 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
      * curves, there is a rim of wet along it, and the lashes break the line.
      */
     _drawLids(ctx, vw, vh) {
-      const k = clamp01(this.lids || 0);
-      if (k <= 2e-3) return;
+      if ((this.lids || 0) <= 2e-3) return;
+      const k = 1 - clamp01(this.lids);
       const mid = vh * 0.5;
       const reach = mid * k;
       ctx.save();
@@ -26011,40 +25878,49 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
             N("");
           } },
           { at: 26.4, run: () => {
-            this.audio.play("water");
-            N("Something is happening outside.");
-          } },
-          { at: 28.2, run: () => {
-            npc.x = c.x + 22;
+            npc.x = c.x + 20;
             npc.moveTo = void 0;
             npc.vx = 0;
             npc.setFacing(-1);
             npc.turnT = 1;
             npc.faceT = -1;
-            npc.setPose(POSE.REST);
-            this._pee = 1;
-            this._peeT = 0;
-            this.audio.play("water", { pitch: 0.8 });
+            npc.setPose(POSE.BEER);
+            this.beerLevel = 1;
+            this.audio.play("claw", { pitch: 1.4 });
+            N("Something is sitting on it.");
+          } },
+          { at: 28, run: () => {
+            this.beerLevel = 0.5;
             this.lids = 0.93;
-            N("It is warm. That is the part it notices first.");
+            this.audio.play("drip", { pitch: 0.7 });
+            V("To the inland sea. Which was here. Which I can prove.", 3.4);
           } },
           { at: 30, run: () => {
-            this.lids = 0.42;
-            this.shot(c.x + 16, c.y - 10, this.autoZoom() * 2.4, 1.2, { z: 4e-3 });
-            this.audio.play("drip", { pitch: 0.9 });
-            N("The first water to touch this animal in a thousand years is not, strictly, rain.");
+            this.beerLevel = 0;
+            this.audio.play("drip", { pitch: 0.45 });
+            N("It has been warm all day and it is warm now. That is the part it notices first.");
           } },
-          { at: 31.6, run: () => {
+          { at: 31.4, run: () => {
+            this.throwBottle(npc, 1, { vx: 34, vy: -230 });
+            npc.setPose(POSE.REST);
+            this.onBottleHit = () => {
+              this.onBottleHit = null;
+              this.lids = 0.3;
+              this.crab.blink = 1;
+              N("And then something hits it.");
+            };
+          } },
+          { at: 33.2, run: () => {
             this.lids = 0;
+            this.onBottleHit = null;
+            this.shot(c.x + 16, c.y - 10, this.autoZoom() * 2.4, 1.2, { z: 4e-3 });
             V("Sorry. Sorry, rock.", 0);
           } },
-          { at: 33, run: () => {
-            this._pee = 0;
+          { at: 34, run: () => {
             npc.setPose(POSE.IDLE);
             V("Four thousand days and I still apologise to the geology.", 4);
           } },
           { at: 34.6, run: () => {
-            this._pee = 0;
             this.shot(c.x - 4, c.y - 18, this.autoZoom() * 2.9, 1.4, { z: 0.012 });
             this.waking = 1e-3;
             N("It has been waiting a very long time for that.");
@@ -26219,6 +26095,34 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
       this.cam.cineTo(x, y, zoom, dur);
       this.drift = { x: drift.x || 0, y: drift.y || 0, z: drift.z || 0, after: dur };
     }
+    /**
+     * A CUT.
+     *
+     * The difference between a cutscene and gameplay with the camera nudged
+     * about is whether the camera ever cuts. Everything in here used to glide
+     * from one framing to the next, which meant every shot was visibly the shot
+     * you play the game in, moved slightly - so nothing ever felt staged.
+     *
+     * This is a hard cut: black for a frame, the camera somewhere genuinely
+     * else, and a slow drift on the new framing so the held shot still breathes.
+     * `zoom` is absolute, and it is allowed to be far wider than the game ever
+     * gets, because that is the point.
+     *
+     * (It is `cutTo` and not `cut` because `this.cut` is already the running
+     * cutscene, and an instance property quietly wins over a method.)
+     */
+    cutTo(x, y, zoom, drift = {}) {
+      this.cam.cineCancel();
+      this.cam.free = true;
+      this.cam.freeT = 999;
+      this.cam.follow = null;
+      this.cam.snapTo(x, y);
+      this.cam.targetZoom = this.cam.zoom = zoom;
+      this.drift = { x: drift.x || 0, y: drift.y || 0, z: drift.z || 0, after: 0 };
+      this.fade = 1;
+      this.fadeWant = 0;
+      this.fadeRate = drift.in ?? 5;
+    }
     /** Fade the frame down to black, or back up out of it. */
     toBlack(rate = 2.2) {
       this.fadeWant = 1;
@@ -26306,9 +26210,8 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
       this.waking = 0;
       this.buried = 0;
       this.buryTarget = 0;
-      this._pee = 0;
-      this._peeT = 0;
-      this._peeDrops = null;
+      this.bottle = null;
+      this.onBottleHit = null;
       this.lids = 0;
       this.ocean = null;
       this.npc.hidden = false;
@@ -26344,7 +26247,7 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
       if (this.state === "prologue") this._runPrologue(dt);
       if (this.state === "burying") this._runBury(dt);
       if (this.state !== "play") this._cineTick(dt);
-      this._peeTick(dt);
+      this._bottleTick(dt);
       if (this.state === "title") {
         this.menu.update(dt);
         this._menuPose();
@@ -26593,23 +26496,6 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
       while (c.i < c.steps.length && c.t >= c.steps[c.i].at) {
         c.steps[c.i].run();
         c.i++;
-      }
-      if (this._pee) {
-        const p = this.npc;
-        if (Math.random() < 0.5) {
-          this.fx._add({
-            k: "water",
-            x: p.x - 8 * (p.facing || -1),
-            y: p.y - 13,
-            vx: -34 * (p.facing || -1) + (Math.random() - 0.5) * 5,
-            vy: 10 + Math.random() * 14,
-            life: 0.9,
-            t: 0,
-            r: 1,
-            grav: 210,
-            splash: true
-          });
-        }
       }
       this.letterbox = damp(this.letterbox, 1, 2e-3, dt);
     }
@@ -27884,7 +27770,7 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
       if (this.lifeK) this._drawNewLife(ctx, cam);
       if (this.sleep) this._drawSleep(ctx, cam);
       if (this.waking) this._drawWaking(ctx, cam);
-      if (this._pee || this._peeDrops?.length) this._drawStream(ctx, cam);
+      if (this.bottle) this._drawBottle(ctx, cam);
       if (this.state === "play") {
         this.mind.draw(ctx, cam);
         this.hive.drawAim(ctx, cam);
@@ -28103,95 +27989,97 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
      * splash and steam, and stop existing when the beat is over. The clock lives
      * in update with everything else's.
      */
-    _peeTick(dt) {
-      this._peeDrops = this._peeDrops || [];
-      const D = this._peeDrops;
-      for (let i = D.length - 1; i >= 0; i--) {
-        const d = D[i];
-        d.t += dt;
-        if (d.land) {
-          if (d.t > d.life) D.splice(i, 1);
-          continue;
-        }
-        d.vy += 520 * dt;
-        d.x += d.vx * dt;
-        d.y += d.vy * dt;
-        const hit = this.crab.shellWorldAB(0.1, 0.5);
-        const onShell = Math.abs(d.x - hit.x) < this.crab.m.rx * 0.9;
-        const gy = onShell ? hit.y : this.terrain.surfaceY(d.x);
-        if (d.y >= gy) {
-          d.y = gy;
-          d.land = 1;
-          d.t = 0;
-          d.life = 0.3 + Math.random() * 0.3;
-          if (Math.random() < 0.22) this.fx.drift(d.x, d.y - 3, "#e8dcae", 1);
-        }
-      }
-      if (!this._pee) return;
-      this._peeT = (this._peeT || 0) + dt;
-      const run = clamp01(this._peeT * 2.4) * clamp01(4.4 - this._peeT * 0.6);
-      if (run <= 0.02) return;
-      const p = this.npc;
-      const dir = Math.sign(this.crab.x - p.x) || (p.facing || -1);
-      const ax = p.x + dir * 5, ay = p.y - 13;
-      const n = Math.random() < run * 0.9 ? 2 : 1;
-      for (let i = 0; i < n; i++) {
-        D.push({
-          x: ax + (Math.random() - 0.5) * 1.5,
-          y: ay,
-          vx: dir * (34 + Math.random() * 16) * (0.6 + run * 0.6),
-          vy: -34 - Math.random() * 20,
-          t: 0,
-          life: 0,
-          land: 0,
-          r: Math.random() < 0.24 ? 2 : 1
-        });
-      }
-      if (D.length > 220) D.splice(0, D.length - 220);
+    /**
+     * THE BOTTLE.
+     *
+     * He has been sitting on this rock every evening for eleven years, and what
+     * he does while he sits on it is drink. So the thing that wakes the animal
+     * after a thousand years is not geology and it is not rain: it is a man
+     * throwing an empty bottle over his shoulder without looking, and the bottle
+     * bouncing off the rock, and the rock turning out to have been listening.
+     *
+     * It is a real object - thrown, spinning, under gravity - so where it lands
+     * is not scripted and the clonk happens when it actually happens.
+     */
+    throwBottle(from, dir = -1, opts = {}) {
+      this.bottle = {
+        x: from.x,
+        y: from.y - 20,
+        vx: dir * (opts.vx ?? 52),
+        vy: opts.vy ?? -215,
+        spin: dir * (7 + Math.random() * 3),
+        a: 0,
+        rest: 0,
+        hit: 0
+      };
+      this.audio?.play("claw", { pitch: 1.6 });
     }
-    /** Everything currently in the air, and the patch it has made. */
-    _drawStream(ctx, cam) {
-      const D = this._peeDrops;
-      if (!D || !D.length) return;
-      const z = cam.zoom;
-      const pp = pxSize(z);
-      const patch = clamp01((this._peeT || 0) * 0.45);
-      if (patch > 0.02) {
-        const hit = this.crab.shellWorldAB(0.1, 0.5);
-        const b = cam.worldToScreen(hit.x, hit.y);
-        ctx.globalAlpha = 0.26 + 0.14 * Math.sin(this.time * 5);
-        pxEllipse(
-          ctx,
-          b.x,
-          b.y,
-          (3 + patch * 7) * z,
-          (1.2 + patch * 2.4) * z,
-          "#b8902a",
-          { p: pp, soft: 0.4 }
-        );
-        ctx.globalAlpha = 1;
+    _bottleTick(dt) {
+      const bo = this.bottle;
+      if (!bo) return;
+      if (bo.rest > 0) {
+        bo.rest += dt;
+        if (bo.rest > 14) this.bottle = null;
+        return;
       }
-      for (const d of D) {
-        const s = cam.worldToScreen(d.x, d.y);
-        if (d.land) {
-          const k = clamp01(1 - d.t / d.life);
-          ctx.globalAlpha = k * 0.8;
-          ctx.fillStyle = "#f6e58a";
-          const w = Math.max(1, Math.round((1 + (1 - k) * 3) * z * 0.4));
-          ctx.fillRect(Math.round(s.x - w / 2), Math.round(s.y), w, Math.max(1, Math.round(z * 0.4)));
-          continue;
+      bo.vy += 620 * dt;
+      bo.x += bo.vx * dt;
+      bo.y += bo.vy * dt;
+      bo.a += bo.spin * dt;
+      const c = this.crab;
+      const rx = c.m ? c.m.rx : 16;
+      const shellTop = c.y - rx * 0.62;
+      if (!bo.hit && bo.vy > 0 && Math.abs(bo.x - c.x) < rx * 1.05 && bo.y >= shellTop) {
+        bo.hit = 1;
+        bo.y = shellTop;
+        bo.vy = -bo.vy * 0.42;
+        bo.vx = (bo.vx + (bo.x < c.x ? -30 : 30)) * 0.6;
+        bo.spin *= 1.4;
+        this.audio?.play("hit", { pitch: 1.5 });
+        this.audio?.play("ui", { pitch: 1.8 });
+        this.cam?.shake(2.4);
+        this.fx?.spark(bo.x, shellTop, "#e8d7a8", 7, 30);
+        this.onBottleHit?.();
+        return;
+      }
+      const gy = this.terrain.surfaceY(bo.x);
+      if (bo.y >= gy) {
+        bo.y = gy;
+        if (Math.abs(bo.vy) > 80) {
+          bo.vy = -bo.vy * 0.34;
+          bo.vx *= 0.5;
+          bo.spin *= 0.5;
+          this.audio?.play("ui");
+          this.fx?.dust(bo.x, gy, 0.4);
+        } else {
+          bo.rest = 1e-3;
+          bo.vx = 0;
+          bo.vy = 0;
+          bo.a = Math.PI / 2;
         }
-        const sp = Math.hypot(d.vx, d.vy);
-        const len = Math.max(1, Math.round(Math.min(6, sp / 26) * z * 0.5));
-        ctx.globalAlpha = 0.95;
-        ctx.fillStyle = d.r > 1 ? "#fbf3b4" : "#e9cf5c";
-        ctx.save();
-        ctx.translate(Math.round(s.x), Math.round(s.y));
-        ctx.rotate(Math.atan2(d.vy, d.vx));
-        ctx.fillRect(0, 0, len, Math.max(1, Math.round(d.r * z * 0.45)));
-        ctx.restore();
       }
-      ctx.globalAlpha = 1;
+    }
+    /** Brown glass, a paler neck, a label, and one highlight down the side. */
+    _drawBottle(ctx, cam) {
+      const bo = this.bottle;
+      if (!bo) return;
+      const s = cam.worldToScreen(bo.x, bo.y);
+      const z = cam.zoom;
+      ctx.save();
+      ctx.translate(Math.round(s.x), Math.round(s.y));
+      ctx.scale(z, z);
+      ctx.rotate(bo.a);
+      ctx.fillStyle = "#3a2410";
+      ctx.fillRect(-2, -6.5, 4, 8);
+      ctx.fillStyle = "#5a3a16";
+      ctx.fillRect(-1.5, -5, 3, 6);
+      ctx.fillStyle = "#7a5220";
+      ctx.fillRect(-0.8, -8, 1.6, 3);
+      ctx.fillStyle = "#c9a86a";
+      ctx.fillRect(-1.5, -3.4, 3, 1.6);
+      ctx.fillStyle = "rgba(255,240,200,0.5)";
+      ctx.fillRect(-1.2, -4.6, 0.7, 4);
+      ctx.restore();
     }
     /**
      * The animal, and - while it is digging itself in - only as much of it as is
@@ -28281,10 +28169,10 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
     _drawSpeech(ctx, cam, who, code = false) {
       const s = cam.worldToScreen(who.x, who.y - 40);
       const port = !code && who.portrait ? who.portrait(1) : null;
-      const pw = port ? 34 : 0;
+      const pw = port ? 40 : 0;
       const lines = wrapText(who.speech, 132 - (port ? pw + 6 : 0));
       const w = Math.max(...lines.map((l) => textWidth(l))) + 14 + (port ? pw + 6 : 0);
-      const h = Math.max(lines.length * LINE_H + 10, port ? 48 : 0);
+      const h = Math.max(lines.length * LINE_H + 10, port ? 56 : 0);
       const x = clamp(Math.round(s.x - w / 2), 3, this.renderer.vw - w - 3);
       const y = clamp(Math.round(s.y - h), 3, this.renderer.vh - h - 12);
       const tailX = clamp(Math.round(s.x), x + 8, x + w - 8);
@@ -28324,7 +28212,7 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
       ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
       let tx = x + 7;
       if (port) {
-        const ph = Math.min(44, h - 6);
+        const ph = Math.min(54, h - 4);
         const px = x + 4, py = y + 4;
         ctx.save();
         ctx.beginPath();
@@ -28335,7 +28223,7 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
         ctx.drawImage(
           port.cv,
           Math.round(px + pw / 2 - port.ox),
-          Math.round(py + ph * 0.44 - port.oy)
+          Math.round(py + ph * 0.4 - port.oy)
         );
         ctx.restore();
         ctx.strokeStyle = "rgba(60,44,26,0.55)";

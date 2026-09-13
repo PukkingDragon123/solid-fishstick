@@ -692,10 +692,16 @@ export class Person {
   _head(ctx, neck, lean, breath, flat) {
     const rig = this.rig;
     const P = POSES[this.pose] || POSES.idle;
-    // he looks where he is working, and a little at whatever is talking
-    const tilt = lean * 0.4 + this.b.look * 0.22
+    // He looks where he is working, and a little at whatever is talking - but
+    // the head is DRAWN pixel art now rather than a shaded blob, and a drawn
+    // sprite does not survive being rotated far: the brim goes to staircases
+    // and the outline breaks. So the tilt is quantised to a few whole steps
+    // and kept small, which is also what a hand-animated sprite does.
+    const want = lean * 0.4 + this.b.look * 0.22
       + (this.speech ? Math.sin(this.t * 5.5) * 0.035 : 0)
       + (P.work ? Math.sin(this.animT * 4.0) * 0.05 : 0);
+    const STEP = 0.11;
+    const tilt = clamp(Math.round(want / STEP), -3, 3) * STEP;
     const goggles = P.tool === 'lens' || P.tool === 'canteen';
     // the spore shows in exactly one place, and it is the place you look
     const blue = this.game.mind ? this.game.mind.blue : 0;

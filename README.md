@@ -120,18 +120,30 @@ depth and comes back, all day, every day of its life.
 
 > This one has been here longer than the reef has. It is not interested in you.
 
-### A thousand years, in one shot
+### A thousand years, in four shots
 
-Then you dig in, and the sea goes, and the camera **goes all the way out and
-stays out**. Everything that happens over the next thousand years happens
-inside one held wide shot of the basin.
+Then you dig in, and the sea goes, and the camera stops being the camera you
+play the game with.
 
-The salt dries. The light wheels over the mound far too fast. And then the
-ground starts to move: five seconds of **earthquake** — the whole frame shaking,
-dust pouring off every slope, the sound of something enormous failing — and
-while it shakes, the hard beds under the old seabed **stand up out of the salt
-as mesas**, seven of them on a stagger so the skyline arrives in pieces rather
-than rising like a lift. They come up weathered: flat tops with notches out of
+This is the difference between a cutscene and gameplay with the camera nudged
+about: **whether it ever cuts**. It used to glide from framing to framing over
+the mound you are buried in, which is the shot the game already lives in, so
+nothing ever felt staged. Now it is four set-ups at four places along the
+basin, hard-cut together with a frame of black on each join, all of them far
+wider than the game ever gets — and you are not in most of them. A thousand
+years is not about you.
+
+Dusk on the drying salt. Night, low and long, looking down the flat. Then a
+cut to somewhere else entirely — bare ground six hundred metres away — and one
+small knock, and a silence with nothing in it but a little sand coming off the
+tops, which is the part that frightens.
+
+Then the shock. It builds for a second, **breaks**, and takes four more to
+settle, and the camera does not jitter through it — it *lurches*, a slow heavy
+sway with the jitter on top, which is what standing on moving ground is like.
+Dust pours off every slope. And while it shakes, the hard beds under the old
+seabed **stand up out of the salt as mesas**, seven of them on a stagger so the
+skyline arrives in pieces rather than rising like a lift. They come up weathered: flat tops with notches out of
 the rim, shoulders that fall away in two steps, horizontal beds crossed by the
 vertical gullies the rain has cut into the faces.
 
@@ -152,12 +164,25 @@ the others, and the picture arrives last. So for a few seconds the frame is
 rim along it, lashes breaking the line — and all you have is a sound you cannot
 place.
 
-Then it is warm. That is the part it notices first.
+Somebody is sitting on it. Somebody has been sitting on it every evening for
+eleven years, and what he does while he sits on it is drink.
 
-Then the lids come up, and you are looking through a slit at a woman standing
-over you, mid-stream, apologising to what he still believes is a rock.
+So the thing that wakes an animal after a thousand years is not geology and it
+is not rain. He finishes the bottle, throws it over his shoulder without
+looking, and **the bottle is a real object** — thrown, spinning, under gravity —
+so it arcs up out of frame and comes down, and where it lands is not scripted.
+It lands on the shell. The lids come up on the clonk.
 
+> And then something hits it.
+>
 > Sorry. Sorry, rock.
+>
+> Four thousand days and I still apologise to the geology.
+
+(The eyelids in that shot did not used to work at all: `lids` means how *shut*
+they are, which is what every line that sets it assumed, but the maths inside
+used it as the aperture — so "eyes closed" drew a wide open eye and the whole
+sequence played with nothing over it. One minus.)
 
 | | |
 | --- | --- |
@@ -901,12 +926,31 @@ the one saturated thing on him, and the first thing your eye lands on. His
 proportions come off the sheet too: the head with its hat is about a third of
 the figure, the legs are short, and the pack is nearly as wide as he is.
 
-The head is laid out in whole units rather than fractions of a box, because a
-face is a set of distances: the eyes two units apart with a catchlight in each,
-the brim half as wide again as the head, the chin four units under the eyes.
-The hair is **chunks, not strands** — a fringe hanging out from under the brim
-with a ragged edge, two heavy locks past the cheek, a mass at the nape — and
-the crown is never painted at all, because the hat is sitting on it.
+**The head is drawn, not shaded.** Everything else on him is a height field
+that gets lit, and at the size a head actually is — about twelve pixels across
+— that does not work: a gradient over twelve pixels is not shading, it is
+noise, and the noise was what made him a smudge in a hat. A sprite this size in
+any game that has ever looked good is *drawn*: flat colour, a hard outline, and
+every feature placed on a specific pixel because there are only a hundred of
+them. So the side head is sixteen by fifteen pixels of hand-laid pixel art,
+written out as text in `personart.js`, in three variants — eyes open, eyes
+shut, mouth open. The twenty-one real expressions live on the portrait card;
+out in the desert at this size those three are all that read.
+
+The read, in order of how far away it still works: the **brim** (two rows, and
+wider than his head), the **maroon band**, the **brass goggles** pushed up on
+the brim where the sheet keeps them, the round **blue lens** over the eye, the
+hair mass filling the back of the skull, and a **nose** off the front of the
+silhouette so he is facing somewhere. The head tilt is quantised to a few whole
+steps, because a drawn sprite does not survive being rotated far — the brim
+goes to staircases and the outline breaks.
+
+The body went flat to match. Every ramp on a person is collapsed to three or
+four tones, the ordered dither is off, and **there is no grain and no cloth
+texture anywhere on him**: over an eight-pixel-wide shirt, texture is not
+texture, it is a column of vertical streaks. The pack went dark so it stops
+disappearing into the cream shirt behind it, and the bedroll strapped across it
+is maroon for the same reason.
 
 **And he has fingers.** Four off the front of the palm, fanned across it and
 shortening toward the little one, each with a knuckle in it, plus a thumb off

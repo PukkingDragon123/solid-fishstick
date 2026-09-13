@@ -168,6 +168,11 @@ export class Game {
     this.quake = 0;
     this.lifeK = 0;
     this._mesaList = null;
+    // the montage left the camera off on its own somewhere; the wake-up is
+    // about the animal again, so it comes back to it
+    this.cam.free = false;
+    this.cam.freeT = 0;
+    this.cam.followEntity(this.crab, true);
     this.attackT = 0;
     this.lids = 0;
     this.startIntro();
@@ -369,75 +374,105 @@ export class Game {
     });
     beat(16.2, () => { this.card = null; this.fromBlack(0.9); });
 
-    // ---- act three: one wide shot, held, with the ground moving in it ----
+    // ---- act three: four shots, cut together, none of them where you are --
     //
-    // The old version of this was four close frames of the same mound cut
-    // together, and it said "time passed" without ever showing the thing that
-    // actually happened, which is that the floor of a sea came up out of the
-    // water and turned into a desert. So the camera goes all the way out, and
-    // stays out, and everything happens inside one frame: the salt dries, the
-    // basin shakes itself apart, the beds under it stand up as mesas, and
-    // then - a very long time later, and not very much of it - things grow.
+    // This used to be one held frame with the camera drifting over the mound
+    // you are buried in, which is the same framing the game plays in - so it
+    // read as the game paused rather than as a scene. It is staged now: four
+    // set-ups at four places along the basin, hard cuts between them, and all
+    // of them much wider than the game ever gets. You are not in most of it.
+    // A thousand years is not about you.
+    const GY = this.terrain.surfaceY(this.crab.x);
+    const WIDE = Math.max(0.26, this.autoZoom() * 0.26);
+
+    // SHOT A - dusk, the salt still drying, from west of where you went down
     beat(16.4, () => {
       this.card = null;
-      this.fromBlack(1.2);
-      this.weather.hour = 19.5;
+      this.weather.hour = 19.2;
       this.sleep = 0.4;
-      this.uplift = 0;
-      this.quake = 0;
-      this.lifeK = 0;
+      this.uplift = 0; this.quake = 0; this.lifeK = 0;
       this._mesaList = null;
-      this.cam.cineCancel();
-      this.cam.snapTo(this.crab.x + 40, this.terrain.surfaceY(this.crab.x) - 90);
-      this.cam.targetZoom = this.cam.zoom = Math.max(0.30, this.autoZoom() * 0.30);
-      this.drift = { x: 2.2, y: 0, z: 0.0008, after: 0 };
+      this.cutTo(this.crab.x - 300, GY - 120, WIDE, { x: 3.0, z: 0.0006, in: 1.1 });
       this.say('narrator', 'It did not dream. There was nothing down there to dream about.');
     });
-    beat(21.0, () => {
-      this.weather.hour = 4.0;
+
+    // SHOT B - night, low and long, looking down the flat
+    beat(20.8, () => {
+      this.weather.hour = 2.6;
       this.sleep = 0.7;
+      this.cutTo(this.crab.x + 260, GY - 60, WIDE * 1.15, { x: -2.4, z: 0.0005 });
       this.say('narrator', 'Sand went over it. Then more sand. Then the sand went hard.');
     });
 
-    // the earthquake: five seconds of the whole frame moving
-    beat(25.4, () => {
-      this._quakeT = 0;
-      this.weather.hour = 8.0;
-      this.audio.play('hit', { pitch: 0.35 });
-      this.say('narrator', 'And then the basin remembered it was the bottom of something.');
+    // SHOT C - somewhere else entirely, on bare ground, and the ground is
+    // about to stop being bare. The foreshock first: one small knock and a
+    // long silence, because that is what an earthquake actually does.
+    beat(24.8, () => {
+      this.weather.hour = 7.6;
+      this.cutTo(this.crab.x + 620, GY - 150, WIDE * 0.92, { x: 0.6, z: -0.0004 });
+      this.audio.play('hit', { pitch: 0.3 });
+      this.cam.shake(3.2);
+      this.say('narrator', 'Then something a long way underneath it let go.');
     });
-    if (t > 25.4 && t < 32.0) {
-      const q = t - 25.4;
-      // it builds, holds, and falls off - an earthquake is not a switch
-      this.quake = clamp01(Math.min(q / 1.4, (32.0 - t) / 2.2));
-      this.uplift = clamp01(q / 5.6);
-      this.cam.shake(this.quake * 2.6);
-      if (Math.random() < dt * 20 * this.quake) {
-        const wx = this.crab.x + (Math.random() - 0.5) * 1500;
-        this.fx.dust(wx, this.terrain.surfaceY(wx), 1 + Math.random() * 1.6);
+    if (t > 24.8 && t < 26.4) {
+      // the trickle between the foreshock and the main shock: nothing moves
+      // except a little sand off the tops, which is the part that frightens
+      if (Math.random() < dt * 5) {
+        const wx = this.crab.x + 300 + Math.random() * 700;
+        this.fx.drift(wx, this.terrain.surfaceY(wx) - 8, '#d8c49a', 1);
       }
-      if (Math.random() < dt * 1.6 * this.quake) this.audio.play('hit', { pitch: 0.3 + Math.random() * 0.2 });
     }
-    beat(31.0, () => {
+
+    // THE SHOCK. Six seconds: a build, a break, and a settle.
+    beat(26.4, () => {
+      this.audio.play('growl', { pitch: 0.28 });
+      this.say('narrator', '');
+    });
+    if (t > 26.4 && t < 33.2) {
+      const q = t - 26.4;
+      // 0-1.2 build, 1.2-4.6 the break, 4.6-6.8 settling
+      this.quake = q < 1.2 ? clamp01(q / 1.2) * 0.55
+        : q < 4.6 ? 1
+        : clamp01((6.8 - q) / 2.2);
+      this.uplift = clamp01((q - 0.8) / 4.2);
+      // the camera does not jitter, it LURCHES - a slow heavy sway with the
+      // jitter on top of it, which is what standing on moving ground is like
+      this.cam.shake(this.quake * 3.2);
+      this.cam.tx += Math.sin(t * 5.3) * this.quake * 26 * dt;
+      this.cam.ty += Math.sin(t * 3.1 + 1.2) * this.quake * 18 * dt;
+      if (Math.random() < dt * 26 * this.quake) {
+        const wx = this.crab.x + 100 + Math.random() * 1300;
+        this.fx.dust(wx, this.terrain.surfaceY(wx), 1.4 + Math.random() * 1.8);
+      }
+      if (Math.random() < dt * 2.2 * this.quake) {
+        this.audio.play('hit', { pitch: 0.26 + Math.random() * 0.2 });
+      }
+      if (q > 1.2 && q < 1.32) { this.cam.shake(9); this.audio.play('growl', { pitch: 0.2 }); }
+    }
+
+    // SHOT D - midday, from the other side, and the skyline is different
+    beat(33.4, () => {
       this.uplift = 1;
-      this.weather.hour = 12.5;
+      this.quake = 0;
+      this.weather.hour = 12.4;
+      this.cutTo(this.crab.x - 520, GY - 190, WIDE * 0.85, { x: 2.0, z: 0.0004 });
       this.say('narrator', 'Two hundred metres of seabed, standing up in the sun.');
     });
 
-    // and then, at last, the part that takes the longest and shows the least
-    beat(35.0, () => {
-      this.weather.hour = 17.0;
+    // SHOT E - the part that takes the longest and shows the least
+    beat(37.8, () => {
+      this.weather.hour = 17.4;
       this.sleep = 1;
-      this.drift = { x: -1.8, y: 0, z: 0.0006, after: 0 };
+      this.cutTo(this.crab.x + 120, GY - 130, WIDE * 1.05, { x: -1.6, z: 0.0005 });
       this.say('narrator', 'Nothing lived here for four hundred years. And then a little did.');
     });
-    if (t > 35.0) this.lifeK = clamp01((t - 35.0) / 4.5);
-    beat(40.4, () => {
+    if (t > 37.8) this.lifeK = clamp01((t - 37.8) / 4.2);
+    beat(42.4, () => {
       this.say('narrator', 'A thousand years is not a long time to something that was not counting.');
     });
 
-    beat(44.0, () => { this.toBlack(1.4); this.dialog = null; });
-    if (t > 45.8) { this.dialog = null; this.sleep = 0; this.startWake(); }
+    beat(46.2, () => { this.toBlack(1.4); this.dialog = null; });
+    if (t > 48.0) { this.dialog = null; this.sleep = 0; this.startWake(); }
   }
 
   /**
@@ -632,8 +667,12 @@ export class Game {
    * curves, there is a rim of wet along it, and the lashes break the line.
    */
   _drawLids(ctx, vw, vh) {
-    const k = clamp01(this.lids || 0);
-    if (k <= 0.002) return;
+    // `lids` is how SHUT they are, which is what every line that sets it has
+    // always assumed - but the maths in here used it as the aperture, so
+    // "eyes closed" drew a fully open eye and the whole wake-up happened with
+    // nothing over it. One minus, and the scene works the way it reads.
+    if ((this.lids || 0) <= 0.002) return;
+    const k = 1 - clamp01(this.lids);
     const mid = vh * 0.5;
     // how far each lid reaches toward the middle
     const reach = mid * k;
@@ -757,44 +796,54 @@ export class Game {
           N('');
         } },
         { at: 26.4, run: () => {
-          this.audio.play('water');
-          N('Something is happening outside.');
-        } },
-        { at: 28.2, run: () => {
-          // He has walked right up to the mound and is standing over it -
-          // and he has to STOP. Leaving the old waypoint on him meant he
-          // kept drifting toward it, which flipped his facing, which sent the
-          // stream out of his back and away from the animal.
-          npc.x = c.x + 22;
+          // He sits down on the rock, the way he has sat down on it every
+          // evening for eleven years, and opens a beer.
+          npc.x = c.x + 20;
           npc.moveTo = undefined;
           npc.vx = 0;
           npc.setFacing(-1);
           npc.turnT = 1;
           npc.faceT = -1;
-          npc.setPose(POSE.REST);
-          this._pee = 1; this._peeT = 0;
-          this.audio.play('water', { pitch: 0.8 });
+          npc.setPose(POSE.BEER);
+          this.beerLevel = 1;
+          this.audio.play('claw', { pitch: 1.4 });
+          N('Something is sitting on it.');
+        } },
+        { at: 28.0, run: () => {
+          this.beerLevel = 0.5;
           this.lids = 0.93;
-          N('It is warm. That is the part it notices first.');
+          this.audio.play('drip', { pitch: 0.7 });
+          V('To the inland sea. Which was here. Which I can prove.', 3.4);
         } },
         { at: 30.0, run: () => {
-          // the lids come up, and there he is
-          this.lids = 0.42;
-          this.shot(c.x + 16, c.y - 10, this.autoZoom() * 2.4, 1.2, { z: 0.004 });
-          this.audio.play('drip', { pitch: 0.9 });
-          N('The first water to touch this animal in a thousand years is not, strictly, rain.');
+          this.beerLevel = 0;
+          this.audio.play('drip', { pitch: 0.45 });
+          N('It has been warm all day and it is warm now. That is the part it notices first.');
         } },
-        { at: 31.6, run: () => {
+        { at: 31.4, run: () => {
+          // and then he throws it over his shoulder without looking, which is
+          // the entire reason any of the rest of this game happens
+          this.throwBottle(npc, 1, { vx: 34, vy: -230 });
+          npc.setPose(POSE.REST);
+          this.onBottleHit = () => {
+            this.onBottleHit = null;
+            this.lids = 0.30;
+            this.crab.blink = 1;
+            N('And then something hits it.');
+          };
+        } },
+        { at: 33.2, run: () => {
+          // whatever the bottle did, the lids are up by now and there he is
           this.lids = 0;
+          this.onBottleHit = null;
+          this.shot(c.x + 16, c.y - 10, this.autoZoom() * 2.4, 1.2, { z: 0.004 });
           V('Sorry. Sorry, rock.', 0);
         } },
-        { at: 33.0, run: () => {
-          this._pee = 0;
+        { at: 34.0, run: () => {
           npc.setPose(POSE.IDLE);
           V('Four thousand days and I still apologise to the geology.', 4);
         } },
         { at: 34.6, run: () => {
-          this._pee = 0;
           // in very close, on the part of it that is about to move
           this.shot(c.x - 4, c.y - 18, this.autoZoom() * 2.9, 1.4, { z: 0.012 });
           this.waking = 0.001;
@@ -962,6 +1011,36 @@ export class Game {
     this.drift = { x: drift.x || 0, y: drift.y || 0, z: drift.z || 0, after: dur };
   }
 
+  /**
+   * A CUT.
+   *
+   * The difference between a cutscene and gameplay with the camera nudged
+   * about is whether the camera ever cuts. Everything in here used to glide
+   * from one framing to the next, which meant every shot was visibly the shot
+   * you play the game in, moved slightly - so nothing ever felt staged.
+   *
+   * This is a hard cut: black for a frame, the camera somewhere genuinely
+   * else, and a slow drift on the new framing so the held shot still breathes.
+   * `zoom` is absolute, and it is allowed to be far wider than the game ever
+   * gets, because that is the point.
+   *
+   * (It is `cutTo` and not `cut` because `this.cut` is already the running
+   * cutscene, and an instance property quietly wins over a method.)
+   */
+  cutTo(x, y, zoom, drift = {}) {
+    this.cam.cineCancel();
+    this.cam.free = true;
+    this.cam.freeT = 999;
+    this.cam.follow = null;
+    this.cam.snapTo(x, y);
+    this.cam.targetZoom = this.cam.zoom = zoom;
+    this.drift = { x: drift.x || 0, y: drift.y || 0, z: drift.z || 0, after: 0 };
+    // one frame of black on the join, which is what a cut sounds like
+    this.fade = 1;
+    this.fadeWant = 0;
+    this.fadeRate = drift.in ?? 5.0;
+  }
+
   /** Fade the frame down to black, or back up out of it. */
   toBlack(rate = 2.2) { this.fadeWant = 1; this.fadeRate = rate; }
   fromBlack(rate = 1.4) { this.fadeWant = 0; this.fadeRate = rate; }
@@ -1032,9 +1111,8 @@ export class Game {
     this.waking = 0;
     this.buried = 0;
     this.buryTarget = 0;
-    this._pee = 0;
-    this._peeT = 0;
-    this._peeDrops = null;
+    this.bottle = null;
+    this.onBottleHit = null;
     this.lids = 0;
     this.ocean = null;
     this.npc.hidden = false;
@@ -1086,7 +1164,7 @@ export class Game {
     if (this.state === 'prologue') this._runPrologue(dt);
     if (this.state === 'burying') this._runBury(dt);
     if (this.state !== 'play') this._cineTick(dt);
-    this._peeTick(dt);
+    this._bottleTick(dt);
     if (this.state === 'title') {
       // the world keeps breathing behind the menu, but nothing in it is
       // playable: no input reaches the animal, and the clock does not run
@@ -1347,16 +1425,6 @@ export class Game {
     while (c.i < c.steps.length && c.t >= c.steps[c.i].at) {
       c.steps[c.i].run();
       c.i++;
-    }
-    if (this._pee) {
-      const p = this.npc;
-      if (Math.random() < 0.5) {
-        this.fx._add({
-          k: 'water', x: p.x - 8 * (p.facing || -1), y: p.y - 13,
-          vx: -34 * (p.facing || -1) + (Math.random() - 0.5) * 5, vy: 10 + Math.random() * 14,
-          life: 0.9, t: 0, r: 1, grav: 210, splash: true,
-        });
-      }
     }
     this.letterbox = damp(this.letterbox, 1, 0.002, dt);
   }
@@ -2572,7 +2640,7 @@ export class Game {
     if (this.lifeK) this._drawNewLife(ctx, cam);
     if (this.sleep) this._drawSleep(ctx, cam);
     if (this.waking) this._drawWaking(ctx, cam);
-    if (this._pee || this._peeDrops?.length) this._drawStream(ctx, cam);
+    if (this.bottle) this._drawBottle(ctx, cam);
     if (this.state === 'play') {
       this.mind.draw(ctx, cam);
       this.hive.drawAim(ctx, cam);
@@ -2810,93 +2878,96 @@ export class Game {
    * splash and steam, and stop existing when the beat is over. The clock lives
    * in update with everything else's.
    */
-  _peeTick(dt) {
-    this._peeDrops = this._peeDrops || [];
-    const D = this._peeDrops;
-    // the drops that are already in the air do not care whether he is still
-    // going, so they run whether _pee is set or not
-    for (let i = D.length - 1; i >= 0; i--) {
-      const d = D[i];
-      d.t += dt;
-      if (d.land) { if (d.t > d.life) D.splice(i, 1); continue; }
-      d.vy += 520 * dt;
-      d.x += d.vx * dt;
-      d.y += d.vy * dt;
-      // it lands on the shell if it is over it, and on the sand otherwise
-      const hit = this.crab.shellWorldAB(0.1, 0.5);
-      const onShell = Math.abs(d.x - hit.x) < this.crab.m.rx * 0.9;
-      const gy = onShell ? hit.y : this.terrain.surfaceY(d.x);
-      if (d.y >= gy) {
-        d.y = gy; d.land = 1; d.t = 0; d.life = 0.3 + Math.random() * 0.3;
-        // it steams off a shell that has been in the sun for a thousand
-        // years, and steam off that is warm, not cold-blue like sea mist
-        if (Math.random() < 0.22) this.fx.drift(d.x, d.y - 3, '#e8dcae', 1);
-      }
-    }
-    if (!this._pee) return;
-    this._peeT = (this._peeT || 0) + dt;
-    // a splutter, then a steady stream, then it tails off
-    const run = clamp01(this._peeT * 2.4) * clamp01(4.4 - this._peeT * 0.6);
-    if (run <= 0.02) return;
-    const p = this.npc;
-    // aim at the animal rather than at whichever way he happens to be
-    // pointing: he is looking at it, so it goes at it
-    const dir = Math.sign(this.crab.x - p.x) || (p.facing || -1);
-    const ax = p.x + dir * 5, ay = p.y - 13;
-    const n = Math.random() < run * 0.9 ? 2 : 1;
-    for (let i = 0; i < n; i++) {
-      D.push({
-        x: ax + (Math.random() - 0.5) * 1.5, y: ay,
-        vx: dir * (34 + Math.random() * 16) * (0.6 + run * 0.6),
-        vy: -34 - Math.random() * 20,
-        t: 0, life: 0, land: 0,
-        r: Math.random() < 0.24 ? 2 : 1,
-      });
-    }
-    if (D.length > 220) D.splice(0, D.length - 220);
+  /**
+   * THE BOTTLE.
+   *
+   * He has been sitting on this rock every evening for eleven years, and what
+   * he does while he sits on it is drink. So the thing that wakes the animal
+   * after a thousand years is not geology and it is not rain: it is a man
+   * throwing an empty bottle over his shoulder without looking, and the bottle
+   * bouncing off the rock, and the rock turning out to have been listening.
+   *
+   * It is a real object - thrown, spinning, under gravity - so where it lands
+   * is not scripted and the clonk happens when it actually happens.
+   */
+  throwBottle(from, dir = -1, opts = {}) {
+    this.bottle = {
+      x: from.x, y: from.y - 20,
+      vx: dir * (opts.vx ?? 52), vy: opts.vy ?? -215,
+      spin: dir * (7 + Math.random() * 3), a: 0, rest: 0, hit: 0,
+    };
+    this.audio?.play('claw', { pitch: 1.6 });
   }
 
-  /** Everything currently in the air, and the patch it has made. */
-  _drawStream(ctx, cam) {
-    const D = this._peeDrops;
-    if (!D || !D.length) return;
+  _bottleTick(dt) {
+    const bo = this.bottle;
+    if (!bo) return;
+    if (bo.rest > 0) {
+      bo.rest += dt;
+      if (bo.rest > 14) this.bottle = null;
+      return;
+    }
+    bo.vy += 620 * dt;
+    bo.x += bo.vx * dt;
+    bo.y += bo.vy * dt;
+    bo.a += bo.spin * dt;
+
+    // the shell, which is what it is meant to hit
+    const c = this.crab;
+    const rx = c.m ? c.m.rx : 16;
+    const shellTop = c.y - rx * 0.62;
+    if (!bo.hit && bo.vy > 0 && Math.abs(bo.x - c.x) < rx * 1.05 && bo.y >= shellTop) {
+      bo.hit = 1;
+      bo.y = shellTop;
+      bo.vy = -bo.vy * 0.42;
+      bo.vx = (bo.vx + (bo.x < c.x ? -30 : 30)) * 0.6;
+      bo.spin *= 1.4;
+      this.audio?.play('hit', { pitch: 1.5 });
+      this.audio?.play('ui', { pitch: 1.8 });
+      this.cam?.shake(2.4);
+      this.fx?.spark(bo.x, shellTop, '#e8d7a8', 7, 30);
+      this.onBottleHit?.();
+      return;
+    }
+    const gy = this.terrain.surfaceY(bo.x);
+    if (bo.y >= gy) {
+      bo.y = gy;
+      if (Math.abs(bo.vy) > 80) {
+        bo.vy = -bo.vy * 0.34;
+        bo.vx *= 0.5;
+        bo.spin *= 0.5;
+        this.audio?.play('ui');
+        this.fx?.dust(bo.x, gy, 0.4);
+      } else {
+        bo.rest = 0.001;
+        bo.vx = 0; bo.vy = 0;
+        bo.a = Math.PI / 2;
+      }
+    }
+  }
+
+  /** Brown glass, a paler neck, a label, and one highlight down the side. */
+  _drawBottle(ctx, cam) {
+    const bo = this.bottle;
+    if (!bo) return;
+    const s = cam.worldToScreen(bo.x, bo.y);
     const z = cam.zoom;
-    const pp = pxSize(z);
-    // the patch where it has been landing, which grows while he goes
-    const patch = clamp01((this._peeT || 0) * 0.45);
-    if (patch > 0.02) {
-      const hit = this.crab.shellWorldAB(0.1, 0.5);
-      const b = cam.worldToScreen(hit.x, hit.y);
-      ctx.globalAlpha = 0.26 + 0.14 * Math.sin(this.time * 5);
-      pxEllipse(ctx, b.x, b.y, (3 + patch * 7) * z, (1.2 + patch * 2.4) * z,
-        '#b8902a', { p: pp, soft: 0.4 });
-      ctx.globalAlpha = 1;
-    }
-    for (const d of D) {
-      const s = cam.worldToScreen(d.x, d.y);
-      if (d.land) {
-        const k = clamp01(1 - d.t / d.life);
-        ctx.globalAlpha = k * 0.8;
-        ctx.fillStyle = '#f6e58a';
-        const w = Math.max(1, Math.round((1 + (1 - k) * 3) * z * 0.4));
-        ctx.fillRect(Math.round(s.x - w / 2), Math.round(s.y), w, Math.max(1, Math.round(z * 0.4)));
-        continue;
-      }
-      // in the air a drop stretches along the way it is going, which is what
-      // makes a stream read as a stream rather than as a line of dots
-      const sp = Math.hypot(d.vx, d.vy);
-      const len = Math.max(1, Math.round(Math.min(6, sp / 26) * z * 0.5));
-      ctx.globalAlpha = 0.95;
-      ctx.fillStyle = d.r > 1 ? '#fbf3b4' : '#e9cf5c';
-      ctx.save();
-      ctx.translate(Math.round(s.x), Math.round(s.y));
-      ctx.rotate(Math.atan2(d.vy, d.vx));
-      ctx.fillRect(0, 0, len, Math.max(1, Math.round(d.r * z * 0.45)));
-      ctx.restore();
-    }
-    ctx.globalAlpha = 1;
+    ctx.save();
+    ctx.translate(Math.round(s.x), Math.round(s.y));
+    ctx.scale(z, z);
+    ctx.rotate(bo.a);
+    ctx.fillStyle = '#3a2410';
+    ctx.fillRect(-2, -6.5, 4, 8);
+    ctx.fillStyle = '#5a3a16';
+    ctx.fillRect(-1.5, -5, 3, 6);
+    ctx.fillStyle = '#7a5220';
+    ctx.fillRect(-0.8, -8, 1.6, 3);
+    ctx.fillStyle = '#c9a86a';
+    ctx.fillRect(-1.5, -3.4, 3, 1.6);
+    ctx.fillStyle = 'rgba(255,240,200,0.5)';
+    ctx.fillRect(-1.2, -4.6, 0.7, 4);
+    ctx.restore();
   }
-
 
   /**
    * The animal, and - while it is digging itself in - only as much of it as is
@@ -2981,11 +3052,14 @@ export class Game {
     // two words wide has no room for shoulders, and the head is the part you
     // are reading anyway.
     const port = !code && who.portrait ? who.portrait(1) : null;
-    const pw = port ? 34 : 0;
+    const pw = port ? 40 : 0;
     const lines = wrapText(who.speech, 132 - (port ? pw + 6 : 0));
     const w = Math.max(...lines.map((l) => textWidth(l))) + 14 + (port ? pw + 6 : 0);
-    // the card is at least as tall as his head, because his head is the point
-    const h = Math.max(lines.length * LINE_H + 10, port ? 48 : 0);
+    // The card is at least as tall as he is. The window used to be cropped
+    // tight to his face, which meant a card of him talking was a pair of
+    // eyes: the hat, the pack strap and what his shoulders are doing are all
+    // part of what he is saying.
+    const h = Math.max(lines.length * LINE_H + 10, port ? 56 : 0);
     const x = clamp(Math.round(s.x - w / 2), 3, this.renderer.vw - w - 3);
     const y = clamp(Math.round(s.y - h), 3, this.renderer.vh - h - 12);
     const tailX = clamp(Math.round(s.x), x + 8, x + w - 8);
@@ -3031,16 +3105,15 @@ export class Game {
     let tx = x + 7;
     if (port) {
       // his face, pinned to the page behind four brass tacks
-      const ph = Math.min(44, h - 6);
+      const ph = Math.min(54, h - 4);
       const px = x + 4, py = y + 4;
       ctx.save();
       ctx.beginPath(); ctx.rect(px, py, pw, ph); ctx.clip();
       ctx.fillStyle = code ? '#0a1a1d' : '#c8b590';
       ctx.fillRect(px, py, pw, ph);
-      // the window lands on hat-brim to chin: at this size his mouth is half
-      // the information on the card
+      // the window lands on the top of his hat and runs down past his collar
       ctx.drawImage(port.cv, Math.round(px + pw / 2 - port.ox),
-        Math.round(py + ph * 0.44 - port.oy));
+        Math.round(py + ph * 0.40 - port.oy));
       ctx.restore();
       ctx.strokeStyle = 'rgba(60,44,26,0.55)';
       ctx.strokeRect(px - 0.5, py - 0.5, pw + 1, ph + 1);

@@ -17,12 +17,32 @@
 // is nearly as wide as he is. Everything faces RIGHT and is measured from
 // the hip, which is where the skeleton is rooted.
 
-import { Painter } from '../render/pixel.js';
+import { Painter, makeCanvas } from '../render/pixel.js';
 import { withMaterials } from '../lib/palette.js';
-import { clamp01, lerp, TAU } from '../lib/math.js';
+import { clamp01, lerp, mixHex, TAU } from '../lib/math.js';
 
-const LIGHT = { lightX: -0.58, lightY: -0.66, lightZ: 0.42, ambient: 0.42, dither: 0.62 };
-const FAR = { ...LIGHT, ambient: 0.28 };
+// People are lit like everything else, but they are not SHADED like everything
+// else. A thirty-pixel person shaded with an eight-stop ramp and an ordered
+// dither is a smear: at that size a gradient is noise, and noise is what was
+// making him look like a smudge in a hat. So the people get a flat key - hard
+// tones, no dither - and the ramps below are collapsed to three or four steps
+// each, which is what a hand-drawn sprite of this size actually has.
+const LIGHT = { lightX: -0.58, lightY: -0.66, lightZ: 0.42, ambient: 0.46, dither: 0 };
+const FAR = { ...LIGHT, ambient: 0.32 };
+
+/**
+ * Collapse a smooth eight-stop ramp into `n` flat blocks of colour, keeping
+ * the darkest and lightest ends. The painter still shades - it just lands on
+ * one of three or four tones instead of eight, so every surface reads as a
+ * block with an edge rather than as a gradient.
+ */
+function flat(ramp, n = 3, lo = 1, hi = 6) {
+  const pick = [];
+  for (let i = 0; i < n; i++) pick.push(ramp[Math.round(lo + (hi - lo) * (i / (n - 1)))]);
+  const out = [];
+  for (let i = 0; i < 8; i++) out.push(pick[Math.min(n - 1, Math.floor((i / 8) * n))]);
+  return out;
+}
 
 /**
  * The sheet's own colour bar, turned into ramps. Cream shirt, olive-khaki
@@ -31,32 +51,32 @@ const FAR = { ...LIGHT, ambient: 0.28 };
  * the figure has a single accent instead of five.
  */
 const BASE = {
-  skin: { ramp: ['#5e3627', '#7a4733', '#985c42', '#b47353', '#cd8e69', '#e0a982', '#eec39d', '#f7dcbc'],
+  skin: { ramp: flat(['#5e3627', '#7a4733', '#985c42', '#b47353', '#cd8e69', '#e0a982', '#eec39d', '#f7dcbc']),
     diffuse: 0.80, rim: 0.30, spec: 0.10, ao: 0.09, normalScale: 0.46, outline: '#3a1f16' },
-  hair: { ramp: ['#120b08', '#1e130d', '#2c1d14', '#3d291c', '#4f3626', '#654733', '#7d5a43', '#987258'],
+  hair: { ramp: flat(['#120b08', '#1e130d', '#2c1d14', '#3d291c', '#4f3626', '#654733', '#7d5a43', '#987258']),
     diffuse: 0.70, rim: 0.46, ao: 0.13, normalScale: 0.56, outline: '#0b0605' },
-  shirt: { ramp: ['#5c503c', '#73664d', '#8b7d60', '#a39575', '#bbad8c', '#d2c5a6', '#e6dcc2', '#f6efdc'],
+  shirt: { ramp: flat(['#5c503c', '#73664d', '#8b7d60', '#a39575', '#bbad8c', '#d2c5a6', '#e6dcc2', '#f6efdc']),
     diffuse: 0.82, rim: 0.24, ao: 0.11, normalScale: 0.46, outline: '#332c20' },
-  leather: { ramp: ['#1c110b', '#2b1a10', '#3d2717', '#51351f', '#674629', '#7e5935', '#976f46', '#b08a5e'],
+  leather: { ramp: flat(['#1c110b', '#2b1a10', '#3d2717', '#51351f', '#674629', '#7e5935', '#976f46', '#b08a5e']),
     diffuse: 0.74, rim: 0.32, spec: 0.18, ao: 0.14, normalScale: 0.60, outline: '#100906' },
-  trouser: { ramp: ['#2e2b1d', '#3f3b28', '#524d34', '#666043', '#7c7554', '#948c68', '#ada481', '#c6bd9f'],
+  trouser: { ramp: flat(['#2e2b1d', '#3f3b28', '#524d34', '#666043', '#7c7554', '#948c68', '#ada481', '#c6bd9f']),
     diffuse: 0.78, rim: 0.26, ao: 0.12, normalScale: 0.52, outline: '#1c1a11' },
-  hat: { ramp: ['#4a3a24', '#5f4c30', '#76603e', '#8e764e', '#a88e61', '#c0a878', '#d6c095', '#ecd9b6'],
+  hat: { ramp: flat(['#4a3a24', '#5f4c30', '#76603e', '#8e764e', '#a88e61', '#c0a878', '#d6c095', '#ecd9b6']),
     diffuse: 0.78, rim: 0.28, ao: 0.12, normalScale: 0.58, outline: '#2a2014' },
-  pack: { ramp: ['#3c3020', '#4e402b', '#635337', '#786745', '#8e7c55', '#a59367', '#bcab80', '#d3c3a0'],
+  pack: { ramp: flat(['#241c12', '#2f2417', '#3c301e', '#4b3c26', '#5c4a2f', '#6f5a39', '#846c45', '#9a8054']),
     diffuse: 0.76, rim: 0.26, ao: 0.14, normalScale: 0.62, outline: '#241c12' },
-  maroon: { ramp: ['#2c0f0e', '#401614', '#571f1b', '#6f2a23', '#88372c', '#a04a3a', '#b7644e', '#cd8368'],
+  maroon: { ramp: flat(['#2c0f0e', '#401614', '#571f1b', '#6f2a23', '#88372c', '#a04a3a', '#b7644e', '#cd8368']),
     diffuse: 0.78, rim: 0.36, ao: 0.11, normalScale: 0.52, outline: '#1a0807' },
-  brass: { ramp: ['#372413', '#4d331b', '#664526', '#805831', '#9c6f3e', '#b88a50', '#d2a768', '#e8c68c'],
+  brass: { ramp: flat(['#372413', '#4d331b', '#664526', '#805831', '#9c6f3e', '#b88a50', '#d2a768', '#e8c68c']),
     diffuse: 0.70, rim: 0.55, spec: 0.70, ao: 0.08, normalScale: 0.70, outline: '#201406' },
-  lens: { ramp: ['#13303a', '#1b4450', '#265c68', '#337781', '#43929a', '#5db0b6', '#84cfd3', '#bceaec'],
+  lens: { ramp: flat(['#13303a', '#1b4450', '#265c68', '#337781', '#43929a', '#5db0b6', '#84cfd3', '#bceaec']),
     diffuse: 0.52, rim: 0.82, spec: 0.95, ao: 0.05, normalScale: 0.6, outline: '#0a1a20' },
-  boot: { ramp: ['#170f0a', '#241811', '#342319', '#463022', '#5a402d', '#70543b', '#886b4c', '#a28763'],
+  boot: { ramp: flat(['#170f0a', '#241811', '#342319', '#463022', '#5a402d', '#70543b', '#886b4c', '#a28763']),
     diffuse: 0.72, rim: 0.30, spec: 0.22, ao: 0.15, normalScale: 0.58, outline: '#0c0705' },
-  paper: { ramp: ['#544f45', '#6d675a', '#868070', '#9f9887', '#b7b09e', '#cfc8b6', '#e4dece', '#f6f2e6'],
+  paper: { ramp: flat(['#544f45', '#6d675a', '#868070', '#9f9887', '#b7b09e', '#cfc8b6', '#e4dece', '#f6f2e6']),
     diffuse: 0.84, rim: 0.20, ao: 0.08, normalScale: 0.4, outline: '#2a2620' },
   // what the eye goes when the spore is in it: a cold blue that lights itself
-  spore: { ramp: ['#06202c', '#0a3244', '#0f4a60', '#16667e', '#20889c', '#35aebd', '#68d6e2', '#b4f2f8'],
+  spore: { ramp: flat(['#06202c', '#0a3244', '#0f4a60', '#16667e', '#20889c', '#35aebd', '#68d6e2', '#b4f2f8']),
     diffuse: 0.34, rim: 0.90, spec: 0.9, ao: 0.02, normalScale: 0.5, outline: '#04141c' },
 };
 
@@ -67,15 +87,15 @@ const BASE = {
  * point of painting people instead of drawing them.
  */
 const ELDER = {
-  hair: { ramp: ['#4c4740', '#605b53', '#767068', '#8d867d', '#a49d93', '#bcb5ab', '#d3cdc4', '#eae6df'],
+  hair: { ramp: flat(['#4c4740', '#605b53', '#767068', '#8d867d', '#a49d93', '#bcb5ab', '#d3cdc4', '#eae6df']),
     diffuse: 0.78, rim: 0.42, ao: 0.10, normalScale: 0.5, outline: '#2c2823' },
-  shirt: { ramp: ['#5b4b3a', '#72604b', '#8a765d', '#a28d70', '#b9a586', '#cfbd9f', '#e2d3ba', '#f2e7d4'],
+  shirt: { ramp: flat(['#5b4b3a', '#72604b', '#8a765d', '#a28d70', '#b9a586', '#cfbd9f', '#e2d3ba', '#f2e7d4']),
     diffuse: 0.82, rim: 0.24, ao: 0.11, normalScale: 0.46, outline: '#332920' },
-  trouser: { ramp: ['#2a1418', '#3c1d21', '#51282c', '#673439', '#7e4347', '#955557', '#ac6d6c', '#c48d8a'],
+  trouser: { ramp: flat(['#2a1418', '#3c1d21', '#51282c', '#673439', '#7e4347', '#955557', '#ac6d6c', '#c48d8a']),
     diffuse: 0.76, rim: 0.28, ao: 0.12, normalScale: 0.52, outline: '#190b0e' },
-  leather: { ramp: ['#1e1f26', '#2c2e38', '#3d404d', '#4f5364', '#65697c', '#7d8296', '#989db0', '#b5bac9'],
+  leather: { ramp: flat(['#1e1f26', '#2c2e38', '#3d404d', '#4f5364', '#65697c', '#7d8296', '#989db0', '#b5bac9']),
     diffuse: 0.76, rim: 0.32, ao: 0.12, normalScale: 0.55, outline: '#12131a' },
-  hat: { ramp: ['#35110f', '#4b1a15', '#63251d', '#7c3226', '#954232', '#ad5743', '#c3735c', '#d7947c'],
+  hat: { ramp: flat(['#35110f', '#4b1a15', '#63251d', '#7c3226', '#954232', '#ad5743', '#c3735c', '#d7947c']),
     diffuse: 0.76, rim: 0.32, ao: 0.12, normalScale: 0.58, outline: '#200907' },
 };
 
@@ -169,10 +189,11 @@ function paintTorso(K, far, kind) {
       { mat: 'shirt', dome: W * 0.24, tint: sx < 0 ? -0.05 : 0.09 });
   }
 
-  p.grain('leather', { freq: 0.55 / K, amp: 0.13, seed: 7 });
-  p.grain('shirt', { freq: 0.85 / K, amp: 0.13, seed: 11 });
-  // the shirt creases where it is tucked in
-  p.ridges('shirt', { angle: 1.42, freq: 0.9 / K, amp: 0.10, height: 0.45 * K, seed: 3, warp: 1.4 });
+  // No grain and no creases on him. Cloth texture over an eight-pixel-wide
+  // shirt is not texture, it is a column of vertical streaks - and it was
+  // those streaks, more than anything else, that made him read as a smudge
+  // rather than a person. What a garment this size gets is a flat colour and
+  // an edge.
 
   // the two pack straps, over the shoulders and down to the belt
   for (const [sx, tint] of [[-0.30, -0.02], [0.22, 0.10]]) {
@@ -248,6 +269,131 @@ export const FACE_COUNT = FACES.length;
  * At this size a face is four numbers, so the fourteen moods above move the
  * lid, the brow and the mouth and nothing else.
  */
+
+// ---------------------------------------------------------------------------
+// the head, drawn rather than shaded
+//
+// Everything else on this person is a height field that gets lit, and at the
+// size a head actually is - about twelve pixels across - that does not work.
+// A gradient over twelve pixels is not shading, it is noise, and the noise was
+// making him a smudge in a hat. A sprite of this size in any game that has
+// ever looked good is DRAWN: flat colour, a hard outline, and every feature
+// placed on a specific pixel because there are only a hundred of them.
+//
+// So the head is a small piece of pixel art, laid out here as text, facing
+// right. Three variants is all it needs - the twenty-one real expressions
+// live on the portrait card, and out in the desert at this size the only
+// things that read are "eyes open", "eyes shut" and "mouth open".
+
+const HEAD_KEY = {
+  o: '#1c1209',   // outline
+  h: '#3d291c',   // hair
+  H: '#654733',   // hair, lit
+  s: '#cd8e69',   // skin
+  S: '#e6b189',   // skin, lit
+  d: '#a56b4c',   // skin, shaded
+  t: '#bda471',   // hat canvas
+  T: '#e4d0a4',   // hat, lit
+  u: '#8a7148',   // hat, shaded
+  b: '#8f3a2e',   // the band
+  g: '#c2954f',   // brass
+  l: '#7aa9c8',   // lens
+  L: '#c6e2f0',   // lens, catching the sun
+  e: '#241609',   // eye
+  m: '#6f2a23',   // mouth
+};
+
+// 16 x 15, facing right. The neck joint is the middle of the bottom row.
+//
+// The read, in order of how far away it still works: the brim (two rows, and
+// wider than his head), the maroon band on the crown, the brass goggles pushed
+// up on the brim where the sheet keeps them, the round blue lens over the eye,
+// the hair mass filling the back of the skull, and a nose off the front of the
+// silhouette so he is facing somewhere.
+//
+// Sixteen by fifteen is not an arbitrary size: it is what fits the body the
+// rig already has. A head drawn at any size you like looks wonderful on its
+// own and wrong on a person.
+const HEAD_ART = [
+  '......oooo......',
+  '....ootTTToo....',
+  '....otTTTTto....',
+  '....obbbbbbo....',
+  '.ottttttttggoo..',
+  '.ouuuuuuuuullo..',
+  '..oohhhhhhssdo..',
+  '..ohhhhhoLlsssdo',
+  '..ohhhhholldsSso',
+  '..ohhhhhssssSSso',
+  '..ohhhhhsssmmsdo',
+  '...ohhhhssssssdo',
+  '...ohhhhsssssdo.',
+  '....ooohssssdo..',
+  '.......oddddo...',
+];
+
+// Shut: the lens goes dark and the lid closes under the brim.
+const HEAD_SHUT = {
+  7: '..ohhhhhooosssdo',
+  8: '..ohhhhhosssdSso',
+};
+// Talking: the jaw drops and the mouth is a hole rather than a line.
+const HEAD_OPEN = {
+  10: '..ohhhhhssommsdo',
+  11: '...ohhhhsssommdo',
+};
+
+/**
+ * Stamp the head art at `K` pixels per art pixel. `mood` only chooses between
+ * open, shut and talking; `spore` washes the whole thing violet, which is what
+ * being driven looks like from the outside.
+ */
+function paintHeadSide(K, far, kind, opts = {}) {
+  const px = Math.max(1, Math.round(K));
+  const rows = HEAD_ART.slice();
+  const mood = opts.mood | 0;
+  // 7 weary and 4 sour read as shut at this size; 2, 8 and 9 are open mouths
+  const shut = mood === 7 || mood === 11;
+  const open = mood === 2 || mood === 8 || mood === 9 || mood === 3;
+  const patch = shut ? HEAD_SHUT : open ? HEAD_OPEN : null;
+  if (patch) for (const k of Object.keys(patch)) rows[+k] = patch[k];
+
+  const W = rows[0].length, H = rows.length;
+  const cv = makeCanvas(W * px, H * px);
+  const g = cv.getContext('2d');
+  g.imageSmoothingEnabled = false;
+  const elder = kind === 'elder';
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const ch = rows[y][x];
+      if (ch === '.') continue;
+      let col = HEAD_KEY[ch];
+      if (!col) continue;
+      // the Elder wears the same cut of hat in red, and has white hair
+      if (elder) {
+        if (ch === 't') col = '#95412f'; else if (ch === 'T') col = '#c3735c';
+        else if (ch === 'u') col = '#63251d'; else if (ch === 'b') col = '#3d2a20';
+        else if (ch === 'h') col = '#8d867d'; else if (ch === 'H') col = '#bcb5ab';
+      }
+      if (opts.spore && (ch === 'l' || ch === 'L' || ch === 'e')) {
+        col = ch === 'L' ? '#d8b4ff' : '#a86cd8';
+      }
+      if (far) col = mixHex(col, '#8a7a63', 0.34);
+      g.fillStyle = col;
+      g.fillRect(x * px, y * px, px, px);
+    }
+  }
+  // the hat can come off, and when it does the brim goes with it
+  if (opts.noHat) g.clearRect(0, 0, W * px, 6 * px);
+  return {
+    cv,
+    ox: (W / 2) * px,
+    oy: (H - 1) * px,
+    W: W * px, H: H * px,
+    eye: { x: 2 * px, y: -6.5 * px },
+  };
+}
+
 function paintHead(K, far, kind, opts = {}) {
   // Laid out in whole units rather than fractions of a bounding box, because
   // a face is a set of distances and you can read them here: the eyes are
@@ -417,8 +563,7 @@ function paintHead(K, far, kind, opts = {}) {
         { x: X(-3.4), y: hy - 7.2 * u }], 1.0 * u, 0.3 * u,
         { mat: 'paper', dome: 1.0 * u, steps: 9, tint: 0.22 });
     }
-    p.grain('hat', { freq: 0.55 / K, amp: 0.13, seed: 23 });
-  }
+    }
 
   p.smoothHeight(1, 0.4);
   return bake(p, cx, neckY, far, kind, { W, H, eye: { x: 2.05 * u, y: -0.35 * u } });
@@ -473,7 +618,6 @@ function paintBone(len, r0, r1, mat, K, far, kind, opts = {}) {
   if (opts.knee) {
     p.ellipse(x0, cy, r0 * 1.14, r0 * 1.08, { mat, mask: true, dome: r0 * 0.6, tint: ft + 0.10 });
   }
-  p.grain(mat, { freq: 0.6 / K, amp: 0.10, seed: 31 });
   return bake(p, pad, cy, far, kind, { len });
 }
 
@@ -497,7 +641,6 @@ function paintHat(K, far, kind) {
     p.ellipse(cx + W * 0.22, cy - H * 0.09, W * 0.15, H * 0.12, { mat: 'brass', dome: 1.7 * K, tint: 0.10 });
     p.ellipse(cx + W * 0.22, cy - H * 0.09, W * 0.11, H * 0.085, { mat: 'lens', dome: 1.4 * K, tint: 0.14 });
   }
-  p.grain('hat', { freq: 0.55 / K, amp: 0.14, seed: 23 });
   p.smoothHeight(1, 0.4);
   return bake(p, cx, cy, far, kind);
 }
@@ -531,7 +674,6 @@ function paintBoot(K, far, kind) {
   p.capsule(ax + 1.0 * K, ay + 0.7 * K, ax + 1.6 * K, ay + 2.6 * K, 0.7 * K, 0.6 * K,
     { mat: 'boot', mask: true, dome: 0.8 * K, tint: ft + 0.16 });
   p.rect(ax + 0.6 * K, ay - 0.4 * K, 1.5 * K, 1.1 * K, { mat: 'brass', dome: 0.9 * K, tint: 0.12 });
-  p.grain('boot', { freq: 0.6 / K, amp: 0.11, seed: 37 });
   return bake(p, ax, ay, far, kind);
 }
 
@@ -555,7 +697,6 @@ function paintPack(K, far, kind) {
     if (Math.abs(d) > 1) return null;
     return { h: Math.sqrt(clamp01(1 - d * d)) * W * 0.44, tint: -0.02 + (d < -0.4 ? -0.08 : 0) };
   }, { mat: 'pack' });
-  p.ridges('pack', { angle: 0.08, freq: 1.0 / K, amp: 0.13, height: 0.55 * K, seed: 5, warp: 0.6 });
 
   // the flap over the top, with two buckles on it
   p.field(x0, y0, x0 + W, y0 + H * 0.42, (x, y) => {
@@ -572,19 +713,23 @@ function paintPack(K, far, kind) {
   }
 
   // the bedroll strapped across the top
+  // The bedroll. It used to be painted in the shirt's cream, which meant it
+  // vanished into the shirt it is strapped behind; it is a rolled blanket now
+  // and it is the one warm thing on his back.
   p.capsule(x0 + W * 0.02, y0 - H * 0.03, x0 + W * 0.98, y0 - H * 0.03, 2.4 * K, 2.4 * K,
-    { mat: 'shirt', dome: 2.2 * K, tint: 0.08 });
+    { mat: 'maroon', dome: 2.2 * K, tint: 0.10 });
   for (const sx of [0.26, 0.72]) {
     p.capsule(x0 + W * sx, y0 - H * 0.10, x0 + W * sx, y0 + H * 0.06, 0.7 * K, 0.7 * K,
       { mat: 'leather', mask: true, dome: 0.7 * K, tint: 0.12 });
   }
   p.ellipse(x0 + W * 0.02, y0 - H * 0.03, 2.2 * K, 2.3 * K,
-    { mat: 'shirt', dome: -1.4 * K, tint: -0.14 });
+    { mat: 'maroon', dome: -1.4 * K, tint: -0.20 });
 
-  // a side pocket and the tin cup that hangs off it
+  // A side pocket, and nothing else. The tin cup that used to hang off it was
+  // three pixels of brass on a ten-pixel bag: at this size a detail you cannot
+  // resolve is not a detail, it is a smudge.
   p.rect(x0 + W * 0.58, y0 + H * 0.58, W * 0.38, H * 0.26,
-    { mat: 'pack', dome: 1.8 * K, tint: 0.10 });
-  p.ellipse(x0 + W * 0.18, y0 + H * 0.86, 2.0 * K, 1.8 * K, { mat: 'brass', dome: 1.5 * K, tint: 0.08 });
+    { mat: 'leather', dome: 1.8 * K, tint: 0.06 });
 
   p.smoothHeight(1, 0.4);
   return bake(p, cx, cy, far, kind);
@@ -606,7 +751,6 @@ function paintTube(K, far, kind) {
   }
   p.capsule(cx - L * 0.12, cy - R, cx - L * 0.12, cy + R, 0.7 * K, 0.7 * K,
     { mat: 'leather', mask: true, dome: 0.7 * K, tint: 0.12 });
-  p.grain('maroon', { freq: 0.7 / K, amp: 0.10, seed: 41 });
   return bake(p, cx, cy, far, kind);
 }
 
@@ -752,6 +896,9 @@ const cache = new Map();
  * limb differ only in how much light they get, so an arm on the far side of
  * the body reads as behind it without being redrawn.
  */
+/** The head on its own, for the art harness. */
+export function headSide(K = 1, opts = {}) { return paintHeadSide(K, false, opts.kind || 'vess', opts); }
+
 export function buildPerson(kind = 'vess', K = 1) {
   const key = kind + ':' + K;
   if (cache.has(key)) return cache.get(key);
@@ -796,7 +943,7 @@ export function buildPerson(kind = 'vess', K = 1) {
   rig.headFor = (mood = 0, goggles = false, bare = false, spore = false) => {
     const k = `${mood}:${goggles ? 1 : 0}:${bare ? 1 : 0}:${spore ? 1 : 0}`;
     let v = heads.get(k);
-    if (!v) { v = paintHead(K, false, kind, { mood, goggles, noHat: bare, spore }); heads.set(k, v); }
+    if (!v) { v = paintHeadSide(K, false, kind, { mood, goggles, noHat: bare, spore }); heads.set(k, v); }
     return v;
   };
   rig.head = rig.headFor(0, false);
