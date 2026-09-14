@@ -6549,26 +6549,28 @@ body {
     // mouth
   };
   var HEAD_ART = [
-    "...oooooo...",
-    "..otTTTTto..",
-    "..obbbbbbo..",
-    "ottttggttto.",
-    "ouuuuuuuuuo.",
-    ".oohhhhssdo.",
-    ".ohhhorLlsdo",
-    ".ohhhhsrrsSo",
-    ".ohhhhsqmmso",
-    "..ohhhsqqsdo",
-    "..oohsssdo..",
-    ".....oddo..."
+    "....oTTTTTo....",
+    "...oTTTTTTTo...",
+    "...ottTTTTTTo..",
+    ".oobbbbbggeeoo.",
+    "ottttttttttttto",
+    "ouuuuuuuuuuuuo.",
+    ".oohhhhhhHsoo..",
+    ".ohHhhhhsSSso..",
+    ".ohHhhhrrrso...",
+    ".ohHhhhrlLsso..",
+    ".ohHhhhssssSso.",
+    ".ohHhhssssdoo..",
+    ".ohhhhHsssso...",
+    "..ohhhqqsmmso..",
+    "...ohsqqqqso...",
+    "....oddddoo...."
   ];
   var HEAD_SHUT = {
-    6: ".ohhhoooosdo",
-    7: ".ohhhhsrrsSo"
+    9: ".ohHhhhrrdsso.."
   };
   var HEAD_OPEN = {
-    8: ".ohhhsommmso",
-    9: "..ohhsommmso"
+    14: "...ohsqqmmso..."
   };
   function paintHeadSide(K, far, kind, opts = {}) {
     const px = Math.max(1, Math.round(K));
@@ -6606,14 +6608,14 @@ body {
         g.fillRect(x * px, y * px, px, px);
       }
     }
-    if (opts.noHat) g.clearRect(0, 0, W * px, 5 * px);
+    if (opts.noHat) g.clearRect(0, 0, W * px, 6 * px);
     return {
       cv,
       ox: W / 2 * px,
       oy: (H - 1) * px,
       W: W * px,
       H: H * px,
-      eye: { x: 1.5 * px, y: -5 * px }
+      eye: { x: 1 * px, y: -6 * px }
     };
   }
   function paintBone(len, r0, r1, mat, K, far, kind, opts = {}) {

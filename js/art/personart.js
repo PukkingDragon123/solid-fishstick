@@ -285,35 +285,40 @@ const HEAD_KEY = {
   m: '#7a3630',   // mouth
 };
 
-// 12 x 12, facing right. The neck joint is the middle of the bottom row.
+// 14 x 14, facing right. The neck joint is the middle of the bottom row.
 //
-// Twelve is not a choice, it is the size his head already was: the body it
-// sits on is the same rig it always was, and a head drawn at any size you like
-// looks wonderful on its own and wrong on a person.
+// The shape is the whole job, and a head this size is a silhouette before it
+// is anything else. Reading round it from the top: a domed crown, a band, a
+// brim that projects further at the front than the back, the fringe hanging
+// out under it, the brow, the NOSE off the front edge, the mouth set back
+// under it, a chin, and then the jaw running back and up to under the ear.
+// Take any one of those away and he is a blob in a hat again.
 const HEAD_ART = [
-  '...oooooo...',
-  '..otTTTTto..',
-  '..obbbbbbo..',
-  'ottttggttto.',
-  'ouuuuuuuuuo.',
-  '.oohhhhssdo.',
-  '.ohhhorLlsdo',
-  '.ohhhhsrrsSo',
-  '.ohhhhsqmmso',
-  '..ohhhsqqsdo',
-  '..oohsssdo..',
-  '.....oddo...',
+  '....oTTTTTo....',
+  '...oTTTTTTTo...',
+  '...ottTTTTTTo..',
+  '.oobbbbbggeeoo.',
+  'ottttttttttttto',
+  'ouuuuuuuuuuuuo.',
+  '.oohhhhhhHsoo..',
+  '.ohHhhhhsSSso..',
+  '.ohHhhhrrrso...',
+  '.ohHhhhrlLsso..',
+  '.ohHhhhssssSso.',
+  '.ohHhhssssdoo..',
+  '.ohhhhHsssso...',
+  '..ohhhqqsmmso..',
+  '...ohsqqqqso...',
+  '....oddddoo....',
 ];
 
 /** Shut: the lens goes dark and the lid closes under the brim. */
 const HEAD_SHUT = {
-  6: '.ohhhoooosdo',
-  7: '.ohhhhsrrsSo',
+  9: '.ohHhhhrrdsso..',
 };
 /** Talking: the jaw drops and the mouth is a hole rather than a line. */
 const HEAD_OPEN = {
-  8: '.ohhhsommmso',
-  9: '..ohhsommmso',
+  14: '...ohsqqmmso...',
 };
 
 const sideHeads = new Map();
@@ -358,13 +363,13 @@ function paintHeadSide(K, far, kind, opts = {}) {
     }
   }
   // the hat can come off, and when it does the brim goes with it
-  if (opts.noHat) g.clearRect(0, 0, W * px, 5 * px);
+  if (opts.noHat) g.clearRect(0, 0, W * px, 6 * px);
   return {
     cv,
     ox: (W / 2) * px,
     oy: (H - 1) * px,
     W: W * px, H: H * px,
-    eye: { x: 1.5 * px, y: -5 * px },
+    eye: { x: 1 * px, y: -6 * px },
   };
 }
 
