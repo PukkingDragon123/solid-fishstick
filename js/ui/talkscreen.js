@@ -26,6 +26,34 @@ const FAINT = 'rgba(240,226,192,0.34)';
 const OUT = 'rgba(12,8,5,0.72)';
 const TAP = '#8fe0cc';
 
+/**
+ * A board to pin things to. Everything on this screen used to float on the
+ * darkened world, which is why it read as a debug overlay: a portrait with no
+ * frame, slabs with nothing behind them. Now each group sits on a piece of his
+ * kit - tooled leather with a lip along the top and the shadow of one along
+ * the bottom - and the screen reads as his field desk instead of a menu.
+ */
+function board(ctx, x, y, w, h) {
+  x = Math.round(x); y = Math.round(y); w = Math.round(w); h = Math.round(h);
+  if (w < 4 || h < 4) return;
+  drawPlate(ctx, x, y, w, h, { mat: 'leather', edge: 'rgba(16,10,6,0.8)' });
+  ctx.fillStyle = 'rgba(236,212,160,0.16)';
+  ctx.fillRect(x + 1, y + 1, w - 2, 1);
+  ctx.fillStyle = 'rgba(8,5,3,0.45)';
+  ctx.fillRect(x + 1, y + h - 2, w - 2, 1);
+}
+
+/** The brass tack in each corner of a board. */
+function tacks(ctx, x, y, w, h) {
+  for (const [tx, ty] of [[x + 3, y + 3], [x + w - 5, y + 3],
+                          [x + 3, y + h - 5], [x + w - 5, y + h - 5]]) {
+    ctx.fillStyle = '#9a7a3e';
+    ctx.fillRect(Math.round(tx), Math.round(ty), 2, 2);
+    ctx.fillStyle = 'rgba(246,226,170,0.7)';
+    ctx.fillRect(Math.round(tx), Math.round(ty), 1, 1);
+  }
+}
+
 /** How far he has to be for the conversation to be possible at all. */
 export const TALK_RANGE = 64;
 
@@ -298,33 +326,65 @@ export class TalkScreen {
       const rows = this.topic ? 3 : Math.ceil(this.list().length / 2);
       const need = rows * 34 + 22;
       K = Math.min(3, Math.floor((W - 24) / 66) || 1);
-      const limit = this._keyBox(W, H, lb).y - 6;
+      const limit = this._floorY(W, H, lb);
       while (K > 1 && lb + 4 + 21 * K + 64 * K * 0.62 + need > limit) K--;
     } else {
-      K = Math.max(1, Math.min(4, Math.floor(Math.min(W * 0.30 / 59, H * 0.58 / 64))));
+      // and never taller than the room left above the wire and the key, or
+      // his nameplate ends up behind them
+      const room = this._floorY(W, H, lb) - lb - 22;
+      K = Math.max(1, Math.min(4, Math.floor(Math.min(W * 0.30 / 59, H * 0.58 / 64, room / 64))));
     }
     const spore = (g.mind?.blue || 0) > 0.35 ? 1 : 0;
     let port = null;
     try { port = facePortrait(g.npc.mood || 'flat', K, spore); } catch { port = null; }
-    // far enough in that neither the brim of his hat nor his name runs off
-    // the left edge of a short, wide frame
-    const px = Math.round(narrow ? W * 0.5
-      : Math.max(W * 0.085, (port ? port.ox : 0) + 4, textWidth('DR. ELIAS VESS') / 2 + 4));
-    // narrow: hung from the top of the frame, so the hat is never cropped
-    const py = Math.round(narrow ? lb + 4 + (port ? port.oy : 24) : H * 0.30);
+
+    // He sits in a frame, the way a photograph pinned in a field notebook
+    // does: a leather board, a stone mount cut into it, his face in the
+    // mount and his name on a plate across the bottom. Loose on the dimmed
+    // world he was just an image that had wandered into the corner.
+    const pw = port ? port.W : 52, ph = port ? port.H : 58;
+    const PAD = 4, NAME = 12;
+    const cardW = pw + PAD * 2, cardH = ph + PAD * 2 + NAME;
+    const cardX = Math.round(narrow ? W / 2 - cardW / 2
+      : clamp(W * 0.055, 6, W - cardW - 8));
+    const floorY = this._floorY(W, H, lb);
+    const cardY = Math.round(narrow ? lb + 4
+      : clamp(H * 0.5 - cardH * 0.55, lb + 6, Math.max(lb + 6, floorY - cardH)));
+    board(ctx, cardX, cardY, cardW, cardH);
+    tacks(ctx, cardX, cardY, cardW, cardH);
+    // the mount he is pinned to: flat and dark, because anything with a
+    // texture of its own fights the drawing sitting on top of it
+    ctx.fillStyle = '#231a16';
+    ctx.fillRect(cardX + PAD - 1, cardY + PAD - 1, pw + 2, ph + 2);
+    ctx.fillStyle = 'rgba(0,0,0,0.4)';
+    ctx.fillRect(cardX + PAD - 1, cardY + PAD - 1, pw + 2, 1);
+    ctx.fillStyle = 'rgba(226,198,146,0.10)';
+    ctx.fillRect(cardX + PAD - 1, cardY + PAD + ph, pw + 2, 1);
     if (port) {
-      // a breath, so he is not a still image while he is talking
+      // a breath, so he is not a still image while he is talking, and a clip
+      // so the breath never pushes his hat out through the frame
       const br = Math.sin(this.t * 1.4) * 0.6 + (this.type < 1 ? Math.sin(this.t * 16) * 0.5 : 0);
-      ctx.drawImage(port.cv, Math.round(px - port.ox), Math.round(py - port.oy + br));
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(cardX + PAD, cardY + PAD, pw, ph);
+      ctx.clip();
+      ctx.drawImage(port.cv, cardX + PAD, Math.round(cardY + PAD + br));
+      ctx.restore();
     }
-    const nameY = Math.round(py + (port ? port.H * 0.62 : 30));
-    drawText(ctx, 'DR. ELIAS VESS', px, nameY,
-      { color: DIM, align: 'center', outline: true, outlineColor: OUT });
+    // his name, cut into a strip of the same stone as everything you say
+    const npY = cardY + cardH - NAME - 2;
+    drawPlate(ctx, cardX + 3, npY, cardW - 6, NAME, { mat: 'stone', edge: 'rgba(18,12,8,0.5)' });
+    // his whole name if the card is wide enough for it, and the half of it
+    // that matters if it is not
+    const nm = textWidth('DR. ELIAS VESS') + 8 <= cardW ? 'DR. ELIAS VESS' : 'DR. VESS';
+    drawText(ctx, nm, cardX + cardW / 2, npY + 3, { color: '#d9c08a', align: 'center' });
+    const px = cardX + cardW / 2;
+    const nameY = npY;
 
     // ---- what he is saying, or what you could say -----------------------
-    const cx = Math.round(W * (narrow ? 0.06 : 0.34));
+    const cx = Math.round(narrow ? W * 0.06 : cardX + cardW + 12);
     const cw = Math.round(W - cx - W * 0.06);
-    const cy = narrow ? nameY + 16 : Math.round(H * 0.30);
+    const cy = narrow ? cardY + cardH + 21 : Math.round(H * 0.24);
 
     if (this.topic) {
       this.rows = [];
@@ -348,7 +408,10 @@ export class TalkScreen {
     const ln = tp.lines[this.line];
     const lines = wrapText(ln.t, w - 34);
     const h = Math.max(46, lines.length * LINE_H + 20);
-    // what he says is on paper, because he is the one who writes things down
+    // what he says is on paper, and the paper is pinned to the board rather
+    // than hanging in the air
+    board(ctx, x - 5, y - 5, w + 10, h + 10);
+    tacks(ctx, x - 5, y - 5, w + 10, h + 10);
     drawPlate(ctx, x, y, w, h, { mat: 'paper', edge: 'rgba(120,96,58,0.5)', alpha: 0.98 });
 
     // the icon down the left of the card, on its own margin
@@ -397,7 +460,7 @@ export class TalkScreen {
     const list = this.list();
     const short = H < 210;
     // the key owns the bottom of the screen, so the words stop above it
-    const floor = this._keyBox(this.game.renderer.vw, H, Math.round(H * 0.055)).y - 6;
+    const floor = this._floorY(this.game.renderer.vw, H, Math.round(H * 0.055));
     const room = Math.max(40, floor - y);
     // A word you say with a thumb is a thumb tall, and every word he will
     // listen to has to be on the screen - so the grid takes as many columns
@@ -418,16 +481,31 @@ export class TalkScreen {
     // under the whole grid where it does not - it is never simply not there
     const codeFits = Math.max(...list.map((tp) => textWidth(morseFor(tp.word)))) + 12 <= cellW
       && cellH >= 24;
+    // lay the grid out first, so the board can be cut to fit it rather than
+    // the tablets floating on the dimmed world with nothing behind them
     const rows = [];
     list.forEach((tp, i) => {
       const col = i % cols, row = Math.floor(i / cols);
       const bx = x + col * (cellW + 6);
       const by = y + row * (cellH + 4);
       if (by + cellH > floor) return;
+      rows.push({ i, x: bx, y: by, w: cellW, h: cellH });
+    });
+    if (rows.length) {
+      const gx = rows[0].x, gy = rows[0].y;
+      const gw = Math.max(...rows.map((r) => r.x + r.w)) - gx;
+      const gh = Math.max(...rows.map((r) => r.y + r.h)) - gy;
+      const bh = gh + 21 + (codeFits ? 0 : 9);
+      board(ctx, gx - 6, gy - 15, gw + 12, bh);
+      tacks(ctx, gx - 6, gy - 15, gw + 12, bh);
+      // a carved header, so the board says what it is
+      drawText(ctx, 'SAY', gx, gy - 12, { color: 'rgba(214,184,124,0.75)' });
+    }
+    rows.forEach(({ i, x: bx, y: by }) => {
+      const tp = list[i];
       const on = i === this.pick;
       const done = this.said.has(tp.id);
       const lit = this.flash > 0 && this.word === '' && this.said.has(tp.id);
-      rows.push({ i, x: bx, y: by, w: cellW, h: cellH });
       // what you can say is cut into stone, because you say it by hitting
       // something hard with a claw
       drawPlate(ctx, bx, by, cellW, cellH, {
@@ -461,7 +539,8 @@ export class TalkScreen {
     // what he is waiting for you to say, under the whole grid
     const b = 0.4 + 0.6 * (0.5 + 0.5 * Math.sin(this.t * 2));
     ctx.globalAlpha = b;
-    drawText(ctx, this.said.size ? '' : 'tap it, or point at it', x, y - 11, { color: FAINT });
+    drawText(ctx, this.said.size ? '' : 'tap it, or point at it',
+      x + w - 4, y - 12, { color: FAINT, align: 'right' });
     ctx.globalAlpha = 1;
   }
 
@@ -491,9 +570,23 @@ export class TalkScreen {
     return { x: Math.round(W / 2 - w / 2), y: H - lb - 24 - h, w, h };
   }
 
+  /** The top of the wire strip, which the key sits under and the words above. */
+  _wireY(W, H, lb) {
+    return Math.min(H - lb - 20, this._keyBox(W, H, lb).y - 26);
+  }
+
+  /** Everything you can be shown has to stop above the key and the wire. */
+  _floorY(W, H, lb) {
+    return Math.min(this._keyBox(W, H, lb).y, this._wireY(W, H, lb) - 4) - 8;
+  }
+
   _key(ctx, W, H, lb) {
     const b = this._keyBox(W, H, lb);
     const dash = this.down && this.held > 0.22;
+    // the key is bedded in leather, the way a telegraph key is screwed to a
+    // board so it does not walk across the desk while you are sending
+    board(ctx, b.x - 5, b.y - 5, b.w + 10, b.h + 10);
+    tacks(ctx, b.x - 5, b.y - 5, b.w + 10, b.h + 10);
     drawPlate(ctx, b.x, b.y, b.w, b.h, {
       mat: 'stone',
       edge: this.down ? TAP : 'rgba(90,130,120,0.5)',
@@ -528,11 +621,14 @@ export class TalkScreen {
    * instant you make it, so the code is never something happening off-screen.
    */
   _wire(ctx, W, H, lb) {
-    const x = Math.round(W * 0.06);
-    const y = H - lb - 16;
+    const x = Math.round(Math.max(12, W * 0.055));
+    // above the key, never under it - the two of them used to share the same
+    // corner of a phone and the boards sat on top of each other
+    const y = this._wireY(W, H, lb);
     const cur = this.marks ? ` ${this.marks}` : this.down ? ' _' : '';
     const on = (this.word + cur).trim();
     const w = Math.max(120, textWidth(on) + 24);
+    board(ctx, x - 4, y - 4, w + 8, 22);
     drawPlate(ctx, x, y, w, 14, {
       edge: this.down || on ? TAP : 'rgba(60,90,84,0.45)', rivets: false,
     });

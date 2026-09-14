@@ -6565,8 +6565,36 @@ body {
   var HEAD_OPEN = {
     16: ".ohhhhhqqmmso..."
   };
+  var HEAD_BAYER = [
+    [0, 32, 8, 40, 2, 34, 10, 42],
+    [48, 16, 56, 24, 50, 18, 58, 26],
+    [12, 44, 4, 36, 14, 46, 6, 38],
+    [60, 28, 52, 20, 62, 30, 54, 22],
+    [3, 35, 11, 43, 1, 33, 9, 41],
+    [51, 19, 59, 27, 49, 17, 57, 25],
+    [15, 47, 7, 39, 13, 45, 5, 37],
+    [63, 31, 55, 23, 61, 29, 53, 21]
+  ].map((r) => r.map((v) => (v + 0.5) / 64));
+  function headHeight(x, y, ch, W) {
+    if (ch === "o") return 0;
+    const dome = (cx, cy, rx, ry) => {
+      const d = ((x - cx) / rx) ** 2 + ((y - cy) / ry) ** 2;
+      return d >= 1 ? 0 : Math.sqrt(1 - d);
+    };
+    if (y <= 4) return 0.52 + dome(7.4, 3.4, 5, 4.6) * 0.48;
+    if (y <= 6) {
+      const t = 1 - Math.abs(x - 7.5) / (W / 2);
+      return 0.22 + t * t * 0.22;
+    }
+    let h = 0.34 + dome(6.6, 12, 7.6, 8.4) * 0.62;
+    if (y >= 11 && y <= 12 && x >= 11) h += 0.16;
+    if (y === 9 && x >= 10) h += 0.07;
+    if (y === 15 && x >= 9) h += 0.05;
+    if (y >= 10 && y <= 11 && x >= 8 && x <= 11) h -= 0.1;
+    return h;
+  }
   function paintHeadSide(K, far, kind, opts = {}) {
-    const px = Math.max(1, Math.round(K));
+    const px = Math.max(1, Math.round(K * 1.32));
     const rows = HEAD_ART.slice();
     const mood = opts.mood | 0;
     const shut = mood === 7 || mood === 12;
@@ -6578,6 +6606,14 @@ body {
     const g = cv.getContext("2d");
     g.imageSmoothingEnabled = false;
     const elder = kind === "elder";
+    const hgt = new Float32Array(W * H);
+    for (let y = 0; y < H; y++) {
+      for (let x = 0; x < W; x++) {
+        const ch = rows[y][x];
+        hgt[y * W + x] = ch === "." || ch === "o" ? 0 : headHeight(x, y, ch, W);
+      }
+    }
+    const at = (x, y) => x < 0 || y < 0 || x >= W || y >= H ? 0 : hgt[y * W + x];
     for (let y = 0; y < H; y++) {
       for (let x = 0; x < W; x++) {
         const ch = rows[y][x];
@@ -6595,6 +6631,18 @@ body {
         }
         if (opts.spore && (ch === "l" || ch === "L" || ch === "e")) {
           col = ch === "L" ? "#d8b4ff" : "#a86cd8";
+        }
+        if (ch !== "o") {
+          const dx = (at(x + 1, y) - at(x - 1, y)) * 1.7;
+          const dy = (at(x, y + 1) - at(x, y - 1)) * 1.7;
+          const nl = Math.hypot(dx, dy, 1) || 1;
+          let lam = (-dx * -0.55 + -dy * -0.72 + 0.42) / (nl * 0.99);
+          lam = clamp01(lam * 0.86 + at(x, y) * 0.3);
+          const bay = HEAD_BAYER[y & 7][x & 7];
+          const step = 0.16;
+          const q = Math.round((lam + (bay - 0.5) * step * 0.34) / step) * step;
+          const s = clamp01(q) - 0.58;
+          col = s > 0 ? mixHex(col, "#fff1cf", Math.min(0.34, s * 0.72)) : mixHex(col, "#2a1a20", Math.min(0.4, -s * 0.62));
         }
         if (far) col = mixHex(col, "#8a7a63", 0.34);
         g.fillStyle = col;
@@ -10651,10 +10699,33 @@ body {
   }
 
   // js/ui/talkscreen.js
-  var DIM = "rgba(240,226,192,0.66)";
   var FAINT = "rgba(240,226,192,0.34)";
-  var OUT = "rgba(12,8,5,0.72)";
   var TAP = "#8fe0cc";
+  function board(ctx, x, y, w, h) {
+    x = Math.round(x);
+    y = Math.round(y);
+    w = Math.round(w);
+    h = Math.round(h);
+    if (w < 4 || h < 4) return;
+    drawPlate(ctx, x, y, w, h, { mat: "leather", edge: "rgba(16,10,6,0.8)" });
+    ctx.fillStyle = "rgba(236,212,160,0.16)";
+    ctx.fillRect(x + 1, y + 1, w - 2, 1);
+    ctx.fillStyle = "rgba(8,5,3,0.45)";
+    ctx.fillRect(x + 1, y + h - 2, w - 2, 1);
+  }
+  function tacks(ctx, x, y, w, h) {
+    for (const [tx, ty] of [
+      [x + 3, y + 3],
+      [x + w - 5, y + 3],
+      [x + 3, y + h - 5],
+      [x + w - 5, y + h - 5]
+    ]) {
+      ctx.fillStyle = "#9a7a3e";
+      ctx.fillRect(Math.round(tx), Math.round(ty), 2, 2);
+      ctx.fillStyle = "rgba(246,226,170,0.7)";
+      ctx.fillRect(Math.round(tx), Math.round(ty), 1, 1);
+    }
+  }
   var TALK_RANGE = 64;
   var TalkScreen = class {
     constructor(game2) {
@@ -10902,10 +10973,11 @@ body {
         const rows = this.topic ? 3 : Math.ceil(this.list().length / 2);
         const need = rows * 34 + 22;
         K = Math.min(3, Math.floor((W - 24) / 66) || 1);
-        const limit = this._keyBox(W, H, lb).y - 6;
+        const limit = this._floorY(W, H, lb);
         while (K > 1 && lb + 4 + 21 * K + 64 * K * 0.62 + need > limit) K--;
       } else {
-        K = Math.max(1, Math.min(4, Math.floor(Math.min(W * 0.3 / 59, H * 0.58 / 64))));
+        const room = this._floorY(W, H, lb) - lb - 22;
+        K = Math.max(1, Math.min(4, Math.floor(Math.min(W * 0.3 / 59, H * 0.58 / 64, room / 64))));
       }
       const spore = (g.mind?.blue || 0) > 0.35 ? 1 : 0;
       let port = null;
@@ -10914,23 +10986,38 @@ body {
       } catch {
         port = null;
       }
-      const px = Math.round(narrow ? W * 0.5 : Math.max(W * 0.085, (port ? port.ox : 0) + 4, textWidth("DR. ELIAS VESS") / 2 + 4));
-      const py = Math.round(narrow ? lb + 4 + (port ? port.oy : 24) : H * 0.3);
+      const pw = port ? port.W : 52, ph = port ? port.H : 58;
+      const PAD = 4, NAME = 12;
+      const cardW = pw + PAD * 2, cardH = ph + PAD * 2 + NAME;
+      const cardX = Math.round(narrow ? W / 2 - cardW / 2 : clamp(W * 0.055, 6, W - cardW - 8));
+      const floorY = this._floorY(W, H, lb);
+      const cardY = Math.round(narrow ? lb + 4 : clamp(H * 0.5 - cardH * 0.55, lb + 6, Math.max(lb + 6, floorY - cardH)));
+      board(ctx, cardX, cardY, cardW, cardH);
+      tacks(ctx, cardX, cardY, cardW, cardH);
+      ctx.fillStyle = "#231a16";
+      ctx.fillRect(cardX + PAD - 1, cardY + PAD - 1, pw + 2, ph + 2);
+      ctx.fillStyle = "rgba(0,0,0,0.4)";
+      ctx.fillRect(cardX + PAD - 1, cardY + PAD - 1, pw + 2, 1);
+      ctx.fillStyle = "rgba(226,198,146,0.10)";
+      ctx.fillRect(cardX + PAD - 1, cardY + PAD + ph, pw + 2, 1);
       if (port) {
         const br = Math.sin(this.t * 1.4) * 0.6 + (this.type < 1 ? Math.sin(this.t * 16) * 0.5 : 0);
-        ctx.drawImage(port.cv, Math.round(px - port.ox), Math.round(py - port.oy + br));
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(cardX + PAD, cardY + PAD, pw, ph);
+        ctx.clip();
+        ctx.drawImage(port.cv, cardX + PAD, Math.round(cardY + PAD + br));
+        ctx.restore();
       }
-      const nameY = Math.round(py + (port ? port.H * 0.62 : 30));
-      drawText(
-        ctx,
-        "DR. ELIAS VESS",
-        px,
-        nameY,
-        { color: DIM, align: "center", outline: true, outlineColor: OUT }
-      );
-      const cx = Math.round(W * (narrow ? 0.06 : 0.34));
+      const npY = cardY + cardH - NAME - 2;
+      drawPlate(ctx, cardX + 3, npY, cardW - 6, NAME, { mat: "stone", edge: "rgba(18,12,8,0.5)" });
+      const nm = textWidth("DR. ELIAS VESS") + 8 <= cardW ? "DR. ELIAS VESS" : "DR. VESS";
+      drawText(ctx, nm, cardX + cardW / 2, npY + 3, { color: "#d9c08a", align: "center" });
+      const px = cardX + cardW / 2;
+      const nameY = npY;
+      const cx = Math.round(narrow ? W * 0.06 : cardX + cardW + 12);
       const cw = Math.round(W - cx - W * 0.06);
-      const cy = narrow ? nameY + 16 : Math.round(H * 0.3);
+      const cy = narrow ? cardY + cardH + 21 : Math.round(H * 0.24);
       if (this.topic) {
         this.rows = [];
         this._card(ctx, cx, cy, cw, H);
@@ -10948,6 +11035,8 @@ body {
       const ln = tp.lines[this.line];
       const lines = wrapText(ln.t, w - 34);
       const h = Math.max(46, lines.length * LINE_H + 20);
+      board(ctx, x - 5, y - 5, w + 10, h + 10);
+      tacks(ctx, x - 5, y - 5, w + 10, h + 10);
       drawPlate(ctx, x, y, w, h, { mat: "paper", edge: "rgba(120,96,58,0.5)", alpha: 0.98 });
       if (ln.icon) {
         ctx.globalAlpha = 0.92;
@@ -10987,7 +11076,7 @@ body {
     _topics(ctx, x, y, w, H, narrow) {
       const list = this.list();
       const short = H < 210;
-      const floor = this._keyBox(this.game.renderer.vw, H, Math.round(H * 0.055)).y - 6;
+      const floor = this._floorY(this.game.renderer.vw, H, Math.round(H * 0.055));
       const room = Math.max(40, floor - y);
       const maxH = short ? 24 : this.game.ui?.touchEnabled ? 30 : 21;
       const maxCols = Math.max(1, Math.min(4, Math.floor(w / 56)));
@@ -11008,10 +11097,22 @@ body {
         const bx = x + col * (cellW + 6);
         const by = y + row * (cellH + 4);
         if (by + cellH > floor) return;
+        rows.push({ i, x: bx, y: by, w: cellW, h: cellH });
+      });
+      if (rows.length) {
+        const gx = rows[0].x, gy = rows[0].y;
+        const gw = Math.max(...rows.map((r) => r.x + r.w)) - gx;
+        const gh = Math.max(...rows.map((r) => r.y + r.h)) - gy;
+        const bh = gh + 21 + (codeFits ? 0 : 9);
+        board(ctx, gx - 6, gy - 15, gw + 12, bh);
+        tacks(ctx, gx - 6, gy - 15, gw + 12, bh);
+        drawText(ctx, "SAY", gx, gy - 12, { color: "rgba(214,184,124,0.75)" });
+      }
+      rows.forEach(({ i, x: bx, y: by }) => {
+        const tp = list[i];
         const on = i === this.pick;
         const done = this.said.has(tp.id);
         const lit = this.flash > 0 && this.word === "" && this.said.has(tp.id);
-        rows.push({ i, x: bx, y: by, w: cellW, h: cellH });
         drawPlate(ctx, bx, by, cellW, cellH, {
           mat: "stone",
           edge: on ? "#e2b74a" : lit ? TAP : "none",
@@ -11055,7 +11156,13 @@ body {
       this.rows = rows;
       const b = 0.4 + 0.6 * (0.5 + 0.5 * Math.sin(this.t * 2));
       ctx.globalAlpha = b;
-      drawText(ctx, this.said.size ? "" : "tap it, or point at it", x, y - 11, { color: FAINT });
+      drawText(
+        ctx,
+        this.said.size ? "" : "tap it, or point at it",
+        x + w - 4,
+        y - 12,
+        { color: FAINT, align: "right" }
+      );
       ctx.globalAlpha = 1;
     }
     /**
@@ -11081,9 +11188,19 @@ body {
       const h = touch ? 56 : 34;
       return { x: Math.round(W / 2 - w / 2), y: H - lb - 24 - h, w, h };
     }
+    /** The top of the wire strip, which the key sits under and the words above. */
+    _wireY(W, H, lb) {
+      return Math.min(H - lb - 20, this._keyBox(W, H, lb).y - 26);
+    }
+    /** Everything you can be shown has to stop above the key and the wire. */
+    _floorY(W, H, lb) {
+      return Math.min(this._keyBox(W, H, lb).y, this._wireY(W, H, lb) - 4) - 8;
+    }
     _key(ctx, W, H, lb) {
       const b = this._keyBox(W, H, lb);
       const dash = this.down && this.held > 0.22;
+      board(ctx, b.x - 5, b.y - 5, b.w + 10, b.h + 10);
+      tacks(ctx, b.x - 5, b.y - 5, b.w + 10, b.h + 10);
       drawPlate(ctx, b.x, b.y, b.w, b.h, {
         mat: "stone",
         edge: this.down ? TAP : "rgba(90,130,120,0.5)",
@@ -11121,11 +11238,12 @@ body {
      * instant you make it, so the code is never something happening off-screen.
      */
     _wire(ctx, W, H, lb) {
-      const x = Math.round(W * 0.06);
-      const y = H - lb - 16;
+      const x = Math.round(Math.max(12, W * 0.055));
+      const y = this._wireY(W, H, lb);
       const cur = this.marks ? ` ${this.marks}` : this.down ? " _" : "";
       const on = (this.word + cur).trim();
       const w = Math.max(120, textWidth(on) + 24);
+      board(ctx, x - 4, y - 4, w + 8, 22);
       drawPlate(ctx, x, y, w, 14, {
         edge: this.down || on ? TAP : "rgba(60,90,84,0.45)",
         rivets: false
@@ -22057,9 +22175,9 @@ body {
 
   // js/ui/ui.js
   var INK = "#f2e4c2";
-  var DIM2 = "rgba(240,226,192,0.66)";
+  var DIM = "rgba(240,226,192,0.66)";
   var FAINT2 = "rgba(240,226,192,0.36)";
-  var OUT2 = "rgba(12,8,5,0.72)";
+  var OUT = "rgba(12,8,5,0.72)";
   var TABS = [
     { id: "map", icon: "map", name: "MAP", sub: "the basin, and what is left standing in it" },
     { id: "fleet", icon: "fauna", name: "FLEET", sub: "what lives on you, and where it is" },
@@ -22877,7 +22995,7 @@ body {
           "HOLD E",
           x + w / 2,
           y + h + 3,
-          { color: FAINT2, align: "center", outline: true, outlineColor: OUT2 }
+          { color: FAINT2, align: "center", outline: true, outlineColor: OUT }
         );
         ctx.globalAlpha = 1;
       }
@@ -22994,7 +23112,7 @@ body {
         const bh2 = Math.round((p + 1) / notes * 7);
         ctx.fillStyle = "#e2b74a";
         ctx.fillRect(kx + 3, ky + 9 - bh2, 3, bh2);
-        drawText(ctx, `${p + 1}`, kx + 10, ky + 2, { color: DIM2 });
+        drawText(ctx, `${p + 1}`, kx + 10, ky + 2, { color: DIM });
         ctx.globalAlpha = 1;
         if (hot && live && this.game.input.clicked) {
           this.game.input.clicked = false;
@@ -23015,7 +23133,7 @@ body {
       });
       ctx.globalAlpha = dim ? 0.45 : 1;
       drawGlyph(ctx, glyph, x + 9, y + h / 2, { color: opts.tint || "#e2b74a", scale: 1 });
-      drawText(ctx, label, x + 17, y + 3, { color: dim ? DIM2 : INK });
+      drawText(ctx, label, x + 17, y + 3, { color: dim ? DIM : INK });
       if (key2) drawText(ctx, key2, x + w - 4, y + 3, { color: FAINT2, align: "right" });
       ctx.globalAlpha = 1;
       if (hot && !dim) this.hover = opts.hover || null;
@@ -23120,7 +23238,7 @@ Coming back.` };
       }
       if (!c && npcNear) {
         drawText(ctx, "Dr. Vess", x + 6, py + 3, { color: "#c98ade" });
-        drawText(ctx, "L to lure him in", x + 6, py + 13, { color: DIM2 });
+        drawText(ctx, "L to lure him in", x + 6, py + 13, { color: DIM });
         return;
       }
       drawTame(ctx, x + 3, py + 4, c, { size: 16, on: false, t: this.t });
@@ -23129,7 +23247,7 @@ Coming back.` };
         ellipsize(c.def?.name || "it", w - 48),
         x + 22,
         py + 3,
-        { color: willing ? "#e6c0f2" : DIM2 }
+        { color: willing ? "#e6c0f2" : DIM }
       );
       if (willing) {
         const b = 0.5 + 0.5 * Math.sin(this.t * 4);
@@ -23332,7 +23450,7 @@ Coming back.` };
         this.ghostPlot ? "let go to plant" : "over a bed",
         i.sx,
         i.sy + 6,
-        { color: this.ghostPlot ? "#b6de8f" : FAINT2, align: "center", outline: true, outlineColor: OUT2 }
+        { color: this.ghostPlot ? "#b6de8f" : FAINT2, align: "center", outline: true, outlineColor: OUT }
       );
     }
     // -- HUD ------------------------------------------------------------------
@@ -23347,7 +23465,7 @@ Coming back.` };
           `${Math.round(e.water)} water   ${Math.round(e.nutrients)} growth`,
           W - 5,
           4,
-          { color: INK, align: "right", outline: true, outlineColor: OUT2 }
+          { color: INK, align: "right", outline: true, outlineColor: OUT }
         );
         this._pumpStub(ctx, W, H);
         return;
@@ -23364,7 +23482,7 @@ Coming back.` };
           `${have}`,
           L + sh.w / 2,
           4 + sh.h - 5,
-          { color: have > 0 ? "#e6c0f2" : "#8a6a94", align: "center", outline: true, outlineColor: OUT2 }
+          { color: have > 0 ? "#e6c0f2" : "#8a6a94", align: "center", outline: true, outlineColor: OUT }
         );
         if (this._hit(L, 2, sh.w, sh.h)) {
           this.hover = { title: "The gland", body: `${have} / ${cap2} spores. It fruits from a mindcap; hold the nozzle to build pressure.` };
@@ -23376,7 +23494,7 @@ Coming back.` };
           `${Math.round(e.water)}`,
           L + sh.w / 2,
           4 + sh.h - 1,
-          { color: INK, align: "center", outline: true, outlineColor: OUT2 }
+          { color: INK, align: "center", outline: true, outlineColor: OUT }
         );
         if (this._hit(L, 4, sh.w, sh.h)) this.hover = { title: "Spring", body: `${Math.round(e.water)} / ${Math.round(maxW)}` };
       }
@@ -23389,7 +23507,7 @@ Coming back.` };
         `${Math.round(e.nutrients)}`,
         bx + 17,
         4 + sh.h - 1,
-        { color: INK, align: "center", outline: true, outlineColor: OUT2 }
+        { color: INK, align: "center", outline: true, outlineColor: OUT }
       );
       if (this._hit(bx, 2, 34, 40)) {
         this.hover = { title: "Growth", body: `${Math.round(e.nutrients)} banked` };
@@ -23405,7 +23523,7 @@ Coming back.` };
           `${e.parasites}   X`,
           px2 + 15,
           py2 + 3,
-          { color: "#d79ae8", outline: true, outlineColor: OUT2 }
+          { color: "#d79ae8", outline: true, outlineColor: OUT }
         );
         if (this._hit(px2, py2, 60, 12)) {
           this.hover = {
@@ -23447,7 +23565,7 @@ Coming back.` };
           `${e.berries}`,
           fx + 13,
           4 + sh.h - 1,
-          { color: FAINT2, align: "center", outline: true, outlineColor: OUT2 }
+          { color: FAINT2, align: "center", outline: true, outlineColor: OUT }
         );
         if (this._hit(fx, 16, 26, 22)) {
           this.hover = { title: "Nothing is yours yet", body: "Fruit brings the birds in. Once one trusts you, sing with it - and it stands here." };
@@ -23458,7 +23576,7 @@ Coming back.` };
       const label = narrow ? ellipsize(g.biome.name, Math.max(40, room)) : `${g.biome.name}   ${g.weather.label()}`;
       const lw = Math.max(textWidth(label), 62) + 12;
       drawPlate(ctx, W - 22 - lw, 1, lw + 20, narrow ? 30 : 44, { alpha: 0.9 });
-      drawText(ctx, label, W - 26, 4, { color: DIM2, align: "right" });
+      drawText(ctx, label, W - 26, 4, { color: DIM, align: "right" });
       ctx.fillStyle = "rgba(148,118,68,0.35)";
       ctx.fillRect(W - 20 - lw, 13, lw + 16, 1);
       this._clock(ctx, W - 15, narrow ? 20 : 23);
@@ -23471,7 +23589,7 @@ Coming back.` };
         `${e.genes.size}`,
         ox + 15,
         oy + 32,
-        { color: "#9fe8d4", align: "center", outline: true, outlineColor: OUT2 }
+        { color: "#9fe8d4", align: "center", outline: true, outlineColor: OUT }
       );
       if (this._hit(ox, oy, 30, 30)) {
         this.hover = { title: "Genome", body: `${e.genes.size} genes expressed. Look into it to see the Tree of Life.${ready ? " Something is ready to grow." : ""}` };
@@ -23487,7 +23605,7 @@ Coming back.` };
           const cx = W - 8 - (i + 1) * 8, cy = oy + 32;
           ctx.fillStyle = c === this.selected ? "#ffe9a8" : c.onShell ? "rgba(140,196,104,0.95)" : "rgba(226,183,74,0.9)";
           ctx.fillRect(cx, cy, 6, 6);
-          ctx.strokeStyle = OUT2;
+          ctx.strokeStyle = OUT;
           ctx.strokeRect(cx - 0.5, cy - 0.5, 7, 7);
           if (this._hit(cx, cy, 6, 6)) this.hover = { title: c.name, body: c.def.ability || c.def.desc };
         }
@@ -23537,7 +23655,7 @@ Coming back.` };
           `${ripe} ready   R`,
           rx0 + 15,
           ry0 + 3,
-          { color: "#cfe89a", outline: true, outlineColor: OUT2 }
+          { color: "#cfe89a", outline: true, outlineColor: OUT }
         );
         if (this._hit(rx0, ry0, 70, 12)) {
           this.hover = { title: "Ready to pick", body: "R, or tap the bead." };
@@ -23562,7 +23680,7 @@ Coming back.` };
       if (this.touchEnabled) return;
       const hint = g.actionHint();
       if (hint && !this.touchEnabled) {
-        drawText(ctx, hint, W / 2, H - 30, { color: INK, align: "center", outline: true, outlineColor: OUT2 });
+        drawText(ctx, hint, W / 2, H - 30, { color: INK, align: "center", outline: true, outlineColor: OUT });
       }
       if (!this.touchEnabled) this._keys(ctx, W, H);
       if (this.selected) {
@@ -23571,7 +23689,7 @@ Coming back.` };
           `${this.selected.name} - where?`,
           W / 2,
           H - 42,
-          { color: "#ffe9a8", align: "center", outline: true, outlineColor: OUT2 }
+          { color: "#ffe9a8", align: "center", outline: true, outlineColor: OUT }
         );
       }
     }
@@ -23610,7 +23728,7 @@ Coming back.` };
           word,
           x,
           y + 2,
-          { color: "rgba(196,172,128,0.92)", outline: true, outlineColor: OUT2 }
+          { color: "rgba(196,172,128,0.92)", outline: true, outlineColor: OUT }
         );
         x += wordW[i] + pad;
       });
@@ -23728,7 +23846,7 @@ Coming back.` };
         color: full ? "#9de3ee" : hold > 0 ? "#9de3ee" : FAINT2,
         align: "center",
         outline: true,
-        outlineColor: OUT2
+        outlineColor: OUT
       });
       this._pumpGauge(ctx, W, H, x + size / 2, y - 10);
     }
@@ -23802,7 +23920,7 @@ Coming back.` };
         color: empty ? FAINT2 : hv?.pressured ? "#f0d4ff" : "#c98ade",
         align: "center",
         outline: true,
-        outlineColor: OUT2
+        outlineColor: OUT
       });
       this._sprayGauge(ctx, W, H, x + size / 2, y - 10);
     }
@@ -23891,7 +24009,7 @@ Coming back.` };
           `x${p.mult.toFixed(2)}`,
           x + w - 1,
           y - 9,
-          { color: "#cfe89a", align: "right", outline: true, outlineColor: OUT2 }
+          { color: "#cfe89a", align: "right", outline: true, outlineColor: OUT }
         );
       }
       if (p.flash) {
@@ -23901,7 +24019,7 @@ Coming back.` };
           p.flash.text,
           x + w / 2 - 14,
           y - 9,
-          { color: p.flash.colour, align: "center", outline: true, outlineColor: OUT2 }
+          { color: p.flash.colour, align: "center", outline: true, outlineColor: OUT }
         );
       }
       ctx.globalAlpha = 1;
@@ -23955,7 +24073,7 @@ Coming back.` };
         `${String(Math.floor(hour)).padStart(2, "0")}:${String(Math.floor(hour % 1 * 60)).padStart(2, "0")}`,
         cx - R - 4,
         cy + 1,
-        { color: DIM2, align: "right" }
+        { color: DIM, align: "right" }
       );
       if (this._hit(cx - R - 44, cy - R, R * 2 + 44, R * 2)) {
         const toNight = hour < 20 ? 20 - hour : 24 - hour + 20;
@@ -23990,7 +24108,7 @@ Coming back.` };
           `${Math.round(Math.abs(d) / 10)}`,
           x - dir * 6,
           y + 6,
-          { color: FAINT2, align: dir > 0 ? "right" : "left", outline: true, outlineColor: OUT2 }
+          { color: FAINT2, align: dir > 0 ? "right" : "left", outline: true, outlineColor: OUT }
         );
       } else {
         drawText(
@@ -23998,7 +24116,7 @@ Coming back.` };
           lm.name,
           x,
           y - 12,
-          { color: INK, align: "center", outline: true, outlineColor: OUT2 }
+          { color: INK, align: "center", outline: true, outlineColor: OUT }
         );
       }
     }
@@ -24144,13 +24262,13 @@ Coming back.` };
       const cost = kind === "flora" ? `${def3.cost} water` : `${def3.cost} water + ${def3.nut} nutrients`;
       const ok = kind === "flora" ? e.water >= def3.cost : e.canBuild(def3.id);
       const line = `${def3.name}  -  ${cost}`;
-      drawText(ctx, line, W / 2, 6, { color: ok ? INK : "#e08c9c", align: "center", outline: true, outlineColor: OUT2 });
+      drawText(ctx, line, W / 2, 6, { color: ok ? INK : "#e08c9c", align: "center", outline: true, outlineColor: OUT });
       drawText(
         ctx,
         "click a marked bed to plant   shift to keep placing   esc to stop",
         W / 2,
         16,
-        { color: FAINT2, align: "center", outline: true, outlineColor: OUT2 }
+        { color: FAINT2, align: "center", outline: true, outlineColor: OUT }
       );
     }
     // -- the drawer -----------------------------------------------------------
@@ -24191,7 +24309,7 @@ Coming back.` };
         const lw = tabW >= 58 ? textWidth(t.name) : 0;
         const gx = tx + Math.round((tabW - 1 - (18 + (lw ? 2 + lw : 0))) / 2);
         drawTab(ctx, t.icon, gx, inY + Math.round((tabH - 22) / 2) + 1);
-        if (lw) drawText(ctx, t.name, gx + 20, inY + Math.round((tabH - 7) / 2), { color: on ? INK : DIM2 });
+        if (lw) drawText(ctx, t.name, gx + 20, inY + Math.round((tabH - 7) / 2), { color: on ? INK : DIM });
         ctx.globalAlpha = k;
         if (hot && this.game.input.clicked) {
           this.game.input.clicked = false;
@@ -24295,7 +24413,7 @@ Coming back.` };
           ellipsize(`${out.name}${r.out[1] > 1 ? ` x${r.out[1]}` : ""}`, nameW),
           x + 20,
           by + 2,
-          { color: can ? INK : DIM2 }
+          { color: can ? INK : DIM }
         );
         let cx2 = x + 20;
         for (const [id, n] of r.need) {
@@ -24361,7 +24479,7 @@ She has to be yours to make it.` };
         }
         ctx.globalAlpha = k * (on ? 1 : 0.6);
         drawTab(ctx, t.icon, tx + 2, ry + 1);
-        drawText(ctx, t.name, tx + 20, ry + 6, { color: on ? INK : DIM2 });
+        drawText(ctx, t.name, tx + 20, ry + 6, { color: on ? INK : DIM });
         ctx.globalAlpha = k;
         if (hot && g.input.clicked) {
           g.input.clicked = false;
@@ -24623,7 +24741,7 @@ She has to be yours to make it.` };
           puppet ? "RIDDEN" : c.onShell ? "aboard" : "out there",
           x + w - 4,
           by + 3,
-          { color: puppet ? "#d79ae8" : c.onShell ? "#b6de8f" : DIM2, align: "right" }
+          { color: puppet ? "#d79ae8" : c.onShell ? "#b6de8f" : DIM, align: "right" }
         );
         const d = Math.round(Math.abs(c.x - g.crab.x) / 10);
         drawNodeIcon(ctx, "step", x + 10, by + 20, FAINT2, 1);
@@ -24797,12 +24915,12 @@ ${d}m ${m.x > g.crab.x ? "east" : "west"}` : `${d}m ${m.x > g.crab.x ? "east" : 
       if (!g.vessClose) {
         const d = Math.round(Math.abs(g.npc.x - g.crab.x) / 10);
         drawText(ctx, "HER NOTEBOOK IS NOT HERE", x, y + 6, { color: "#e2b74a" });
-        wrapText(`The field notes are Dr. Vess's, and he is carrying them. Get to him - he is ${d}m ${g.npc.x > g.crab.x ? "east" : "west"} - and read over his shoulder.`, w - 4).forEach((l, i) => drawText(ctx, l, x, y + 20 + i * LINE_H, { color: DIM2 }));
+        wrapText(`The field notes are Dr. Vess's, and he is carrying them. Get to him - he is ${d}m ${g.npc.x > g.crab.x ? "east" : "west"} - and read over his shoulder.`, w - 4).forEach((l, i) => drawText(ctx, l, x, y + 20 + i * LINE_H, { color: DIM }));
         wrapText("F calls him over. He will follow you, and ride on you once you are big enough to carry him.", w - 4).forEach((l, i) => drawText(ctx, l, x, y + 62 + i * LINE_H, { color: FAINT2 }));
         return;
       }
       if (this.codexPick) return this._codexEntry(ctx, x, y, w, h);
-      drawText(ctx, "VESS'S FIELD NOTES", x, y, { color: DIM2 });
+      drawText(ctx, "VESS'S FIELD NOTES", x, y, { color: DIM });
       drawText(ctx, "watch a thing for long enough and he writes it down", x, y + 9, { color: FAINT2 });
       let ry = y + 22 - this.scroll;
       let total = 0;
@@ -24830,7 +24948,7 @@ ${d}m ${m.x > g.crab.x ? "east" : "west"}` : `${d}m ${m.x > g.crab.x ? "east" : 
         const lines = wrapText(open ? e.text : "Not pieced together yet.", w - 6);
         if (ry > y - 40 && ry < y + h) {
           drawText(ctx, open ? e.name : "???", x + 2, ry, { color: open ? INK : FAINT2 });
-          lines.forEach((l, k) => drawText(ctx, l, x + 2, ry + 9 + k * LINE_H, { color: open ? DIM2 : FAINT2 }));
+          lines.forEach((l, k) => drawText(ctx, l, x + 2, ry + 9 + k * LINE_H, { color: open ? DIM : FAINT2 }));
         }
         const dh = 11 + lines.length * LINE_H + 3;
         ry += dh;
@@ -24947,7 +25065,7 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
           return;
         }
       }
-      drawText(ctx, "< back", x, y, { color: DIM2 });
+      drawText(ctx, "< back", x, y, { color: DIM });
       let ry = y + 14 - this.scroll;
       drawText(ctx, f.name, x, ry, { color: INK });
       ry += 10;
@@ -24959,7 +25077,7 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
       ry += 12;
       ry = this._wantRow(ctx, f, x, ry, w) + 4;
       wrapText(f.desc, w).forEach((l) => {
-        drawText(ctx, l, x, ry, { color: DIM2 });
+        drawText(ctx, l, x, ry, { color: DIM });
         ry += LINE_H;
       });
       ry += 6;
@@ -24969,7 +25087,7 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
         ctx.fillStyle = got ? "#8cc468" : "rgba(140,120,90,0.5)";
         ctx.fillRect(x, ry + 1, 3, lines.length * LINE_H - 2);
         lines.forEach((l) => {
-          drawText(ctx, l, x + 7, ry, { color: got ? DIM2 : FAINT2 });
+          drawText(ctx, l, x + 7, ry, { color: got ? DIM : FAINT2 });
           ry += LINE_H;
         });
         ry += 4;
@@ -25126,7 +25244,7 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
           hint,
           W - 6,
           hintY,
-          { color: INK, align: "right", outline: true, outlineColor: OUT2 }
+          { color: INK, align: "right", outline: true, outlineColor: OUT }
         );
       }
     }
@@ -25148,7 +25266,7 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
       ctx.strokeStyle = "rgba(214,186,138,0.4)";
       ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
       if (t.title) drawText(ctx, t.title, x + 5, y + 4, { color: INK });
-      lines.forEach((l, k) => drawText(ctx, l, x + 5, y + (t.title ? 15 : 4) + k * LINE_H, { color: DIM2 }));
+      lines.forEach((l, k) => drawText(ctx, l, x + 5, y + (t.title ? 15 : 4) + k * LINE_H, { color: DIM }));
     }
   };
 

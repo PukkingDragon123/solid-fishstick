@@ -326,11 +326,52 @@ const HEAD_OPEN = {
 
 const sideHeads = new Map();
 
+// 8x8 ordered dither, the same one the painter uses, so the head breaks up
+// along the same grid as everything else in the game.
+const HEAD_BAYER = [
+  [0, 32, 8, 40, 2, 34, 10, 42], [48, 16, 56, 24, 50, 18, 58, 26],
+  [12, 44, 4, 36, 14, 46, 6, 38], [60, 28, 52, 20, 62, 30, 54, 22],
+  [3, 35, 11, 43, 1, 33, 9, 41], [51, 19, 59, 27, 49, 17, 57, 25],
+  [15, 47, 7, 39, 13, 45, 5, 37], [63, 31, 55, 23, 61, 29, 53, 21],
+].map((r) => r.map((v) => (v + 0.5) / 64));
+
+/**
+ * The height of the head at one art cell.
+ *
+ * The rest of the game's art is a height field that gets lit, and a flat
+ * sprite dropped into the middle of it reads as a sticker. So the drawn art
+ * gets a height field of its own: the crown is a dome, the brim is a thin
+ * plate that falls away at its edges, the skull and the hair are a bigger
+ * dome behind it, and the nose stands off the front of the face. Light it
+ * with the painter's own lamp and it belongs to the same world.
+ */
+function headHeight(x, y, ch, W) {
+  if (ch === 'o') return 0;
+  const dome = (cx, cy, rx, ry) => {
+    const d = ((x - cx) / rx) ** 2 + ((y - cy) / ry) ** 2;
+    return d >= 1 ? 0 : Math.sqrt(1 - d);
+  };
+  if (y <= 4) return 0.52 + dome(7.4, 3.4, 5.0, 4.6) * 0.48;   // the crown
+  if (y <= 6) {                                                 // the brim
+    const t = 1 - Math.abs(x - 7.5) / (W / 2);
+    return 0.22 + t * t * 0.22;
+  }
+  let h = 0.34 + dome(6.6, 12.0, 7.6, 8.4) * 0.62;              // skull and hair
+  // the nose, the brow and the lips stand off the front of it
+  if (y >= 11 && y <= 12 && x >= 11) h += 0.16;
+  if (y === 9 && x >= 10) h += 0.07;
+  if (y === 15 && x >= 9) h += 0.05;
+  // and the eye socket is a hollow, not a flat patch
+  if (y >= 10 && y <= 11 && x >= 8 && x <= 11) h -= 0.10;
+  return h;
+}
+
 function paintHeadSide(K, far, kind, opts = {}) {
-  // One art pixel per world pixel. The rig's K is the body's scale, and a
-  // head drawn at any multiple of it is a head that does not belong to the
-  // body it is sitting on.
-  const px = Math.max(1, Math.round(K));
+  // The head is drawn a third larger than the body's own pixel, because his
+  // head is the half of him you are meant to read - the hat, the hair and the
+  // glasses are the character, and at the body's scale they were four pixels
+  // of brown.
+  const px = Math.max(1, Math.round(K * 1.32));
   const rows = HEAD_ART.slice();
   const mood = opts.mood | 0;
   // 7 weary and 12 grim read as shut at this size; 2, 3, 8 and 9 are open
@@ -344,6 +385,17 @@ function paintHeadSide(K, far, kind, opts = {}) {
   const g = cv.getContext('2d');
   g.imageSmoothingEnabled = false;
   const elder = kind === 'elder';
+
+  // the height field first, so the lighting can read slopes off it
+  const hgt = new Float32Array(W * H);
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const ch = rows[y][x];
+      hgt[y * W + x] = (ch === '.' || ch === 'o') ? 0 : headHeight(x, y, ch, W);
+    }
+  }
+  const at = (x, y) => (x < 0 || y < 0 || x >= W || y >= H) ? 0 : hgt[y * W + x];
+
   for (let y = 0; y < H; y++) {
     for (let x = 0; x < W; x++) {
       const ch = rows[y][x];
@@ -359,6 +411,21 @@ function paintHeadSide(K, far, kind, opts = {}) {
       }
       if (opts.spore && (ch === 'l' || ch === 'L' || ch === 'e')) {
         col = ch === 'L' ? '#d8b4ff' : '#a86cd8';
+      }
+      if (ch !== 'o') {
+        // the painter's lamp: over his left shoulder and well above him
+        const dx = (at(x + 1, y) - at(x - 1, y)) * 1.7;
+        const dy = (at(x, y + 1) - at(x, y - 1)) * 1.7;
+        const nl = Math.hypot(dx, dy, 1) || 1;
+        let lam = (-dx * -0.55 + -dy * -0.72 + 0.42) / (nl * 0.99);
+        lam = clamp01(lam * 0.86 + at(x, y) * 0.30);
+        // quantised through the same dither, so it bands like the rest
+        const bay = HEAD_BAYER[y & 7][x & 7];
+        const step = 0.16;
+        const q = Math.round((lam + (bay - 0.5) * step * 0.34) / step) * step;
+        const s = clamp01(q) - 0.58;
+        col = s > 0 ? mixHex(col, '#fff1cf', Math.min(0.34, s * 0.72))
+                    : mixHex(col, '#2a1a20', Math.min(0.40, -s * 0.62));
       }
       if (far) col = mixHex(col, '#8a7a63', 0.34);
       g.fillStyle = col;
@@ -378,7 +445,7 @@ function paintHeadSide(K, far, kind, opts = {}) {
 
 /** His head at a given size, baked once per look. */
 export function headSide(K = 1, opts = {}) {
-  const k = `${Math.max(1, Math.round(K))}:${opts.kind || 'vess'}:${opts.mood | 0}:` +
+  const k = `${Math.max(1, Math.round(K * 1.32))}:${opts.kind || 'vess'}:${opts.mood | 0}:` +
     `${opts.noHat ? 1 : 0}:${opts.spore ? 1 : 0}:${opts.far ? 1 : 0}`;
   let v = sideHeads.get(k);
   if (!v) {
