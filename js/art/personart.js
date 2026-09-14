@@ -267,8 +267,8 @@ export const FACE_COUNT = FACES.length;
 
 const HEAD_KEY = {
   o: '#301d1f',   // his outline, off the darkest of his own tones
-  h: '#583732',   // hair
-  H: '#875545',   // hair, lit
+  h: '#6b4131',   // hair
+  H: '#a06a4a',   // hair, lit
   s: '#df8b69',   // skin
   S: '#e5936f',   // skin, lit
   d: '#c8765c',   // skin, shaded
@@ -294,31 +294,34 @@ const HEAD_KEY = {
 // under it, a chin, and then the jaw running back and up to under the ear.
 // Take any one of those away and he is a blob in a hat again.
 const HEAD_ART = [
-  '....oTTTTTo....',
-  '...oTTTTTTTo...',
-  '...ottTTTTTTo..',
-  '.oobbbbbggeeoo.',
-  'ottttttttttttto',
-  'ouuuuuuuuuuuuo.',
-  '.oohhhhhhHsoo..',
-  '.ohHhhhhsSSso..',
-  '.ohHhhhrrrso...',
-  '.ohHhhhrlLsso..',
-  '.ohHhhhssssSso.',
-  '.ohHhhssssdoo..',
-  '.ohhhhHsssso...',
-  '..ohhhqqsmmso..',
-  '...ohsqqqqso...',
-  '....oddddoo....',
+  '.....oTTTToo....',
+  '....oTTTTTggo...',
+  '...ottTTTgeeo...',
+  '...ottTTTgeeo...',
+  '..obbbbbbbbbbo..',
+  '.otttttttttttto.',
+  'otttttttttttttto',
+  'uuohhhhhhHHhoouu',
+  'oohhhhhhhhhso.oo',
+  'ohhHhhhhdsSSso..',
+  'ohhHhhhhrrrso...',
+  'ohhHhhhhrlLrso..',
+  '.ohhhhhsssssSso.',
+  'ohhhhHhhsssdoo..',
+  '.ohhhHhssssso...',
+  '.ohhhHhqqmmmso..',
+  '.ohhhhhqqqqso...',
+  '..ohhhhsssoo....',
+  '...ohhbbbdo.....',
 ];
 
 /** Shut: the lens goes dark and the lid closes under the brim. */
 const HEAD_SHUT = {
-  9: '.ohHhhhrrdsso..',
+  11: 'ohhHhhhhrrrrso..',
 };
 /** Talking: the jaw drops and the mouth is a hole rather than a line. */
 const HEAD_OPEN = {
-  14: '...ohsqqmmso...',
+  16: '.ohhhhhqqmmso...',
 };
 
 const sideHeads = new Map();
@@ -363,13 +366,13 @@ function paintHeadSide(K, far, kind, opts = {}) {
     }
   }
   // the hat can come off, and when it does the brim goes with it
-  if (opts.noHat) g.clearRect(0, 0, W * px, 6 * px);
+  if (opts.noHat) g.clearRect(0, 0, W * px, 7 * px);
   return {
     cv,
     ox: (W / 2) * px,
     oy: (H - 1) * px,
     W: W * px, H: H * px,
-    eye: { x: 1 * px, y: -6 * px },
+    eye: { x: 2 * px, y: -7 * px },
   };
 }
 
