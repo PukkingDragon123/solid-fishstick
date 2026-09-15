@@ -38,6 +38,9 @@ export class Sea {
     this.snow = [];            // marine snow: the sea is full of falling bits
     this.cells = new Map();
     this.yearShow = 0;
+    // When the sea is the one that never left, its surface does not track the
+    // ground - it is a level, the way a real body of water is.
+    this.flat = null;
   }
 
   get active() { return this.on; }
@@ -92,20 +95,63 @@ export class Sea {
     }
   }
 
-  stop() { this.on = false; }
+  stop() { this.on = false; this.flat = null; }
   beginDrain() { this.draining = true; }
 
   /** Where the surface is, in world Y. It walks down as the sea goes. */
   level(x = this.game.crab.x) {
+    if (this.flat !== null) return this.flat;
     const g = this.game.terrain.surfaceY(x);
     return g - DEPTH * (1 - this.drain) + this.drain * 40;
+  }
+
+  /**
+   * Everything the sea draws over the whole frame - the tint, the column, the
+   * silt - has to stop at the waterline once the sea is a body of water with
+   * a top to it rather than something you are thirty metres under. In the
+   * prologue the surface is above the frame and this is a no-op.
+   *
+   * Returns true when it pushed a clip, so the caller knows to restore.
+   */
+  _clipWater(ctx, cam, vw, vh) {
+    if (this.flat === null) return false;
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(0, vh);
+    for (let x = 0; x <= vw; x += 6) {
+      const w = cam.screenToWorld(x, 0).x;
+      ctx.lineTo(x, cam.worldToScreen(w, this.level(w)).y);
+    }
+    ctx.lineTo(vw, vh);
+    ctx.closePath();
+    ctx.clip();
+    return true;
+  }
+
+  /**
+   * The standing ocean out west. Same water, same animals, no drain - the
+   * surface is a level rather than a depth below the ground, and everything
+   * that already knew how to draw a sea carries on as it was.
+   */
+  startStanding(level) {
+    this.flat = level;
+    this.start();
+    this.flat = level;
+    this.draining = false;
+    this.drain = 0;
   }
 
   _spawnFish(x) {
     const kind = FISH_KINDS[Math.floor(Math.random() * FISH_KINDS.length)];
     const g = this.game.terrain.surfaceY(x);
+    // in a standing sea a fish lives between the bed and the surface, and
+    // the surface is a level rather than a fixed distance up
+    const top = this.flat !== null ? this.level(x) + 8 : g - DEPTH + 20;
+    if (this.flat !== null && g <= top + 6) return;
     this.fish.push({
-      kind, x, y: g - 20 - Math.random() * (DEPTH - 40),
+      kind, x, y: this.flat !== null
+        ? top + Math.random() * Math.max(10, g - 10 - top)
+        : g - 20 - Math.random() * (DEPTH - 40),
       dir: Math.random() < 0.5 ? -1 : 1,
       sp: 16 + Math.random() * 30, s: 0.55 + Math.random() * 0.6,
       ph: Math.random() * TAU, bob: 3 + Math.random() * 7, turn: 2 + Math.random() * 6,
@@ -284,6 +330,7 @@ export class Sea {
   drawDeep(ctx, cam, vw, vh) {
     const wet = this.wet;
     if (wet <= 0.02) return;
+    const clipped = this._clipWater(ctx, cam, vw, vh);
     const z = cam.zoom;
 
     // marine snow first, so the whale passes in front of it
@@ -341,6 +388,7 @@ export class Sea {
       }
       ctx.globalAlpha = 1;
     }
+    if (clipped) ctx.restore();
   }
 
   /** Everything growing on the bottom. `far` is the layer behind the animal. */
@@ -354,6 +402,9 @@ export class Sea {
       let x = it.x;
       if (it.walk) x += Math.sin(this.t * 0.5 + it.sway) * it.walk;
       const y = this.game.terrain.surfaceY(x);
+      // A standing sea has a shoreline, and coral does not grow past it.
+      // (In the prologue the whole world is under water and this is free.)
+      if (this.flat !== null && y < this.level(x) + 3) continue;
       const s = cam.worldToScreen(x, y);
       const art = reefArt(it.kind, Math.max(0.35, it.s * (far ? 0.8 : 1)), it.seed);
       const sway = Math.sin(this.t * 0.8 + it.sway) * 0.05 * wet;
@@ -370,10 +421,13 @@ export class Sea {
 
   /** The swimmers, and the bubbles going up past them. */
   drawSwimmers(ctx, cam) {
+    // fish out of water is a saying for a reason
+    const ceil = this.flat === null ? -1e9 : this.level(0) + 4;
     const wet = this.wet;
     if (wet <= 0.02) return;
     const z = cam.zoom;
     for (const f of this.fish) {
+      if (f.y < ceil) continue;
       const s = cam.worldToScreen(f.x, f.y);
       if (s.x < -40 || s.x > this.game.renderer.vw + 40) continue;
       const art = fishArt(f.kind, Math.max(0.4, f.s));
@@ -436,17 +490,22 @@ export class Sea {
     const surfW = cam.worldToScreen(cam.x, this.level(cam.x)).y;
 
     const col = ctx.createLinearGradient(0, Math.min(surfW, 0), 0, vh);
-    col.addColorStop(0, `rgba(120,212,226,${0.94 * wet})`);
-    col.addColorStop(0.40, `rgba(38,140,168,${0.97 * wet})`);
-    col.addColorStop(1, `rgba(12,74,102,${0.99 * wet})`);
+    const solid = this.flat === null;
+    col.addColorStop(0, `rgba(120,212,226,${(solid ? 0.94 : 0.50) * wet})`);
+    col.addColorStop(0.40, `rgba(38,140,168,${(solid ? 0.97 : 0.72) * wet})`);
+    col.addColorStop(1, `rgba(12,74,102,${(solid ? 0.99 : 0.90) * wet})`);
     ctx.save();
     ctx.beginPath();
-    ctx.moveTo(0, 0);
-    for (let x = 0; x <= vw; x += 6) {
+    const topAt = (x) => {
+      const w = cam.screenToWorld(x, 0).x;
+      return this.flat !== null ? cam.worldToScreen(w, this.level(w)).y : 0;
+    };
+    ctx.moveTo(0, topAt(0));
+    for (let x = 0; x <= vw; x += 6) ctx.lineTo(x, topAt(x));
+    for (let x = vw; x >= 0; x -= 6) {
       const w = cam.screenToWorld(x, 0).x;
       ctx.lineTo(x, cam.worldToScreen(w, terr.surfaceY(w)).y);
     }
-    ctx.lineTo(vw, 0);
     ctx.closePath();
     ctx.clip();
     ctx.fillStyle = col;
@@ -483,6 +542,7 @@ export class Sea {
   overlay(ctx, cam, vw, vh) {
     const wet = this.wet;
     if (wet <= 0.01) return;
+    const clipped = this._clipWater(ctx, cam, vw, vh);
     const terr = this.game.terrain;
     const z = cam.zoom;
     const surfW = cam.worldToScreen(cam.x, this.level(cam.x)).y;
@@ -564,5 +624,6 @@ export class Sea {
       ctx.fillRect(Math.round(vw / 2 - w / 2), ty + 10, Math.round(w * this.drain), 1);
       ctx.globalAlpha = 1;
     }
+    if (clipped) ctx.restore();
   }
 }

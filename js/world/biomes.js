@@ -4,6 +4,21 @@
 
 export const BIOMES = [
   {
+    // The part of it that never left. Past the salt pan the shelf goes over
+    // and the water is still standing on it, with the same animals in it that
+    // the prologue had - they simply stayed where the water was.
+    id: 'theshallows', name: 'The Shallows',
+    x0: -26000, x1: -14000,
+    blurb: 'The sea did not go everywhere. It went almost everywhere.',
+    groundMat: 'sandPale', crustMat: 'bone', pebbleMat: 'bone', mesaMat: 'bone',
+    baseY: 10, flatten: 0.55, pebbles: 11,
+    sky: ['#12283c', '#3f6a86', '#89b4bd', '#c6e2e2'],
+    fog: '#a9cdd2', heat: 0.3,
+    plants: ['ribbonkelp', 'pipereed', 'saltgrass'],
+    fauna: ['boneheron', 'glasstail', 'saltlark'],
+    props: ['coral', 'driftwood', 'rock'],
+  },
+  {
     id: 'saltpan', name: 'The Weeping Salt Pan',
     x0: -14000, x1: -6200,
     blurb: 'The floor of the old sea. It still tastes like it.',

@@ -13,6 +13,7 @@ import { MATERIALS } from '../lib/palette.js';
 import { buildPlant } from '../art/floraart.js';
 import { FLORA_BY_ID } from '../data/flora.js';
 import { biomeAt } from './biomes.js';
+import { propsIn, propArt, Tumbleweeds } from './props.js';
 
 const CELL = 2400;               // one landmark per stretch of desert
 
@@ -371,6 +372,8 @@ export class World {
     this.found = new Set();
     this.scatter = new Map();     // chunk index -> plant list
     this.t = 0;
+    // the things that are in the way, and the one thing that is not
+    this.weeds = new Tumbleweeds(game);
   }
 
   chunkScatter(ci) {
@@ -384,6 +387,7 @@ export class World {
 
   update(dt) {
     this.t += dt;
+    this.weeds.update(dt);
     const cx = this.game.crab.x;
     for (const lm of landmarksNear(this.seed, cx, 260)) {
       if (this.found.has(lm.id)) continue;
@@ -437,6 +441,49 @@ export class World {
       ctx.drawImage(art.cv, -art.w / 2, -art.h);
       ctx.restore();
     }
+  }
+
+  /**
+   * Rock and scrub. Boulders go down first because the ground is already
+   * shaped like them - the sprite only has to sit in the dent it makes - and
+   * the dry stuff goes on top, leaning with the wind.
+   */
+  drawProps2(ctx, cam, layer) {
+    const t = this.game.terrain;
+    const z = cam.zoom;
+    const b = cam.bounds(80);
+    const w = this.game.weather;
+    const c0 = Math.floor(b.x0 / 128) - 1, c1 = Math.floor(b.x1 / 128) + 1;
+    for (let ci = c0; ci <= c1; ci++) {
+      for (const p of propsIn(this.seed, ci)) {
+        if (p.x < b.x0 - 60 || p.x > b.x1 + 60) continue;
+        const big = p.kind === 'boulder' || (p.s || 0) > 1.05;
+        if ((big ? 'far' : 'near') !== layer) continue;
+        const art = propArt(p);
+        if (!art) continue;
+        // A boulder is drawn against the sand AROUND it, not the ground on
+        // top of it - the ground on top of it is the boulder. baseY already
+        // has the bump subtracted, so adding the bump back gets the level the
+        // rock is sitting in.
+        const gy = p.kind === 'boulder'
+          ? t.baseY(p.x) + (art.top || 0) : t.surfaceY(p.x);
+        const s = cam.worldToScreen(p.x, gy);
+        ctx.save();
+        ctx.translate(Math.round(s.x), Math.round(s.y));
+        ctx.scale(z, z);
+        if (p.kind !== 'boulder') {
+          // dry things move; rock does not
+          const sway = Math.sin(this.t * 1.9 + p.x * 0.07) * 0.045
+            * (0.4 + (w?.windSpeed || 0.4)) * (w?.windDir || 1);
+          ctx.rotate(sway);
+          if (p.flip) ctx.scale(-1, 1);
+          ctx.globalAlpha = p.shade;
+        }
+        ctx.drawImage(art.cv, -art.ox, -art.oy);
+        ctx.restore();
+      }
+    }
+    ctx.globalAlpha = 1;
   }
 
   /** Standing water sunk into the ground, with a lip of wet sand. */

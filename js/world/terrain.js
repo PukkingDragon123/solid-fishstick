@@ -10,6 +10,8 @@ import { Painter, makeCanvas, fbmTex, hash2i } from '../render/pixel.js';
 import { MATERIALS } from '../lib/palette.js';
 import { BIOMES, biomeAt, biomeBlend } from './biomes.js';
 import { groundOffset } from './landmarks.js';
+import { propBump, cliffOffset } from './props.js';
+import { shelfOffset } from './ocean.js';
 
 export const CHUNK_W = 256;
 const CHUNK_H = 224;
@@ -42,6 +44,16 @@ export class Terrain {
     y += b.baseY * 0.35;
     // oases are real bowls sunk into the ground, baked in with everything else
     y += groundOffset(this.seedKey, x);
+    // and a boulder is not a sprite standing on the sand - it IS the sand,
+    // lifted. That is what makes one an obstacle without a line of collision
+    // code: the floor goes up, your feet find it, and you climb.
+    y += propBump(this.seedKey, x);
+    // and the benches the wind cut out of the rock, which are the only
+    // places out here you have to climb rather than walk
+    y += cliffOffset(this.seedKey, x);
+    // and off the west end the ground simply keeps going down, because that
+    // is where the water still is
+    y += shelfOffset(x);
     return y;
   }
 

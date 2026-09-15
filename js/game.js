@@ -12,6 +12,7 @@ import { Renderer } from './render/renderer.js';
 import { Backdrop } from './render/backdrop.js';
 import { drawPlate } from './ui/icons.js';
 import { Terrain } from './world/terrain.js';
+import { Ocean } from './world/ocean.js';
 import { Weather } from './world/weather.js';
 import { biomeAt } from './world/biomes.js';
 import { World } from './world/landmarks.js';
@@ -128,6 +129,8 @@ export class Game {
     this.talk = new TalkScreen(this);
     this.pump = new Pump(this);
     this.sea = new Sea(this);
+    // and the one that never left, out past the salt pan
+    this.shallows = new Ocean(this);
     this.green = new Green(this);
     this.digs = new Digs(this, this.seed);
     this.mining = new Mining(this, this.seed);
@@ -999,7 +1002,8 @@ export class Game {
    * this keeps it off the desert anyway.
    */
   get seaShowing() {
-    return this.sea.active && (this.state === 'prologue' || this.state === 'burying');
+    return this.sea.active
+      && (this.state === 'prologue' || this.state === 'burying' || this.shallows.on);
   }
 
   /**
@@ -1386,6 +1390,7 @@ export class Game {
     else if (Math.abs(this.npc.x - this.crab.x) < 90) this.crab.alertTo(this.npc, 0.3 * sdt);
     this.encounters.update(sdt);
     this.world.update(sdt);
+    this.shallows.update(sdt);
     this.npc.update(sdt);
     this.fx.update(sdt, this.weather);
 
@@ -2627,6 +2632,7 @@ export class Game {
     this.world.drawWater(ctx, cam);
     this.terrain.drawSand(ctx, cam);
     this.green.drawGround(ctx, cam, this.terrain);
+    this.world.drawProps2(ctx, cam, 'far');
     this.world.drawScatter(ctx, cam, 'far');
     // the giants go behind even the far reef: they are thirty metres up and
     // several hundred metres off, and everything on the bottom is in front
@@ -2661,6 +2667,9 @@ export class Game {
     if (this.state === 'play') this.ui.drawCrop(ctx, cam);
     this.fx.draw(ctx, cam, 'near');
     this.world.drawScatter(ctx, cam, 'near');
+    this.world.drawProps2(ctx, cam, 'near');
+    this.world.weeds.draw(ctx, cam);
+    if (this.state === 'play') this.shallows.draw(ctx, cam, r.vw, r.vh);
     this._drawGreenPlants(ctx, cam);
     this._drawDigs(ctx, cam);
     if (this.seaShowing) { this.sea.drawReef(ctx, cam, false); this.sea.drawSwimmers(ctx, cam); }

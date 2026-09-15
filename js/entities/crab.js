@@ -183,8 +183,28 @@ export class Crab {
     else if (move < -0.1) { this.facing = -1; this._startTurn(-1); }
     if (this.turnP < 1) this.turnP = Math.min(1, this.turnP + dt / 0.42);
 
+    // -- climbing ----------------------------------------------------------
+    // The ground is not flat and the animal weighs what it weighs. Going up a
+    // boulder or a rock bench costs you speed, and the steeper it is the more
+    // it costs - which is what makes a step in the ground a decision rather
+    // than a texture you slide over. Coming back down is free; gravity is on
+    // your side and always has been.
+    const dir = move > 0.1 ? 1 : move < -0.1 ? -1 : (this.facing || 1);
+    const LOOK = this.m.shellW * 0.42 + 8;
+    const rise = (t.baseY(this.x) - t.baseY(this.x + dir * LOOK)) / LOOK;
+    const grade = clamp01((rise - 0.28) / 1.05);
+    this.climb = damp(this.climb || 0, Math.abs(move) > 0.1 ? grade : 0, 0.0008, dt);
+    const climbMul = 1 - grade * 0.76;
+
+    // -- and under water ---------------------------------------------------
+    // You are a crab. You do not swim; you walk on the bottom, and the water
+    // pushes back on everything you do - which is the whole difference in
+    // feel between the desert and the shelf.
+    const wet = this.game.shallows?.wet || 0;
+    const wetMul = 1 - wet * 0.42;
+
     const pivot = this.turnP < 1 ? 0.16 : 1;
-    this.vx = damp(this.vx, move * speed * pivot, 0.0002, dt);
+    this.vx = damp(this.vx, move * speed * pivot * climbMul * wetMul, 0.0002, dt);
     if (Math.abs(this.vx) < 0.6) this.vx = 0;
     this.x += this.vx * dt;
     this.lean = damp(this.lean, clamp(this.vx / this.speed, -1, 1) * 0.7, 0.0009, dt);
@@ -203,6 +223,21 @@ export class Crab {
     // a shell loaded heavier on one side makes the animal walk with a list
     const list = ctrl.list || 0;
     this.roll = damp(this.roll, Math.sin(this.bobT) * run * 0.05 * this.facing + list, 0.0012, dt);
+    // going up a face the animal rears: the front comes up, the back stays
+    // down, and the legs on the rock throw grit
+    // buoyancy: the shell wants to float and the legs will not let it
+    if (wet > 0.02) {
+      this.bob -= Math.sin(this.breathe * 0.7) * wet * this.S * 1.7;
+      this.roll += Math.sin(this.breathe * 0.5) * wet * 0.02;
+    }
+    if (this.climb > 0.05) {
+      this.roll -= this.climb * 0.13 * this.facing;
+      this.bob -= this.climb * this.S * 1.4;
+      if (Math.random() < dt * this.climb * 14) {
+        this.game.fx?.spark?.(this.x + this.facing * this.m.shellW * 0.34,
+          t.surfaceY(this.x + this.facing * this.m.shellW * 0.34) - 2, '#b39a74', 2, 22);
+      }
+    }
 
     // the eyes go where the attention is, which is usually the way it is going
     this.lookT -= dt;
