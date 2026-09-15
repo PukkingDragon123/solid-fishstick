@@ -59,6 +59,20 @@ export function propsIn(seed, ci) {
       red: b.id === 'badlands' || r() < 0.35,
     });
   }
+  // A MAST. Not many, and never two together: a columnar tree gets to be a
+  // columnar tree by being the only thing within thirty metres drinking.
+  if (r() < (stony ? 0.05 : 0.14)) {
+    out.push({
+      kind: 'mast',
+      x: x0 + r() * CELL,
+      id: `mast${ci}`,
+      h: 62 + r() * 74,
+      arms: r() < 0.22 ? 0 : 1 + Math.floor(r() * 3),
+      seed: (r() * 1e9) >>> 0,
+      flip: r() < 0.5,
+      shade: 0.86 + r() * 0.14,
+    });
+  }
   // scrub: common, and clustered, because dry things grow where other dry
   // things already managed it
   const n = r() < 0.5 ? 0 : 1 + Math.floor(r() * 3);
@@ -115,67 +129,111 @@ export function propBump(seed, x) {
 }
 
 // ---------------------------------------------------------------------------
-// cliffs
+// rock formations
 //
-// A dune is a slope you do not notice. A cliff is a slope you have to decide
-// about. Every so often the ground simply steps - a bench of rock the wind cut
-// out of the strata - and going up it costs you: the animal rears, the legs
-// reach higher, and it takes four times as long as the flat did.
-//
-// They are kept to a grade the animal can actually take. A wall you cannot
-// climb is not a landscape feature, it is a locked door, and nothing out here
-// should be locked.
+// A step in the ground is not a mountain. What the basin actually has in it is
+// ROCK: the harder beds of the old sea floor, left standing where the wind took
+// everything softer away - buttes, benches, fins, the stumps of things that
+// used to be bigger. They stand on the desert rather than being cut into it,
+// they are made of courses you can read, and they go up in TERRACES, which is
+// the whole point: a terrace is a step an animal can take, so a formation is
+// something you climb rather than something you walk around.
 
-const CLIFF_CELL = 1150;
-const cliffCache = new Map();
-let cliffSeed = null;
+const FORM_CELL = 1400;
+const formCache = new Map();
+let formSeed = null;
 
-function cliffIn(seed, ci) {
-  if (seed !== cliffSeed) { cliffSeed = seed; cliffCache.clear(); }
-  let v = cliffCache.get(ci);
+function formIn(seed, ci) {
+  if (seed !== formSeed) { formSeed = seed; formCache.clear(); }
+  let v = formCache.get(ci);
   if (v !== undefined) return v;
-  const r = mulberry32((hashStr(String(seed) + 'cliff') ^ (ci * 1103515245)) >>> 0);
-  const x = ci * CLIFF_CELL + CLIFF_CELL * (0.2 + r() * 0.6);
+  const r = mulberry32((hashStr(String(seed) + 'form') ^ (ci * 1103515245)) >>> 0);
+  const x = ci * FORM_CELL + FORM_CELL * (0.2 + r() * 0.6);
   const b = biomeAt(x);
-  const stony = b.id === 'badlands' || b.id === 'ridge' || b.id === 'saltpan';
-  v = (ci === 0 || r() > (stony ? 0.85 : 0.45)) ? null : {
-    x,
-    // up or down, because a world that only ever steps up is a staircase
-    h: (26 + r() * 42) * (r() < 0.5 ? 1 : -1),
-    run: 24 + r() * 18,
+  const stony = b.id === 'badlands' || b.id === 'ridge' || b.id === 'saltpan'
+    || b.id === 'glassflats' || b.id === 'ashwood' || b.id === 'deepwell';
+  if (ci === 0 || r() > (stony ? 0.8 : 0.5)) { formCache.set(ci, null); return null; }
+  // three shapes, because three is enough to stop it reading as one asset:
+  // a butte with a flat top, a stack of benches, and a low fin
+  const kind = r() < 0.4 ? 'butte' : r() < 0.75 ? 'bench' : 'fin';
+  const h = kind === 'butte' ? 74 + r() * 78 : kind === 'bench' ? 46 + r() * 54 : 30 + r() * 26;
+  v = {
+    id: 'fm' + ci, ci, x, kind,
+    h,
+    w: h * (kind === 'fin' ? 3.4 : 1.5 + r() * 0.9),
+    steps: kind === 'fin' ? 2 : 3 + Math.floor(r() * 3),
+    seed: (hashStr(String(seed)) ^ (ci * 7919)) >>> 0,
+    red: b.mesaMat === 'rockRed' || r() < 0.4,
+    flip: r() < 0.5,
   };
-  cliffCache.set(ci, v);
-  if (cliffCache.size > 300) cliffCache.clear();
+  formCache.set(ci, v);
+  if (formCache.size > 220) formCache.clear();
   return v;
 }
 
-/** The step in the ground here, if any. */
-export function cliffOffset(seed, x) {
-  const c = Math.floor(x / CLIFF_CELL);
+/**
+ * How high the rock stands at this point.
+ *
+ * Terraced: the profile is a staircase with the treads rounded off, so every
+ * riser is inside what the animal can climb and the whole thing is still a
+ * hundred and fifty pixels of rock. `u` runs -1..1 across the formation.
+ */
+function formHeight(f, u) {
+  const a = Math.abs(u);
+  if (a >= 1) return 0;
+  const dir = f.flip ? -u : u;
+  // the staircase: each step is a plateau with a rounded riser in front of it
+  const t = 1 - a;
+  const s = f.steps;
+  const step = Math.min(s - 1, Math.floor(t * s));
+  const frac = t * s - step;
+  const ease = frac * frac * (3 - 2 * frac);
+  const tier = (step + ease) / s;
+  // one side is cut back harder than the other, so it is not a symmetric lump
+  const lean = 1 - clamp01((dir + 1) / 2) * 0.22;
+  return f.h * Math.pow(tier, 0.82) * lean;
+}
+
+export function formNear(seed, x, radius = FORM_CELL) {
+  const out = [];
+  const c0 = Math.floor((x - radius) / FORM_CELL), c1 = Math.floor((x + radius) / FORM_CELL);
+  for (let ci = c0; ci <= c1; ci++) {
+    const f = formIn(seed, ci);
+    if (f && Math.abs(f.x - x) <= radius + f.w) out.push(f);
+  }
+  return out;
+}
+
+/**
+ * How much rock is stacked at this point - the same number `cliffOffset`
+ * subtracts, given a name so the terrain painter can put ROCK there instead
+ * of sand. Without it a butte is a hundred and fifty pixels of dune.
+ */
+export function formDepth(seed, x) {
+  const c = Math.floor(x / FORM_CELL);
   let d = 0;
   for (let ci = c - 1; ci <= c + 1; ci++) {
-    const f = cliffIn(seed, ci);
+    const f = formIn(seed, ci);
     if (!f) continue;
-    const u = (x - f.x) / f.run;
-    if (u <= -1) continue;
-    if (u >= 1) { d -= f.h; continue; }
-    // smoothstep, so the top and the bottom of the face round off the way a
-    // weathered bench does and there is no pixel-wide ledge to catch a foot
-    const k = (u + 1) / 2;
-    d -= f.h * k * k * (3 - 2 * k);
+    const u = (x - f.x) / f.w;
+    if (u <= -1 || u >= 1) continue;
+    d += formHeight(f, u);
   }
   return d;
 }
 
-/** Where the nearest cliff face is, for anything that wants to avoid one. */
-export function cliffNear(seed, x, radius = CLIFF_CELL) {
-  const out = [];
-  const c0 = Math.floor((x - radius) / CLIFF_CELL), c1 = Math.floor((x + radius) / CLIFF_CELL);
-  for (let ci = c0; ci <= c1; ci++) {
-    const f = cliffIn(seed, ci);
-    if (f && Math.abs(f.x - x) <= radius) out.push(f);
+/** The rock, folded into the ground the same way the boulders are. */
+export function cliffOffset(seed, x) {
+  const c = Math.floor(x / FORM_CELL);
+  let d = 0;
+  for (let ci = c - 1; ci <= c + 1; ci++) {
+    const f = formIn(seed, ci);
+    if (!f) continue;
+    const u = (x - f.x) / f.w;
+    if (u <= -1 || u >= 1) continue;
+    d -= formHeight(f, u);
   }
-  return out;
+  return d;
 }
 
 // ---------------------------------------------------------------------------
@@ -311,6 +369,111 @@ function paintSnag(p) {
   return { cv, ox: cx, oy: base };
 }
 
+/**
+ * A MAST.
+ *
+ * The desert's answer to a tree, and it is not a tree: no leaves, no canopy,
+ * nothing to lose water out of. One ribbed green column holding a season of
+ * rain, a couple of arms that turned up to the light, a woody grey foot where
+ * the bottom has given up being green, and a crown of fruit if it got enough
+ * to spare. Fell it and you get the thing everybody out here actually wants,
+ * which is a straight piece of something.
+ */
+function paintMast(p) {
+  const r = mulberry32(p.seed);
+  const H = Math.ceil(p.h) + 10;
+  const W = Math.ceil(26 + p.arms * 22) + 10;
+  const pt = new Painter(W, H);
+  const cx = W / 2, base = H - 3;
+  const tw = 4.2 + p.h * 0.026;                 // how thick the column is
+
+  /** One ribbed limb, thinning as it goes. */
+  const limb = (x0, y0, x1, y1, w0, w1, ribs) => {
+    pt.capsule(x0, y0, x1, y1, w0, w1, { mat: 'leaf', dome: w0 * 1.25, tint: 0.02 });
+    // the ribs: what lets it swell and shrink with the water in it
+    const n = Math.max(2, Math.round(ribs));
+    for (let i = 0; i < n; i++) {
+      const u = (i + 0.5) / n - 0.5;
+      pt.capsule(x0 + u * w0 * 1.6, y0, x1 + u * w1 * 1.6, y1,
+        w0 * 0.14, w1 * 0.14, { mat: 'leaf', mask: true, dome: -w0 * 0.3, tint: -0.30 });
+    }
+  };
+
+  // the trunk, leaning a little because nothing grows plumb
+  const lean = (r() - 0.5) * 0.16;
+  const topY = base - p.h;
+  limb(cx, base, cx + lean * p.h, topY, tw, tw * 0.78, 5);
+  // the crown, rounded off
+  pt.ellipse(cx + lean * p.h, topY, tw * 0.78, tw * 0.62,
+    { mat: 'leaf', dome: tw * 0.9, tint: 0.1 });
+
+  // the arms: up out of the trunk and then up again, which is the whole
+  // silhouette anybody recognises
+  for (let i = 0; i < p.arms; i++) {
+    const side = i % 2 ? 1 : -1;
+    const at = 0.34 + r() * 0.34;
+    const y = base - p.h * at;
+    const out = (7 + r() * 9) + tw;
+    const up = p.h * (0.20 + r() * 0.26);
+    const w = tw * (0.62 + r() * 0.2);
+    limb(cx + lean * p.h * at, y, cx + side * out, y - out * 0.35, w, w * 0.94, 3);
+    limb(cx + side * out, y - out * 0.35, cx + side * out * 1.06, y - out * 0.35 - up,
+      w * 0.94, w * 0.8, 3);
+    pt.ellipse(cx + side * out * 1.06, y - out * 0.35 - up, w * 0.8, w * 0.64,
+      { mat: 'leaf', dome: w, tint: 0.1 });
+  }
+
+  // the foot, which stopped being green a long time ago
+  const fh = Math.min(p.h * 0.22, 16);
+  pt.capsule(cx, base, cx, base - fh, tw * 1.08, tw * 0.9,
+    { mat: 'wood', dome: tw * 1.1, tint: -0.04 });
+  for (let i = 0; i < 4; i++) {
+    const f = (i / 3 - 0.5) * 2;
+    pt.capsule(cx, base - 2, cx + f * tw * 2.4, base + 1, tw * 0.4, tw * 0.22,
+      { mat: 'wood', dome: tw * 0.4, tint: -0.14 });
+  }
+  pt.grain('wood', { freq: 0.6, amp: 0.26, seed: p.seed & 511 });
+
+  // spines, and fruit if it had a good year
+  pt.speckle('leaf', { density: 0.11, amp: 0.55, seed: (p.seed >> 5) & 1023 });
+  if (p.h > 92) {
+    for (let i = 0; i < 5; i++) {
+      const a = -Math.PI * (0.2 + r() * 0.6);
+      pt.ellipse(cx + lean * p.h + Math.cos(a) * tw * 0.8, topY + Math.sin(a) * tw * 0.7,
+        1.7, 1.5, { mat: 'berry', dome: 1.8, tint: 0.14 });
+    }
+  }
+  pt.smoothHeight(1, 0.3);
+  const cv = pt.resolve(MATERIALS, { outline: 0.9, outlineColor: '#141c12' });
+  return { cv, ox: cx, oy: base };
+}
+
+/** What is left after you fell one: a foot, and a splintered top. */
+function paintStump(p) {
+  const r = mulberry32(p.seed ^ 0x5bd1);
+  const tw = 4.2 + p.h * 0.026;
+  const H = Math.ceil(tw * 3) + 8, W = Math.ceil(tw * 6) + 8;
+  const pt = new Painter(W, H);
+  const cx = W / 2, base = H - 3;
+  pt.capsule(cx, base, cx, base - tw * 2, tw * 1.08, tw * 0.95,
+    { mat: 'wood', dome: tw * 1.1, tint: -0.06 });
+  // the break: splinters, not a saw cut
+  for (let i = 0; i < 6; i++) {
+    const u = (i / 5 - 0.5) * 2;
+    pt.capsule(cx + u * tw * 0.8, base - tw * 2, cx + u * tw * 0.9,
+      base - tw * (2 + r() * 1.1), tw * 0.16, tw * 0.08,
+      { mat: 'woodPale', dome: tw * 0.2, tint: 0.1 });
+  }
+  for (let i = 0; i < 4; i++) {
+    const f = (i / 3 - 0.5) * 2;
+    pt.capsule(cx, base - 2, cx + f * tw * 2.4, base + 1, tw * 0.4, tw * 0.22,
+      { mat: 'wood', dome: tw * 0.4, tint: -0.14 });
+  }
+  pt.grain('wood', { freq: 0.6, amp: 0.26, seed: p.seed & 511 });
+  const cv = pt.resolve(MATERIALS, { outline: 0.9, outlineColor: '#1a1410' });
+  return { cv, ox: cx, oy: base };
+}
+
 /** A ball of dry stems, drawn once and then spun at draw time. */
 function paintWeed(seed, s) {
   const r = mulberry32(seed);
@@ -330,7 +493,11 @@ function paintWeed(seed, s) {
   return { cv, ox: cx, oy: cy };
 }
 
-export function propArt(p) {
+export function propArt(p, felled = false) {
+  if (p.kind === 'mast') {
+    return bake(`m${p.seed}:${Math.round(p.h)}:${p.arms}:${felled ? 1 : 0}`,
+      () => (felled ? paintStump(p) : paintMast(p)));
+  }
   if (p.kind === 'boulder') {
     return bake(`b${p.seed}:${Math.round(p.w)}:${Math.round(p.h)}:${p.red ? 1 : 0}`,
       () => paintBoulder(p));

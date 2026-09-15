@@ -10,11 +10,17 @@ import { Painter, makeCanvas, fbmTex, hash2i } from '../render/pixel.js';
 import { MATERIALS } from '../lib/palette.js';
 import { BIOMES, biomeAt, biomeBlend } from './biomes.js';
 import { groundOffset } from './landmarks.js';
-import { propBump, cliffOffset } from './props.js';
+import { propBump, cliffOffset, formDepth } from './props.js';
 import { shelfOffset } from './ocean.js';
 
 export const CHUNK_W = 256;
-const CHUNK_H = 224;
+// How much ground is baked BELOW the lowest point of a chunk's surface. The
+// chunk's canvas is this plus however far the surface itself rises and falls
+// across the chunk, worked out per chunk - a fixed height was fine while the
+// ground was dunes, and became a row of flat-topped slabs with the sky showing
+// under them the moment anything in the world could step further than that.
+const CHUNK_DEPTH = 224;
+const CHUNK_MAX = 1024;
 const MAX_CHUNKS = 48;
 const SAND_CELL = 4;          // world px per deformation sample
 
@@ -132,25 +138,33 @@ export class Terrain {
   _paintChunk(cx) {
     const x0 = cx * CHUNK_W;
     const heights = new Float32Array(CHUNK_W + 1);
-    let minY = Infinity;
+    // how much of the column at each x is rock standing on the sand, rather
+    // than sand - a butte that paints as dune is just a very large dune
+    const rock = new Float32Array(CHUNK_W + 1);
+    let minY = Infinity, maxY = -Infinity, anyRock = false;
     for (let i = 0; i <= CHUNK_W; i++) {
       const h = this.baseY(x0 + i);
       heights[i] = h;
-      minY = Math.min(minY, h);
+      rock[i] = formDepth(this.seedKey, x0 + i);
+      if (rock[i] > 1) anyRock = true;
+      if (h < minY) minY = h;
+      if (h > maxY) maxY = h;
     }
     const top = Math.floor(minY) - 6;
-    const p = new Painter(CHUNK_W, CHUNK_H);
+    const H = Math.min(CHUNK_MAX, Math.ceil(maxY - top) + CHUNK_DEPTH);
+    const p = new Painter(CHUNK_W, H);
     const b = biomeAt(x0 + CHUNK_W / 2);
     const bodyMat = b.groundMat;
     const crustMat = b.crustMat;
     const seed = this.seed + cx * 977;
 
     // body of the ground, with strata that follow the surface loosely
-    p.field(0, 0, CHUNK_W - 1, CHUNK_H - 1, (fx, fy) => {
+    p.field(0, 0, CHUNK_W - 1, H - 1, (fx, fy) => {
       const gx = Math.floor(fx);
       const surf = heights[clamp(gx, 0, CHUNK_W)] - top;
       if (fy < surf) return null;
       const depth = fy - surf;
+      if (depth < rock[clamp(gx, 0, CHUNK_W)]) return null;   // the rock owns it
       // crust catches the light, so give the first few pixels real height
       const dome = depth < 3 ? 4 - depth : 0;
       const strat = fbmTex((x0 + fx) * 0.02, fy * 0.11, seed + 3, 3);
@@ -160,22 +174,48 @@ export class Terrain {
       return { h: dome + strat * 1.2, tint };
     }, { mat: bodyMat });
 
+    // THE ROCK. Beds run level, not parallel to the surface, because a bed
+    // was laid down flat and then the wind took the soft stuff off the top of
+    // it - which is exactly why the terraces are where they are.
+    if (anyRock) {
+      p.field(0, 0, CHUNK_W - 1, H - 1, (fx, fy) => {
+        const gx = clamp(Math.floor(fx), 0, CHUNK_W);
+        const surf = heights[gx] - top;
+        const depth = fy - surf;
+        if (depth < 0 || depth >= rock[gx]) return null;
+        const wy = fy + top;
+        // the courses, and a harder band every few of them that stands proud
+        const bed = fbmTex((x0 + fx) * 0.006, wy * 0.09, seed + 61, 2);
+        const course = Math.sin((wy + bed * 5) * 0.33) * 0.5 + 0.5;
+        const hard = Math.sin((wy + bed * 3) * 0.075) * 0.5 + 0.5;
+        const grit = fbmTex((x0 + fx) * 0.11, wy * 0.13, seed + 83, 3);
+        // the face is lit, the shoulder of each course is not
+        const lip = depth < 2.2 ? 3.2 - depth : 0;
+        return {
+          h: lip + hard * 2.4 + course * 1.1 + grit * 1.1,
+          tint: (course - 0.5) * 0.22 + (hard - 0.5) * 0.16 + (grit - 0.5) * 0.18,
+        };
+      }, { mat: b.mesaMat });
+    }
+
     // sunlit crust
-    p.field(0, 0, CHUNK_W - 1, CHUNK_H - 1, (fx, fy) => {
+    p.field(0, 0, CHUNK_W - 1, H - 1, (fx, fy) => {
       const gx = Math.floor(fx);
       const surf = heights[clamp(gx, 0, CHUNK_W)] - top;
       const depth = fy - surf;
       if (depth < 0 || depth > 2.4) return null;
+      if (rock[clamp(gx, 0, CHUNK_W)] > 1.5) return null;
       const n = fbmTex((x0 + fx) * 0.16, fy * 0.3, seed + 41, 2);
       return { h: 5 - depth * 1.4, tint: (n - 0.4) * 0.3 + 0.1 };
     }, { mat: crustMat });
 
     // wind ripples running across the surface
-    p.field(0, 0, CHUNK_W - 1, CHUNK_H - 1, (fx, fy) => {
+    p.field(0, 0, CHUNK_W - 1, H - 1, (fx, fy) => {
       const gx = Math.floor(fx);
       const surf = heights[clamp(gx, 0, CHUNK_W)] - top;
       const depth = fy - surf;
       if (depth < 1 || depth > 16) return null;
+      if (rock[clamp(gx, 0, CHUNK_W)] > 1.5) return null;    // wind does not ripple rock
       // ripples drift in spacing and fade with depth, so they read as
       // wind-blown sand rather than a repeated stamp
       const w = fbmTex((x0 + fx) * 0.009, 5, seed + 9, 2) * 40;
@@ -201,7 +241,7 @@ export class Terrain {
       lightX: -0.5, lightY: -0.78, lightZ: 0.38,
       ambient: 0.42, dither: 0.7, outline: 0,
     });
-    return { canvas, top, cx };
+    return { canvas, top, h: H, cx };
   }
 
   getChunk(cx, budget) {
@@ -236,9 +276,10 @@ export class Terrain {
         continue;
       }
       const sy = Math.round((chunk.top - cam.y) * z + cam.vh / 2);
-      ctx.drawImage(chunk.canvas, sx, sy, Math.ceil(CHUNK_W * z), Math.ceil(CHUNK_H * z));
+      const ch = chunk.h;
+      ctx.drawImage(chunk.canvas, sx, sy, Math.ceil(CHUNK_W * z), Math.ceil(ch * z));
       // everything below the baked strip is deep, dark ground
-      const bottom = sy + Math.ceil(CHUNK_H * z);
+      const bottom = sy + Math.ceil(ch * z);
       if (bottom < cam.vh) {
         const bi = biomeAt(wx + 128);
         const g = ctx.createLinearGradient(0, bottom - 2, 0, cam.vh);

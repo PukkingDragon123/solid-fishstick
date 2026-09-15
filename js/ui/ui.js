@@ -1336,6 +1336,27 @@ export class UI {
       }
     }
 
+    // What is in the claw. It only exists while there is sand in it, because a
+    // permanent empty gauge for a thing you may never do is furniture.
+    const sand = g.sandHeld || 0;
+    if (sand > 0.5) {
+      const k = clamp01(sand / g.sandMax);
+      const sx = fx + 34, sy = 16;
+      // a heap, growing, rather than a bar with a number on it
+      const hh = Math.round(2 + k * 9);
+      for (let i = 0; i < hh; i++) {
+        const w = Math.round((hh - i) * 2.1);
+        ctx.fillStyle = i < 2 ? '#e6cd95' : i < hh - 2 ? '#cbab74' : '#a98b5c';
+        ctx.fillRect(sx - Math.round(w / 2), sy + 11 - i, w, 1);
+      }
+      ctx.fillStyle = 'rgba(40,28,16,0.5)';
+      ctx.fillRect(sx - 12, sy + 12, 24, 1);
+      if (this._hit(sx - 12, sy, 24, 14)) {
+        this.hover = { title: 'Sand in the claw',
+          body: `${Math.round(sand)} of ${g.sandMax}. Pour it out and it stays where you put it - for a while.` };
+      }
+    }
+
     // place, weather, and a clock you can actually read at a glance. On a
     // phone there is no room for all of it across the top, so the place name
     // gets the space that is left and the rest moves down.
@@ -2923,19 +2944,30 @@ export class UI {
     // you nothing - and where they go depends on which way up the phone is.
     const bs = this.buttonSize(W, H);
     const hint = g.actionHint();
+    this.scoopHeld = false;
+    this.pourHeld = false;
     const wanted = [];
     if (g.npc && g.talk && !g.talk.on && Math.abs(g.npc.x - g.crab.x) < 64) {
       wanted.push({ label: 'TALK', key: 'c', colour: '#e8c98a' });
     }
     if (g.garden.ripeCount) wanted.push({ label: `PICK ${g.garden.ripeCount}`, key: 'r', colour: '#cfe89a' });
     if (hint) wanted.push({ label: 'ACT', key: 'e' });
+    // The sand. BOTH plates, always - an empty claw cannot pour and the plate
+    // says so by going dim, but it stays where it is. Showing POUR only once
+    // you were carrying something meant the row re-laid itself out the instant
+    // you picked up your first grain, which slid DIG out from under the thumb
+    // that was holding it down.
+    const carrying = (g.sandHeld || 0) > 0.5;
+    wanted.push({ label: 'DIG', key: 'zdig', colour: '#e0c188', hold: true });
+    wanted.push({ label: 'POUR', key: 'zpour', colour: '#cfe89a', hold: true, dim: !carrying });
     wanted.push({ label: 'MODE', key: 'm' });
 
     const gap = 6;
     const plate = (b, bx, by, bw, bh) => {
       this.buttons.push({ x: bx, y: by, w: bw, h: bh, key: b.key });
       const hot = this._hit(bx, by, bw, bh);
-      drawPlate(ctx, bx, by, bw, bh, { mat: 'stone', edge: 'none', alpha: hot ? 1 : 0.92 });
+      drawPlate(ctx, bx, by, bw, bh,
+        { mat: 'stone', edge: 'none', alpha: b.dim ? 0.5 : hot ? 1 : 0.92 });
       if (hot) {
         ctx.globalAlpha = 0.2;
         ctx.fillStyle = b.colour || '#e6d5ad';
@@ -2944,9 +2976,17 @@ export class UI {
       }
       // two-high letters if they fit, one-high if the plate had to shrink
       const big = textWidth(b.label) * 2 + 10 <= bw && bh >= 28;
+      ctx.globalAlpha = b.dim ? 0.45 : 1;
       drawText(ctx, b.label, bx + bw / 2, by + (bh - (big ? 14 : 7)) / 2,
         { color: b.colour || INK, align: 'center', scale: big ? 2 : 1 });
-      if (hot && this.game.input.clicked) {
+      ctx.globalAlpha = 1;
+      if (b.hold) {
+        // a held plate reports while the thumb is down rather than firing once
+        const down = hot && this.game.input.down;
+        if (b.key === 'zdig') this.scoopHeld = down;
+        if (b.key === 'zpour') this.pourHeld = down;
+        if (down) this.game.input.clicked = false;
+      } else if (hot && this.game.input.clicked) {
         this.game.input.clicked = false;
         if (b.key) this.game.input.pulseVirtual(b.key);
       }
@@ -2966,12 +3006,28 @@ export class UI {
       // width evenly - four on a small phone are four smaller plates rather
       // than three plates and one somewhere else
       const by = this.buttonRowY(W, H);
-      const left = this.stickZone.x + this.stickZone.w + 4;
       const right = W - 6;
-      const bw = Math.min(bs.w, Math.floor((right - left - gap * (wanted.length - 1)) / wanted.length));
-      let bx = right - wanted.length * bw - (wanted.length - 1) * gap;
-      for (const b of wanted) { plate(b, bx, by, bw, bs.h); bx += bw + gap; }
-      hintY = by - 12;
+      // Six plates across a phone is six plates seventeen pixels wide, which
+      // is not a control, it is a decoration. So above three it goes to two
+      // rows - and only the BOTTOM row has to keep clear of the walking stick,
+      // because the one above it is over the desert rather than the thumb.
+      const rows = wanted.length > 3 ? 2 : 1;
+      const perRow = Math.ceil(wanted.length / rows);
+      const rh = bs.h + 4;
+      for (let r = 0; r < rows; r++) {
+        const slice = wanted.slice(r * perRow, (r + 1) * perRow);
+        if (!slice.length) continue;
+        const bottom = r === rows - 1;
+        // the upper row still has to clear the mode chips down the left edge
+        const left = bottom ? this.stickZone.x + this.stickZone.w + 4 : 42;
+        const room = right - left;
+        const bw = Math.max(34, Math.min(bs.w,
+          Math.floor((room - gap * (slice.length - 1)) / slice.length)));
+        const ry = by - (rows - 1 - r) * rh;
+        let bx = right - slice.length * bw - (slice.length - 1) * gap;
+        for (const b of slice) { plate(b, bx, ry, bw, bs.h); bx += bw + gap; }
+      }
+      hintY = by - (rows - 1) * rh - 12;
     }
     if (hint) {
       drawText(ctx, hint, W - 6, hintY,

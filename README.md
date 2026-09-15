@@ -69,6 +69,8 @@ npm run build     # -> dist/crabden.html + dist/crabden.body.html
 | lure him in | `L`, or ask him to come `CLOSER` | the same word on the board |
 | spray the spore | `V` (again to let him go) | `SPRAY` on the board while he leans in |
 | break a capped vent | `E`, at the cap | **ACT** |
+| cut a mast | `E`, at the tree | **ACT** |
+| scoop sand / pour it | hold `Z` / hold `Shift`+`Z` | hold **DIG** / hold **POUR** |
 | skip a cutscene | `Space` or `Escape` | the **SKIP** plate, top right |
 | his pick, once he is yours | `E` | — |
 | his bench | `B` | **SHOP**, then BENCH |
@@ -761,9 +763,12 @@ Ashwood and the Deep Well. Each has its own sky, ground, rock and residents.
 
 The ground is not a ramp you slide along. **Boulders** raise it — the sprite is
 cut to exactly the curve the terrain adds, so what you see and what you climb
-are one object and there is no collision code anywhere. **Benches** of rock
-step it up and down, and going up one costs you: the animal rears, throws grit
-off the face and crawls. Between them: dead thorn, driftwood snags, the ribs of
+are one object and there is no collision code anywhere. **Rock formations** —
+buttes, benches and fins of the harder beds, left standing where the wind took
+everything softer away — go up in terraces, and a terrace is a step an animal
+can take, so a formation is something you climb rather than something you walk
+around. Going up one costs you: the animal rears, throws grit off the face and
+crawls. Between them: dead thorn, driftwood snags, the ribs of
 something that did not make it, and **tumbleweed**, which spawns upwind
 off-screen, rolls at the speed of the actual wind, bounces off the rocks and
 goes.
@@ -778,6 +783,28 @@ was.
 It is not a screen and it is not swimming. You are a crab: you wade in, the
 light goes green and then blue, the water takes nearly half your speed, and
 everything you do down there you do on the bottom.
+
+### Masts
+
+The only tree in the basin is not a tree. A **mast** is one ribbed green column
+holding a season of rain, a couple of arms that turned up toward the light, and
+a woody grey foot where the bottom gave up being green. No leaves, no canopy,
+nothing to lose water out of.
+
+Stand at one and cut it, and it takes a while and throws chips: **timber**, the
+only long stiff straight thing growing within four hundred kilometres, and
+**fibre**, which ties things together and does not care about salt. Every haft
+in the game is made of one, so every pick is downstream of a tree. They do not
+come back this season, and Vess has an opinion about that.
+
+### Sand is a material
+
+The ground was always a heightfield with slumping, wind fill and live
+deformation in it. What was missing was a pair of hands. **Scoop** sand into the
+claw, carry it, and **pour** it out somewhere else: the hole collapses at the
+angle of repose and fills on the wind over days, the heap you make spreads the
+same way, and it conserves — you cannot pour out more than you picked up. You
+cannot scoop rock, and it says so.
 
 ### The capped springs
 

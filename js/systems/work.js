@@ -55,6 +55,12 @@ export const JOBS = {
     tint: '#c97a4a',
     hint: 'Hit the seam where it is already cracked.',
   },
+  fell: {
+    name: 'Cutting', secs: 6.4, band: 0.26, sweep: 1.15, care: 0.55,
+    verb: 'cut', pose: 'swing', sound: 'claw', icon: 'tree',
+    tint: '#9ad86a',
+    hint: 'The same notch, over and over, on the same side. It will tell you when.',
+  },
   search: {
     name: 'Searching', secs: 3.0, band: 0.38, sweep: 1.1, care: 0.1,
     verb: 'search', pose: 'crouch', sound: 'step', icon: 'map',

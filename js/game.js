@@ -14,6 +14,7 @@ import { drawPlate } from './ui/icons.js';
 import { Terrain } from './world/terrain.js';
 import { Ocean } from './world/ocean.js';
 import { Fountains } from './systems/fountains.js';
+import { formDepth } from './world/props.js';
 import { Weather } from './world/weather.js';
 import { biomeAt } from './world/biomes.js';
 import { World } from './world/landmarks.js';
@@ -134,6 +135,9 @@ export class Game {
     this.shallows = new Ocean(this);
     // the capped springs, and whatever moved in on top of them
     this.fountains = new Fountains(this);
+    // sand in the claw. The desert is a material, not a backdrop.
+    this.sandHeld = 0;
+    this.sandT = 0;
     this.green = new Green(this);
     this.digs = new Digs(this, this.seed);
     this.mining = new Mining(this, this.seed);
@@ -1294,6 +1298,15 @@ export class Game {
         if (this.ui.mode === 'hunt' && this.combat.live) this.strike();
         else this.attack();
       }
+      // The sand. Z takes it, shift-Z puts it back - held, because moving sand
+      // is something you do for a while rather than something you trigger, and
+      // one key rather than two because your other hand is on the walk keys.
+      this.sandT = Math.max(0, this.sandT - dt);
+      if (play && !this.ui.building) {
+        const pour = (i.key('z') && i.key('Shift')) || this.ui.pourHeld;
+        if (pour) this.pourSand(sdt);
+        else if (i.key('z') || this.ui.scoopHeld) this.scoopSand(sdt);
+      }
       // SPORE mode: hold V to charge, let go to throw
       // the nozzle in the corner and the V key are the same muscle
       if (play && this.ui.mode === 'spore') this.hive.hold(i.key('v') || !!this.ui.nozzleHeld);
@@ -1662,6 +1675,10 @@ export class Game {
       const why = this.taming.why(wildOne);
       return why ? `${wildOne.def.name}: ${why}` : `Sing with ${wildOne.def.name}`;
     }
+    const vent = this.fountains.reachable(c.x);
+    if (vent) return 'Break the cap';
+    const mast = this.world.mastAt(c.x + (c.facing || 1) * 16);
+    if (mast) return 'Cut the mast';
     if (this.encounters.hint) return this.encounters.hint;
     if (Math.abs(this.npc.x - c.x) < TALK_RANGE) return 'C: talk to Dr. Vess';
     return null;
@@ -1759,6 +1776,62 @@ export class Game {
     if (this.mind.owned) { this.mind.release(); this.ui.say('Let him go.', 2.5); return true; }
     const res = this.mind.spray();
     if (!res.ok) { this.ui.say(res.why, 3.5); this.audio.play('deny'); return false; }
+    return true;
+  }
+
+  /**
+   * THE SAND.
+   *
+   * Everything else in this game treats the ground as a surface. It is not a
+   * surface, it is a material - it has already got slumping, wind fill and
+   * live deformation in it, and the only thing missing was a pair of hands.
+   * So: scoop it into the claw, carry it, and pour it out somewhere else. The
+   * hole you leave collapses at the angle of repose and fills on the wind over
+   * days; the heap you make spreads out the same way. Nothing here is a
+   * command to the terrain, it is sand being moved from one place to another,
+   * and it conserves - you cannot pour out more than you picked up.
+   */
+  get sandMax() { return 90; }
+
+  /** Dig a bite out of the ground in front of you and put it in the claw. */
+  scoopSand(dt) {
+    if (this.sandHeld >= this.sandMax) {
+      if (this.sandT <= 0) { this.sandT = 1.4; this.ui.say('The claw is full. Pour it somewhere.', 2.4); }
+      return false;
+    }
+    const c = this.crab;
+    const x = c.x + (c.facing || 1) * (c.m.shellW * 0.34);
+    // you cannot scoop rock, and the game should say so rather than let you
+    // quietly mine a mountain with your hands
+    if (formDepth(this.world.seed, x) > 2) {
+      if (this.sandT <= 0) { this.sandT = 1.4; this.ui.say('That is rock. It wants a pick.', 2.4); }
+      return false;
+    }
+    const bite = 26 * dt;
+    this.terrain.deform(x, bite, 13);
+    this.sandHeld = Math.min(this.sandMax, this.sandHeld + bite);
+    c.clawOpen = 0.9;
+    c.pumping = Math.max(c.pumping, 0.12);
+    if (Math.random() < dt * 22) {
+      this.fx.dust(x, this.terrain.surfaceY(x), 0.7);
+      this.audio.play('step', { pitch: 0.7 });
+    }
+    return true;
+  }
+
+  /** And tip it back out. It lands where you are standing and then spreads. */
+  pourSand(dt) {
+    if (this.sandHeld <= 0) return false;
+    const c = this.crab;
+    const x = c.x + (c.facing || 1) * (c.m.shellW * 0.34);
+    const give = Math.min(this.sandHeld, 30 * dt);
+    this.terrain.deform(x, -give, 15);
+    this.sandHeld -= give;
+    c.clawOpen = 1;
+    if (Math.random() < dt * 26) {
+      this.fx.dust(x, this.terrain.surfaceY(x) - 4, 0.6);
+      this.audio.play('step', { pitch: 1.2 });
+    }
     return true;
   }
 
@@ -1931,6 +2004,29 @@ export class Game {
 
     // something in the ground right under you comes first: it is the only
     // thing here you can lose by walking past
+    // A mast standing next to you. Cutting one is a job, not a keypress: it
+    // takes a while, it throws chips, and it is the only source of a long
+    // straight stiff thing in the whole basin.
+    const mast = this.world.mastAt(c.x + (c.facing || 1) * 16);
+    if (mast) {
+      this.work.begin('fell', {
+        tag: 'fell:' + mast.id,
+        x: mast.x, y: this.terrain.surfaceY(mast.x),
+        label: 'Cut the mast',
+        onDone: () => {
+          const got = this.world.fell(mast);
+          this.craft.add('timber', got.timber);
+          this.craft.add('fibre', got.fibre);
+          this.cam.shake(4);
+          this.audio.play('hit', { pitch: 0.6 });
+          this.fx.dust(mast.x, this.terrain.surfaceY(mast.x), 1.6);
+          this.ui.say(`${got.timber} timber, ${got.fibre} fibre.`, 3);
+          this.npc?.say('Careful with that. There are not many.', 3.6, 7);
+        },
+      });
+      return;
+    }
+
     // A capped vent beats everything else you could be doing here, because
     // everything else you could be doing here is smaller than a river.
     const vent = this.fountains.reachable(c.x);

@@ -6185,6 +6185,18 @@ body {
         red: b.id === "badlands" || r() < 0.35
       });
     }
+    if (r() < (stony ? 0.05 : 0.14)) {
+      out.push({
+        kind: "mast",
+        x: x0 + r() * CELL,
+        id: `mast${ci}`,
+        h: 62 + r() * 74,
+        arms: r() < 0.22 ? 0 : 1 + Math.floor(r() * 3),
+        seed: r() * 1e9 >>> 0,
+        flip: r() < 0.5,
+        shade: 0.86 + r() * 0.14
+      });
+    }
     const n = r() < 0.5 ? 0 : 1 + Math.floor(r() * 3);
     for (let i = 0; i < n; i++) {
       const kind = r() < 0.62 ? "bush" : r() < 0.72 ? "ribs" : "snag";
@@ -6217,44 +6229,76 @@ body {
     }
     return Math.max(-MAX_BUMP, d);
   }
-  var CLIFF_CELL = 1150;
-  var cliffCache = /* @__PURE__ */ new Map();
-  var cliffSeed = null;
-  function cliffIn(seed, ci) {
-    if (seed !== cliffSeed) {
-      cliffSeed = seed;
-      cliffCache.clear();
+  var FORM_CELL = 1400;
+  var formCache = /* @__PURE__ */ new Map();
+  var formSeed = null;
+  function formIn(seed, ci) {
+    if (seed !== formSeed) {
+      formSeed = seed;
+      formCache.clear();
     }
-    let v = cliffCache.get(ci);
+    let v = formCache.get(ci);
     if (v !== void 0) return v;
-    const r = mulberry32((hashStr(String(seed) + "cliff") ^ ci * 1103515245) >>> 0);
-    const x = ci * CLIFF_CELL + CLIFF_CELL * (0.2 + r() * 0.6);
+    const r = mulberry32((hashStr(String(seed) + "form") ^ ci * 1103515245) >>> 0);
+    const x = ci * FORM_CELL + FORM_CELL * (0.2 + r() * 0.6);
     const b = biomeAt(x);
-    const stony = b.id === "badlands" || b.id === "ridge" || b.id === "saltpan";
-    v = ci === 0 || r() > (stony ? 0.85 : 0.45) ? null : {
+    const stony = b.id === "badlands" || b.id === "ridge" || b.id === "saltpan" || b.id === "glassflats" || b.id === "ashwood" || b.id === "deepwell";
+    if (ci === 0 || r() > (stony ? 0.8 : 0.5)) {
+      formCache.set(ci, null);
+      return null;
+    }
+    const kind = r() < 0.4 ? "butte" : r() < 0.75 ? "bench" : "fin";
+    const h = kind === "butte" ? 74 + r() * 78 : kind === "bench" ? 46 + r() * 54 : 30 + r() * 26;
+    v = {
+      id: "fm" + ci,
+      ci,
       x,
-      // up or down, because a world that only ever steps up is a staircase
-      h: (26 + r() * 42) * (r() < 0.5 ? 1 : -1),
-      run: 24 + r() * 18
+      kind,
+      h,
+      w: h * (kind === "fin" ? 3.4 : 1.5 + r() * 0.9),
+      steps: kind === "fin" ? 2 : 3 + Math.floor(r() * 3),
+      seed: (hashStr(String(seed)) ^ ci * 7919) >>> 0,
+      red: b.mesaMat === "rockRed" || r() < 0.4,
+      flip: r() < 0.5
     };
-    cliffCache.set(ci, v);
-    if (cliffCache.size > 300) cliffCache.clear();
+    formCache.set(ci, v);
+    if (formCache.size > 220) formCache.clear();
     return v;
   }
-  function cliffOffset(seed, x) {
-    const c = Math.floor(x / CLIFF_CELL);
+  function formHeight(f, u) {
+    const a = Math.abs(u);
+    if (a >= 1) return 0;
+    const dir = f.flip ? -u : u;
+    const t = 1 - a;
+    const s = f.steps;
+    const step = Math.min(s - 1, Math.floor(t * s));
+    const frac = t * s - step;
+    const ease = frac * frac * (3 - 2 * frac);
+    const tier = (step + ease) / s;
+    const lean = 1 - clamp01((dir + 1) / 2) * 0.22;
+    return f.h * Math.pow(tier, 0.82) * lean;
+  }
+  function formDepth(seed, x) {
+    const c = Math.floor(x / FORM_CELL);
     let d = 0;
     for (let ci = c - 1; ci <= c + 1; ci++) {
-      const f = cliffIn(seed, ci);
+      const f = formIn(seed, ci);
       if (!f) continue;
-      const u = (x - f.x) / f.run;
-      if (u <= -1) continue;
-      if (u >= 1) {
-        d -= f.h;
-        continue;
-      }
-      const k = (u + 1) / 2;
-      d -= f.h * k * k * (3 - 2 * k);
+      const u = (x - f.x) / f.w;
+      if (u <= -1 || u >= 1) continue;
+      d += formHeight(f, u);
+    }
+    return d;
+  }
+  function cliffOffset(seed, x) {
+    const c = Math.floor(x / FORM_CELL);
+    let d = 0;
+    for (let ci = c - 1; ci <= c + 1; ci++) {
+      const f = formIn(seed, ci);
+      if (!f) continue;
+      const u = (x - f.x) / f.w;
+      if (u <= -1 || u >= 1) continue;
+      d -= formHeight(f, u);
     }
     return d;
   }
@@ -6406,6 +6450,147 @@ body {
     const cv = pt.resolve(MATERIALS, { outline: 0.9, outlineColor: "#221a12" });
     return { cv, ox: cx, oy: base };
   }
+  function paintMast(p) {
+    const r = mulberry32(p.seed);
+    const H = Math.ceil(p.h) + 10;
+    const W = Math.ceil(26 + p.arms * 22) + 10;
+    const pt = new Painter(W, H);
+    const cx = W / 2, base = H - 3;
+    const tw = 4.2 + p.h * 0.026;
+    const limb = (x0, y0, x1, y1, w0, w1, ribs) => {
+      pt.capsule(x0, y0, x1, y1, w0, w1, { mat: "leaf", dome: w0 * 1.25, tint: 0.02 });
+      const n = Math.max(2, Math.round(ribs));
+      for (let i = 0; i < n; i++) {
+        const u = (i + 0.5) / n - 0.5;
+        pt.capsule(
+          x0 + u * w0 * 1.6,
+          y0,
+          x1 + u * w1 * 1.6,
+          y1,
+          w0 * 0.14,
+          w1 * 0.14,
+          { mat: "leaf", mask: true, dome: -w0 * 0.3, tint: -0.3 }
+        );
+      }
+    };
+    const lean = (r() - 0.5) * 0.16;
+    const topY = base - p.h;
+    limb(cx, base, cx + lean * p.h, topY, tw, tw * 0.78, 5);
+    pt.ellipse(
+      cx + lean * p.h,
+      topY,
+      tw * 0.78,
+      tw * 0.62,
+      { mat: "leaf", dome: tw * 0.9, tint: 0.1 }
+    );
+    for (let i = 0; i < p.arms; i++) {
+      const side = i % 2 ? 1 : -1;
+      const at = 0.34 + r() * 0.34;
+      const y = base - p.h * at;
+      const out = 7 + r() * 9 + tw;
+      const up = p.h * (0.2 + r() * 0.26);
+      const w = tw * (0.62 + r() * 0.2);
+      limb(cx + lean * p.h * at, y, cx + side * out, y - out * 0.35, w, w * 0.94, 3);
+      limb(
+        cx + side * out,
+        y - out * 0.35,
+        cx + side * out * 1.06,
+        y - out * 0.35 - up,
+        w * 0.94,
+        w * 0.8,
+        3
+      );
+      pt.ellipse(
+        cx + side * out * 1.06,
+        y - out * 0.35 - up,
+        w * 0.8,
+        w * 0.64,
+        { mat: "leaf", dome: w, tint: 0.1 }
+      );
+    }
+    const fh = Math.min(p.h * 0.22, 16);
+    pt.capsule(
+      cx,
+      base,
+      cx,
+      base - fh,
+      tw * 1.08,
+      tw * 0.9,
+      { mat: "wood", dome: tw * 1.1, tint: -0.04 }
+    );
+    for (let i = 0; i < 4; i++) {
+      const f = (i / 3 - 0.5) * 2;
+      pt.capsule(
+        cx,
+        base - 2,
+        cx + f * tw * 2.4,
+        base + 1,
+        tw * 0.4,
+        tw * 0.22,
+        { mat: "wood", dome: tw * 0.4, tint: -0.14 }
+      );
+    }
+    pt.grain("wood", { freq: 0.6, amp: 0.26, seed: p.seed & 511 });
+    pt.speckle("leaf", { density: 0.11, amp: 0.55, seed: p.seed >> 5 & 1023 });
+    if (p.h > 92) {
+      for (let i = 0; i < 5; i++) {
+        const a = -Math.PI * (0.2 + r() * 0.6);
+        pt.ellipse(
+          cx + lean * p.h + Math.cos(a) * tw * 0.8,
+          topY + Math.sin(a) * tw * 0.7,
+          1.7,
+          1.5,
+          { mat: "berry", dome: 1.8, tint: 0.14 }
+        );
+      }
+    }
+    pt.smoothHeight(1, 0.3);
+    const cv = pt.resolve(MATERIALS, { outline: 0.9, outlineColor: "#141c12" });
+    return { cv, ox: cx, oy: base };
+  }
+  function paintStump(p) {
+    const r = mulberry32(p.seed ^ 23505);
+    const tw = 4.2 + p.h * 0.026;
+    const H = Math.ceil(tw * 3) + 8, W = Math.ceil(tw * 6) + 8;
+    const pt = new Painter(W, H);
+    const cx = W / 2, base = H - 3;
+    pt.capsule(
+      cx,
+      base,
+      cx,
+      base - tw * 2,
+      tw * 1.08,
+      tw * 0.95,
+      { mat: "wood", dome: tw * 1.1, tint: -0.06 }
+    );
+    for (let i = 0; i < 6; i++) {
+      const u = (i / 5 - 0.5) * 2;
+      pt.capsule(
+        cx + u * tw * 0.8,
+        base - tw * 2,
+        cx + u * tw * 0.9,
+        base - tw * (2 + r() * 1.1),
+        tw * 0.16,
+        tw * 0.08,
+        { mat: "woodPale", dome: tw * 0.2, tint: 0.1 }
+      );
+    }
+    for (let i = 0; i < 4; i++) {
+      const f = (i / 3 - 0.5) * 2;
+      pt.capsule(
+        cx,
+        base - 2,
+        cx + f * tw * 2.4,
+        base + 1,
+        tw * 0.4,
+        tw * 0.22,
+        { mat: "wood", dome: tw * 0.4, tint: -0.14 }
+      );
+    }
+    pt.grain("wood", { freq: 0.6, amp: 0.26, seed: p.seed & 511 });
+    const cv = pt.resolve(MATERIALS, { outline: 0.9, outlineColor: "#1a1410" });
+    return { cv, ox: cx, oy: base };
+  }
   function paintWeed(seed, s) {
     const r = mulberry32(seed);
     const R = 9 * s;
@@ -6429,7 +6614,13 @@ body {
     const cv = pt.resolve(MATERIALS, { outline: 0.9, outlineColor: "#1e1810" });
     return { cv, ox: cx, oy: cy };
   }
-  function propArt(p) {
+  function propArt(p, felled = false) {
+    if (p.kind === "mast") {
+      return bake(
+        `m${p.seed}:${Math.round(p.h)}:${p.arms}:${felled ? 1 : 0}`,
+        () => felled ? paintStump(p) : paintMast(p)
+      );
+    }
     if (p.kind === "boulder") {
       return bake(
         `b${p.seed}:${Math.round(p.w)}:${Math.round(p.h)}:${p.red ? 1 : 0}`,
@@ -6864,6 +7055,7 @@ body {
       this.scatter = /* @__PURE__ */ new Map();
       this.t = 0;
       this.weeds = new Tumbleweeds(game2);
+      this.felled = /* @__PURE__ */ new Map();
     }
     chunkScatter(ci) {
       let v = this.scatter.get(ci);
@@ -6883,6 +7075,24 @@ body {
         this.found.add(lm.id);
         this.game.onLandmark?.(lm);
       }
+    }
+    /** The mast standing close enough to cut, or null. */
+    mastAt(x, reach = 26) {
+      const c0 = Math.floor((x - reach) / 128) - 1, c1 = Math.floor((x + reach) / 128) + 1;
+      for (let ci = c0; ci <= c1; ci++) {
+        for (const p of propsIn(this.seed, ci)) {
+          if (p.kind !== "mast" || this.felled.has(p.id)) continue;
+          if (Math.abs(p.x - x) < reach) return p;
+        }
+      }
+      return null;
+    }
+    /** Cut one down. It grows back, but not this season. */
+    fell(p) {
+      this.felled.set(p.id, 1);
+      const timber = 2 + Math.floor(p.h / 34);
+      const fibre = 1 + Math.floor(p.h / 46);
+      return { timber, fibre };
     }
     /**
      * Everything within reach for the map, found or not. An unfound mark is
@@ -6943,16 +7153,21 @@ body {
       for (let ci = c0; ci <= c1; ci++) {
         for (const p of propsIn(this.seed, ci)) {
           if (p.x < b.x0 - 60 || p.x > b.x1 + 60) continue;
-          const big = p.kind === "boulder" || (p.s || 0) > 1.05;
+          const big = p.kind === "boulder" || p.kind === "mast" || (p.s || 0) > 1.05;
           if ((big ? "far" : "near") !== layer) continue;
-          const art3 = propArt(p);
+          const art3 = propArt(p, p.kind === "mast" && this.felled.has(p.id));
           if (!art3) continue;
           const gy = p.kind === "boulder" ? t.baseY(p.x) + (art3.top || 0) : t.surfaceY(p.x);
           const s = cam.worldToScreen(p.x, gy);
           ctx.save();
           ctx.translate(Math.round(s.x), Math.round(s.y));
           ctx.scale(z, z);
-          if (p.kind !== "boulder") {
+          if (p.kind === "mast") {
+            const sway = Math.sin(this.t * 0.9 + p.x * 0.05) * 0.012 * (0.4 + (w?.windSpeed || 0.4)) * (w?.windDir || 1);
+            ctx.rotate(sway);
+            if (p.flip) ctx.scale(-1, 1);
+            ctx.globalAlpha = p.shade;
+          } else if (p.kind !== "boulder") {
             const sway = Math.sin(this.t * 1.9 + p.x * 0.07) * 0.045 * (0.4 + (w?.windSpeed || 0.4)) * (w?.windDir || 1);
             ctx.rotate(sway);
             if (p.flip) ctx.scale(-1, 1);
@@ -7063,10 +7278,11 @@ body {
       ctx.globalAlpha = 1;
     }
     toJSON() {
-      return { found: [...this.found] };
+      return { found: [...this.found], felled: [...this.felled.keys()] };
     }
     fromJSON(d) {
       if (d && d.found) this.found = new Set(d.found);
+      this.felled = new Map((d && d.felled ? d.felled : []).map((k) => [k, 1]));
     }
   };
 
@@ -7194,7 +7410,8 @@ body {
 
   // js/world/terrain.js
   var CHUNK_W = 256;
-  var CHUNK_H = 224;
+  var CHUNK_DEPTH = 224;
+  var CHUNK_MAX = 1024;
   var MAX_CHUNKS = 48;
   var SAND_CELL = 4;
   var Terrain = class {
@@ -7290,23 +7507,29 @@ body {
     _paintChunk(cx) {
       const x0 = cx * CHUNK_W;
       const heights = new Float32Array(CHUNK_W + 1);
-      let minY = Infinity;
+      const rock = new Float32Array(CHUNK_W + 1);
+      let minY = Infinity, maxY = -Infinity, anyRock = false;
       for (let i = 0; i <= CHUNK_W; i++) {
         const h = this.baseY(x0 + i);
         heights[i] = h;
-        minY = Math.min(minY, h);
+        rock[i] = formDepth(this.seedKey, x0 + i);
+        if (rock[i] > 1) anyRock = true;
+        if (h < minY) minY = h;
+        if (h > maxY) maxY = h;
       }
       const top = Math.floor(minY) - 6;
-      const p = new Painter(CHUNK_W, CHUNK_H);
+      const H = Math.min(CHUNK_MAX, Math.ceil(maxY - top) + CHUNK_DEPTH);
+      const p = new Painter(CHUNK_W, H);
       const b = biomeAt(x0 + CHUNK_W / 2);
       const bodyMat = b.groundMat;
       const crustMat = b.crustMat;
       const seed = this.seed + cx * 977;
-      p.field(0, 0, CHUNK_W - 1, CHUNK_H - 1, (fx, fy) => {
+      p.field(0, 0, CHUNK_W - 1, H - 1, (fx, fy) => {
         const gx = Math.floor(fx);
         const surf = heights[clamp(gx, 0, CHUNK_W)] - top;
         if (fy < surf) return null;
         const depth = fy - surf;
+        if (depth < rock[clamp(gx, 0, CHUNK_W)]) return null;
         const dome = depth < 3 ? 4 - depth : 0;
         const strat = fbmTex((x0 + fx) * 0.02, fy * 0.11, seed + 3, 3);
         const band = Math.sin((fy + strat * 9) * 0.22) * 0.5 + 0.5;
@@ -7314,19 +7537,39 @@ body {
         tint -= Math.pow(clamp01(depth / 190), 0.75) * 0.42;
         return { h: dome + strat * 1.2, tint };
       }, { mat: bodyMat });
-      p.field(0, 0, CHUNK_W - 1, CHUNK_H - 1, (fx, fy) => {
+      if (anyRock) {
+        p.field(0, 0, CHUNK_W - 1, H - 1, (fx, fy) => {
+          const gx = clamp(Math.floor(fx), 0, CHUNK_W);
+          const surf = heights[gx] - top;
+          const depth = fy - surf;
+          if (depth < 0 || depth >= rock[gx]) return null;
+          const wy = fy + top;
+          const bed = fbmTex((x0 + fx) * 6e-3, wy * 0.09, seed + 61, 2);
+          const course = Math.sin((wy + bed * 5) * 0.33) * 0.5 + 0.5;
+          const hard = Math.sin((wy + bed * 3) * 0.075) * 0.5 + 0.5;
+          const grit = fbmTex((x0 + fx) * 0.11, wy * 0.13, seed + 83, 3);
+          const lip = depth < 2.2 ? 3.2 - depth : 0;
+          return {
+            h: lip + hard * 2.4 + course * 1.1 + grit * 1.1,
+            tint: (course - 0.5) * 0.22 + (hard - 0.5) * 0.16 + (grit - 0.5) * 0.18
+          };
+        }, { mat: b.mesaMat });
+      }
+      p.field(0, 0, CHUNK_W - 1, H - 1, (fx, fy) => {
         const gx = Math.floor(fx);
         const surf = heights[clamp(gx, 0, CHUNK_W)] - top;
         const depth = fy - surf;
         if (depth < 0 || depth > 2.4) return null;
+        if (rock[clamp(gx, 0, CHUNK_W)] > 1.5) return null;
         const n = fbmTex((x0 + fx) * 0.16, fy * 0.3, seed + 41, 2);
         return { h: 5 - depth * 1.4, tint: (n - 0.4) * 0.3 + 0.1 };
       }, { mat: crustMat });
-      p.field(0, 0, CHUNK_W - 1, CHUNK_H - 1, (fx, fy) => {
+      p.field(0, 0, CHUNK_W - 1, H - 1, (fx, fy) => {
         const gx = Math.floor(fx);
         const surf = heights[clamp(gx, 0, CHUNK_W)] - top;
         const depth = fy - surf;
         if (depth < 1 || depth > 16) return null;
+        if (rock[clamp(gx, 0, CHUNK_W)] > 1.5) return null;
         const w = fbmTex((x0 + fx) * 9e-3, 5, seed + 9, 2) * 40;
         const freq = 0.055 + fbmTex((x0 + fx) * 4e-3, 2, seed + 29, 2) * 0.05;
         const r = Math.sin((x0 + fx) * freq + w + depth * 0.08);
@@ -7351,7 +7594,7 @@ body {
         dither: 0.7,
         outline: 0
       });
-      return { canvas: canvas2, top, cx };
+      return { canvas: canvas2, top, h: H, cx };
     }
     getChunk(cx, budget) {
       const key2 = String(cx);
@@ -7383,8 +7626,9 @@ body {
           continue;
         }
         const sy = Math.round((chunk.top - cam.y) * z + cam.vh / 2);
-        ctx.drawImage(chunk.canvas, sx, sy, Math.ceil(CHUNK_W * z), Math.ceil(CHUNK_H * z));
-        const bottom = sy + Math.ceil(CHUNK_H * z);
+        const ch = chunk.h;
+        ctx.drawImage(chunk.canvas, sx, sy, Math.ceil(CHUNK_W * z), Math.ceil(ch * z));
+        const bottom = sy + Math.ceil(ch * z);
         if (bottom < cam.vh) {
           const bi = biomeAt(wx + 128);
           const g = ctx.createLinearGradient(0, bottom - 2, 0, cam.vh);
@@ -9005,6 +9249,22 @@ body {
       tier: 0,
       desc: "Resin from a tree that has been gone a thousand years."
     },
+    {
+      id: "timber",
+      name: "Mast Timber",
+      icon: "tree",
+      tint: "#9a7a48",
+      tier: 0,
+      desc: "The dry inner ribs of a mast. Light, straight, and the only long stiff thing growing within four hundred kilometres."
+    },
+    {
+      id: "fibre",
+      name: "Mast Fibre",
+      icon: "graft",
+      tint: "#a8b06a",
+      tier: 0,
+      desc: "The stringy part, pulled off in lengths and left in the sun. Ties things together and does not care about salt."
+    },
     // -- refined --------------------------------------------------------------
     {
       id: "copperbar",
@@ -9069,7 +9329,23 @@ body {
       icon: "graft",
       tint: "#c3bb8d",
       tier: 2,
-      desc: "Wound shell fibre. Holds anything to anything."
+      desc: "Wound fibre. Holds anything to anything."
+    },
+    {
+      id: "plank",
+      name: "Plank",
+      icon: "step",
+      tint: "#c2a06a",
+      tier: 1,
+      desc: "Mast ribs split and laid edge to edge. Flat, which nothing out here is."
+    },
+    {
+      id: "haft",
+      name: "Haft",
+      icon: "hammer",
+      tint: "#b08a52",
+      tier: 2,
+      desc: "A handle. Everything with a head on it needs one, and until there were masts there was nothing to make one out of."
     },
     // -- tools he carries ----------------------------------------------------
     {
@@ -9116,12 +9392,15 @@ body {
   var RECIPES = [
     // hand
     { id: "brick", at: "hand", out: ["brick", 1], need: [["grit", 3], ["saltcake", 1]], secs: 1.2 },
-    { id: "spool", at: "hand", out: ["spool", 1], need: [["shellchip", 3]], secs: 1 },
+    { id: "spool", at: "hand", out: ["spool", 1], need: [["fibre", 2]], secs: 1 },
+    { id: "spoolshell", at: "hand", out: ["spool", 1], need: [["shellchip", 3]], secs: 1.4 },
+    { id: "haft", at: "hand", out: ["haft", 1], need: [["timber", 2], ["fibre", 1]], secs: 1.4 },
     // fire
     { id: "copperbar", at: "fire", out: ["copperbar", 1], need: [["copperore", 3]], secs: 2.2 },
     { id: "ironbar", at: "fire", out: ["ironbar", 1], need: [["ironore", 4]], secs: 3 },
     { id: "glass", at: "fire", out: ["glass", 2], need: [["silica", 3], ["saltcake", 1]], secs: 2 },
     // bench
+    { id: "plank", at: "bench", out: ["plank", 2], need: [["timber", 3]], secs: 1.8 },
     { id: "gearset", at: "bench", out: ["gearset", 1], need: [["copperbar", 2]], secs: 2 },
     { id: "pipe", at: "bench", out: ["pipe", 1], need: [["ironbar", 2]], secs: 2.4 },
     { id: "pane", at: "bench", out: ["pane", 1], need: [["glass", 2]], secs: 1.6 },
@@ -9129,21 +9408,21 @@ body {
       id: "pickcopper",
       at: "bench",
       out: ["pickcopper", 1],
-      need: [["copperbar", 2], ["spool", 1]],
+      need: [["copperbar", 2], ["haft", 1]],
       secs: 2.6
     },
     {
       id: "pickiron",
       at: "bench",
       out: ["pickiron", 1],
-      need: [["ironbar", 3], ["spool", 1], ["gearset", 1]],
+      need: [["ironbar", 3], ["haft", 1], ["gearset", 1]],
       secs: 3.4
     },
     {
       id: "sprayer",
       at: "bench",
       out: ["sprayer", 1],
-      need: [["pipe", 1], ["pane", 1], ["spool", 2]],
+      need: [["pipe", 1], ["pane", 1], ["spool", 2], ["plank", 1]],
       secs: 3
     }
   ];
@@ -14381,6 +14660,19 @@ body {
       icon: "bolt",
       tint: "#c97a4a",
       hint: "Hit the seam where it is already cracked."
+    },
+    fell: {
+      name: "Cutting",
+      secs: 6.4,
+      band: 0.26,
+      sweep: 1.15,
+      care: 0.55,
+      verb: "cut",
+      pose: "swing",
+      sound: "claw",
+      icon: "tree",
+      tint: "#9ad86a",
+      hint: "The same notch, over and over, on the same side. It will tell you when."
     },
     search: {
       name: "Searching",
@@ -24786,6 +25078,25 @@ Coming back.` };
           this.hover = { title: "Nothing is yours yet", body: "Fruit brings the birds in. Once one trusts you, sing with it - and it stands here." };
         }
       }
+      const sand = g.sandHeld || 0;
+      if (sand > 0.5) {
+        const k = clamp01(sand / g.sandMax);
+        const sx = fx + 34, sy = 16;
+        const hh = Math.round(2 + k * 9);
+        for (let i = 0; i < hh; i++) {
+          const w = Math.round((hh - i) * 2.1);
+          ctx.fillStyle = i < 2 ? "#e6cd95" : i < hh - 2 ? "#cbab74" : "#a98b5c";
+          ctx.fillRect(sx - Math.round(w / 2), sy + 11 - i, w, 1);
+        }
+        ctx.fillStyle = "rgba(40,28,16,0.5)";
+        ctx.fillRect(sx - 12, sy + 12, 24, 1);
+        if (this._hit(sx - 12, sy, 24, 14)) {
+          this.hover = {
+            title: "Sand in the claw",
+            body: `${Math.round(sand)} of ${g.sandMax}. Pour it out and it stays where you put it - for a while.`
+          };
+        }
+      }
       const narrow = W < 320;
       const room = W - (L + 96) - 10;
       const label = narrow ? ellipsize(g.biome.name, Math.max(40, room)) : `${g.biome.name}   ${g.weather.label()}`;
@@ -26400,18 +26711,30 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
       ctx.globalAlpha = 1;
       const bs = this.buttonSize(W, H);
       const hint = g.actionHint();
+      this.scoopHeld = false;
+      this.pourHeld = false;
       const wanted = [];
       if (g.npc && g.talk && !g.talk.on && Math.abs(g.npc.x - g.crab.x) < 64) {
         wanted.push({ label: "TALK", key: "c", colour: "#e8c98a" });
       }
       if (g.garden.ripeCount) wanted.push({ label: `PICK ${g.garden.ripeCount}`, key: "r", colour: "#cfe89a" });
       if (hint) wanted.push({ label: "ACT", key: "e" });
+      const carrying = (g.sandHeld || 0) > 0.5;
+      wanted.push({ label: "DIG", key: "zdig", colour: "#e0c188", hold: true });
+      wanted.push({ label: "POUR", key: "zpour", colour: "#cfe89a", hold: true, dim: !carrying });
       wanted.push({ label: "MODE", key: "m" });
       const gap = 6;
       const plate = (b, bx, by, bw, bh) => {
         this.buttons.push({ x: bx, y: by, w: bw, h: bh, key: b.key });
         const hot = this._hit(bx, by, bw, bh);
-        drawPlate(ctx, bx, by, bw, bh, { mat: "stone", edge: "none", alpha: hot ? 1 : 0.92 });
+        drawPlate(
+          ctx,
+          bx,
+          by,
+          bw,
+          bh,
+          { mat: "stone", edge: "none", alpha: b.dim ? 0.5 : hot ? 1 : 0.92 }
+        );
         if (hot) {
           ctx.globalAlpha = 0.2;
           ctx.fillStyle = b.colour || "#e6d5ad";
@@ -26419,6 +26742,7 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
           ctx.globalAlpha = 1;
         }
         const big = textWidth(b.label) * 2 + 10 <= bw && bh >= 28;
+        ctx.globalAlpha = b.dim ? 0.45 : 1;
         drawText(
           ctx,
           b.label,
@@ -26426,7 +26750,13 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
           by + (bh - (big ? 14 : 7)) / 2,
           { color: b.colour || INK, align: "center", scale: big ? 2 : 1 }
         );
-        if (hot && this.game.input.clicked) {
+        ctx.globalAlpha = 1;
+        if (b.hold) {
+          const down = hot && this.game.input.down;
+          if (b.key === "zdig") this.scoopHeld = down;
+          if (b.key === "zpour") this.pourHeld = down;
+          if (down) this.game.input.clicked = false;
+        } else if (hot && this.game.input.clicked) {
           this.game.input.clicked = false;
           if (b.key) this.game.input.pulseVirtual(b.key);
         }
@@ -26443,15 +26773,28 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
         hintY = by - 2;
       } else {
         const by = this.buttonRowY(W, H);
-        const left = this.stickZone.x + this.stickZone.w + 4;
         const right = W - 6;
-        const bw = Math.min(bs.w, Math.floor((right - left - gap * (wanted.length - 1)) / wanted.length));
-        let bx = right - wanted.length * bw - (wanted.length - 1) * gap;
-        for (const b of wanted) {
-          plate(b, bx, by, bw, bs.h);
-          bx += bw + gap;
+        const rows = wanted.length > 3 ? 2 : 1;
+        const perRow = Math.ceil(wanted.length / rows);
+        const rh = bs.h + 4;
+        for (let r = 0; r < rows; r++) {
+          const slice = wanted.slice(r * perRow, (r + 1) * perRow);
+          if (!slice.length) continue;
+          const bottom = r === rows - 1;
+          const left = bottom ? this.stickZone.x + this.stickZone.w + 4 : 42;
+          const room = right - left;
+          const bw = Math.max(34, Math.min(
+            bs.w,
+            Math.floor((room - gap * (slice.length - 1)) / slice.length)
+          ));
+          const ry = by - (rows - 1 - r) * rh;
+          let bx = right - slice.length * bw - (slice.length - 1) * gap;
+          for (const b of slice) {
+            plate(b, bx, ry, bw, bs.h);
+            bx += bw + gap;
+          }
         }
-        hintY = by - 12;
+        hintY = by - (rows - 1) * rh - 12;
       }
       if (hint) {
         drawText(
@@ -26551,6 +26894,8 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
       this.sea = new Sea(this);
       this.shallows = new Ocean(this);
       this.fountains = new Fountains(this);
+      this.sandHeld = 0;
+      this.sandT = 0;
       this.green = new Green(this);
       this.digs = new Digs(this, this.seed);
       this.mining = new Mining(this, this.seed);
@@ -27687,6 +28032,12 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
           if (this.ui.mode === "hunt" && this.combat.live) this.strike();
           else this.attack();
         }
+        this.sandT = Math.max(0, this.sandT - dt);
+        if (play && !this.ui.building) {
+          const pour = i.key("z") && i.key("Shift") || this.ui.pourHeld;
+          if (pour) this.pourSand(sdt);
+          else if (i.key("z") || this.ui.scoopHeld) this.scoopSand(sdt);
+        }
         if (play && this.ui.mode === "spore") this.hive.hold(i.key("v") || !!this.ui.nozzleHeld);
         else if (this.hive.holding) this.hive.hold(false);
         if (play && this.ui.mode === "hive" && this.hive.pick) {
@@ -28063,6 +28414,10 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
         const why = this.taming.why(wildOne);
         return why ? `${wildOne.def.name}: ${why}` : `Sing with ${wildOne.def.name}`;
       }
+      const vent = this.fountains.reachable(c.x);
+      if (vent) return "Break the cap";
+      const mast = this.world.mastAt(c.x + (c.facing || 1) * 16);
+      if (mast) return "Cut the mast";
       if (this.encounters.hint) return this.encounters.hint;
       if (Math.abs(this.npc.x - c.x) < TALK_RANGE) return "C: talk to Dr. Vess";
       return null;
@@ -28170,6 +28525,65 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
         this.ui.say(res.why, 3.5);
         this.audio.play("deny");
         return false;
+      }
+      return true;
+    }
+    /**
+     * THE SAND.
+     *
+     * Everything else in this game treats the ground as a surface. It is not a
+     * surface, it is a material - it has already got slumping, wind fill and
+     * live deformation in it, and the only thing missing was a pair of hands.
+     * So: scoop it into the claw, carry it, and pour it out somewhere else. The
+     * hole you leave collapses at the angle of repose and fills on the wind over
+     * days; the heap you make spreads out the same way. Nothing here is a
+     * command to the terrain, it is sand being moved from one place to another,
+     * and it conserves - you cannot pour out more than you picked up.
+     */
+    get sandMax() {
+      return 90;
+    }
+    /** Dig a bite out of the ground in front of you and put it in the claw. */
+    scoopSand(dt) {
+      if (this.sandHeld >= this.sandMax) {
+        if (this.sandT <= 0) {
+          this.sandT = 1.4;
+          this.ui.say("The claw is full. Pour it somewhere.", 2.4);
+        }
+        return false;
+      }
+      const c = this.crab;
+      const x = c.x + (c.facing || 1) * (c.m.shellW * 0.34);
+      if (formDepth(this.world.seed, x) > 2) {
+        if (this.sandT <= 0) {
+          this.sandT = 1.4;
+          this.ui.say("That is rock. It wants a pick.", 2.4);
+        }
+        return false;
+      }
+      const bite = 26 * dt;
+      this.terrain.deform(x, bite, 13);
+      this.sandHeld = Math.min(this.sandMax, this.sandHeld + bite);
+      c.clawOpen = 0.9;
+      c.pumping = Math.max(c.pumping, 0.12);
+      if (Math.random() < dt * 22) {
+        this.fx.dust(x, this.terrain.surfaceY(x), 0.7);
+        this.audio.play("step", { pitch: 0.7 });
+      }
+      return true;
+    }
+    /** And tip it back out. It lands where you are standing and then spreads. */
+    pourSand(dt) {
+      if (this.sandHeld <= 0) return false;
+      const c = this.crab;
+      const x = c.x + (c.facing || 1) * (c.m.shellW * 0.34);
+      const give = Math.min(this.sandHeld, 30 * dt);
+      this.terrain.deform(x, -give, 15);
+      this.sandHeld -= give;
+      c.clawOpen = 1;
+      if (Math.random() < dt * 26) {
+        this.fx.dust(x, this.terrain.surfaceY(x) - 4, 0.6);
+        this.audio.play("step", { pitch: 1.2 });
       }
       return true;
     }
@@ -28348,6 +28762,26 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
       const c = this.crab;
       if (this.work.live) {
         this.work.strike();
+        return;
+      }
+      const mast = this.world.mastAt(c.x + (c.facing || 1) * 16);
+      if (mast) {
+        this.work.begin("fell", {
+          tag: "fell:" + mast.id,
+          x: mast.x,
+          y: this.terrain.surfaceY(mast.x),
+          label: "Cut the mast",
+          onDone: () => {
+            const got = this.world.fell(mast);
+            this.craft.add("timber", got.timber);
+            this.craft.add("fibre", got.fibre);
+            this.cam.shake(4);
+            this.audio.play("hit", { pitch: 0.6 });
+            this.fx.dust(mast.x, this.terrain.surfaceY(mast.x), 1.6);
+            this.ui.say(`${got.timber} timber, ${got.fibre} fibre.`, 3);
+            this.npc?.say("Careful with that. There are not many.", 3.6, 7);
+          }
+        });
         return;
       }
       const vent = this.fountains.reachable(c.x);

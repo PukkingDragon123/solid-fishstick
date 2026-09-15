@@ -374,6 +374,8 @@ export class World {
     this.t = 0;
     // the things that are in the way, and the one thing that is not
     this.weeds = new Tumbleweeds(game);
+    // masts you have cut: id -> seconds until it has grown back
+    this.felled = new Map();
   }
 
   chunkScatter(ci) {
@@ -395,6 +397,27 @@ export class World {
       this.found.add(lm.id);
       this.game.onLandmark?.(lm);
     }
+  }
+
+  /** The mast standing close enough to cut, or null. */
+  mastAt(x, reach = 26) {
+    const c0 = Math.floor((x - reach) / 128) - 1, c1 = Math.floor((x + reach) / 128) + 1;
+    for (let ci = c0; ci <= c1; ci++) {
+      for (const p of propsIn(this.seed, ci)) {
+        if (p.kind !== 'mast' || this.felled.has(p.id)) continue;
+        if (Math.abs(p.x - x) < reach) return p;
+      }
+    }
+    return null;
+  }
+
+  /** Cut one down. It grows back, but not this season. */
+  fell(p) {
+    this.felled.set(p.id, 1);
+    // a big one is worth more, which is the only reason to walk past a small one
+    const timber = 2 + Math.floor(p.h / 34);
+    const fibre = 1 + Math.floor(p.h / 46);
+    return { timber, fibre };
   }
 
   /**
@@ -457,9 +480,9 @@ export class World {
     for (let ci = c0; ci <= c1; ci++) {
       for (const p of propsIn(this.seed, ci)) {
         if (p.x < b.x0 - 60 || p.x > b.x1 + 60) continue;
-        const big = p.kind === 'boulder' || (p.s || 0) > 1.05;
+        const big = p.kind === 'boulder' || p.kind === 'mast' || (p.s || 0) > 1.05;
         if ((big ? 'far' : 'near') !== layer) continue;
-        const art = propArt(p);
+        const art = propArt(p, p.kind === 'mast' && this.felled.has(p.id));
         if (!art) continue;
         // A boulder is drawn against the sand AROUND it, not the ground on
         // top of it - the ground on top of it is the boulder. baseY already
@@ -471,7 +494,14 @@ export class World {
         ctx.save();
         ctx.translate(Math.round(s.x), Math.round(s.y));
         ctx.scale(z, z);
-        if (p.kind !== 'boulder') {
+        if (p.kind === 'mast') {
+          // it sways, but only just: there is nothing on it to catch the wind
+          const sway = Math.sin(this.t * 0.9 + p.x * 0.05) * 0.012
+            * (0.4 + (w?.windSpeed || 0.4)) * (w?.windDir || 1);
+          ctx.rotate(sway);
+          if (p.flip) ctx.scale(-1, 1);
+          ctx.globalAlpha = p.shade;
+        } else if (p.kind !== 'boulder') {
           // dry things move; rock does not
           const sway = Math.sin(this.t * 1.9 + p.x * 0.07) * 0.045
             * (0.4 + (w?.windSpeed || 0.4)) * (w?.windDir || 1);
@@ -585,8 +615,11 @@ export class World {
     ctx.globalAlpha = 1;
   }
 
-  toJSON() { return { found: [...this.found] }; }
-  fromJSON(d) { if (d && d.found) this.found = new Set(d.found); }
+  toJSON() { return { found: [...this.found], felled: [...this.felled.keys()] }; }
+  fromJSON(d) {
+    if (d && d.found) this.found = new Set(d.found);
+    this.felled = new Map((d && d.felled ? d.felled : []).map((k) => [k, 1]));
+  }
 }
 
 export { CELL as LANDMARK_CELL };
