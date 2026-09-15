@@ -66,8 +66,10 @@ npm run build     # -> dist/crabden.html + dist/crabden.body.html
 | where to walk (ROAM) | click anywhere in the desert | the same |
 | sing back (taming) | `1`-`5` | the pitch keys |
 | the menu | it is where you start | the same |
-| lure him in | `L` | — |
-| spray the spore | `V` (again to let him go) | — |
+| lure him in | `L`, or ask him to come `CLOSER` | the same word on the board |
+| spray the spore | `V` (again to let him go) | `SPRAY` on the board while he leans in |
+| break a capped vent | `E`, at the cap | **ACT** |
+| skip a cutscene | `Space` or `Escape` | the **SKIP** plate, top right |
 | his pick, once he is yours | `E` | — |
 | his bench | `B` | **SHOP**, then BENCH |
 | pause / back out | `Esc`, or the chip in the top-right corner | the same chip |
@@ -539,10 +541,13 @@ animal that is none of those throws it off, and remembers that you tried.
 and there is exactly one solution to it walking around the basin.
 
 It takes three steps, on purpose, so none of it happens by accident. **Lure**:
-put an artefact on the ground in front of you — he has been wrong about a rock
-for eleven years and he cannot walk past one — and he comes over and crouches
-down over it, which is the only time his head is low enough and still enough to
-reach. **Spray**: a spore, at close range, while he is down. There is a beat
+get his head down. Either put an artefact on the ground in front of you — he
+has been wrong about a rock for eleven years and he cannot walk past one — or
+simply **talk to him and ask him to come closer**, which he does, grumbling
+about it, and for eleven seconds his head is at the height of your gland. He
+does straighten up again; he is suspicious, not stupid. **Spray**: a spore, at
+close range, while he is down — out in the world on `V`, or as the one word on
+the board that only appears while he is actually leaning in. There is a beat
 where he knows. **And then his eye goes blue and stays blue**, and he stops
 talking, because there is nothing left in there doing the talking.
 
@@ -750,9 +755,48 @@ kilometres from any sea. Somewhere you have not stood is a `?`.
 
 ## What is out there
 
-Seven biomes run for forty thousand strides: the Weeping Salt Pan, the Bone
-Reef, the Sleeping Dunes, the Glass Flats, the Rustlands, the Ashwood and the
-Deep Well. Each has its own sky, ground, rock and residents.
+Eight biomes run for fifty thousand strides: the Shallows, the Weeping Salt
+Pan, the Bone Reef, the Sleeping Dunes, the Glass Flats, the Rustlands, the
+Ashwood and the Deep Well. Each has its own sky, ground, rock and residents.
+
+The ground is not a ramp you slide along. **Boulders** raise it — the sprite is
+cut to exactly the curve the terrain adds, so what you see and what you climb
+are one object and there is no collision code anywhere. **Benches** of rock
+step it up and down, and going up one costs you: the animal rears, throws grit
+off the face and crawls. Between them: dead thorn, driftwood snags, the ribs of
+something that did not make it, and **tumbleweed**, which spawns upwind
+off-screen, rolls at the speed of the actual wind, bounces off the rocks and
+goes.
+
+### The sea that never left
+
+Walk far enough west, past the salt pan, and the shelf goes over and the water
+is still standing on it — the same corals and shoals and drifting things the
+prologue had, because they are the same animals. They stayed where the water
+was.
+
+It is not a screen and it is not swimming. You are a crab: you wade in, the
+light goes green and then blue, the water takes nearly half your speed, and
+everything you do down there you do on the bottom.
+
+### The capped springs
+
+The water did not all leave. It went **down**, and the people who were here
+found the vents and capped them — a collar of dressed block over the mouth and
+a plug driven into it, because a spring you can turn on is worth more than a
+spring that runs. Then they died, and the lids stayed shut, and the basin went
+to sand with the water underneath it the whole time.
+
+You can find a cap by the bead of water working out of the seam. Five good
+swings and the plug goes, and what comes out does not stop: it floods, the
+ground drinks it, and everything within four hundred metres that has been
+waiting a thousand years comes up at once. It is the largest thing you can do
+to this world and it is permanent.
+
+Something always moved in on top of them. It has been walking the same ground
+since long before Vess got here and it does not like new arrivals — and it will
+not let you turn your back on it, which is the whole shape of the thing: a
+fight you have to win for a reward that changes the map.
 
 **Landmarks** are the point of walking. They are generated from the world seed
 and sunk into the terrain itself, so an oasis is a real bowl you walk down into

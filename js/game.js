@@ -13,6 +13,7 @@ import { Backdrop } from './render/backdrop.js';
 import { drawPlate } from './ui/icons.js';
 import { Terrain } from './world/terrain.js';
 import { Ocean } from './world/ocean.js';
+import { Fountains } from './systems/fountains.js';
 import { Weather } from './world/weather.js';
 import { biomeAt } from './world/biomes.js';
 import { World } from './world/landmarks.js';
@@ -131,6 +132,8 @@ export class Game {
     this.sea = new Sea(this);
     // and the one that never left, out past the salt pan
     this.shallows = new Ocean(this);
+    // the capped springs, and whatever moved in on top of them
+    this.fountains = new Fountains(this);
     this.green = new Green(this);
     this.digs = new Digs(this, this.seed);
     this.mining = new Mining(this, this.seed);
@@ -1391,6 +1394,7 @@ export class Game {
     this.encounters.update(sdt);
     this.world.update(sdt);
     this.shallows.update(sdt);
+    this.fountains.update(sdt);
     this.npc.update(sdt);
     this.fx.update(sdt, this.weather);
 
@@ -1927,6 +1931,19 @@ export class Game {
 
     // something in the ground right under you comes first: it is the only
     // thing here you can lose by walking past
+    // A capped vent beats everything else you could be doing here, because
+    // everything else you could be doing here is smaller than a river.
+    const vent = this.fountains.reachable(c.x);
+    if (vent) {
+      const res = this.fountains.strike(vent);
+      if (!res.ok) { this.ui.say(res.why, 3); this.audio.play('deny'); }
+      else {
+        this.crab.clawOpen = 1;
+        this.attackT = 0.45;
+        this.fx.dust(vent.x, this.terrain.surfaceY(vent.x), 1.4);
+      }
+      return;
+    }
     const site = this.digs.reachable(c.x);
     if (site) { this.startDig(site); return; }
     if (this.garden.ripeCount) { this.harvestAll(); return; }
@@ -2565,6 +2582,7 @@ export class Game {
       digs: this.digs.toJSON(), relics: this.relics,
       mining: this.mining.toJSON(), craft: this.craft.toJSON(), mind: this.mind.toJSON(),
       combat: this.combat.toJSON(), quests: this.quests.save(),
+      fountains: this.fountains.save(),
     });
   }
 
@@ -2598,6 +2616,7 @@ export class Game {
       this.combat.fromJSON(d.combat);
       this.quests.load(d.quests);
       this.relics = d.relics || {};
+      this.fountains.load(d.fountains);
       if (d.mode) this.ui.mode = d.mode;
       this.economy.recomputeGenes();
       this.economy.markDirty();
@@ -2633,6 +2652,7 @@ export class Game {
     this.terrain.drawSand(ctx, cam);
     this.green.drawGround(ctx, cam, this.terrain);
     this.world.drawProps2(ctx, cam, 'far');
+    this.fountains.draw(ctx, cam);
     this.world.drawScatter(ctx, cam, 'far');
     // the giants go behind even the far reef: they are thirty metres up and
     // several hundred metres off, and everything on the bottom is in front

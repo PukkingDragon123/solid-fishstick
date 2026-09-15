@@ -225,6 +225,24 @@ export class Fx {
     }
   }
 
+  /**
+   * Water under pressure. Not a burst in every direction like a spark - a jet
+   * goes up, in a narrow cone, and then gravity has it and it comes back
+   * down, which is the only reason a fountain looks like a fountain.
+   */
+  jet(x, y, n, power = 140) {
+    for (let i = 0; i < n; i++) {
+      const a = -Math.PI / 2 + (Math.random() - 0.5) * 0.5;
+      const sp = power * (0.5 + Math.random() * 0.8);
+      this._add({
+        k: 'spark', x: x + (Math.random() - 0.5) * 5, y,
+        vx: Math.cos(a) * sp, vy: Math.sin(a) * sp,
+        life: 0.8 + Math.random() * 1.1, t: 0, r: Math.random() < 0.3 ? 2 : 1,
+        color: Math.random() < 0.35 ? '#eafcff' : '#8fd8f0', grav: 170,
+      });
+    }
+  }
+
   popup(x, y, text, color = '#f4e2b4') {
     this._add({ k: 'text', x, y, vx: 0, vy: -18, life: 1.25, t: 0, text, color });
   }

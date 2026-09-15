@@ -323,6 +323,20 @@ export const TOPICS = [
     then: (g) => { g.mind?.leanIn(); },
   },
   {
+    id: 'vent', word: 'VENT', group: 'work',
+    ask: 'What are the stone caps?',
+    lines: [
+      { icon: 'well', mood: 'squint',
+        t: "You have seen one. Good. A collar of dressed block over a hole in the rock, with a plug driven into it. That is not a well. That is a lid." },
+      { icon: 'drop', mood: 'talk',
+        t: "The water never went anywhere. It went DOWN. The people here found the vents and capped them, because a spring you can turn on is worth more than a spring that runs, and then they died and the lids stayed shut." },
+      { icon: 'claw', mood: 'grin',
+        t: "So break one. Stand at it and swing - five good hits and the plug goes. What comes out does not stop, and everything within four hundred metres that has been waiting a thousand years comes up at once." },
+      { icon: 'shield', mood: 'frown',
+        t: "One thing. Something always moves in on top of them. It has been walking the same ground since before I got here and it does not like new arrivals. Deal with the animal first - it will not let you turn your back on it." },
+    ],
+  },
+  {
     id: 'help', word: 'HELP', group: 'him',
     ask: 'Help me.',
     lines: [

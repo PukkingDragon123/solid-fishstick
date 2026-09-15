@@ -6918,14 +6918,14 @@ body {
     drawProps(ctx, cam) {
       const t = this.game.terrain;
       for (const lm of landmarksNear(this.seed, cam.rx, cam.vw / cam.zoom + CELL2 * 0.5)) {
-        const art2 = landmarkArt(lm);
-        if (!art2) continue;
+        const art3 = landmarkArt(lm);
+        if (!art3) continue;
         const gy = t.surfaceY(lm.x);
         const s = cam.worldToScreen(lm.x, gy);
         ctx.save();
         ctx.translate(Math.round(s.x), Math.round(s.y));
         ctx.scale(cam.zoom, cam.zoom);
-        ctx.drawImage(art2.cv, -art2.w / 2, -art2.h);
+        ctx.drawImage(art3.cv, -art3.w / 2, -art3.h);
         ctx.restore();
       }
     }
@@ -6945,9 +6945,9 @@ body {
           if (p.x < b.x0 - 60 || p.x > b.x1 + 60) continue;
           const big = p.kind === "boulder" || (p.s || 0) > 1.05;
           if ((big ? "far" : "near") !== layer) continue;
-          const art2 = propArt(p);
-          if (!art2) continue;
-          const gy = p.kind === "boulder" ? t.baseY(p.x) + (art2.top || 0) : t.surfaceY(p.x);
+          const art3 = propArt(p);
+          if (!art3) continue;
+          const gy = p.kind === "boulder" ? t.baseY(p.x) + (art3.top || 0) : t.surfaceY(p.x);
           const s = cam.worldToScreen(p.x, gy);
           ctx.save();
           ctx.translate(Math.round(s.x), Math.round(s.y));
@@ -6958,7 +6958,7 @@ body {
             if (p.flip) ctx.scale(-1, 1);
             ctx.globalAlpha = p.shade;
           }
-          ctx.drawImage(art2.cv, -art2.ox, -art2.oy);
+          ctx.drawImage(art3.cv, -art3.ox, -art3.oy);
           ctx.restore();
         }
       }
@@ -7046,7 +7046,7 @@ body {
           if ((near ? "near" : "far") !== layer) continue;
           const def3 = FLORA_BY_ID[v.id];
           if (!def3) continue;
-          const art2 = buildPlant(def3, v.stage, v.variant, v.size);
+          const art3 = buildPlant(def3, v.stage, v.variant, v.size);
           const gy = t.surfaceY(v.x);
           const s = cam.worldToScreen(v.x, gy);
           ctx.save();
@@ -7056,7 +7056,7 @@ body {
           ctx.rotate(sway);
           if (v.flip) ctx.scale(-1, 1);
           ctx.globalAlpha = v.shade;
-          ctx.drawImage(art2.cv, -art2.ox, -art2.oy);
+          ctx.drawImage(art3.cv, -art3.ox, -art3.oy);
           ctx.restore();
         }
       }
@@ -7099,8 +7099,15 @@ body {
     waveY(x) {
       return this.surfaceY() + Math.sin(x * 0.012 + this.t * 1.1) * WAVE + Math.sin(x * 0.037 - this.t * 1.7) * WAVE * 0.45;
     }
-    /** How deep something is, in world units. Zero or less means it is dry. */
+    /**
+     * How deep something is, in world units. Zero or less means it is dry.
+     *
+     * The x check is not a shortcut: this is a BODY of water with an edge to
+     * it, not a global waterline. Without it every dune hollow east of here
+     * that happens to sit below the surface height filled up with sea.
+     */
     depth(x, y) {
+      if (x >= SHORE_X) return -1;
       return y - this.waveY(x);
     }
     /** Is this point in the water at all? */
@@ -7408,6 +7415,318 @@ body {
           ctx.fillStyle = MATERIALS[bi.crustMat].ramp[6];
           ctx.fillRect(sx, sy + Math.floor(d * z), Math.ceil(SAND_CELL * z), Math.ceil(-d * z) + 1);
         }
+      }
+    }
+  };
+
+  // js/systems/fountains.js
+  var CELL3 = 5200;
+  var CAP_HP = 5;
+  var FLOOD_SECS = 26;
+  var REACH = 34;
+  var GUARD_WAKE = 300;
+  var cache6 = /* @__PURE__ */ new Map();
+  var cacheSeed3 = null;
+  function ventAt(seed, ci) {
+    if (seed !== cacheSeed3) {
+      cacheSeed3 = seed;
+      cache6.clear();
+    }
+    let v = cache6.get(ci);
+    if (v !== void 0) return v;
+    const r = mulberry32((hashStr(String(seed) + "vent") ^ ci * 1597334677) >>> 0);
+    if (ci === 0 || r() < 0.22) {
+      cache6.set(ci, null);
+      return null;
+    }
+    const x = ci * CELL3 + CELL3 * (0.25 + r() * 0.5);
+    const b = biomeAt(x);
+    v = {
+      id: "vent" + ci,
+      ci,
+      x,
+      size: 26 + r() * 14,
+      seed: (hashStr(String(seed)) ^ ci * 99991) >>> 0,
+      red: b.mesaMat === "rockRed",
+      guard: r() < 0.82 ? "stonebasilisk" : "ironback"
+    };
+    cache6.set(ci, v);
+    return v;
+  }
+  function ventsNear(seed, x, radius = CELL3) {
+    const out = [];
+    const c0 = Math.floor((x - radius) / CELL3), c1 = Math.floor((x + radius) / CELL3);
+    for (let ci = c0; ci <= c1; ci++) {
+      const v = ventAt(seed, ci);
+      if (v && Math.abs(v.x - x) <= radius) out.push(v);
+    }
+    return out;
+  }
+  var art2 = /* @__PURE__ */ new Map();
+  function paintCap(v, broken) {
+    const key2 = `${v.seed}:${v.size | 0}:${v.red ? 1 : 0}:${broken ? 1 : 0}`;
+    let a = art2.get(key2);
+    if (a) return a;
+    const r = mulberry32(v.seed);
+    const S = v.size;
+    const W = Math.ceil(S * 2.6), H = Math.ceil(S * 1.9);
+    const p = new Painter(W, H);
+    const cx = W / 2, base = H - 2;
+    const rock = v.red ? "rockRed" : "rock";
+    for (let i = 0; i < 4; i++) {
+      const ox = (r() - 0.5) * S * 1.5;
+      p.ellipse(
+        cx + ox,
+        base - S * (0.1 + r() * 0.18),
+        S * (0.45 + r() * 0.34),
+        S * (0.3 + r() * 0.26),
+        { mat: rock, dome: S * 0.34, tint: (r() - 0.5) * 0.16 }
+      );
+    }
+    p.grain(rock, { freq: 0.26, amp: 0.22, seed: v.seed & 511 });
+    const cw = S * 0.62, ch = S * 0.52;
+    p.field(cx - cw, base - S * 0.42 - ch, cx + cw, base - S * 0.3, (x, y) => {
+      const u = (x - (cx - cw)) / (cw * 2);
+      const row = Math.floor((base - S * 0.3 - y) / (ch / 3));
+      const off = row & 1 ? cw * 0.34 : 0;
+      const bx = (x - cx + off + 999) % (cw * 0.68);
+      const joint = bx < 1 || (base - S * 0.3 - y) % (ch / 3) < 1;
+      return { h: joint ? 1 : 3.2, tint: joint ? -0.34 : 0.1 + Math.sin(row * 2.3 + u * 6) * 0.05 };
+    }, { mat: "bone" });
+    const my = base - S * 0.42 - ch * 0.42;
+    if (broken) {
+      p.ellipse(cx, my, S * 0.3, S * 0.2, { mat: "bone", mask: true, dome: -S * 0.5, tint: -0.8 });
+      for (let i = 0; i < 5; i++) {
+        const a2 = -Math.PI * (0.15 + r() * 0.7);
+        p.capsule(
+          cx,
+          my,
+          cx + Math.cos(a2) * S * 0.62,
+          my + Math.sin(a2) * S * 0.5,
+          0.8,
+          0.4,
+          { mat: "bone", mask: true, dome: -1.4, tint: -0.55 }
+        );
+      }
+    } else {
+      p.ellipse(cx, my, S * 0.32, S * 0.22, { mat: "metal", dome: S * 0.26, tint: 0.06 });
+      p.ellipse(cx, my - S * 0.06, S * 0.12, S * 0.08, { mat: "metal", dome: -S * 0.1, tint: -0.42 });
+      p.speckle("metal", { density: 0.07, amp: 0.5, seed: v.seed & 255 });
+    }
+    p.smoothHeight(1, 0.3);
+    a = { cv: p.resolve(MATERIALS, { outline: 0.9, outlineColor: "#161010" }), ox: cx, oy: base, my: base - my };
+    art2.set(key2, a);
+    return a;
+  }
+  var Fountains = class {
+    constructor(game2) {
+      this.game = game2;
+      this.state = /* @__PURE__ */ new Map();
+      this.guards = /* @__PURE__ */ new Map();
+      this.t = 0;
+    }
+    get seed() {
+      return this.game.world.seed;
+    }
+    _st(v) {
+      let s = this.state.get(v.id);
+      if (!s) {
+        s = { hp: CAP_HP, broken: false, flood: 0, dead: false };
+        this.state.set(v.id, s);
+      }
+      return s;
+    }
+    /** The vent close enough to swing at, or null. */
+    reachable(x) {
+      for (const v of ventsNear(this.seed, x, REACH * 2)) {
+        if (Math.abs(v.x - x) < REACH) return v;
+      }
+      return null;
+    }
+    /**
+     * One hit on a plug. It will not move at all while the thing guarding it is
+     * still on its feet - that is not a rule about damage, it is a rule about
+     * having your back to something that weighs a quarter of a tonne.
+     */
+    strike(v) {
+      const s = this._st(v);
+      const g = this.game;
+      if (s.broken) return { ok: false, why: "It is already open." };
+      const guard = this.guards.get(v.id);
+      if (guard && guard.alive) {
+        return { ok: false, why: "Not with that thing behind you." };
+      }
+      s.hp -= 1;
+      const y = g.terrain.surfaceY(v.x) - v.size * 0.6;
+      g.cam.shake(3.5);
+      g.audio?.play("hit", { pitch: 0.7 });
+      g.fx?.spark(v.x, y, "#cfd8dc", 12, 40);
+      if (s.hp > 0) {
+        if (s.hp === 1) g.npc?.say("It is going. One more.", 3, 2);
+        return { ok: true, hp: s.hp };
+      }
+      this._break(v, s);
+      return { ok: true, broken: true };
+    }
+    _break(v, s) {
+      const g = this.game;
+      s.broken = true;
+      s.flood = FLOOD_SECS;
+      const y = g.terrain.surfaceY(v.x) - v.size * 0.6;
+      g.cam.shake(9);
+      g.audio?.play("splash");
+      g.audio?.play("thunder");
+      g.fx?.ring(v.x, y, "#9fe8ff", 30);
+      for (let i = 0; i < 40; i++) g.fx?.spark(v.x, y, "#bfefff", 3, 120);
+      g.npc?.yell("IT IS UNDER PRESSURE - GET BACK -", 3.4);
+      g.ui?.say("The cap is off. It is coming up.", 4.5);
+      g.quests?.flag?.("fountain");
+    }
+    update(dt) {
+      this.t += dt;
+      const g = this.game;
+      const cx = g.crab.x;
+      for (const v of ventsNear(this.seed, cx, GUARD_WAKE)) {
+        const s = this._st(v);
+        if (!s.dead && !this.guards.has(v.id) && Math.abs(v.x - cx) < GUARD_WAKE) {
+          const c = g.wildlife.spawn(v.guard, v.x + (Math.sign(v.x - cx) || 1) * 90);
+          if (c) {
+            c.guardOf = v.id;
+            this.guards.set(v.id, c);
+            g.npc?.yell("THAT IS ITS VENT. IT HAS BEEN SITTING ON IT.", 3.6);
+          }
+        }
+        const guard = this.guards.get(v.id);
+        if (guard && !guard.alive && !s.dead) {
+          s.dead = true;
+          g.ui?.say("It is down. The cap is yours.", 4);
+        }
+        if (s.broken && s.flood > 0) {
+          s.flood = Math.max(0, s.flood - dt);
+          const k = clamp01(s.flood / FLOOD_SECS);
+          const reach = 60 + (1 - k) * 520;
+          g.green?.flood(v.x, reach, 1);
+          const y = g.terrain.surfaceY(v.x) - v.size * 0.6;
+          this._emit = (this._emit || 0) + dt * (30 + k * 90);
+          const n = Math.floor(this._emit);
+          if (n > 0) {
+            this._emit -= n;
+            g.fx?.jet(v.x, y, n, 110 + k * 150);
+          }
+          g.terrain.deform(v.x, dt * 5 * k, 30 + (1 - k) * 40);
+          if (s.flood <= 0) {
+            g.ui?.say("It has found its level. Look at it.", 5);
+            g.npc?.say("That is a spring. That is an actual spring, running.", 6, 4);
+          }
+        }
+      }
+    }
+    // -- drawing --------------------------------------------------------------
+    draw(ctx, cam) {
+      const g = this.game;
+      const t = g.terrain;
+      const z = cam.zoom;
+      const b = cam.bounds(120);
+      for (const v of ventsNear(this.seed, cam.rx, cam.vw / cam.zoom + CELL3 * 0.5)) {
+        if (v.x < b.x0 - 120 || v.x > b.x1 + 120) continue;
+        const s = this._st(v);
+        const a = paintCap(v, s.broken);
+        const gy = t.surfaceY(v.x);
+        const sc = cam.worldToScreen(v.x, gy);
+        ctx.save();
+        ctx.translate(Math.round(sc.x), Math.round(sc.y));
+        ctx.scale(z, z);
+        ctx.drawImage(a.cv, -a.ox, -a.oy);
+        ctx.restore();
+        if (s.broken) this._jet(ctx, cam, v, s, gy - a.my);
+        else if (!s.dead) this._mark(ctx, cam, v, gy - a.my);
+      }
+    }
+    /**
+     * The water, once it is out. A jet under pressure is not a line: it goes up
+     * as a column, comes apart at the top, and falls back on both sides in two
+     * arcs that land where the ground is already going green.
+     */
+    _jet(ctx, cam, v, s, wy) {
+      const k = clamp01(s.flood / FLOOD_SECS);
+      const h = 26 + k * 104;
+      const z = cam.zoom;
+      const bot = cam.worldToScreen(v.x, wy);
+      const topY = bot.y - h * z;
+      const w = Math.max(2, (2.5 + k * 4) * z);
+      const grd = ctx.createLinearGradient(0, topY, 0, bot.y);
+      grd.addColorStop(0, `rgba(236,252,255,${0.2 + k * 0.45})`);
+      grd.addColorStop(1, `rgba(120,206,232,${0.3 + k * 0.5})`);
+      ctx.fillStyle = grd;
+      const seg2 = Math.max(2, Math.ceil((bot.y - topY) / 10));
+      for (let i = 0; i < 10; i++) {
+        const u = i / 9;
+        const y = lerp(bot.y, topY, u);
+        const sway = Math.sin(this.t * 5.5 + u * 4 + v.ci) * u * 3.5 * z;
+        const ww = w * (1 - u * 0.45);
+        ctx.fillRect(Math.round(bot.x - ww / 2 + sway), Math.round(y - seg2), Math.max(1, ww), seg2 + 1);
+      }
+      ctx.fillStyle = `rgba(214,244,252,${0.3 + k * 0.35})`;
+      for (let side = -1; side <= 1; side += 2) {
+        for (let i = 0; i < 12; i++) {
+          const u = (i + (this.t * 0.9 + side) % 1) / 12;
+          const dx = side * u * (34 + k * 46) * z;
+          const dy = -h * z * (1 - (u * 2 - 1) * (u * 2 - 1)) * 0.82;
+          const r = Math.max(1, Math.round(z * (1.4 - u * 0.7)));
+          ctx.fillRect(Math.round(bot.x + dx), Math.round(bot.y + dy), r, r);
+        }
+      }
+      ctx.globalAlpha = 0.35 + k * 0.3;
+      ctx.fillStyle = "#e6fbff";
+      for (let i = 0; i < 9; i++) {
+        const a = i / 9 * TAU + this.t * 1.4;
+        const r = (5 + Math.sin(this.t * 5 + i) * 3) * z;
+        ctx.fillRect(
+          Math.round(bot.x + Math.cos(a) * r),
+          Math.round(bot.y + Math.sin(a) * r * 0.32),
+          Math.max(1, Math.round(z)),
+          Math.max(1, Math.round(z))
+        );
+      }
+      ctx.globalAlpha = 1;
+    }
+    /**
+     * It is not subtle about it. There is water under pressure the other side
+     * of that plug, and a plug with water under it weeps - a bead works out of
+     * the seam, hangs, and falls, over and over, for a thousand years.
+     */
+    _mark(ctx, cam, v, wy) {
+      const z = cam.zoom;
+      const s = cam.worldToScreen(v.x, wy);
+      const cycle = (this.t * 0.9 + v.ci * 0.37) % 1;
+      const r = Math.max(1, Math.round(z));
+      ctx.globalAlpha = 0.85;
+      ctx.fillStyle = "#bfeeff";
+      if (cycle < 0.6) {
+        const sw = Math.round(r * (1 + cycle));
+        ctx.fillRect(Math.round(s.x - sw / 2), Math.round(s.y), sw, sw);
+      } else {
+        const f = (cycle - 0.6) / 0.4;
+        ctx.fillRect(Math.round(s.x - r / 2), Math.round(s.y + f * f * 16 * z), r, r * 2);
+      }
+      ctx.globalAlpha = 0.22 + 0.1 * Math.sin(this.t * 2);
+      ctx.fillStyle = "#4c7a86";
+      ctx.fillRect(Math.round(s.x - 5 * z), Math.round(s.y + 15 * z), Math.round(10 * z), Math.max(1, Math.round(z)));
+      ctx.globalAlpha = 1;
+    }
+    // -- save -----------------------------------------------------------------
+    save() {
+      const out = {};
+      for (const [k, s] of this.state) {
+        if (s.broken || s.dead || s.hp < CAP_HP) out[k] = [s.hp, s.broken ? 1 : 0, s.dead ? 1 : 0];
+      }
+      return out;
+    }
+    load(d) {
+      this.state.clear();
+      for (const k of Object.keys(d || {})) {
+        const [hp, broken, dead] = d[k];
+        this.state.set(k, { hp, broken: !!broken, flood: 0, dead: !!dead });
       }
     }
   };
@@ -8057,9 +8376,9 @@ body {
     const cv = p.resolve(MATERIALS, { ...LIGHT4, outline: 1, outlineColor: "#171009" });
     return { cv, ox: cx, oy: cy };
   }
-  var cache6 = /* @__PURE__ */ new Map();
+  var cache7 = /* @__PURE__ */ new Map();
   function buildCrab(stage = "adult") {
-    if (cache6.has(stage)) return cache6.get(stage);
+    if (cache7.has(stage)) return cache7.get(stage);
     const m = crabMetrics(stage);
     const S = Math.max(0.4, m.S);
     const body = paintBody(m);
@@ -8136,7 +8455,7 @@ body {
       shellPoint: (u) => shellPoint(m, u),
       hipY
     };
-    cache6.set(stage, rig);
+    cache7.set(stage, rig);
     return rig;
   }
 
@@ -8497,8 +8816,8 @@ body {
       const c = Math.cos(a), s = Math.sin(a);
       for (const leg of this.legs) {
         if (!!leg.def.far !== far) continue;
-        const art2 = far ? rig.legArt.far : rig.legArt.near;
-        const l1 = art2.coxa.len, l2 = art2.femur.len, l3 = art2.tibia.len;
+        const art3 = far ? rig.legArt.far : rig.legArt.near;
+        const l1 = art3.coxa.len, l2 = art3.femur.len, l3 = art3.tibia.len;
         const wx = leg.foot.x - (this.x + this.lurch * 0.35);
         const wy = leg.foot.y - (this.y + this.bob);
         const lx = wx * c - wy * s, ly = wx * s + wy * c;
@@ -8507,10 +8826,10 @@ body {
         const ankX = lx - side * l3 * 0.4;
         const ankY = ly - l3 * 0.8;
         const sol = ik2(hx, hy, ankX, ankY, l1, l2, side);
-        this._seg(ctx, art2.coxa, hx, hy, sol.a1);
-        this._seg(ctx, art2.femur, sol.kx, sol.ky, sol.a2);
+        this._seg(ctx, art3.coxa, hx, hy, sol.a1);
+        this._seg(ctx, art3.femur, sol.kx, sol.ky, sol.a2);
         const fx = sol.kx + Math.cos(sol.a2) * l2, fy = sol.ky + Math.sin(sol.a2) * l2;
-        this._seg(ctx, art2.tibia, fx, fy, Math.atan2(ly - fy, lx - fx));
+        this._seg(ctx, art3.tibia, fx, fy, Math.atan2(ly - fy, lx - fx));
       }
     }
     _seg(ctx, seg2, x, y, a) {
@@ -8525,7 +8844,7 @@ body {
       const order = this.turnDir >= 0 ? [-1, 1] : [1, -1];
       for (const side of order) {
         const near = side === (this.turnDir >= 0 ? 1 : -1);
-        const art2 = near ? rig.claw.near : rig.claw.far;
+        const art3 = near ? rig.claw.near : rig.claw.far;
         const so = rig.sockets.claws.find((q) => q.side === side);
         const sw = Math.sin(this.clawT * (near ? 1.07 : 0.83)) * 0.07;
         const raise = this.clawOpen * 0.5 + this.pumping * 0.6 + this.alarm * 0.5 + (side > 0 ? Math.sin(this.tapT * Math.PI) * (this.tapLong ? 0.85 : 0.5) : 0);
@@ -8533,20 +8852,20 @@ body {
         ctx.translate(so.x, so.y);
         ctx.scale(side, 1);
         const a1 = 0.92 + sw - raise * 0.62 + this.crouch * 0.2;
-        const ex = Math.cos(a1) * art2.arm.len, ey = Math.sin(a1) * art2.arm.len;
+        const ex = Math.cos(a1) * art3.arm.len, ey = Math.sin(a1) * art3.arm.len;
         const a2 = a1 - 1.1 - raise * 0.34;
-        const fx = ex + Math.cos(a2) * art2.fore.len, fy = ey + Math.sin(a2) * art2.fore.len;
+        const fx = ex + Math.cos(a2) * art3.fore.len, fy = ey + Math.sin(a2) * art3.fore.len;
         const a3 = a2 + 0.18 - raise * 0.22 + Math.sin(this.clawT * 1.9 + side) * 0.04;
-        this._seg(ctx, art2.arm, 0, 0, a1);
-        this._seg(ctx, art2.fore, ex, ey, a2);
+        this._seg(ctx, art3.arm, 0, 0, a1);
+        this._seg(ctx, art3.fore, ex, ey, a2);
         ctx.save();
         ctx.translate(fx, fy);
         ctx.rotate(a3);
-        ctx.drawImage(art2.palm.cv, -art2.palm.ox, -art2.palm.oy);
+        ctx.drawImage(art3.palm.cv, -art3.palm.ox, -art3.palm.oy);
         ctx.save();
-        ctx.translate(art2.hinge.x, art2.hinge.y);
+        ctx.translate(art3.hinge.x, art3.hinge.y);
         ctx.rotate(-0.28 - this.clawOpen * 0.55);
-        ctx.drawImage(art2.dactyl.cv, -art2.dactyl.ox, -art2.dactyl.oy);
+        ctx.drawImage(art3.dactyl.cv, -art3.dactyl.ox, -art3.dactyl.oy);
         ctx.restore();
         ctx.restore();
         ctx.restore();
@@ -8564,7 +8883,7 @@ body {
         ctx.drawImage(rig.mouth.cv, -rig.mouth.ox, -rig.mouth.oy);
         ctx.restore();
       }
-      const art2 = rig.eye;
+      const art3 = rig.eye;
       for (const e of rig.sockets.eyes) {
         const base = -Math.PI / 2 + e.side * 0.34;
         const a = base + this.look.x * 0.22 * e.side + this.look.y * 0.18;
@@ -8573,12 +8892,12 @@ body {
         ctx.translate(e.x, e.y);
         ctx.rotate(a);
         ctx.scale(1, shrink);
-        ctx.drawImage(art2.cv, -art2.ox, -art2.oy);
+        ctx.drawImage(art3.cv, -art3.ox, -art3.oy);
         ctx.restore();
         if (shrink > 0.55) {
-          const r = art2.r;
-          const ex = e.x + Math.cos(a) * art2.globe;
-          const ey = e.y + Math.sin(a) * art2.globe;
+          const r = art3.r;
+          const ex = e.x + Math.cos(a) * art3.globe;
+          const ey = e.y + Math.sin(a) * art3.globe;
           const tint = this.game.modeTint;
           if (tint) {
             const heat = 0.55 + 0.45 * Math.sin(this.game.time * 3.2);
@@ -9881,10 +10200,10 @@ body {
       })
     };
   }
-  var cache7 = /* @__PURE__ */ new Map();
+  var cache8 = /* @__PURE__ */ new Map();
   function buildPerson(kind = "vess", K = 1) {
     const key2 = kind + ":" + K;
-    if (cache7.has(key2)) return cache7.get(key2);
+    if (cache8.has(key2)) return cache8.get(key2);
     const bone = (len, r0, r1, mat, far, o) => paintBone(len * K, r0 * K, r1 * K, mat, K, far, kind, o);
     const elder = kind === "elder";
     const rig = {
@@ -9939,7 +10258,7 @@ body {
       tube: { x: -T.W * 0.1, y: -T.H * 0.06 }
     };
     rig.standH = (rig.leg.near.upper.len + rig.leg.near.lower.len) * 0.955 + 1.9 * K;
-    cache7.set(key2, rig);
+    cache8.set(key2, rig);
     return rig;
   }
 
@@ -10021,7 +10340,7 @@ body {
   };
 
   // js/art/faces.js
-  var cache8 = /* @__PURE__ */ new Map();
+  var cache9 = /* @__PURE__ */ new Map();
   var INDEX2 = new Int8Array(128).fill(-1);
   for (let i = 0; i < FACE_ALPHA.length; i++) INDEX2[FACE_ALPHA.charCodeAt(i)] = i;
   function hasFace(name) {
@@ -10032,7 +10351,7 @@ body {
     const s = Math.max(1, Math.round(scale));
     const spore = Math.max(0, Math.min(1, opts.spore || 0));
     const key2 = `${name}:${s}:${spore.toFixed(2)}`;
-    let cv = cache8.get(key2);
+    let cv = cache9.get(key2);
     if (cv) return cv;
     const pal = spore > 0.01 ? FACE_PAL.map((c) => mixHex(c, "#a26cd0", spore * 0.55)) : FACE_PAL;
     cv = document.createElement("canvas");
@@ -10048,8 +10367,8 @@ body {
         g.fillRect(x * s, y * s, s, s);
       }
     }
-    if (cache8.size > 96) cache8.clear();
-    cache8.set(key2, cv);
+    if (cache9.size > 96) cache9.clear();
+    cache9.set(key2, cv);
     return cv;
   }
   var FACE_EYE = { x: 27, y: 21 };
@@ -10620,12 +10939,12 @@ body {
       if (this.hatOff) {
         const h = this.hatOff;
         const hs = cam.worldToScreen(h.x, h.y);
-        const art2 = rig.hat;
+        const art3 = rig.hat;
         ctx.save();
         ctx.translate(Math.round(hs.x), Math.round(hs.y));
         ctx.scale(z, z);
         ctx.rotate(h.rot);
-        ctx.drawImage(art2.cv, -art2.ox, -art2.oy);
+        ctx.drawImage(art3.cv, -art3.ox, -art3.oy);
         ctx.restore();
       }
       const drop = this.b.crouch * rig.standH * 0.62;
@@ -10672,13 +10991,13 @@ body {
       this._head(ctx, neck, lean, breath, flat);
       this._leg(ctx, rig.leg.near, this.feet[0], hipWorldY, dir, 1);
       if (P.hold) {
-        const art2 = rig.props[P.hold];
-        if (art2) {
+        const art3 = rig.props[P.hold];
+        if (art3) {
           const h = rot(rig.sockets.shoulder.x + 3.8 * rig.K, rig.sockets.shoulder.y + 6 * rig.K, lean);
           ctx.save();
           ctx.translate(h.x, h.y + breath);
           ctx.rotate(-0.34);
-          ctx.drawImage(art2.cv, -art2.ox, -art2.oy);
+          ctx.drawImage(art3.cv, -art3.ox, -art3.oy);
           ctx.restore();
         }
       }
@@ -10686,13 +11005,13 @@ body {
       ctx.restore();
     }
     /** One arm, plus whatever is in the hand at the end of it. */
-    _arm(ctx, art2, sh, a0, a1, lean, side, tool) {
+    _arm(ctx, art3, sh, a0, a1, lean, side, tool) {
       const rig = this.rig;
       const swing = (POSES[this.pose] || POSES.idle).swing || 0;
       const sw = swing * Math.cos((this.step + (side > 0 ? 0 : 0.5)) * TAU) * 0.4;
       const A = a0 + lean + sw;
       const B = A - a1 - Math.abs(sw) * 0.22;
-      const u = art2.upper, l = art2.lower;
+      const u = art3.upper, l = art3.lower;
       ctx.save();
       ctx.translate(sh.x, sh.y);
       ctx.rotate(A);
@@ -10714,15 +11033,15 @@ body {
      * One leg, solved to where its foot actually is in the world. `up` folds the
      * knee forward, which is the only thing that separates a person from a bird.
      */
-    _leg(ctx, art2, foot, hipWorldY, dir, side) {
+    _leg(ctx, art3, foot, hipWorldY, dir, side) {
       const rig = this.rig;
       const hx = rig.sockets.hip.x * side * 0.6;
       const hy = rig.sockets.hip.y;
       const fx = (foot.x - this.x) * dir + hx * 0.2;
       const fy = foot.y - hipWorldY;
-      const l1 = art2.upper.len, l2 = art2.lower.len;
+      const l1 = art3.upper.len, l2 = art3.lower.len;
       const sol = ik2(hx, hy, fx - 0.6 * rig.K, fy - 1.8 * rig.K, l1, l2, 1);
-      const u = art2.upper, l = art2.lower;
+      const u = art3.upper, l = art3.lower;
       ctx.save();
       ctx.translate(hx, hy);
       ctx.rotate(sol.a1);
@@ -10749,11 +11068,11 @@ body {
       const tilt = clamp(Math.round(want / STEP), -2, 2) * STEP;
       const goggles = P.tool === "lens" || P.tool === "canteen";
       const blue = this.game.mind ? this.game.mind.blue : 0;
-      const art2 = rig.headFor(this.face | 0, goggles, !!this.hatOff, blue > 0.35);
+      const art3 = rig.headFor(this.face | 0, goggles, !!this.hatOff, blue > 0.35);
       ctx.save();
       ctx.translate(neck.x, neck.y + breath);
       ctx.rotate(tilt);
-      ctx.drawImage(art2.cv, -art2.ox, -art2.oy);
+      ctx.drawImage(art3.cv, -art3.ox, -art3.oy);
       ctx.restore();
     }
   };
@@ -10920,15 +11239,15 @@ body {
       if (this.camp && this.camp.items.length && !this.riding) {
         const z = cam.zoom;
         for (const it of this.camp.items) {
-          const art2 = this.rig.props[it.k];
-          if (!art2) continue;
+          const art3 = this.rig.props[it.k];
+          if (!art3) continue;
           const x = this.camp.x + it.dx;
           const s = cam.worldToScreen(x, this.game.terrain.surfaceY(x));
           if (s.x < -40 || s.x > this.game.renderer.vw + 40) continue;
           ctx.save();
           ctx.translate(Math.round(s.x), Math.round(s.y));
           ctx.scale(z * (it.flip ? -1 : 1), z);
-          ctx.drawImage(art2.cv, -art2.ox - 4, -art2.oy);
+          ctx.drawImage(art3.cv, -art3.ox - 4, -art3.oy);
           ctx.restore();
         }
       }
@@ -11297,6 +11616,34 @@ body {
       then: (g) => {
         g.mind?.leanIn();
       }
+    },
+    {
+      id: "vent",
+      word: "VENT",
+      group: "work",
+      ask: "What are the stone caps?",
+      lines: [
+        {
+          icon: "well",
+          mood: "squint",
+          t: "You have seen one. Good. A collar of dressed block over a hole in the rock, with a plug driven into it. That is not a well. That is a lid."
+        },
+        {
+          icon: "drop",
+          mood: "talk",
+          t: "The water never went anywhere. It went DOWN. The people here found the vents and capped them, because a spring you can turn on is worth more than a spring that runs, and then they died and the lids stayed shut."
+        },
+        {
+          icon: "claw",
+          mood: "grin",
+          t: "So break one. Stand at it and swing - five good hits and the plug goes. What comes out does not stop, and everything within four hundred metres that has been waiting a thousand years comes up at once."
+        },
+        {
+          icon: "shield",
+          mood: "frown",
+          t: "One thing. Something always moves in on top of them. It has been walking the same ground since before I got here and it does not like new arrivals. Deal with the animal first - it will not let you turn your back on it."
+        }
+      ]
     },
     {
       id: "help",
@@ -12218,7 +12565,7 @@ body {
       outline: "#1a1328"
     }
   });
-  var cache9 = /* @__PURE__ */ new Map();
+  var cache10 = /* @__PURE__ */ new Map();
   var bake3 = (p, ox, oy, outline = "#14101a", extra = {}) => ({
     cv: p.resolve(MATS2, { ...LIGHT6, outline: 1, outlineColor: outline }),
     ox,
@@ -12594,7 +12941,7 @@ body {
   }
   function reefArt(kind, S = 1, seed = 0) {
     const k = `${kind}:${S.toFixed(2)}:${seed}`;
-    let v = cache9.get(k);
+    let v = cache10.get(k);
     if (v) return v;
     const rng4 = mulberry32(seed * 2654435761 >>> 0);
     const PALETTE = {
@@ -12640,24 +12987,24 @@ body {
         v = paintBrain(S, rng4, mat);
         break;
     }
-    cache9.set(k, v);
+    cache10.set(k, v);
     return v;
   }
   function fishArt(kind, S = 1) {
     const k = `fish:${kind}:${S.toFixed(2)}`;
-    let v = cache9.get(k);
+    let v = cache10.get(k);
     if (!v) {
       v = paintFish(kind, S, mulberry32(99));
-      cache9.set(k, v);
+      cache10.set(k, v);
     }
     return v;
   }
   function jellyArt(S = 1) {
     const k = `jelly:${S.toFixed(2)}`;
-    let v = cache9.get(k);
+    let v = cache10.get(k);
     if (!v) {
       v = paintJelly(S);
-      cache9.set(k, v);
+      cache10.set(k, v);
     }
     return v;
   }
@@ -12890,19 +13237,19 @@ body {
   }
   function sharkArt(S = 1) {
     const k = `shark:${S.toFixed(2)}`;
-    let v = cache9.get(k);
+    let v = cache10.get(k);
     if (!v) {
       v = paintShark(S);
-      cache9.set(k, v);
+      cache10.set(k, v);
     }
     return v;
   }
   function whaleArt(S = 1) {
     const k = `whale:${S.toFixed(2)}`;
-    let v = cache9.get(k);
+    let v = cache10.get(k);
     if (!v) {
       v = paintWhale(S);
-      cache9.set(k, v);
+      cache10.set(k, v);
     }
     return v;
   }
@@ -12911,7 +13258,7 @@ body {
   var FISH_KINDS = ["dart", "reef", "blue"];
 
   // js/systems/sea.js
-  var CELL3 = 90;
+  var CELL4 = 90;
   var DEPTH = 150;
   var DRAIN_SECS = 9;
   var Sea = class {
@@ -13173,7 +13520,7 @@ body {
       const items = [];
       const n = 3 + Math.floor(rng4() * 4);
       for (let i = 0; i < n; i++) {
-        const x = (ci + rng4()) * CELL3;
+        const x = (ci + rng4()) * CELL4;
         const big = rng4() < 0.55;
         const size = big ? 0.9 + rng4() * 1.1 : 0.5 + rng4() * 0.55;
         items.push({
@@ -13189,7 +13536,7 @@ body {
       }
       if (rng4() < 0.5) {
         items.push({
-          x: (ci + rng4()) * CELL3,
+          x: (ci + rng4()) * CELL4,
           kind: "crablet",
           s: 0.4 + rng4() * 0.35,
           seed: Math.floor(rng4() * 9999),
@@ -13206,7 +13553,7 @@ body {
     }
     near(x0, x1) {
       const out = [];
-      for (let ci = Math.floor(x0 / CELL3); ci <= Math.ceil(x1 / CELL3); ci++) {
+      for (let ci = Math.floor(x0 / CELL4); ci <= Math.ceil(x1 / CELL4); ci++) {
         for (const it of this._cell(ci)) if (it.x >= x0 && it.x <= x1) out.push(it);
       }
       return out;
@@ -13232,31 +13579,31 @@ body {
       ctx.globalAlpha = 1;
       for (const sh of this.sharks) {
         const s = cam.worldToScreen(sh.x, sh.y);
-        const art2 = sharkArt(1);
+        const art3 = sharkArt(1);
         const k = z * 0.9 * sh.s;
-        const w = art2.cv.width * k;
+        const w = art3.cv.width * k;
         if (s.x + w < -80 || s.x - w > vw + 80) continue;
         ctx.save();
         ctx.globalAlpha = wet * 0.8;
         ctx.translate(Math.round(s.x), Math.round(s.y));
         ctx.scale(k * (sh.dir < 0 ? -1 : 1), k);
         ctx.rotate(Math.sin(sh.ph) * 0.05 + sh.bank * 0.5);
-        ctx.drawImage(art2.cv, -art2.ox, -art2.oy);
+        ctx.drawImage(art3.cv, -art3.ox, -art3.oy);
         ctx.restore();
         ctx.globalAlpha = 1;
       }
       for (const wh of this.whales) {
         const s = cam.worldToScreen(wh.x, wh.y);
-        const art2 = whaleArt(1);
+        const art3 = whaleArt(1);
         const k = z * 0.95 * wh.s;
-        const w = art2.cv.width * k;
+        const w = art3.cv.width * k;
         if (s.x + w < -80 || s.x - w > vw + 80) continue;
         ctx.save();
         ctx.globalAlpha = wet * 0.74;
         ctx.translate(Math.round(s.x), Math.round(s.y + Math.sin(wh.ph) * 4 * z));
         ctx.scale(k * (wh.dir < 0 ? -1 : 1), k);
         ctx.rotate(Math.sin(wh.ph) * 0.035);
-        ctx.drawImage(art2.cv, -art2.ox, -art2.oy);
+        ctx.drawImage(art3.cv, -art3.ox, -art3.oy);
         ctx.restore();
         ctx.globalAlpha = wet * 0.16;
         ctx.fillStyle = "#cfeef8";
@@ -13283,14 +13630,14 @@ body {
         const y = this.game.terrain.surfaceY(x);
         if (this.flat !== null && y < this.level(x) + 3) continue;
         const s = cam.worldToScreen(x, y);
-        const art2 = reefArt(it.kind, Math.max(0.35, it.s * (far ? 0.8 : 1)), it.seed);
+        const art3 = reefArt(it.kind, Math.max(0.35, it.s * (far ? 0.8 : 1)), it.seed);
         const sway = Math.sin(this.t * 0.8 + it.sway) * 0.05 * wet;
         ctx.save();
         ctx.globalAlpha = wet * (far ? 0.72 : 1);
         ctx.translate(Math.round(s.x), Math.round(s.y));
         ctx.scale(z * (it.flip ? -1 : 1), z);
         if (!it.walk) ctx.rotate(sway);
-        ctx.drawImage(art2.cv, -art2.ox, -art2.oy);
+        ctx.drawImage(art3.cv, -art3.ox, -art3.oy);
         ctx.restore();
       }
       ctx.globalAlpha = 1;
@@ -13305,7 +13652,7 @@ body {
         if (f.y < ceil) continue;
         const s = cam.worldToScreen(f.x, f.y);
         if (s.x < -40 || s.x > this.game.renderer.vw + 40) continue;
-        const art2 = fishArt(f.kind, Math.max(0.4, f.s));
+        const art3 = fishArt(f.kind, Math.max(0.4, f.s));
         const beat = Math.sin(f.ph * 2.4) * 0.5;
         ctx.save();
         ctx.globalAlpha = wet;
@@ -13313,22 +13660,22 @@ body {
         ctx.scale(z * f.dir, z);
         ctx.rotate(Math.sin(f.ph * 0.7) * 0.12);
         ctx.save();
-        ctx.translate(art2.joint.x, art2.joint.y);
+        ctx.translate(art3.joint.x, art3.joint.y);
         ctx.rotate(beat * 0.5);
-        ctx.drawImage(art2.tail.cv, -art2.tail.ox, -art2.tail.oy);
+        ctx.drawImage(art3.tail.cv, -art3.tail.ox, -art3.tail.oy);
         ctx.restore();
-        ctx.drawImage(art2.body.cv, -art2.body.ox, -art2.body.oy);
+        ctx.drawImage(art3.body.cv, -art3.body.ox, -art3.body.oy);
         ctx.restore();
       }
       for (const j of this.jellies) {
         const s = cam.worldToScreen(j.x, j.y);
-        const art2 = jellyArt(Math.max(0.4, j.s));
+        const art3 = jellyArt(Math.max(0.4, j.s));
         const pulse = 1 + Math.sin(j.ph) * 0.1;
         ctx.save();
         ctx.globalAlpha = wet * 0.8;
         ctx.translate(Math.round(s.x), Math.round(s.y));
         ctx.scale(z * pulse, z / pulse);
-        ctx.drawImage(art2.cv, -art2.ox, -art2.oy);
+        ctx.drawImage(art3.cv, -art3.ox, -art3.oy);
         ctx.restore();
       }
       for (const u of this.bubbles) {
@@ -13488,7 +13835,7 @@ body {
   };
 
   // js/systems/green.js
-  var CELL4 = 24;
+  var CELL5 = 24;
   var SEEDABLE = 0.55;
   var Green = class {
     constructor(game2) {
@@ -13500,19 +13847,38 @@ body {
     }
     // -- the map --------------------------------------------------------------
     at(x) {
-      return this.life.get(Math.round(x / CELL4)) || 0;
+      return this.life.get(Math.round(x / CELL5)) || 0;
     }
     /** Water landing on the ground. `amount` is roughly litres of consequence. */
     water(x, amount, radius = 40) {
       const gain = amount * (this.game.economy ? 1 + this.game.economy.stat("green") : 1);
-      const i0 = Math.round((x - radius) / CELL4), i1 = Math.round((x + radius) / CELL4);
+      const i0 = Math.round((x - radius) / CELL5), i1 = Math.round((x + radius) / CELL5);
       for (let i = i0; i <= i1; i++) {
-        const k = 1 - clamp01(Math.abs(i * CELL4 - x) / radius);
+        const k = 1 - clamp01(Math.abs(i * CELL5 - x) / radius);
         if (k <= 0) continue;
         const cur = this.life.get(i) || 0;
         const next = clamp01(cur + gain * k * k);
         if (cur < 1 && next >= 1) this.total++;
         this.life.set(i, next);
+      }
+    }
+    /**
+     * Not watering - flooding. A capped spring coming off is not a can of water
+     * poured on the sand, it is a river, and a river does not negotiate with the
+     * evaporation rate: everything inside the front is wet, full stop, and it
+     * stays wet because there is more behind it.
+     */
+    flood(x, radius, level = 1) {
+      const i0 = Math.round((x - radius) / CELL5), i1 = Math.round((x + radius) / CELL5);
+      for (let i = i0; i <= i1; i++) {
+        const d = Math.abs(i * CELL5 - x) / radius;
+        if (d > 1) continue;
+        const want = level * clamp01(1.25 - d * d * 1.25);
+        const cur = this.life.get(i) || 0;
+        if (want <= cur) continue;
+        if (cur < 1 && want >= 1) this.total++;
+        this.life.set(i, want);
+        if (want > SEEDABLE && !this.plants.has(i) && Math.random() < 0.34) this._seed(i);
       }
     }
     update(dt, weather) {
@@ -13524,7 +13890,7 @@ body {
       const cx = this.game.crab.x;
       const keep = 3200;
       for (const [i, v] of this.life) {
-        const x = i * CELL4;
+        const x = i * CELL5;
         if (Math.abs(x - cx) > keep) {
           this.life.delete(i);
           this.plants.delete(i);
@@ -13550,9 +13916,9 @@ body {
       const g = this.game;
       for (const lm of landmarksNear(g.world.seed, g.crab.x, 900)) {
         if (lm.kind !== "oasis") continue;
-        const i0 = Math.round((lm.x - lm.size) / CELL4), i1 = Math.round((lm.x + lm.size) / CELL4);
+        const i0 = Math.round((lm.x - lm.size) / CELL5), i1 = Math.round((lm.x + lm.size) / CELL5);
         for (let i = i0; i <= i1; i++) {
-          const k = 1 - clamp01(Math.abs(i * CELL4 - lm.x) / lm.size);
+          const k = 1 - clamp01(Math.abs(i * CELL5 - lm.x) / lm.size);
           if (k <= 0.05) continue;
           const floor = clamp01(Math.pow(k, 0.7) * 1.15);
           const cur = this.life.get(i) || 0;
@@ -13576,7 +13942,7 @@ body {
         flip: r < 0.5,
         t: 0
       });
-      this.game.onGreened?.(i * CELL4);
+      this.game.onGreened?.(i * CELL5);
     }
     /** Things that came up on their own keep growing while the ground holds. */
     tick(dt) {
@@ -13597,13 +13963,13 @@ body {
      */
     drawGround(ctx, cam, terrain) {
       const b = cam.bounds(60);
-      const i0 = Math.round(b.x0 / CELL4), i1 = Math.round(b.x1 / CELL4);
+      const i0 = Math.round(b.x0 / CELL5), i1 = Math.round(b.x1 / CELL5);
       for (let i = i0; i <= i1; i++) {
         const v = this.life.get(i);
         if (!v) continue;
-        const x = i * CELL4;
+        const x = i * CELL5;
         const s = cam.worldToScreen(x, terrain.surfaceY(x));
-        const w = CELL4 * cam.zoom + 1;
+        const w = CELL5 * cam.zoom + 1;
         const h = (2.5 + v * 4.5) * cam.zoom;
         ctx.globalAlpha = clamp01(0.25 + v * 0.55);
         ctx.fillStyle = "#4a3118";
@@ -13641,7 +14007,7 @@ body {
   };
 
   // js/systems/digs.js
-  var CELL5 = 300;
+  var CELL6 = 300;
   var RELICS = [
     {
       id: "trilobite",
@@ -13697,12 +14063,12 @@ body {
       const r = mulberry32((hashStr(this.seed + "dig") ^ ci * 2246822519) >>> 0);
       if (r() > 0.34) return null;
       const relic = RELICS[Math.floor(r() * RELICS.length)];
-      const x = ci * CELL5 + CELL5 * (0.15 + r() * 0.7);
+      const x = ci * CELL6 + CELL6 * (0.15 + r() * 0.7);
       return { id: "dig" + ci, ci, x, relic, deep: 0.3 + r() * 0.7 };
     }
     near(x, radius = 260) {
       const out = [];
-      for (let ci = Math.floor((x - radius) / CELL5); ci <= Math.floor((x + radius) / CELL5); ci++) {
+      for (let ci = Math.floor((x - radius) / CELL6); ci <= Math.floor((x + radius) / CELL6); ci++) {
         const s = this.siteAt(ci);
         if (s && !this.taken.has(s.id) && Math.abs(s.x - x) <= radius) out.push(s);
       }
@@ -13773,8 +14139,8 @@ body {
   };
 
   // js/systems/mining.js
-  var CELL6 = 46;
-  var REACH = 16;
+  var CELL7 = 46;
+  var REACH2 = 16;
   var BITE = 3.4;
   var TOTAL_W = ORES.reduce((t, o) => t + o.weight, 0);
   var Mining = class {
@@ -13807,7 +14173,7 @@ body {
       const depth = lerp(ore.depth[0], ore.depth[1], r());
       return {
         ci,
-        x: ci * CELL6 + CELL6 * (0.25 + r() * 0.5),
+        x: ci * CELL7 + CELL7 * (0.25 + r() * 0.5),
         depth,
         ore,
         // a seam is a cluster of lumps, drawn and broken as one
@@ -13819,7 +14185,7 @@ body {
     /** Every seam close enough to matter, nearest first. */
     near(x, radius = 150) {
       const out = [];
-      const c0 = Math.floor((x - radius) / CELL6), c1 = Math.floor((x + radius) / CELL6);
+      const c0 = Math.floor((x - radius) / CELL7), c1 = Math.floor((x + radius) / CELL7);
       for (let ci = c0; ci <= c1; ci++) {
         const s = this.seamAt(ci);
         if (s && Math.abs(s.x - x) <= radius) out.push(s);
@@ -13829,11 +14195,11 @@ body {
     /** How deep the hole at this point is, counting the ones either side of it. */
     holeAt(x) {
       let d = 0;
-      const ci = Math.floor(x / CELL6);
+      const ci = Math.floor(x / CELL7);
       for (let c = ci - 1; c <= ci + 1; c++) {
         const h = this.dug.get(c);
         if (!h) continue;
-        const fall = 1 - Math.abs(c * CELL6 + CELL6 / 2 - x) / (CELL6 * 1.6);
+        const fall = 1 - Math.abs(c * CELL7 + CELL7 / 2 - x) / (CELL7 * 1.6);
         if (fall > 0) d = Math.max(d, h * fall);
       }
       return d;
@@ -13850,14 +14216,14 @@ body {
      * Returns what came loose, so the caller can decide what to do about it.
      */
     swing(x, power = 1) {
-      const ci = Math.floor(x / CELL6);
+      const ci = Math.floor(x / CELL7);
       const was = this.dug.get(ci) || 0;
       const deep = Math.min(46, was + BITE * (0.7 + power * 0.4));
       this.dug.set(ci, deep);
-      this.game.terrain.deform?.(x, 1.4 + power * 0.5, REACH);
+      this.game.terrain.deform?.(x, 1.4 + power * 0.5, REACH2);
       const out = { grit: 0, drops: {}, broke: null, blocked: null, deep };
       if (Math.random() < 0.45) out.drops.grit = (out.drops.grit || 0) + 1;
-      const s = this.near(x, REACH)[0];
+      const s = this.near(x, REACH2)[0];
       if (!s) return out;
       if (!this.exposed(s)) {
         out.blocked = Math.round(s.depth - this.holeAt(s.x));
@@ -15275,7 +15641,7 @@ body {
   };
 
   // js/systems/critters.js
-  var CELL7 = 120;
+  var CELL8 = 120;
   var MAX_LIVE = 140;
   var CRITTERS = [
     {
@@ -15472,7 +15838,7 @@ body {
         }
       }
       const n = def3.n[0] + Math.floor(r() * (def3.n[1] - def3.n[0] + 1));
-      c = { ci, def: def3, n, x: ci * CELL7 + r() * CELL7, seed: r() * TAU };
+      c = { ci, def: def3, n, x: ci * CELL8 + r() * CELL8, seed: r() * TAU };
       this.cells.set(ci, c);
       return c;
     }
@@ -15485,7 +15851,7 @@ body {
       const sand = weather ? weather.sand || 0 : 0;
       const b = cam.bounds(140);
       const wantCells = /* @__PURE__ */ new Set();
-      for (let ci = Math.floor(b.x0 / CELL7); ci <= Math.floor(b.x1 / CELL7); ci++) wantCells.add(ci);
+      for (let ci = Math.floor(b.x0 / CELL8); ci <= Math.floor(b.x1 / CELL8); ci++) wantCells.add(ci);
       const have = new Set(this.live.map((q) => q.ci));
       for (const ci of wantCells) {
         if (have.has(ci)) continue;
@@ -15572,7 +15938,7 @@ body {
     _hatch(col) {
       const d = col.def;
       for (let i = 0; i < col.n && this.live.length < MAX_LIVE; i++) {
-        const x = col.x + (Math.random() - 0.5) * CELL7 * 0.8;
+        const x = col.x + (Math.random() - 0.5) * CELL8 * 0.8;
         this.live.push({
           ci: col.ci,
           def: d,
@@ -16417,6 +16783,29 @@ body {
         });
       }
     }
+    /**
+     * Water under pressure. Not a burst in every direction like a spark - a jet
+     * goes up, in a narrow cone, and then gravity has it and it comes back
+     * down, which is the only reason a fountain looks like a fountain.
+     */
+    jet(x, y, n, power = 140) {
+      for (let i = 0; i < n; i++) {
+        const a = -Math.PI / 2 + (Math.random() - 0.5) * 0.5;
+        const sp = power * (0.5 + Math.random() * 0.8);
+        this._add({
+          k: "spark",
+          x: x + (Math.random() - 0.5) * 5,
+          y,
+          vx: Math.cos(a) * sp,
+          vy: Math.sin(a) * sp,
+          life: 0.8 + Math.random() * 1.1,
+          t: 0,
+          r: Math.random() < 0.3 ? 2 : 1,
+          color: Math.random() < 0.35 ? "#eafcff" : "#8fd8f0",
+          grav: 170
+        });
+      }
+    }
     popup(x, y, text, color = "#f4e2b4") {
       this._add({ k: "text", x, y, vx: 0, vy: -18, life: 1.25, t: 0, text, color });
     }
@@ -16915,11 +17304,11 @@ body {
       p.rect(x - W * 0.46, y - 2.4 * K, W * 0.92, 2.6 * K, { mat: "rock", dome: 2.2 * K, tint: 0.06 });
     }
   };
-  var cache10 = /* @__PURE__ */ new Map();
+  var cache11 = /* @__PURE__ */ new Map();
   function buildStructure(def3, size = 1) {
     const K = Math.round(size * 20) / 20;
     const key2 = `${def3.id}|${K}`;
-    if (cache10.has(key2)) return cache10.get(key2);
+    if (cache11.has(key2)) return cache11.get(key2);
     const W = def3.w * K, H = def3.h * K;
     const pad = Math.ceil(6 * K) + 5;
     const p = new Painter(Math.ceil(W * 1.9) + pad * 2, Math.ceil(H) + pad * 2);
@@ -16929,7 +17318,7 @@ body {
     p.smoothHeight(1, 0.4);
     const cv = p.resolve(MATERIALS, { ...LIGHT7, outline: 1, outlineColor: "#170f09" });
     const out = { cv, ox: x, oy: y, w: W, h: H };
-    cache10.set(key2, out);
+    cache11.set(key2, out);
     return out;
   }
 
@@ -17319,7 +17708,7 @@ body {
         } else if (plot.plant) {
           const pl = plot.plant;
           const wilt = 1 - pl.thirst * 0.22;
-          const art2 = buildPlant(
+          const art3 = buildPlant(
             pl.def,
             pl.stage,
             pl.variant,
@@ -17330,17 +17719,17 @@ body {
           const bx = 1 + Math.sin(k * Math.PI) * 0.26 * k;
           const by = 1 + Math.sin(k * Math.PI) * 0.34 * k - k * k * 0.1;
           ctx.scale(wilt * bx, wilt * by);
-          ctx.drawImage(art2.cv, -art2.ox, -art2.oy);
+          ctx.drawImage(art3.cv, -art3.ox, -art3.oy);
           if (pl.thirst > 0.75 && Math.random() < 0.02) {
             const w = this.plotWorld(plot);
             this.game.fx?.drift(w.x, w.y - 3, "#8a7338", 1);
           }
         } else if (plot.build) {
-          const art2 = buildStructure(
+          const art3 = buildStructure(
             plot.build.def,
             clamp(crab.m.rx / 52, 0.24, 1.1) * scale
           );
-          ctx.drawImage(art2.cv, -art2.ox, -art2.oy);
+          ctx.drawImage(art3.cv, -art3.ox, -art3.oy);
         }
         ctx.restore();
       }
@@ -18871,8 +19260,8 @@ body {
     }
     _legs(ctx, far) {
       const rig = this.rig;
-      const art2 = far ? rig.legs.far : rig.legs.near;
-      if (!art2) return;
+      const art3 = far ? rig.legs.far : rig.legs.near;
+      if (!art3) return;
       const f = this.faceT < 0 ? -1 : 1;
       for (const l of this.legs) {
         if (l.far !== far) continue;
@@ -18882,16 +19271,16 @@ body {
         const hy = l.hip.y;
         const up = this.sprawl || this.bug ? -1 : 1;
         const ankX = lx + (this.sprawl ? Math.sign(l.side || 1) * 1.5 * this.S : 0);
-        const sol = ik2(hx, hy, ankX, ly, art2.upper.len, art2.lower.len, up);
+        const sol = ik2(hx, hy, ankX, ly, art3.upper.len, art3.lower.len, up);
         ctx.save();
         ctx.translate(hx, hy);
         ctx.rotate(sol.a1);
-        ctx.drawImage(art2.upper.cv, -art2.upper.ox, -art2.upper.oy);
+        ctx.drawImage(art3.upper.cv, -art3.upper.ox, -art3.upper.oy);
         ctx.restore();
         ctx.save();
         ctx.translate(sol.kx, sol.ky);
         ctx.rotate(sol.a2);
-        ctx.drawImage(art2.lower.cv, -art2.lower.ox, -art2.lower.oy);
+        ctx.drawImage(art3.lower.cv, -art3.lower.ox, -art3.lower.oy);
         ctx.restore();
       }
     }
@@ -18913,13 +19302,13 @@ body {
       ctx.drawImage(a.lower.cv, -a.lower.ox, -a.lower.oy);
       ctx.restore();
     }
-    _wing(ctx, art2, side) {
+    _wing(ctx, art3, side) {
       const so = this.rig.sockets;
       if (!so.wing) return;
       ctx.save();
       ctx.translate(so.wing.x + (side < 0 ? -1.6 * this.S : 0), so.wing.y);
       ctx.rotate(Math.PI - 0.5 + this.wingA * side * 0.9 + (side < 0 ? -0.18 : 0));
-      ctx.drawImage(art2.cv, -art2.ox, -art2.oy);
+      ctx.drawImage(art3.cv, -art3.ox, -art3.oy);
       ctx.restore();
     }
     _tail(ctx, side) {
@@ -20500,7 +20889,7 @@ body {
   ];
 
   // js/systems/encounters.js
-  var CELL8 = 340;
+  var CELL9 = 340;
   var KINDS2 = [
     { id: "relic", name: "Buried Relic", w: 0.2, verb: "Excavate" },
     { id: "wildpatch", name: "Wild Patch", w: 0.22, verb: "Harvest" },
@@ -20539,7 +20928,7 @@ body {
           break;
         }
       }
-      const x = ci * CELL8 + CELL8 * (0.25 + r() * 0.5);
+      const x = ci * CELL9 + CELL9 * (0.25 + r() * 0.5);
       const biome = biomeAt(x);
       const poi = {
         id: `${ci}`,
@@ -20557,9 +20946,9 @@ body {
       this.cells.set(key2, poi);
       return poi;
     }
-    near(x, radius = CELL8) {
+    near(x, radius = CELL9) {
       const out = [];
-      const c0 = Math.floor((x - radius) / CELL8), c1 = Math.floor((x + radius) / CELL8);
+      const c0 = Math.floor((x - radius) / CELL9), c1 = Math.floor((x + radius) / CELL9);
       for (let ci = c0; ci <= c1; ci++) {
         const p = this.cell(ci);
         if (p && Math.abs(p.x - x) <= radius) out.push(p);
@@ -20671,17 +21060,17 @@ body {
     draw(ctx, cam) {
       const t = this.game.terrain;
       const z = cam.zoom;
-      for (const p of this.near(cam.rx, cam.vw / z + CELL8)) {
+      for (const p of this.near(cam.rx, cam.vw / z + CELL9)) {
         const taken = this.isTaken(p);
-        const art2 = this._sprite(p);
-        if (!art2) continue;
+        const art3 = this._sprite(p);
+        if (!art3) continue;
         const gy = t.surfaceY(p.x);
         const s = cam.worldToScreen(p.x, gy);
         ctx.save();
         ctx.translate(Math.round(s.x), Math.round(s.y));
         ctx.scale(z, z);
         if (taken) ctx.globalAlpha = 0.55;
-        ctx.drawImage(art2.cv, -art2.ox, -art2.oy);
+        ctx.drawImage(art3.cv, -art3.ox, -art3.oy);
         ctx.restore();
         ctx.globalAlpha = 1;
       }
@@ -21176,7 +21565,7 @@ body {
     p.smoothHeight(1, 0.4);
     return { cv: bake4(p), ox: cx, oy: cy, r: R };
   }
-  var cache11 = /* @__PURE__ */ new Map();
+  var cache12 = /* @__PURE__ */ new Map();
   function rampFrom(hex, { lo = 0.1, hi = 1.55 } = {}) {
     const n = parseInt(hex.slice(1), 16);
     const r = n >> 16 & 255, g = n >> 8 & 255, b = n & 255;
@@ -21243,17 +21632,17 @@ body {
   function orbArt(hex, r, on) {
     const R = Math.max(2, Math.round(r * 2) / 2);
     const k = `orb:${hex}:${R}:${on ? 1 : 0}`;
-    let v = cache11.get(k);
+    let v = cache12.get(k);
     if (!v) {
       v = paintOrb(hex, R, on);
-      cache11.set(k, v);
+      cache12.set(k, v);
     }
     return v;
   }
   var key = (n, S, lv) => `${n}:${S.toFixed(2)}:${Math.round(lv * 4)}`;
   function organArt(name, S = 1, lv = 0) {
     const k = key(name, S, lv);
-    let v = cache11.get(k);
+    let v = cache12.get(k);
     if (v) return v;
     const q = Math.round(clamp01(lv) * 4) / 4;
     switch (name) {
@@ -21284,12 +21673,12 @@ body {
       default:
         v = paintHeart(S, q);
     }
-    cache11.set(k, v);
+    cache12.set(k, v);
     return v;
   }
 
   // js/art/crabpose.js
-  var cache12 = /* @__PURE__ */ new Map();
+  var cache13 = /* @__PURE__ */ new Map();
   function cv2(w, h) {
     const cv = document.createElement("canvas");
     cv.width = Math.max(1, Math.ceil(w));
@@ -21315,8 +21704,8 @@ body {
   function drawLegs(ctx, rig, m, standH, far, phase) {
     for (const def3 of rig.sockets.legs) {
       if (!!def3.far !== far) continue;
-      const art2 = far ? rig.legArt.far : rig.legArt.near;
-      const l1 = art2.coxa.len, l2 = art2.femur.len, l3 = art2.tibia.len;
+      const art3 = far ? rig.legArt.far : rig.legArt.near;
+      const l1 = art3.coxa.len, l2 = art3.femur.len, l3 = art3.tibia.len;
       const f = stance(m, def3, standH);
       const sw = Math.sin(phase + def3.order * 0.9 + (def3.side > 0 ? 0 : 1.7)) * m.rx * 0.02;
       const lx = f.x + sw, ly = f.y;
@@ -21324,35 +21713,35 @@ body {
       const ankX = lx - side * l3 * 0.4;
       const ankY = ly - l3 * 0.8;
       const sol = ik2(def3.x, def3.y, ankX, ankY, l1, l2, side);
-      seg(ctx, art2.coxa, def3.x, def3.y, sol.a1);
-      seg(ctx, art2.femur, sol.kx, sol.ky, sol.a2);
+      seg(ctx, art3.coxa, def3.x, def3.y, sol.a1);
+      seg(ctx, art3.femur, sol.kx, sol.ky, sol.a2);
       const fx = sol.kx + Math.cos(sol.a2) * l2, fy = sol.ky + Math.sin(sol.a2) * l2;
-      seg(ctx, art2.tibia, fx, fy, Math.atan2(ly - fy, lx - fx));
+      seg(ctx, art3.tibia, fx, fy, Math.atan2(ly - fy, lx - fx));
     }
   }
   function drawClaws(ctx, rig, open) {
     for (const side of [-1, 1]) {
-      const art2 = side > 0 ? rig.claw.near : rig.claw.far;
+      const art3 = side > 0 ? rig.claw.near : rig.claw.far;
       const so = rig.sockets.claws.find((q) => q.side === side);
       const raise = open * 0.5;
       ctx.save();
       ctx.translate(so.x, so.y);
       ctx.scale(side, 1);
       const a1 = 0.92 - raise * 0.62;
-      const ex = Math.cos(a1) * art2.arm.len, ey = Math.sin(a1) * art2.arm.len;
+      const ex = Math.cos(a1) * art3.arm.len, ey = Math.sin(a1) * art3.arm.len;
       const a2 = a1 - 1.1 - raise * 0.34;
-      const fx = ex + Math.cos(a2) * art2.fore.len, fy = ey + Math.sin(a2) * art2.fore.len;
+      const fx = ex + Math.cos(a2) * art3.fore.len, fy = ey + Math.sin(a2) * art3.fore.len;
       const a3 = a2 + 0.18 - raise * 0.22;
-      seg(ctx, art2.arm, 0, 0, a1);
-      seg(ctx, art2.fore, ex, ey, a2);
+      seg(ctx, art3.arm, 0, 0, a1);
+      seg(ctx, art3.fore, ex, ey, a2);
       ctx.save();
       ctx.translate(fx, fy);
       ctx.rotate(a3);
-      ctx.drawImage(art2.palm.cv, -art2.palm.ox, -art2.palm.oy);
+      ctx.drawImage(art3.palm.cv, -art3.palm.ox, -art3.palm.oy);
       ctx.save();
-      ctx.translate(art2.hinge.x, art2.hinge.y);
+      ctx.translate(art3.hinge.x, art3.hinge.y);
       ctx.rotate(-0.28 - open * 0.55);
-      ctx.drawImage(art2.dactyl.cv, -art2.dactyl.ox, -art2.dactyl.oy);
+      ctx.drawImage(art3.dactyl.cv, -art3.dactyl.ox, -art3.dactyl.oy);
       ctx.restore();
       ctx.restore();
       ctx.restore();
@@ -21366,16 +21755,16 @@ body {
       ctx.drawImage(rig.mouth.cv, -rig.mouth.ox, -rig.mouth.oy);
       ctx.restore();
     }
-    const art2 = rig.eye;
+    const art3 = rig.eye;
     for (const e of rig.sockets.eyes) {
       const a = -Math.PI / 2 + e.side * 0.34 - 0.036;
       ctx.save();
       ctx.translate(e.x, e.y);
       ctx.rotate(a);
-      ctx.drawImage(art2.cv, -art2.ox, -art2.oy);
+      ctx.drawImage(art3.cv, -art3.ox, -art3.oy);
       ctx.restore();
-      const r = art2.r;
-      const ex = e.x + Math.cos(a) * art2.globe, ey = e.y + Math.sin(a) * art2.globe;
+      const r = art3.r;
+      const ex = e.x + Math.cos(a) * art3.globe, ey = e.y + Math.sin(a) * art3.globe;
       ctx.fillStyle = "rgba(246,242,248,0.95)";
       ctx.fillRect(
         Math.round(ex - r * 0.34),
@@ -21410,7 +21799,7 @@ body {
   }
   function crabPlates(stage = "adult", sc = 3) {
     const key2 = stage + ":" + sc;
-    if (cache12.has(key2)) return cache12.get(key2);
+    if (cache13.has(key2)) return cache13.get(key2);
     const rig = buildCrab(stage);
     const m = rig.m;
     const standH = m.faceH * 0.9 + m.shellW * 0.13;
@@ -21503,7 +21892,7 @@ body {
       // half-extents of the whole animal in sprite pixels, from the anchor
       ext: { l: ox / sc, r: (w - ox) / sc, t: oy / sc, b: (h - oy) / sc }
     };
-    cache12.set(key2, out);
+    cache13.set(key2, out);
     return out;
   }
 
@@ -22517,7 +22906,7 @@ body {
         }
         const p = this._S(d.x * (reach + ORGAN_GAP), d.y * (reach + ORGAN_GAP), vw, vh);
         if (p.x < -200 || p.x > vw + 200 || p.y < -200 || p.y > vh + 200) continue;
-        const art2 = organArt(arm.organ, clamp(z * 1.4, 0.3, 2), lv);
+        const art3 = organArt(arm.organ, clamp(z * 1.4, 0.3, 2), lv);
         let sx = 1, sy = 1, glow = 0.08 + lv * 0.2;
         if (arm.organ === "heart") {
           const k = 1 + beat * 0.12;
@@ -22539,18 +22928,18 @@ body {
           sx = sy = 1 + fire * 0.03;
         }
         ctx.globalAlpha = fade * glow * 0.5;
-        const gg = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, art2.cv.width * 0.7);
+        const gg = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, art3.cv.width * 0.7);
         gg.addColorStop(0, arm.colour);
         gg.addColorStop(1, "rgba(0,0,0,0)");
         ctx.fillStyle = gg;
         ctx.beginPath();
-        ctx.arc(p.x, p.y, art2.cv.width * 0.7, 0, TAU);
+        ctx.arc(p.x, p.y, art3.cv.width * 0.7, 0, TAU);
         ctx.fill();
         ctx.globalAlpha = fade * (0.4 + lv * 0.6);
         ctx.save();
         ctx.translate(p.x, p.y);
         ctx.scale(sx, sy);
-        ctx.drawImage(art2.cv, -art2.ox, -art2.oy);
+        ctx.drawImage(art3.cv, -art3.ox, -art3.oy);
         ctx.restore();
       }
       ctx.globalAlpha = fade;
@@ -22595,7 +22984,7 @@ body {
         const rr = n.r * z * lerp(0.6, 1, seen);
         if (p.x < -80 || p.x > vw + 80 || p.y < -80 || p.y > vh + 80) continue;
         if (n.kind === "seed") {
-          const art3 = organArt("seed", clamp(z * 1.6, 0.4, 2.4), clamp01(this.game.economy.genes.size / 8));
+          const art4 = organArt("seed", clamp(z * 1.6, 0.4, 2.4), clamp01(this.game.economy.genes.size / 8));
           const b = 1 + Math.sin(this.t * 1.6) * 0.04;
           ctx.globalAlpha = fade * 0.5;
           const gg2 = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, rr * 4);
@@ -22609,7 +22998,7 @@ body {
           ctx.save();
           ctx.translate(p.x, p.y);
           ctx.scale(b, b);
-          ctx.drawImage(art3.cv, -art3.ox, -art3.oy);
+          ctx.drawImage(art4.cv, -art4.ox, -art4.oy);
           ctx.restore();
           continue;
         }
@@ -22637,11 +23026,11 @@ body {
         ctx.arc(p.x, p.y, rr + 2.5 * z + 1, 0, TAU);
         ctx.fill();
         ctx.globalAlpha = fade * seen;
-        const art2 = orbArt(n.color, rr * (on ? 1 : 0.86), on);
+        const art3 = orbArt(n.color, rr * (on ? 1 : 0.86), on);
         ctx.save();
         ctx.translate(p.x, p.y);
         if (ready) ctx.scale(1 + pulse * 0.07, 1 + pulse * 0.07);
-        ctx.drawImage(art2.cv, -art2.ox, -art2.oy);
+        ctx.drawImage(art3.cv, -art3.ox, -art3.oy);
         ctx.restore();
         const ico = n.data && n.data.icon;
         if (ico && rr > 6) {
@@ -24266,10 +24655,10 @@ Coming back.` };
       const i = g.input;
       const def3 = d.kind === "flora" ? FLORA_BY_ID[d.id] : BUILD_BY_ID[d.id];
       if (!def3) return;
-      const art2 = d.kind === "flora" ? buildPlant(def3, 0, 0, Math.min(1, 20 / Math.max(10, def3.h))) : buildStructure(def3, 0.5);
+      const art3 = d.kind === "flora" ? buildPlant(def3, 0, 0, Math.min(1, 20 / Math.max(10, def3.h))) : buildStructure(def3, 0.5);
       const bob = Math.sin(this.t * 9) * 1.2;
       ctx.globalAlpha = 0.9;
-      ctx.drawImage(art2.cv, Math.round(i.sx - art2.ox), Math.round(i.sy - art2.oy + bob));
+      ctx.drawImage(art3.cv, Math.round(i.sx - art3.ox), Math.round(i.sy - art3.oy + bob));
       ctx.globalAlpha = 1;
       drawText(
         ctx,
@@ -25061,12 +25450,12 @@ Coming back.` };
       ctx.globalAlpha = 0.62 + Math.sin(this.t * 5) * 0.12;
       if (kind === "flora") {
         const def3 = FLORA_BY_ID[this.placing.id];
-        const art2 = buildPlant(def3, 3, plot.i % 3, g.garden.plantScale(crab));
-        ctx.drawImage(art2.cv, -art2.ox, -art2.oy);
+        const art3 = buildPlant(def3, 3, plot.i % 3, g.garden.plantScale(crab));
+        ctx.drawImage(art3.cv, -art3.ox, -art3.oy);
       } else {
         const def3 = BUILD_BY_ID[this.placing.id];
-        const art2 = buildStructure(def3, clamp(crab.m.rx / 52, 0.24, 1.1));
-        ctx.drawImage(art2.cv, -art2.ox, -art2.oy);
+        const art3 = buildStructure(def3, clamp(crab.m.rx / 52, 0.24, 1.1));
+        ctx.drawImage(art3.cv, -art3.ox, -art3.oy);
       }
       ctx.restore();
       ctx.globalAlpha = 1;
@@ -25463,13 +25852,13 @@ She has to be yours to make it.` };
           selected: this.pick === f.id,
           accent: locked ? null : afford ? "#8cc468" : "#8a4a44"
         });
-        const art2 = buildPlant(f, locked ? 1 : 3, 0, Math.min(1.15, (cell - 12) / Math.max(10, f.h)));
+        const art3 = buildPlant(f, locked ? 1 : 3, 0, Math.min(1.15, (cell - 12) / Math.max(10, f.h)));
         ctx.save();
         ctx.beginPath();
         ctx.rect(cxi + 1, cy + 1, cell - 3, cell - 4);
         ctx.clip();
         if (locked) ctx.globalAlpha = 0.22;
-        ctx.drawImage(art2.cv, Math.round(cxi + cell / 2 - art2.ox), Math.round(cy + cell - 5 - art2.oy));
+        ctx.drawImage(art3.cv, Math.round(cxi + cell / 2 - art3.ox), Math.round(cy + cell - 5 - art3.oy));
         ctx.restore();
         const have = g.garden.countOf(f.id);
         if (have) drawText(ctx, `${have}`, cxi + cell - 4, cy + 2, { color: "#b6de8f", align: "right" });
@@ -25508,12 +25897,12 @@ She has to be yours to make it.` };
           selected: this.pick === b.id,
           accent: built ? "#8cc468" : ok ? "#e2b74a" : "#8a4a44"
         });
-        const art2 = buildStructure(b, Math.min(1.05, (cell - 12) / Math.max(10, b.h)));
+        const art3 = buildStructure(b, Math.min(1.05, (cell - 12) / Math.max(10, b.h)));
         ctx.save();
         ctx.beginPath();
         ctx.rect(cxi + 1, cy + 1, cell - 3, cell - 4);
         ctx.clip();
-        ctx.drawImage(art2.cv, Math.round(cxi + cell / 2 - art2.ox), Math.round(cy + cell - 4 - art2.oy));
+        ctx.drawImage(art3.cv, Math.round(cxi + cell / 2 - art3.ox), Math.round(cy + cell - 4 - art3.oy));
         ctx.restore();
         if (built) drawText(ctx, "*", cxi + cell - 5, cy + 2, { color: "#b6de8f", align: "right" });
         if (hot) {
@@ -26161,6 +26550,7 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
       this.pump = new Pump(this);
       this.sea = new Sea(this);
       this.shallows = new Ocean(this);
+      this.fountains = new Fountains(this);
       this.green = new Green(this);
       this.digs = new Digs(this, this.seed);
       this.mining = new Mining(this, this.seed);
@@ -27399,6 +27789,7 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
       this.encounters.update(sdt);
       this.world.update(sdt);
       this.shallows.update(sdt);
+      this.fountains.update(sdt);
       this.npc.update(sdt);
       this.fx.update(sdt, this.weather);
       this.attackT = Math.max(0, this.attackT - dt);
@@ -27957,6 +28348,19 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
       const c = this.crab;
       if (this.work.live) {
         this.work.strike();
+        return;
+      }
+      const vent = this.fountains.reachable(c.x);
+      if (vent) {
+        const res = this.fountains.strike(vent);
+        if (!res.ok) {
+          this.ui.say(res.why, 3);
+          this.audio.play("deny");
+        } else {
+          this.crab.clawOpen = 1;
+          this.attackT = 0.45;
+          this.fx.dust(vent.x, this.terrain.surfaceY(vent.x), 1.4);
+        }
         return;
       }
       const site = this.digs.reachable(c.x);
@@ -28643,7 +29047,8 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
         craft: this.craft.toJSON(),
         mind: this.mind.toJSON(),
         combat: this.combat.toJSON(),
-        quests: this.quests.save()
+        quests: this.quests.save(),
+        fountains: this.fountains.save()
       });
     }
     load(d) {
@@ -28674,6 +29079,7 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
         this.combat.fromJSON(d.combat);
         this.quests.load(d.quests);
         this.relics = d.relics || {};
+        this.fountains.load(d.fountains);
         if (d.mode) this.ui.mode = d.mode;
         this.economy.recomputeGenes();
         this.economy.markDirty();
@@ -28703,6 +29109,7 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
       this.terrain.drawSand(ctx, cam);
       this.green.drawGround(ctx, cam, this.terrain);
       this.world.drawProps2(ctx, cam, "far");
+      this.fountains.draw(ctx, cam);
       this.world.drawScatter(ctx, cam, "far");
       if (this.seaShowing) this.sea.drawDeep(ctx, cam, r.vw, r.vh);
       if (this.seaShowing) this.sea.drawReef(ctx, cam, true);
@@ -28917,12 +29324,12 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
         if (!def3) continue;
         const y = this.terrain.surfaceY(x);
         const s = cam.worldToScreen(x, y);
-        const art2 = buildPlant(def3, p.stage, p.variant, p.size);
+        const art3 = buildPlant(def3, p.stage, p.variant, p.size);
         ctx.save();
         ctx.translate(Math.round(s.x), Math.round(s.y));
         ctx.scale(cam.zoom * (p.flip ? -1 : 1), cam.zoom);
         ctx.rotate(Math.sin(this.time * 1.1 + i) * 0.03 * (this.weather.windSpeed + 0.3));
-        ctx.drawImage(art2.cv, -art2.ox, -art2.oy);
+        ctx.drawImage(art3.cv, -art3.ox, -art3.oy);
         ctx.restore();
       }
     }

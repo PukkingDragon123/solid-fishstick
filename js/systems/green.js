@@ -43,6 +43,27 @@ export class Green {
     }
   }
 
+  /**
+   * Not watering - flooding. A capped spring coming off is not a can of water
+   * poured on the sand, it is a river, and a river does not negotiate with the
+   * evaporation rate: everything inside the front is wet, full stop, and it
+   * stays wet because there is more behind it.
+   */
+  flood(x, radius, level = 1) {
+    const i0 = Math.round((x - radius) / CELL), i1 = Math.round((x + radius) / CELL);
+    for (let i = i0; i <= i1; i++) {
+      const d = Math.abs(i * CELL - x) / radius;
+      if (d > 1) continue;
+      // full in the middle, tailing off at the edge of where it has reached
+      const want = level * clamp01(1.25 - d * d * 1.25);
+      const cur = this.life.get(i) || 0;
+      if (want <= cur) continue;
+      if (cur < 1 && want >= 1) this.total++;
+      this.life.set(i, want);
+      if (want > SEEDABLE && !this.plants.has(i) && Math.random() < 0.34) this._seed(i);
+    }
+  }
+
   update(dt, weather) {
     this.t += dt;
     this._soakOases(dt);

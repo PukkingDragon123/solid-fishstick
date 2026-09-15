@@ -57,8 +57,17 @@ export class Ocean {
       + Math.sin(x * 0.037 - this.t * 1.7) * WAVE * 0.45;
   }
 
-  /** How deep something is, in world units. Zero or less means it is dry. */
-  depth(x, y) { return y - this.waveY(x); }
+  /**
+   * How deep something is, in world units. Zero or less means it is dry.
+   *
+   * The x check is not a shortcut: this is a BODY of water with an edge to
+   * it, not a global waterline. Without it every dune hollow east of here
+   * that happens to sit below the surface height filled up with sea.
+   */
+  depth(x, y) {
+    if (x >= SHORE_X) return -1;
+    return y - this.waveY(x);
+  }
 
   /** Is this point in the water at all? */
   under(x, y) { return this.depth(x, y) > 0; }
