@@ -27,6 +27,20 @@ const OUT = 'rgba(12,8,5,0.72)';
 const TAP = '#8fe0cc';
 
 /**
+ * Two frames make a jaw. Whatever face he is wearing, talking flips between
+ * it and its opposite number - a shut mouth opens, an open one closes - so he
+ * is never a still picture with words appearing beside it.
+ */
+const JAW = {
+  flat: 'talk', talk: 'flat', grin: 'laugh', laugh: 'grin', joy: 'grin',
+  smug: 'talk', squint: 'talk', frown: 'gasp', gasp: 'frown', glare: 'scowl',
+  scowl: 'glare', shout: 'flat', peer: 'talk', blank: 'talk', dull: 'talk',
+  sad: 'talk', tired: 'talk', drink: 'flat', spore: 'gasp',
+};
+/** The frames that already have his eyes shut, which must not blink again. */
+const EYES_SHUT = new Set(['shut', 'sleep', 'laugh', 'joy']);
+
+/**
  * A board to pin things to. Everything on this screen used to float on the
  * darkened world, which is why it read as a debug overlay: a portrait with no
  * frame, slabs with nothing behind them. Now each group sits on a piece of his
@@ -80,6 +94,15 @@ export class TalkScreen {
     this.held = 0;
     this.down = false;
     this.flash = 0;          // lights the matched topic for a moment
+
+    // what makes him look like somebody sitting opposite you rather than a
+    // string arriving in a box
+    this.think = 0;          // a beat before he answers, because he thinks
+    this.hold = 0;           // the pause the last character earned
+    this.mouth = 0;          // drives the open/shut of his jaw while he talks
+    this.blink = 2 + Math.random() * 3;
+    this.lean = 0;           // the settle when a new card starts
+    this.idle = 0;           // how long you have left him waiting
   }
 
   get near() {
@@ -195,7 +218,7 @@ export class TalkScreen {
         lines: [{ icon: 'close', t: `"${word}". I have no idea. Slower - long taps and short ones, and a gap between the letters.` }],
       };
       this.line = 0;
-      this.type = 0;
+      this._begin();
       this.game.npc.mood = 'blank';
       this.game.audio?.play('deny');
     }
@@ -207,7 +230,7 @@ export class TalkScreen {
     // next, which is only knowable at the moment you ask
     this.topic = tp.build ? { ...tp, lines: tp.build(this.game) } : tp;
     this.line = 0;
-    this.type = 0;
+    this._begin();
     this._wear();
     this.said.add(tp.id);
     this.game.audio?.play(tapped ? 'discover' : 'uiBig');
@@ -220,10 +243,13 @@ export class TalkScreen {
     if (!tp) return;
     // a part-typed line completes instead of advancing, so a fast reader is
     // never punished and a slow one is never rushed
-    if (this.type < 1) { this.type = 1; return; }
+    // tapping through a line he has not finished saying finishes it, and
+    // tapping through the beat before it skips his thinking about it
+    if (this.think > 0) { this.think = 0; return; }
+    if (this.type < 1) { this.type = 1; this.hold = 0; return; }
     if (this.line < tp.lines.length - 1) {
       this.line++;
-      this.type = 0;
+      this._begin();
       this._wear();
       this.game.audio?.play('talk');
       return;
@@ -231,6 +257,21 @@ export class TalkScreen {
     tp.then?.(this.game);
     this.topic = null;
     if (this._byeAfter) { this._byeAfter = false; this.close(); }
+  }
+
+  /**
+   * Starting a card. Nobody answers the instant they are asked, so there is a
+   * beat first - a short one for a short line, a longer one when he has to
+   * think about it - and he wears a face while he does it.
+   */
+  _begin() {
+    const ln = this.topic?.lines?.[this.line];
+    const n = (ln?.t || '').length;
+    this.type = 0;
+    this.hold = 0;
+    this.mouth = 0;
+    this.think = this.line === 0 ? 0.30 + Math.min(0.42, n * 0.0022) : 0.13;
+    this.lean = 1;
   }
 
   /**
@@ -252,7 +293,53 @@ export class TalkScreen {
     if (!this.on) return;
     this.t += dt;
     this.flash = Math.max(0, this.flash - dt * 2);
-    if (this.type < 1) this.type = Math.min(1, this.type + dt * 2.4);
+    this.lean = Math.max(0, this.lean - dt * 2.6);
+
+    // He blinks. It is one frame of the sheet every few seconds and it is the
+    // difference between a man and a photograph of one.
+    this.blink -= dt;
+    if (this.blink < -0.12) this.blink = 2.4 + Math.random() * 3.4;
+
+    // The line arrives a character at a time, and it does NOT arrive at a
+    // constant rate: a full stop is worth a fifth of a second and a comma is
+    // worth half of that, which is the whole difference between somebody
+    // talking and a teleprinter.
+    if (this.think > 0) {
+      this.think -= dt;
+    } else if (this.type < 1) {
+      if (this.hold > 0) {
+        this.hold -= dt;
+      } else {
+        const t = this.topic?.lines?.[this.line]?.t || '';
+        const n = Math.max(1, t.length);
+        const was = Math.floor(this.type * n);
+        this.type = Math.min(1, this.type + (dt * 30) / n);
+        const now = Math.floor(this.type * n);
+        for (let k = was; k < now; k++) {
+          const c = t[k];
+          if (c === '.' || c === '!' || c === '?') this.hold = Math.max(this.hold, 0.20);
+          else if (c === ',' || c === ';' || c === '-') this.hold = Math.max(this.hold, 0.09);
+          // his voice, such as it is: one blip every few letters, never on a
+          // space, so it reads as speech rather than as a machine
+          if (c && c !== ' ' && k % 3 === 0) {
+            g.audio?.play('talk', { pitch: 0.82 + Math.random() * 0.2 });
+          }
+        }
+        this.mouth += dt;
+      }
+    }
+
+    // and when he has nothing to answer he does not freeze: he looks away,
+    // looks back, and eventually says something unprompted
+    if (!this.topic) {
+      this.idle += dt;
+      if (this.idle > 9) {
+        this.idle = 0;
+        g.npc.mood = ['flat', 'squint', 'peer', 'dull', 'smug'][Math.floor(Math.random() * 5)];
+      }
+    } else {
+      this.idle = 0;
+    }
 
     // walk away and the conversation ends, because he is a person standing
     // in a place and not a menu
@@ -335,8 +422,14 @@ export class TalkScreen {
       K = Math.max(1, Math.min(4, Math.floor(Math.min(W * 0.30 / 59, H * 0.58 / 64, room / 64))));
     }
     const spore = (g.mind?.blue || 0) > 0.35 ? 1 : 0;
+    // the face he is actually wearing this frame: his mood, with a jaw on it
+    // while the line is arriving and a blink over the top of both
+    let face = g.npc.mood || 'flat';
+    const saying = this.topic && this.think <= 0 && this.type < 1 && this.hold <= 0;
+    if (saying && Math.floor(this.mouth * 9) % 2 === 1) face = JAW[face] || 'talk';
+    if (this.blink < 0 && !EYES_SHUT.has(face)) face = 'shut';
     let port = null;
-    try { port = facePortrait(g.npc.mood || 'flat', K, spore); } catch { port = null; }
+    try { port = facePortrait(face, K, spore); } catch { port = null; }
 
     // He sits in a frame, the way a photograph pinned in a field notebook
     // does: a leather board, a stone mount cut into it, his face in the
@@ -363,7 +456,10 @@ export class TalkScreen {
     if (port) {
       // a breath, so he is not a still image while he is talking, and a clip
       // so the breath never pushes his hat out through the frame
-      const br = Math.sin(this.t * 1.4) * 0.6 + (this.type < 1 ? Math.sin(this.t * 16) * 0.5 : 0);
+      // breathing, plus the settle he makes when he starts a new sentence
+      const br = Math.sin(this.t * 1.4) * 0.6
+        + (saying ? Math.sin(this.t * 17) * 0.45 : 0)
+        - this.lean * this.lean * 3;
       ctx.save();
       ctx.beginPath();
       ctx.rect(cardX + PAD, cardY + PAD, pw, ph);
@@ -424,6 +520,13 @@ export class TalkScreen {
       ctx.fillRect(x + 25, y + 6, 1, h - 12);
     }
     const tx = x + 28;
+    // while he is thinking, the card is blank but for the three dots anybody
+    // makes when they are about to say something
+    if (this.think > 0) {
+      const n = 1 + Math.floor((0.7 - this.think) * 7) % 3;
+      drawText(ctx, '.'.repeat(Math.max(1, n)), tx, y + 10, { color: '#7a6a4c' });
+      return;
+    }
     // the line arrives a character at a time - he is talking, not printing
     const total = lines.join('').length;
     let budget = Math.ceil(total * this.type);

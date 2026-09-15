@@ -3031,9 +3031,2153 @@ body {
     return p.resolve(MATERIALS, { ambient: 0.42, dither: 0.6, outline: 0.75, outlineColor: "#241a10" });
   }
 
-  // js/art/floraart.js
-  var LIGHT = { lightX: -0.6, lightY: -0.62, lightZ: 0.4, ambient: 0.4, dither: 0.72 };
+  // js/art/faunaart.js
+  var LIGHT = { lightX: -0.58, lightY: -0.64, lightZ: 0.4, ambient: 0.37, dither: 0.68 };
   function rng(seed) {
+    let s = seed | 0 || 7;
+    return () => {
+      s ^= s << 13;
+      s ^= s >>> 17;
+      s ^= s << 5;
+      s |= 0;
+      return (s >>> 0) % 1e5 / 1e5;
+    };
+  }
+  function spine(pts, radius, n = 34) {
+    const out = [];
+    for (let i = 0; i <= n; i++) {
+      const t = i / n;
+      const p = bezier(pts, t);
+      out.push({ x: p.x, y: p.y, t, r: radius(t) });
+    }
+    for (let i = 0; i <= n; i++) {
+      const a = out[Math.max(0, i - 1)], b = out[Math.min(n, i + 1)];
+      const dx = b.x - a.x, dy = b.y - a.y;
+      const l = Math.hypot(dx, dy) || 1;
+      out[i].tx = dx / l;
+      out[i].ty = dy / l;
+      out[i].nx = -dy / l;
+      out[i].ny = dx / l;
+    }
+    return out;
+  }
+  function tube(p, sp, o = {}) {
+    const squash = o.squash ?? 1;
+    const dome = o.dome ?? 1;
+    const belly = o.belly ?? 0.16;
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (const s of sp) {
+      x0 = Math.min(x0, s.x - s.r - 2);
+      x1 = Math.max(x1, s.x + s.r + 2);
+      y0 = Math.min(y0, s.y - s.r * squash - 2);
+      y1 = Math.max(y1, s.y + s.r * squash + 2);
+    }
+    p.field(x0, y0, x1, y1, (px, py) => {
+      let bestD = Infinity, bestS = null, bestSide = 0;
+      for (const s of sp) {
+        const dx = px - s.x, dy = (py - s.y) / squash;
+        const d = Math.hypot(dx, dy);
+        const k = d / (s.r || 1e-3);
+        if (k < bestD) {
+          bestD = k;
+          bestS = s;
+          bestSide = dy;
+        }
+      }
+      if (!bestS || bestD > 1) return null;
+      const dz = Math.sqrt(clamp01(1 - bestD * bestD));
+      const under = clamp01(bestSide / (bestS.r || 1));
+      let tint = (o.tint ?? 0) + under * belly - (1 - under) * 0.02;
+      if (o.taperShade) tint -= (1 - bestS.t) * o.taperShade;
+      return { h: dz * bestS.r * dome, tint };
+    }, { mat: o.mat, mask: o.mask, under: o.under });
+    return p;
+  }
+  function bodyUV(sp, x, y) {
+    let best = null, bd = Infinity;
+    for (const s of sp) {
+      const d = (s.x - x) ** 2 + (s.y - y) ** 2;
+      if (d < bd) {
+        bd = d;
+        best = s;
+      }
+    }
+    if (!best) return { u: x, v: y };
+    return {
+      u: (x - best.x) * best.tx + (y - best.y) * best.ty + best.t * 90,
+      v: (x - best.x) * best.nx + (y - best.y) * best.ny
+    };
+  }
+  function overMat(p, mat, fn) {
+    const m = p._matIndex.get(mat);
+    if (!m) return false;
+    for (let y = 0; y < p.h; y++) {
+      for (let x = 0; x < p.w; x++) {
+        const i = y * p.w + x;
+        if (p.mat[i] === m) fn(i, x, y);
+      }
+    }
+    return true;
+  }
+  function mottle(p, mat, S, seed, amp = 0.2, scale = 1) {
+    overMat(p, mat, (i, x, y) => {
+      const f = 0.055 / (S * scale);
+      const n = fbmTex(x * f, y * f, seed, 3) - 0.5;
+      const n2 = fbmTex(x * f * 3.1, y * f * 3.1, seed + 71, 2) - 0.5;
+      p.tint[i] += n * amp * 2 + n2 * amp * 0.7;
+    });
+  }
+  function banding(p, mat, S, seed, sp, n = 9, amp = 0.24) {
+    const R = rng(seed * 13 + 5);
+    if (R() < 0.45) return;
+    const phase = R() * 10, warp = 0.5 + R();
+    overMat(p, mat, (i, x, y) => {
+      const { u, v } = bodyUV(sp, x, y);
+      const w = Math.sin(u * 0.09 * n / 6 + phase + Math.sin(v * 0.11) * warp);
+      const k = Math.pow(Math.max(0, w), 2.2);
+      p.tint[i] -= k * amp;
+      p.hgt[i] += k * 0.2 * S;
+    });
+  }
+  function counterShade(p, mat, S, sp, amp = 0.22) {
+    overMat(p, mat, (i, x, y) => {
+      p.tint[i] += clamp(bodyUV(sp, x, y).v * 0.05, -1, 1) * amp;
+    });
+  }
+  function skinPass(p, mat, kind, S, seed, sp) {
+    switch (kind) {
+      case "scale": {
+        const sx = Math.max(2, 2.8 * S), sy = Math.max(2, 2.2 * S);
+        const ok = overMat(p, mat, (i, x, y) => {
+          const { u, v } = bodyUV(sp, x, y);
+          const row = Math.floor(v / sy);
+          const off = row & 1 ? sx / 2 : 0;
+          const fx = ((u + off) % sx + sx) % sx / sx - 0.5;
+          const fy = (v % sy + sy) % sy / sy - 0.5;
+          const d = Math.sqrt(fx * fx + fy * fy * 1.7);
+          const k = clamp01(1 - d * 2);
+          const keel = clamp01(1 - Math.abs(fx) * 6) * clamp01(1 - Math.abs(fy) * 2.2);
+          const seam = clamp01(1 - Math.abs(fy + 0.5) * 5.5);
+          p.tint[i] += (k - 0.44) * 0.3 + keel * 0.13 - seam * 0.22;
+          p.hgt[i] += k * 0.9 * S + keel * 0.4 * S - seam * 0.6 * S;
+        });
+        if (!ok) break;
+        mottle(p, mat, S, seed + 17, 0.16);
+        banding(p, mat, S, seed, sp, 5, 0.13);
+        p.grain(mat, { freq: 0.55 / S, amp: 0.12, seed: seed + 3, oct: 2 });
+        counterShade(p, mat, S, sp, 0.16);
+        p.speckle(mat, { density: 0.02, amp: 0.3, seed: seed + 41 });
+        break;
+      }
+      case "fur": {
+        p.grain(mat, { freq: 0.8 / S, amp: 0.18, seed, oct: 2, height: 0.4 * S });
+        const R = rng(seed * 7 + 3);
+        const clumps = [];
+        for (let i = 0; i < 90; i++) clumps.push({ a: R() * TAU, l: 0.5 + R() });
+        overMat(p, mat, (i, x, y) => {
+          const { u, v } = bodyUV(sp, x, y);
+          const lie = u * 0.75 + v * 0.42 + Math.sin(v * 0.18 + u * 0.05) * 3.4;
+          const strand = Math.sin(lie / Math.max(0.9, 1.15 * S));
+          const clump = fbmTex(x * 0.09 / S, y * 0.09 / S, seed + 9, 2) - 0.5;
+          p.tint[i] += strand * 0.13 + clump * 0.26;
+          p.hgt[i] += strand * 0.45 * S + clump * 0.7 * S;
+        });
+        mottle(p, mat, S, seed + 31, 0.22, 1.6);
+        counterShade(p, mat, S, sp, 0.2);
+        p.grain(mat, { freq: 0.16 / S, amp: 0.16, seed: seed + 21, oct: 2 });
+        break;
+      }
+      case "chitin":
+        p.ridges(mat, { angle: 1.42, freq: 0.44 / S, amp: 0.24, height: 1.5 * S, seed, warp: 0.35 });
+        overMat(p, mat, (i, x, y) => {
+          const { u, v } = bodyUV(sp, x, y);
+          const seg2 = Math.sin(u / Math.max(1.4, 3.4 * S));
+          const k = Math.pow(clamp01(seg2), 2);
+          p.tint[i] += k * 0.16 - clamp01(-seg2) * 0.22;
+          p.hgt[i] += k * 1.1 * S;
+          const pit = fbmTex(x * 0.9 / S, y * 0.9 / S, seed + 55, 1);
+          if (pit > 0.72) {
+            p.tint[i] -= 0.22;
+            p.hgt[i] -= 0.7 * S;
+          }
+        });
+        mottle(p, mat, S, seed + 13, 0.16, 1.3);
+        p.grain(mat, { freq: 0.9 / S, amp: 0.09, seed: seed + 5 });
+        p.speckle(mat, { density: 0.03, amp: 0.3, seed: seed + 11 });
+        break;
+      case "shell":
+        overMat(p, mat, (i, x, y) => {
+          const { u, v } = bodyUV(sp, x, y);
+          const r = Math.hypot(u * 0.7, v);
+          const ring = Math.sin(r / Math.max(1.2, 2.6 * S));
+          p.tint[i] += ring * 0.13;
+          p.hgt[i] += ring * 0.8 * S;
+        });
+        mottle(p, mat, S, seed + 5, 0.24, 0.8);
+        p.grain(mat, { freq: 0.17 / S, amp: 0.24, seed, oct: 3, height: 0.8 * S });
+        p.speckle(mat, { density: 0.06, amp: 0.34, seed: seed + 11 });
+        break;
+      case "plate":
+        p.ridges(mat, { angle: 1.5, freq: 0.3 / S, amp: 0.16, height: 1.5 * S, seed, warp: 0.2 });
+        overMat(p, mat, (i, x, y) => {
+          const { u, v } = bodyUV(sp, x, y);
+          const cx2 = Math.round(u / Math.max(3, 5.2 * S));
+          const cy2 = Math.round(v / Math.max(3, 4.4 * S));
+          const du = u - cx2 * Math.max(3, 5.2 * S);
+          const dv = v - cy2 * Math.max(3, 4.4 * S);
+          const d = Math.hypot(du / Math.max(3, 5.2 * S), dv / Math.max(3, 4.4 * S)) * 2;
+          const k = clamp01(1 - d);
+          p.tint[i] += (k - 0.35) * 0.26;
+          p.hgt[i] += k * k * 1.6 * S;
+        });
+        mottle(p, mat, S, seed + 23, 0.18);
+        p.grain(mat, { freq: 0.5 / S, amp: 0.12, seed: seed + 7 });
+        break;
+      default:
+        mottle(p, mat, S, seed + 3, 0.18);
+        p.grain(mat, { freq: 0.42 / S, amp: 0.15, seed });
+    }
+  }
+  function furFringe(p, mat, S, seed, density = 0.55) {
+    const m = p._matIndex.get(mat);
+    if (!m) return;
+    const R = rng(seed * 31 + 7);
+    const edges = [];
+    for (let y = 1; y < p.h - 1; y++) {
+      for (let x = 1; x < p.w - 1; x++) {
+        const i = y * p.w + x;
+        if (p.mat[i] !== m) continue;
+        let ex = 0, ey = 0, open = false;
+        for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          if (!p.mat[i + dy * p.w + dx]) {
+            open = true;
+            ex -= dx;
+            ey -= dy;
+          }
+        }
+        if (open) edges.push({ x, y, ex, ey });
+      }
+    }
+    for (const e of edges) {
+      if (R() > density) continue;
+      const l = (1.2 + R() * 3) * S;
+      const a = Math.atan2(-e.ey, -e.ex) + (R() - 0.5) * 0.9;
+      p.capsule(
+        e.x,
+        e.y,
+        e.x + Math.cos(a) * l,
+        e.y + Math.sin(a) * l,
+        0.62 * S,
+        0.28 * S,
+        { mat, dome: 0.5 * S, tint: 0.04 + (R() - 0.5) * 0.36 }
+      );
+    }
+  }
+  function eye(p, x, y, r, D, tint = 0) {
+    p.ellipse(x, y, r * 1.35, r * 1.3, { mat: D.mat, dome: r * 0.8, tint: tint - 0.22 });
+    p.ellipse(x, y, r, r * (D.eyeSlit ? 1.05 : 1), { mat: "eye", dome: r * 1.4, tint });
+    if (D.eyeSlit) {
+      p.capsule(
+        x,
+        y - r * 0.85,
+        x,
+        y + r * 0.85,
+        r * 0.24,
+        r * 0.18,
+        { mat: "eye", mask: true, dome: 0, tint: -0.75 }
+      );
+    }
+    p.ellipse(x - r * 0.36, y - r * 0.4, r * 0.32, r * 0.28, { mat: "eye", mask: true, dome: r, tint: 0.72 });
+  }
+  function paintHead(D, S, R) {
+    const L = D.headL * S, H = D.headH * S;
+    const pad = Math.ceil(Math.max(L, H) * 0.7) + 6;
+    const p = new Painter(Math.ceil(L * 1.6) + pad * 2, Math.ceil(H * 2) + pad * 2);
+    const cx = pad + L * 0.3, cy = p.h / 2;
+    const plan = D.plan;
+    if (plan === "insect" || plan === "arachnid" || plan === "myriapod") {
+      p.ellipse(cx + L * 0.1, cy, L * 0.5, H * 0.46, { mat: D.mat, dome: H * 0.52, tint: 0.03 });
+      if (D.mandible) {
+        for (const sgn of [1, -1]) {
+          p.curve([
+            { x: cx + L * 0.42, y: cy + sgn * H * 0.16 },
+            { x: cx + L * 0.72, y: cy + sgn * H * 0.34 },
+            { x: cx + L * 0.96, y: cy + sgn * H * 0.06 }
+          ], H * 0.15, H * 0.05, {
+            mat: D.jawMat || "horn",
+            dome: H * 0.16,
+            steps: 12,
+            tint: sgn > 0 ? 0.04 : -0.16
+          });
+        }
+      }
+      if (D.palps) {
+        for (const sgn of [1, -1]) {
+          p.capsule(
+            cx + L * 0.34,
+            cy + sgn * H * 0.28,
+            cx + L * 0.66,
+            cy + sgn * H * 0.46,
+            H * 0.1,
+            H * 0.06,
+            { mat: D.mat, dome: H * 0.1, tint: sgn > 0 ? 0 : -0.16 }
+          );
+        }
+      }
+      const er = (D.eyeR ?? 2) * S;
+      eye(p, cx + L * 0.28, cy - H * 0.14, er, D, 0);
+      if (D.ocelli) {
+        for (let i = 0; i < 3; i++) {
+          p.ellipse(
+            cx + L * (0.02 + i * 0.09),
+            cy - H * 0.34,
+            er * 0.28,
+            er * 0.28,
+            { mat: "eye", dome: er * 0.4, tint: 0.1 }
+          );
+        }
+      }
+    } else if (plan === "sprawler") {
+      const sp = spine([
+        { x: cx - L * 0.34, y: cy },
+        { x: cx + L * 0.2, y: cy - H * 0.06 },
+        { x: cx + L * 0.86, y: cy + H * 0.1 }
+      ], (t) => H * (0.52 - 0.3 * Math.pow(t, 1.5)), 16);
+      tube(p, sp, { mat: D.mat, squash: 0.94, dome: 0.95, belly: 0.14 });
+      p.ellipse(
+        cx + L * 0.06,
+        cy - H * 0.28,
+        L * 0.26,
+        H * 0.16,
+        { mat: D.mat, dome: H * 0.3, tint: 0.1 }
+      );
+      p.capsule(
+        cx - L * 0.18,
+        cy + H * 0.2,
+        cx + L * 0.8,
+        cy + H * 0.16,
+        H * 0.09,
+        H * 0.05,
+        { mat: D.mat, mask: true, dome: 0, tint: -0.34 }
+      );
+      p.ellipse(
+        cx + L * 0.84,
+        cy + H * 0.06,
+        H * 0.1,
+        H * 0.08,
+        { mat: "flesh", dome: H * 0.1, tint: -0.1 }
+      );
+      eye(p, cx + L * 0.12, cy - H * 0.14, (D.eyeR ?? 2) * S, D, 0);
+    } else {
+      p.ellipse(cx, cy, L * 0.46, H * 0.46, { mat: D.mat, dome: H * 0.52, tint: 0.02 });
+      if (D.beak) {
+        const bl = D.beak * S;
+        p.curve(
+          [
+            { x: cx + L * 0.32, y: cy + H * 0.02 },
+            { x: cx + L * 0.32 + bl * 0.6, y: cy + H * (D.beakDroop ?? 0.06) },
+            { x: cx + L * 0.32 + bl, y: cy + H * (D.beakDroop ?? 0.06) * 2.2 }
+          ],
+          H * 0.24,
+          0.65 * S,
+          { mat: D.beakMat || "horn", dome: H * 0.2, steps: 12 }
+        );
+      } else if (D.muzzle) {
+        const ml = D.muzzle * S;
+        p.ellipse(
+          cx + L * 0.3 + ml * 0.42,
+          cy + H * 0.14,
+          ml * 0.62,
+          H * 0.3,
+          { mat: D.muzzleMat || D.mat, dome: H * 0.3, tint: 0.04 }
+        );
+        p.ellipse(
+          cx + L * 0.3 + ml * 0.94,
+          cy + H * 0.16,
+          1.3 * S,
+          1.05 * S,
+          { mat: "flesh", dome: 1.2 * S, tint: -0.12 }
+        );
+      }
+      eye(p, cx + L * (D.eyeX ?? 0.14), cy - H * (D.eyeY ?? 0.12), (D.eyeR ?? 2) * S, D, 0);
+    }
+    skinPass(p, D.mat, D.skin, S, D.seed || 3, [{ x: cx, y: cy, tx: 1, ty: 0, nx: 0, ny: 1, t: 0.5 }]);
+    if (D.ear) {
+      for (const near of [false, true]) {
+        const ex = cx - L * 0.16 - (near ? 0 : 1.5 * S), ey = cy - H * 0.34;
+        const el = D.ear * S;
+        p.curve(
+          [{ x: ex, y: ey }, { x: ex - el * 0.26, y: ey - el * 0.6 }, { x: ex + el * 0.14, y: ey - el }],
+          H * 0.22,
+          0.85 * S,
+          {
+            mat: near ? D.mat : D.matFar || D.mat,
+            dome: H * 0.17,
+            steps: 10,
+            tint: near ? 0.05 : -0.22
+          }
+        );
+        if (near) {
+          p.curve(
+            [{ x: ex, y: ey }, { x: ex - el * 0.22, y: ey - el * 0.58 }, { x: ex + el * 0.12, y: ey - el * 0.9 }],
+            H * 0.11,
+            0.45 * S,
+            { mat: "flesh", mask: true, dome: 0, steps: 10, tint: -0.16 }
+          );
+        }
+      }
+    }
+    if (D.horn) {
+      const hl = D.horn * S;
+      for (const sgn of [1, 0]) {
+        p.curve(
+          [
+            { x: cx + L * 0.02 - sgn * 1.4 * S, y: cy - H * 0.36 },
+            { x: cx + L * 0.28, y: cy - H * 0.36 - hl * 0.68 },
+            { x: cx + L * 0.08, y: cy - H * 0.36 - hl }
+          ],
+          1.6 * S,
+          0.55 * S,
+          { mat: "horn", dome: 1.4 * S, steps: 10, tint: sgn ? 0.06 : -0.2 }
+        );
+      }
+    }
+    if (D.frill) {
+      const fr = D.frill * S;
+      for (let i = 0; i < 7; i++) {
+        const a = -1.9 + i * 0.42;
+        p.poly([
+          { x: cx - L * 0.24, y: cy + Math.sin(a) * H * 0.3 },
+          { x: cx - L * 0.24 + Math.cos(a) * fr, y: cy + Math.sin(a) * fr },
+          { x: cx - L * 0.16, y: cy + Math.sin(a) * H * 0.42 }
+        ], { mat: D.hornMat || "horn", dome: 1.4 * S, feather: 1.6, tint: 0.04 - i * 0.02 });
+      }
+    }
+    if (D.crest) {
+      for (let i = 0; i < 5; i++) {
+        const t = i / 4;
+        const x = cx - L * 0.26 + t * L * 0.5;
+        const y = cy - H * 0.4;
+        const cl = D.crest * S * (0.5 + Math.sin(t * Math.PI) * 0.9);
+        p.curve(
+          [{ x, y }, { x: x - cl * 0.4, y: y - cl * 0.7 }, { x: x - cl * 0.8, y: y - cl }],
+          1.15 * S,
+          0.35 * S,
+          { mat: D.crestMat || "horn", dome: 1 * S, steps: 8, tint: 0.05 }
+        );
+      }
+    }
+    if (D.antenna) {
+      for (const sgn of [1, 0]) {
+        const al = D.antenna * S;
+        p.curve(
+          [
+            { x: cx + L * 0.3, y: cy - H * 0.3 - sgn * 1.2 * S },
+            { x: cx + L * 0.3 + al * 0.55, y: cy - H * 0.3 - al * 0.75 },
+            { x: cx + L * 0.3 + al * 1.05, y: cy - H * 0.3 - al * 0.45 }
+          ],
+          0.95 * S,
+          0.35 * S,
+          {
+            mat: D.antMat || D.mat,
+            dome: 0.8 * S,
+            steps: 12,
+            tint: sgn ? 0.02 : -0.2
+          }
+        );
+        if (D.antClub) {
+          p.ellipse(
+            cx + L * 0.3 + al * 1.05,
+            cy - H * 0.3 - al * 0.45,
+            1.5 * S,
+            1.1 * S,
+            { mat: D.antMat || D.mat, dome: 1.3 * S, tint: 0.06 }
+          );
+        }
+      }
+    }
+    if (D.skin === "fur") furFringe(p, D.mat, S, (D.seed || 3) + 5, 0.5);
+    p.smoothHeight(1, 0.38);
+    return {
+      cv: p.resolve(MATERIALS, { ...LIGHT, outline: 1, outlineColor: D.outline || "#160f0a" }),
+      ox: cx - L * 0.3,
+      oy: cy,
+      L,
+      H
+    };
+  }
+  function paintLimb(len, r0, r1, D, S, far, o = {}) {
+    const mat = far ? D.matFar || D.mat : D.mat;
+    const ft = far ? -0.2 : 0;
+    const pad = Math.ceil(Math.max(r0, r1) * 2.4 + 6);
+    const p = new Painter(Math.ceil(len) + pad * 2, pad * 2 + 4);
+    const cy = p.h / 2, x0 = pad, x1 = pad + len;
+    if (o.style === "chitin") {
+      p.capsule(x0, cy, x1, cy, r0, r1, { mat, dome: r0 * 0.85, tint: ft });
+      for (let i = 1; i < 4; i++) {
+        const x = lerp(x0, x1, i / 4);
+        p.ellipse(
+          x,
+          cy,
+          r0 * 0.28,
+          lerp(r0, r1, i / 4) * 1.02,
+          { mat, mask: true, dome: r0 * 0.2, tint: ft - 0.2 }
+        );
+      }
+      if (o.barbs) {
+        for (let i = 0; i < 4; i++) {
+          const x = lerp(x0 + len * 0.15, x1, i / 4);
+          p.capsule(
+            x,
+            cy + r0 * 0.5,
+            x - r0 * 1.3,
+            cy + r0 * 2,
+            0.5 * S,
+            0.3 * S,
+            { mat: "horn", dome: 0.5 * S, tint: ft }
+          );
+        }
+      }
+    } else {
+      p.curve(
+        [{ x: x0, y: cy }, { x: (x0 + x1) / 2, y: cy - (o.bow || 0) }, { x: x1, y: cy }],
+        r0,
+        r1,
+        { mat, dome: r0 * 0.9, steps: 12, tint: ft }
+      );
+    }
+    p.ellipse(x0, cy, r0 * 1.12, r0 * 1.06, { mat, dome: r0, tint: ft + 0.05 });
+    if (o.foot === "splay") {
+      for (let i = 0; i < 4; i++) {
+        const a = -0.55 + i * 0.38;
+        const tl = r1 * (3.4 - Math.abs(i - 1.5) * 0.6);
+        p.curve(
+          [
+            { x: x1, y: cy },
+            { x: x1 + Math.cos(a) * tl * 0.6, y: cy + Math.sin(a) * tl * 0.6 },
+            { x: x1 + Math.cos(a) * tl, y: cy + Math.sin(a) * tl * 0.8 }
+          ],
+          r1 * 0.62,
+          r1 * 0.22,
+          { mat, dome: r1 * 0.5, steps: 8, tint: ft - i * 0.03 }
+        );
+      }
+    } else if (o.foot === "claw") {
+      p.curve(
+        [{ x: x1, y: cy }, { x: x1 + r1 * 2, y: cy + r1 * 0.5 }, { x: x1 + r1 * 3.2, y: cy + r1 * 1.7 }],
+        r1 * 0.85,
+        0.45,
+        { mat: "horn", dome: r1 * 0.7, steps: 8, tint: ft + 0.05 }
+      );
+    } else if (o.foot === "paw") {
+      p.ellipse(x1 + r1 * 0.5, cy + r1 * 0.2, r1 * 1.7, r1 * 1.15, { mat, dome: r1 * 1.1, tint: ft + 0.03 });
+      for (let i = 0; i < 3; i++) {
+        p.ellipse(
+          x1 + r1 * (0.9 + i * 0.5),
+          cy + r1 * 0.55,
+          r1 * 0.5,
+          r1 * 0.4,
+          { mat: "horn", dome: r1 * 0.5, tint: ft }
+        );
+      }
+    } else if (o.foot === "hoof") {
+      p.ellipse(x1, cy, r1 * 1.5, r1 * 1.25, { mat: "horn", dome: r1 * 1.2, tint: ft + 0.02 });
+    } else if (o.foot === "hook") {
+      p.curve(
+        [{ x: x1, y: cy }, { x: x1 + r1 * 1.6, y: cy + r1 * 1.2 }, { x: x1 + r1 * 1.1, y: cy + r1 * 2.6 }],
+        r1 * 0.7,
+        0.4,
+        { mat: "horn", dome: r1 * 0.6, steps: 8, tint: ft + 0.04 }
+      );
+    }
+    skinPass(p, mat, D.skin, S, 41, [{ x: (x0 + x1) / 2, y: cy, tx: 1, ty: 0, nx: 0, ny: 1, t: 0.5 }]);
+    if (D.skin === "fur" && !far) furFringe(p, mat, S, 61, 0.34);
+    return {
+      cv: p.resolve(MATERIALS, {
+        ...LIGHT,
+        ambient: far ? 0.28 : LIGHT.ambient,
+        outline: 1,
+        outlineColor: far ? "#100a06" : D.outline || "#160f0a"
+      }),
+      ox: pad,
+      oy: cy,
+      len
+    };
+  }
+  function paintTail(D, S) {
+    const L = D.tail * S;
+    const W = (D.tailW ?? 0.26) * L;
+    const pad = Math.ceil(W * 2.2) + 6;
+    const p = new Painter(Math.ceil(L) + pad * 2, Math.ceil(W * 3.2) + pad * 2);
+    const x0 = pad, cy = p.h / 2;
+    const kind = D.tailKind || "taper";
+    if (kind === "sting") {
+      const sp = spine([
+        { x: x0, y: cy + W },
+        { x: x0 + L * 0.55, y: cy - W * 1.6 },
+        { x: x0 + L, y: cy + W * 0.2 }
+      ], () => W * 0.55, 22);
+      tube(p, sp, { mat: D.tailMat || D.mat, squash: 1, dome: 1 });
+      for (let i = 1; i < 6; i++) {
+        const s = sp[Math.round(i / 6 * sp.length)];
+        p.ellipse(s.x, s.y, W * 0.6, W * 0.6, { mat: D.tailMat || D.mat, dome: W * 0.55, tint: 0.06 });
+      }
+      const tip = sp[sp.length - 1];
+      p.ellipse(tip.x, tip.y, W * 0.8, W * 0.7, { mat: D.tailMat || D.mat, dome: W * 0.7, tint: 0.04 });
+      p.curve([
+        { x: tip.x, y: tip.y },
+        { x: tip.x + W * 1.1, y: tip.y + W * 0.6 },
+        { x: tip.x + W * 0.5, y: tip.y + W * 2 }
+      ], W * 0.42, 0.4, { mat: "horn", dome: W * 0.4, steps: 8 });
+    } else if (kind === "plume") {
+      for (let i = 0; i < 7; i++) {
+        const a = -0.55 + i * 0.19;
+        p.capsule(
+          x0,
+          cy,
+          x0 + Math.cos(a) * L,
+          cy + Math.sin(a) * L * 0.7,
+          W * 0.42,
+          W * 0.16,
+          { mat: D.tailMat || D.mat, dome: W * 0.4, tint: (i - 3) * 0.045 }
+        );
+      }
+    } else if (kind === "tuft") {
+      p.curve(
+        [{ x: x0, y: cy }, { x: x0 + L * 0.5, y: cy - L * 0.2 }, { x: x0 + L, y: cy - L * 0.05 }],
+        W * 0.55,
+        W * 0.22,
+        { mat: D.mat, dome: W * 0.5, steps: 12 }
+      );
+      p.ellipse(x0 + L, cy - L * 0.05, W * 0.95, W * 0.85, { mat: D.tailMat || D.mat, dome: W * 0.9, tint: 0.06 });
+    } else if (kind === "club") {
+      p.curve(
+        [{ x: x0, y: cy }, { x: x0 + L * 0.55, y: cy - L * 0.12 }, { x: x0 + L, y: cy }],
+        W * 0.6,
+        W * 0.5,
+        { mat: D.tailMat || D.mat, dome: W * 0.55, steps: 12 }
+      );
+      p.ellipse(x0 + L, cy, W * 1.15, W * 1, { mat: D.tailMat || D.mat, dome: W * 1, tint: 0.04 });
+      for (let i = 0; i < 5; i++) {
+        const a = -1.5 + i * 0.7;
+        p.poly(
+          [
+            { x: x0 + L, y: cy },
+            { x: x0 + L + Math.cos(a) * W * 2.1, y: cy + Math.sin(a) * W * 2.1 },
+            { x: x0 + L + Math.cos(a + 0.4) * W * 0.9, y: cy + Math.sin(a + 0.4) * W * 0.9 }
+          ],
+          { mat: "horn", dome: W * 0.5, feather: 1.4, tint: 0.05 }
+        );
+      }
+    } else {
+      const sp = spine([
+        { x: x0, y: cy },
+        { x: x0 + L * 0.48, y: cy - L * (D.tailLift ?? 0.1) },
+        { x: x0 + L, y: cy + L * 0.04 }
+      ], (t) => Math.max(0.55, W * Math.pow(1 - t, 0.72)), 26);
+      tube(p, sp, { mat: D.tailMat || D.mat, squash: D.tailSquash ?? 1, dome: 1, belly: 0.14 });
+      skinPass(p, D.tailMat || D.mat, D.skin, S, 73, sp);
+      if (D.tailCrest) {
+        for (let i = 2; i < sp.length - 2; i += 2) {
+          const s = sp[i];
+          p.poly([
+            { x: s.x - 1.2 * S, y: s.y - s.r },
+            { x: s.x, y: s.y - s.r - D.tailCrest * S },
+            { x: s.x + 1.2 * S, y: s.y - s.r }
+          ], { mat: D.crestMat || "horn", dome: 0.9 * S, feather: 1.2, tint: 0.05 });
+        }
+      }
+    }
+    if (D.skin === "fur") furFringe(p, D.tailMat || D.mat, S, 91, 0.45);
+    return {
+      cv: p.resolve(MATERIALS, { ...LIGHT, outline: 0.95, outlineColor: D.outline || "#160f0a" }),
+      ox: x0,
+      oy: cy,
+      len: L
+    };
+  }
+  function paintWing(D, S, far) {
+    const L = D.wing * S, W = L * (D.wingW ?? 0.5);
+    const pad = 6;
+    const p = new Painter(Math.ceil(L) + pad * 2, Math.ceil(W * 2) + pad * 2);
+    const x0 = pad, cy = p.h / 2;
+    const mat = D.wingMat || (far ? D.matFar || D.mat : D.mat);
+    const ft = far ? -0.2 : 0;
+    if (D.wingKind === "elytra") {
+      p.field(x0 - 2, cy - W - 2, x0 + L + 2, cy + W + 2, (x, y) => {
+        const u = (x - x0) / L;
+        if (u < 0 || u > 1) return null;
+        const span = W * Math.pow(Math.sin(Math.pow(u, 0.62) * Math.PI * 0.9 + 0.2), 0.55);
+        const dy = (y - cy) / span;
+        if (Math.abs(dy) > 1) return null;
+        const dz = Math.sqrt(clamp01(1 - dy * dy));
+        return { h: dz * W * 0.8, tint: ft + (dy < -0.2 ? 0.06 : -0.04) };
+      }, { mat });
+      p.ridges(mat, { angle: 0, freq: 0.55 / S, amp: 0.14, height: 0.8 * S, seed: 17, warp: 0.2 });
+      p.capsule(
+        x0,
+        cy - W * 0.9,
+        x0 + L * 0.96,
+        cy - W * 0.2,
+        0.7 * S,
+        0.4 * S,
+        { mat, mask: true, dome: 0, tint: ft - 0.3 }
+      );
+    } else if (D.wingKind === "membrane") {
+      p.field(x0 - 2, cy - W - 2, x0 + L + 2, cy + W + 2, (x, y) => {
+        const u = (x - x0) / L;
+        if (u < 0 || u > 1) return null;
+        const span = W * Math.pow(Math.sin(Math.pow(u, 0.7) * Math.PI * 0.92 + 0.16), 0.6);
+        const mid = cy + W * 0.15 * u;
+        const dy = (y - mid) / span;
+        if (dy < -1 || dy > 1) return null;
+        return { h: 1.4 - Math.abs(dy) * 1, tint: ft + (1 - Math.abs(dy)) * 0.12 - 0.05 };
+      }, { mat });
+      for (let i = 0; i < 5; i++) {
+        const a = -0.55 + i * 0.3;
+        p.capsule(
+          x0,
+          cy,
+          x0 + Math.cos(a) * L * 0.96,
+          cy + Math.sin(a) * L * 0.52,
+          0.85 * S,
+          0.35 * S,
+          { mat, mask: true, tint: ft - 0.26, dome: 0 }
+        );
+      }
+    } else {
+      const n = Math.round(6 + 4 * (D.wingFeathers ?? 1));
+      for (let i = 0; i < n; i++) {
+        const t = i / (n - 1);
+        const a = -0.42 + t * 0.85;
+        const fl = L * (0.55 + 0.45 * Math.sin(t * Math.PI * 0.8 + 0.3));
+        p.capsule(
+          x0 + L * 0.06 * t,
+          cy - W * 0.18 + t * W * 0.5,
+          x0 + Math.cos(a) * fl,
+          cy - W * 0.18 + t * W * 0.5 + Math.sin(a) * fl * 0.8,
+          W * 0.2,
+          W * 0.09,
+          { mat, dome: W * 0.18, tint: ft + (t - 0.5) * 0.22 }
+        );
+      }
+      p.ellipse(x0 + L * 0.16, cy, L * 0.22, W * 0.5, { mat, dome: W * 0.4, tint: ft + 0.06 });
+    }
+    return {
+      cv: p.resolve(MATERIALS, {
+        ...LIGHT,
+        ambient: far ? 0.28 : LIGHT.ambient,
+        outline: 0.85,
+        outlineColor: D.outline || "#160f0a"
+      }),
+      ox: x0,
+      oy: cy,
+      len: L
+    };
+  }
+  var PLAN = {
+    /** Lizards: long, low, heavy at the hips, head carried out front. */
+    sprawler(D, S) {
+      const L = D.bodyL * S, H = D.bodyH * S;
+      const pad = Math.ceil(H * 1.4) + 6;
+      const p = new Painter(Math.ceil(L) + pad * 2, Math.ceil(H * 2.4) + pad * 2);
+      const cx = p.w / 2, cy = p.h / 2;
+      const sp = spine([
+        { x: cx - L / 2, y: cy + H * 0.1 },
+        { x: cx - L * 0.1, y: cy - H * (D.arch ?? 0.14) },
+        { x: cx + L * 0.24, y: cy - H * (D.arch ?? 0.14) * 0.7 },
+        { x: cx + L / 2, y: cy + H * 0.04 }
+      ], (t) => H * 0.5 * (0.46 + 0.54 * Math.pow(Math.sin(Math.pow(t, 0.86) * Math.PI), 0.42)), 30);
+      tube(p, sp, { mat: D.mat, squash: D.squash ?? 0.86, dome: 0.92, belly: D.belly ?? 0.2 });
+      skinPass(p, D.mat, D.skin, S, D.seed || 3, sp);
+      if (D.dorsal) {
+        for (let i = 4; i < sp.length - 3; i += 2) {
+          const s = sp[i];
+          const k = D.dorsal * S * (0.6 + Math.sin(s.t * Math.PI) * 0.7);
+          p.poly(
+            [
+              { x: s.x - 1.3 * S, y: s.y - s.r * (D.squash ?? 0.86) },
+              { x: s.x - 0.2 * S, y: s.y - s.r * (D.squash ?? 0.86) - k },
+              { x: s.x + 1.3 * S, y: s.y - s.r * (D.squash ?? 0.86) }
+            ],
+            { mat: D.crestMat || "horn", dome: 1 * S, feather: 1.3, tint: 0.05 }
+          );
+        }
+      }
+      if (D.bands) {
+        for (let i = 0; i < D.bands; i++) {
+          const s = sp[Math.round(lerp(6, sp.length - 6, i / Math.max(1, D.bands - 1)))];
+          p.capsule(
+            s.x + s.nx * s.r,
+            s.y + s.ny * s.r,
+            s.x - s.nx * s.r,
+            s.y - s.ny * s.r,
+            1.5 * S,
+            1.1 * S,
+            { mat: D.mat, mask: true, tint: -0.3, dome: 0 }
+          );
+        }
+      }
+      return { p, cx, cy, sp, L, H };
+    },
+    /** Six legs, three tagmata, a waist you can see. */
+    insect(D, S) {
+      const L = D.bodyL * S, H = D.bodyH * S;
+      const pad = Math.ceil(H * 1.5) + 6;
+      const p = new Painter(Math.ceil(L) + pad * 2, Math.ceil(H * 2.4) + pad * 2);
+      const cx = p.w / 2, cy = p.h / 2;
+      const ab = { x: cx - L * 0.26, y: cy + H * 0.04, rx: L * 0.28, ry: H * (D.abdomen ?? 0.52) };
+      const th = { x: cx + L * 0.2, y: cy - H * 0.04, rx: L * 0.22, ry: H * 0.4 };
+      p.ellipse(ab.x, ab.y, ab.rx, ab.ry, { mat: D.mat, dome: ab.ry * 1.1, tint: 0 });
+      p.ellipse(th.x, th.y, th.rx, th.ry, { mat: D.mat, dome: th.ry * 1.15, tint: 0.05 });
+      p.capsule(
+        ab.x + ab.rx * 0.7,
+        ab.y - H * 0.04,
+        th.x - th.rx * 0.6,
+        th.y + H * 0.02,
+        H * 0.16,
+        H * 0.18,
+        { mat: D.mat, dome: H * 0.18, tint: -0.08 }
+      );
+      skinPass(p, D.mat, D.skin, S, D.seed || 3, [{ x: cx, y: cy, tx: 1, ty: 0, nx: 0, ny: 1, t: 0.5 }]);
+      if (D.segments) {
+        for (let i = 1; i < D.segments; i++) {
+          const t = i / D.segments;
+          const x = ab.x - ab.rx + t * ab.rx * 2;
+          p.ellipse(
+            x,
+            ab.y,
+            0.7 * S,
+            ab.ry * Math.sqrt(clamp01(1 - Math.pow(t * 2 - 1, 2))) * 1.02,
+            { mat: D.mat, mask: true, dome: 0.4 * S, tint: -0.22 }
+          );
+        }
+      }
+      const sp = [
+        { x: ab.x, y: ab.y, tx: 1, ty: 0, nx: 0, ny: 1, t: 0.3, r: ab.ry },
+        { x: th.x, y: th.y, tx: 1, ty: 0, nx: 0, ny: 1, t: 0.7, r: th.ry }
+      ];
+      return { p, cx, cy, sp, L, H, thorax: th, abdomen: ab };
+    },
+    /** Eight legs on a fused front, a soft bulb behind. */
+    arachnid(D, S) {
+      const L = D.bodyL * S, H = D.bodyH * S;
+      const pad = Math.ceil(H * 1.5) + 6;
+      const p = new Painter(Math.ceil(L) + pad * 2, Math.ceil(H * 2.4) + pad * 2);
+      const cx = p.w / 2, cy = p.h / 2;
+      const ab = { x: cx - L * 0.24, y: cy + H * 0.02, rx: L * 0.3, ry: H * 0.52 };
+      const ce = { x: cx + L * 0.24, y: cy - H * 0.02, rx: L * 0.26, ry: H * 0.44 };
+      p.ellipse(ab.x, ab.y, ab.rx, ab.ry, { mat: D.mat, dome: ab.ry * 1.15 });
+      p.ellipse(ce.x, ce.y, ce.rx, ce.ry, { mat: D.mat, dome: ce.ry * 1.2, tint: 0.05 });
+      skinPass(p, D.mat, D.skin, S, D.seed || 3, [{ x: cx, y: cy, tx: 1, ty: 0, nx: 0, ny: 1, t: 0.5 }]);
+      const sp = [
+        { x: ab.x, y: ab.y, tx: 1, ty: 0, nx: 0, ny: 1, t: 0.3, r: ab.ry },
+        { x: ce.x, y: ce.y, tx: 1, ty: 0, nx: 0, ny: 1, t: 0.7, r: ce.ry }
+      ];
+      return { p, cx, cy, sp, L, H, thorax: ce, abdomen: ab };
+    },
+    /** Legless: one long smooth tube laid in an S. */
+    serpent(D, S) {
+      const L = D.bodyL * S, H = D.bodyH * S;
+      const pad = Math.ceil(H * 2.2) + 6;
+      const p = new Painter(Math.ceil(L) + pad * 2, Math.ceil(H * 4) + pad * 2);
+      const cx = p.w / 2, cy = p.h / 2;
+      const sp = spine([
+        { x: cx - L / 2, y: cy + H * 0.9 },
+        { x: cx - L * 0.18, y: cy - H * 1.1 },
+        { x: cx + L * 0.2, y: cy + H * 1 },
+        { x: cx + L / 2, y: cy - H * 0.2 }
+      ], (t) => H * 0.5 * (0.3 + 0.7 * Math.pow(Math.sin(Math.pow(t, 1.5) * Math.PI * 0.96), 0.3)), 40);
+      tube(p, sp, { mat: D.mat, squash: 0.94, dome: 0.95, belly: 0.22 });
+      skinPass(p, D.mat, D.skin, S, D.seed || 3, sp);
+      if (D.bands) {
+        for (let i = 0; i < D.bands; i++) {
+          const s2 = sp[Math.round(lerp(4, sp.length - 5, i / Math.max(1, D.bands - 1)))];
+          p.capsule(
+            s2.x + s2.nx * s2.r,
+            s2.y + s2.ny * s2.r,
+            s2.x - s2.nx * s2.r,
+            s2.y - s2.ny * s2.r,
+            1.4 * S,
+            1 * S,
+            { mat: D.mat, mask: true, tint: -0.28, dome: 0 }
+          );
+        }
+      }
+      return { p, cx, cy, sp, L, H };
+    },
+    /** Long, many-segmented, many-legged. */
+    myriapod(D, S) {
+      const L = D.bodyL * S, H = D.bodyH * S;
+      const pad = Math.ceil(H * 1.6) + 6;
+      const p = new Painter(Math.ceil(L) + pad * 2, Math.ceil(H * 2.4) + pad * 2);
+      const cx = p.w / 2, cy = p.h / 2;
+      const n = D.segments || 9;
+      const sp = [];
+      for (let i = 0; i < n; i++) {
+        const t = i / (n - 1);
+        const x = cx - L / 2 + t * L;
+        const y = cy + Math.sin(t * Math.PI * 2.2) * H * 0.1;
+        const r = H * 0.5 * (0.55 + 0.45 * Math.sin(Math.pow(t, 0.8) * Math.PI));
+        p.ellipse(x, y, r * 1.16, r, { mat: D.mat, dome: r * 1.15, tint: i % 2 * 0.06 - 0.02 });
+        sp.push({ x, y, r, t, tx: 1, ty: 0, nx: 0, ny: 1 });
+      }
+      skinPass(p, D.mat, D.skin, S, D.seed || 3, sp);
+      return { p, cx, cy, sp, L, H };
+    },
+    /** Furred quadruped: deep chest, tucked belly, erect limbs. */
+    beast(D, S) {
+      const L = D.bodyL * S, H = D.bodyH * S;
+      const pad = Math.ceil(H * 1.5) + 6;
+      const p = new Painter(Math.ceil(L) + pad * 2, Math.ceil(H * 2.4) + pad * 2);
+      const cx = p.w / 2, cy = p.h / 2;
+      const sp = spine([
+        { x: cx - L / 2, y: cy - H * 0.02 },
+        { x: cx - L * 0.14, y: cy - H * (D.arch ?? 0.2) },
+        { x: cx + L * 0.22, y: cy - H * (D.arch ?? 0.2) * 0.8 },
+        { x: cx + L / 2, y: cy - H * 0.1 }
+      ], (t) => H * 0.5 * (0.38 + 0.62 * Math.pow(Math.sin(Math.pow(t, 1.15) * Math.PI * 0.98), 0.34)), 30);
+      tube(p, sp, { mat: D.mat, squash: D.squash ?? 1, dome: 0.95, belly: D.belly ?? 0.2 });
+      skinPass(p, D.mat, D.skin, S, D.seed || 3, sp);
+      if (D.stripes) {
+        for (let i = 0; i < D.stripes; i++) {
+          const s = sp[Math.round(lerp(6, sp.length - 7, i / Math.max(1, D.stripes - 1)))];
+          p.capsule(
+            s.x,
+            s.y - s.r,
+            s.x - s.r * 0.5,
+            s.y + s.r * 0.5,
+            1.3 * S,
+            0.9 * S,
+            { mat: D.mat, mask: true, tint: -0.3, dome: 0 }
+          );
+        }
+      }
+      if (D.spots) p.speckle(D.mat, { density: 0.028, amp: 0.42, seed: 91, size: Math.max(1, Math.round(1.6 * S)) });
+      furFringe(p, D.mat, S, (D.seed || 3) + 9, 0.5);
+      return { p, cx, cy, sp, L, H };
+    },
+    /** Upright, two legs, wings folded. */
+    bird(D, S) {
+      const L = D.bodyL * S, H = D.bodyH * S;
+      const pad = Math.ceil(H * 1.5) + 6;
+      const p = new Painter(Math.ceil(L) + pad * 2, Math.ceil(H * 2.4) + pad * 2);
+      const cx = p.w / 2, cy = p.h / 2;
+      const sp = spine([
+        { x: cx - L * 0.48, y: cy - H * 0.16 },
+        { x: cx - L * 0.06, y: cy + H * 0.1 },
+        { x: cx + L * 0.46, y: cy - H * 0.22 }
+      ], (t) => H * 0.5 * (0.34 + 0.66 * Math.pow(Math.sin(t * Math.PI), 0.4)), 26);
+      tube(p, sp, { mat: D.mat, squash: 1, dome: 1, belly: 0.2 });
+      skinPass(p, D.mat, D.skin, S, D.seed || 3, sp);
+      return { p, cx, cy, sp, L, H };
+    }
+  };
+  function planSockets(plan, r, D, S) {
+    const { L, H, cx, cy } = r;
+    const rel = (x, y) => ({ x: x - cx, y: y - cy });
+    switch (plan) {
+      case "insect":
+        return {
+          legs: [
+            rel(r.thorax.x + r.thorax.rx * 0.62, r.thorax.y + H * 0.2),
+            rel(r.thorax.x, r.thorax.y + H * 0.26),
+            rel(r.thorax.x - r.thorax.rx * 0.66, r.thorax.y + H * 0.24)
+          ],
+          head: rel(r.thorax.x + r.thorax.rx * 0.85, r.thorax.y - H * 0.06),
+          tail: rel(r.abdomen.x - r.abdomen.rx * 0.9, r.abdomen.y),
+          wing: rel(r.thorax.x - r.thorax.rx * 0.2, r.thorax.y - H * 0.28)
+        };
+      case "arachnid":
+        return {
+          legs: [
+            rel(r.thorax.x + r.thorax.rx * 0.7, r.thorax.y + H * 0.18),
+            rel(r.thorax.x + r.thorax.rx * 0.24, r.thorax.y + H * 0.22),
+            rel(r.thorax.x - r.thorax.rx * 0.24, r.thorax.y + H * 0.22),
+            rel(r.thorax.x - r.thorax.rx * 0.7, r.thorax.y + H * 0.18)
+          ],
+          head: rel(r.thorax.x + r.thorax.rx * 0.9, r.thorax.y),
+          tail: rel(r.abdomen.x - r.abdomen.rx * 0.8, r.abdomen.y - H * 0.18),
+          wing: null
+        };
+      case "serpent": {
+        const nose = r.sp[r.sp.length - 1], root = r.sp[0];
+        return {
+          legs: [],
+          head: rel(nose.x - nose.r * 0.4, nose.y),
+          tail: rel(root.x + root.r * 0.4, root.y),
+          wing: null
+        };
+      }
+      case "myriapod": {
+        const legs = [];
+        const n = Math.min(6, r.sp.length - 2);
+        for (let i = 0; i < n; i++) {
+          const s = r.sp[1 + Math.round(i * (r.sp.length - 3) / Math.max(1, n - 1))];
+          legs.push(rel(s.x, s.y + s.r * 0.6));
+        }
+        return {
+          legs,
+          head: rel(r.sp[r.sp.length - 1].x, r.sp[r.sp.length - 1].y),
+          tail: rel(r.sp[0].x, r.sp[0].y),
+          wing: null
+        };
+      }
+      case "bird":
+        return {
+          legs: [rel(cx - L * 0.02, cy + H * 0.28), rel(cx - L * 0.16, cy + H * 0.26)],
+          head: rel(cx + L * 0.4, cy - H * 0.24),
+          tail: rel(cx - L * 0.48, cy - H * 0.1),
+          wing: rel(cx - L * 0.02, cy - H * 0.22)
+        };
+      default: {
+        const nose = r.sp[r.sp.length - 1], root = r.sp[0];
+        const sq = D.squash ?? 1;
+        return {
+          legs: [
+            rel(cx + L * 0.27, cy + H * (D.plan === "sprawler" ? 0.3 : 0.16) * sq),
+            rel(cx - L * 0.27, cy + H * (D.plan === "sprawler" ? 0.32 : 0.18) * sq)
+          ],
+          head: rel(nose.x - nose.r * 0.5, nose.y - H * (D.neckY ?? 0.06)),
+          tail: rel(root.x + root.r * 0.4, root.y - H * 0.02),
+          wing: rel(cx + L * 0.02, cy - H * 0.26)
+        };
+      }
+    }
+  }
+  var cache = /* @__PURE__ */ new Map();
+  function buildCreature(def3) {
+    if (cache.has(def3.id)) return cache.get(def3.id);
+    const S = def3.scale ?? 1;
+    const R = rng(def3.seed || 5);
+    const D = def3;
+    const plan = D.plan || "beast";
+    const built = (PLAN[plan] || PLAN.beast)(D, S);
+    const bodyCv = built.p.smoothHeight(1, 0.36).resolve(MATERIALS, {
+      ...LIGHT,
+      outline: 1,
+      outlineColor: D.outline || "#160f0a"
+    });
+    const body = { cv: bodyCv, ox: built.cx, oy: built.cy, L: built.L, H: built.H };
+    const sockets = planSockets(plan, built, D, S);
+    const legStyle = plan === "insect" || plan === "arachnid" || plan === "myriapod" ? "chitin" : "curve";
+    const footFor = D.foot || (plan === "sprawler" ? "splay" : plan === "beast" ? "paw" : "hook");
+    const limbR = (D.limbR ?? (legStyle === "chitin" ? 1.15 : 1.9)) * S;
+    if (!D.legU) sockets.legs = [];
+    const legs = {};
+    for (const far of [false, true]) {
+      if (!D.legU) {
+        legs[far ? "far" : "near"] = null;
+        continue;
+      }
+      legs[far ? "far" : "near"] = {
+        upper: paintLimb(
+          D.legU * S,
+          limbR,
+          limbR * 0.82,
+          D,
+          S,
+          far,
+          { style: legStyle, bow: (plan === "sprawler" ? -1 : 0.7) * S }
+        ),
+        lower: paintLimb(
+          D.legL * S,
+          limbR * 0.82,
+          limbR * 0.5,
+          D,
+          S,
+          far,
+          { style: legStyle, bow: (plan === "sprawler" ? 1.1 : -0.7) * S, foot: footFor, barbs: D.barbs }
+        )
+      };
+    }
+    const arm = D.raptorial ? {
+      upper: paintLimb(
+        D.raptorial * S,
+        limbR * 1.35,
+        limbR * 1.05,
+        D,
+        S,
+        false,
+        { style: "chitin", barbs: true }
+      ),
+      lower: paintLimb(
+        D.raptorial * 0.85 * S,
+        limbR * 1.05,
+        limbR * 0.55,
+        D,
+        S,
+        false,
+        { style: "chitin", barbs: true, foot: "hook" }
+      )
+    } : null;
+    const rig = {
+      id: def3.id,
+      def: def3,
+      S,
+      plan,
+      arm,
+      body,
+      head: paintHead(D, S, R),
+      neck: (D.neck || 0) > 2 ? paintLimb((D.neck + 2) * S, (D.neckR ?? 2.6) * S, (D.neckR ?? 2.6) * S * 0.86, D, S, false, { bow: 0.6 * S }) : null,
+      legs,
+      legPairs: sockets.legs.length,
+      wing: D.wing && sockets.wing ? { near: paintWing(D, S, false), far: paintWing(D, S, true) } : null,
+      tail: D.tail ? paintTail(D, S) : null,
+      sockets
+    };
+    const stance2 = plan === "sprawler" ? 0.68 : plan === "insect" || plan === "arachnid" || plan === "myriapod" ? 0.58 : 0.84;
+    rig.standH = D.legU ? (D.legU + D.legL) * S * stance2 + body.H * 0.4 : body.H * 0.5;
+    rig.width = body.L;
+    cache.set(def3.id, rig);
+    return rig;
+  }
+
+  // js/ui/icons.js
+  var LIGHT2 = { lightX: -0.55, lightY: -0.68, lightZ: 0.42, ambient: 0.42, dither: 0.6 };
+  var cache2 = /* @__PURE__ */ new Map();
+  var once = (key2, make) => {
+    let v = cache2.get(key2);
+    if (!v) {
+      v = make();
+      cache2.set(key2, v);
+    }
+    return v;
+  };
+  function buildShell(W = 38) {
+    const H = Math.round(W * 0.78);
+    const pad = 3;
+    const w = W + pad * 2, h = H + 8;
+    const cx = w / 2, base = h - 4;
+    const domeAt = (u) => Math.pow(Math.sin(clamp01(u) * Math.PI), 0.52);
+    const inner = new Painter(w, h);
+    inner.field(cx - W / 2, base - H, cx + W / 2, base + 2, (x, y) => {
+      const u = (x - (cx - W / 2)) / W;
+      const dome = domeAt(u);
+      const top2 = base - H * 0.86 * dome;
+      if (y < top2 || y > base) return null;
+      const t = (y - top2) / Math.max(1, base - top2);
+      const band = Math.sin((y - top2) / 2.6 * Math.PI * 2);
+      return { h: 1.5 + band * 0.4, tint: -0.42 + t * 0.1 + band * 0.04 };
+    }, { mat: "shellRock" });
+    inner.grain("shellRock", { freq: 0.34, amp: 0.14, seed: 7 });
+    const back = inner.resolve(MATERIALS, { ...LIGHT2, ambient: 0.3, outline: 1, outlineColor: "#191108" });
+    const q = new Painter(w, h);
+    q.field(cx - W / 2, base - H, cx + W / 2, base + 2, (x, y) => {
+      const u = (x - (cx - W / 2)) / W;
+      const dome = domeAt(u);
+      const top2 = base - H * 0.86 * dome + 2.2;
+      const bot2 = base - 2.5;
+      if (y < top2 || y > bot2) return null;
+      const t = (y - top2) / Math.max(1, bot2 - top2);
+      return { h: 3 - t * 3, tint: 0.16 - t * 0.55 };
+    }, { mat: "water" });
+    const water = q.resolve(MATERIALS, { ...LIGHT2, ambient: 0.52, outline: 0 });
+    const front = new Painter(w, h);
+    front.field(cx - W / 2 - 2, base - H - 2, cx + W / 2 + 2, base + 3, (x, y) => {
+      const u = (x - (cx - W / 2)) / W;
+      if (u < -0.06 || u > 1.06) return null;
+      const dome = domeAt(clamp01(u));
+      const top2 = base - H * 0.86 * dome;
+      if (y < top2 - 1 || y > base) return null;
+      const edgeU = Math.min(u, 1 - u) * W;
+      const dEdge = Math.min(edgeU, y - top2, base - y);
+      const wall = 2.6;
+      if (dEdge > wall && y < base - 3) return null;
+      const k = clamp01(1 - dEdge / wall);
+      const band = Math.sin((y - top2) / 2.6 * Math.PI * 2);
+      return { h: 2.4 + k * 2 + band * 0.5, tint: 0.06 + k * 0.1 + band * 0.05 };
+    }, { mat: "shellRock" });
+    front.grain("shellRock", { freq: 0.3, amp: 0.2, seed: 5, height: 0.5 });
+    front.speckle("shellRock", { density: 0.06, amp: 0.3, seed: 9 });
+    for (const sgn of [-1, 1]) {
+      front.capsule(
+        cx + sgn * W * 0.34,
+        base - 2,
+        cx + sgn * W * 0.5,
+        base + 1.5,
+        1.8,
+        1.2,
+        { mat: "chitin", dome: 1.4, tint: sgn > 0 ? 0 : -0.14 }
+      );
+    }
+    const cv = front.resolve(MATERIALS, { ...LIGHT2, outline: 1, outlineColor: "#191108" });
+    let top = q.h, bot = 0, left = q.w, right = 0;
+    for (let y = 0; y < q.h; y++) {
+      for (let x = 0; x < q.w; x++) {
+        if (!q.mat[y * q.w + x]) continue;
+        if (y < top) top = y;
+        if (y > bot) bot = y;
+        if (x < left) left = x;
+        if (x > right) right = x;
+      }
+    }
+    return { cv, back, water, w, h, top, bot, left, right };
+  }
+  function drawShell(ctx, x, y, f, t, scale = 1) {
+    const S = once("shell", () => buildShell(38));
+    const lvl = S.bot - (S.bot - S.top) * clamp01(f);
+    ctx.save();
+    ctx.translate(Math.round(x), Math.round(y));
+    if (scale !== 1) ctx.scale(scale, scale);
+    ctx.drawImage(S.back, 0, 0);
+    if (f > 5e-3) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(0, lvl, S.w, S.bot - lvl + 2);
+      ctx.clip();
+      ctx.drawImage(S.water, 0, 0);
+      ctx.restore();
+      ctx.fillStyle = "#bfeaf2";
+      for (let x2 = S.left; x2 <= S.right; x2++) {
+        const wob = Math.sin(t * 2.6 + x2 * 0.5) * 0.9 + Math.sin(t * 1.3 + x2 * 0.22) * 0.6;
+        const yy = Math.round(lvl + wob);
+        if (yy < S.top - 1 || yy > S.bot) continue;
+        ctx.fillRect(x2, yy, 1, 1);
+      }
+    }
+    ctx.drawImage(S.cv, 0, 0);
+    ctx.restore();
+    return { w: S.w, h: S.h };
+  }
+  function buildBloom(stage) {
+    const p = new Painter(34, 40);
+    const cx = 17, base = 37;
+    const grow = stage / 8;
+    const h = 8 + grow * 22;
+    p.curve(
+      [{ x: cx, y: base }, { x: cx - 1.5, y: base - h * 0.55 }, { x: cx, y: base - h }],
+      1.5,
+      1,
+      { mat: "leaf", dome: 1.3, steps: 12, tint: -0.04 }
+    );
+    const leaves = Math.min(4, Math.ceil(stage / 2));
+    for (let i = 0; i < leaves; i++) {
+      const sgn = i % 2 ? 1 : -1;
+      const ly = base - h * (0.22 + i * 0.17);
+      const ll = 5 + grow * 5;
+      p.curve(
+        [
+          { x: cx, y: ly },
+          { x: cx + sgn * ll * 0.6, y: ly - ll * 0.5 },
+          { x: cx + sgn * ll, y: ly - ll * 0.15 }
+        ],
+        2.4,
+        0.6,
+        { mat: "leaf", dome: 1.6, steps: 10, tint: sgn > 0 ? 0.06 : -0.1 }
+      );
+    }
+    const ty = base - h;
+    if (stage === 0) {
+      p.ellipse(cx, ty, 2, 2.6, { mat: "leaf", dome: 1.8, tint: 0.05 });
+    } else {
+      const petals = Math.min(9, 2 + stage);
+      const pr = 2.6 + grow * 4.4;
+      for (let i = 0; i < petals; i++) {
+        const a = i / petals * TAU;
+        const sx = Math.cos(a), sy = Math.sin(a) * 0.5;
+        p.ellipse(
+          cx + sx * pr,
+          ty + sy * pr,
+          pr * 0.52,
+          pr * 0.36,
+          {
+            mat: stage >= 6 ? "petalGold" : "petalPink",
+            rot: a,
+            dome: pr * 0.5,
+            tint: sy < 0 ? -0.16 : 0.08
+          }
+        );
+      }
+      p.ellipse(cx, ty, pr * 0.44, pr * 0.34, { mat: "fruitGold", dome: pr * 0.5, tint: 0.1 });
+      p.speckle("fruitGold", { density: 0.35, amp: 0.4, seed: 3 });
+    }
+    return { cv: p.resolve(MATERIALS, { ...LIGHT2, outline: 1, outlineColor: "#141c0e" }), w: 34, h: 40 };
+  }
+  function drawBloom(ctx, x, y, stage, sway = 0, scale = 1) {
+    const st = clamp(Math.round(stage), 0, 8);
+    const B = once("bloom" + st, () => buildBloom(st));
+    ctx.save();
+    ctx.translate(Math.round(x) + 17, Math.round(y) + 37);
+    if (scale !== 1) ctx.scale(scale, scale);
+    ctx.rotate(sway);
+    ctx.drawImage(B.cv, -17, -37);
+    ctx.restore();
+    return { w: B.w, h: B.h };
+  }
+  function buildSprig(n) {
+    const p = new Painter(26, 22);
+    const cx = 13, base = 20;
+    p.curve(
+      [{ x: cx - 8, y: base }, { x: cx, y: base - 8 }, { x: cx + 8, y: base - 5 }],
+      1.3,
+      0.8,
+      { mat: "wood", dome: 1.1, steps: 10 }
+    );
+    for (let i = 0; i < 3; i++) {
+      const a = -0.4 - i * 0.5;
+      p.ellipse(
+        cx - 4 + i * 5,
+        base - 7 - i,
+        3.4,
+        2.2,
+        { mat: "leaf", rot: a, dome: 1.6, tint: (i - 1) * 0.07 }
+      );
+    }
+    const shown = Math.min(5, n);
+    for (let i = 0; i < shown; i++) {
+      const bx = cx - 6 + i * 3.4, by = base - 3 - i % 2 * 2.6;
+      p.ellipse(bx, by, 2.3, 2.3, { mat: "berry", dome: 2.6, tint: 0.02 });
+      p.ellipse(bx - 0.7, by - 0.8, 0.8, 0.7, { mat: "berry", mask: true, dome: 2, tint: 0.5 });
+    }
+    return { cv: p.resolve(MATERIALS, { ...LIGHT2, outline: 1, outlineColor: "#1a0d10" }), w: 26, h: 22 };
+  }
+  function drawSprig(ctx, x, y, n, scale = 1) {
+    const k = clamp(n, 0, 5);
+    const S = once("sprig" + k, () => buildSprig(k));
+    ctx.save();
+    ctx.translate(Math.round(x), Math.round(y));
+    if (scale !== 1) ctx.scale(scale, scale);
+    ctx.drawImage(S.cv, 0, 0);
+    ctx.restore();
+    return { w: S.w, h: S.h };
+  }
+  var tameHeads = /* @__PURE__ */ new Map();
+  function tameHead(def3, size = 14) {
+    const key2 = def3.id + ":" + size;
+    let cv = tameHeads.get(key2);
+    if (cv) return cv;
+    const rig = buildCreature(def3);
+    const src = rig.head.cv;
+    const box = opaqueBox(src);
+    cv = makeCanvas2(size, size);
+    const g = cv.getContext("2d");
+    g.imageSmoothingEnabled = false;
+    const k = Math.min((size - 1) / box.w, (size - 1) / box.h);
+    const w = Math.max(1, Math.round(box.w * k));
+    const h = Math.max(1, Math.round(box.h * k));
+    g.drawImage(
+      src,
+      box.x,
+      box.y,
+      box.w,
+      box.h,
+      Math.round((size - w) / 2),
+      Math.round((size - h) / 2),
+      w,
+      h
+    );
+    if (tameHeads.size > 64) tameHeads.clear();
+    tameHeads.set(key2, cv);
+    return cv;
+  }
+  var boxes = /* @__PURE__ */ new WeakMap();
+  function opaqueBox(cv) {
+    let b = boxes.get(cv);
+    if (b) return b;
+    const g = cv.getContext("2d");
+    let x0 = cv.width, y0 = cv.height, x1 = -1, y1 = -1;
+    try {
+      const d = g.getImageData(0, 0, cv.width, cv.height).data;
+      for (let y = 0; y < cv.height; y++) {
+        for (let x = 0; x < cv.width; x++) {
+          if (d[(y * cv.width + x) * 4 + 3] < 8) continue;
+          if (x < x0) x0 = x;
+          if (x > x1) x1 = x;
+          if (y < y0) y0 = y;
+          if (y > y1) y1 = y;
+        }
+      }
+    } catch {
+    }
+    b = x1 < 0 ? { x: 0, y: 0, w: cv.width, h: cv.height } : { x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1 };
+    boxes.set(cv, b);
+    return b;
+  }
+  function drawTame(ctx, x, y, c, opts = {}) {
+    const S = opts.size || 16;
+    const on = !!opts.on;
+    const t = opts.t || 0;
+    drawPlate(ctx, x, y, S, S, {
+      edge: on ? "#ffe9a8" : "rgba(120,96,58,0.45)",
+      top: on ? "rgba(64,52,26,0.95)" : void 0,
+      rivets: false
+    });
+    const def3 = c.def || c;
+    try {
+      if (def3 && def3.headL) {
+        ctx.drawImage(tameHead(def3, S - 2), x + 1, y + 1);
+      } else {
+        ctx.fillStyle = on ? "#e8c3aa" : "#a8846a";
+        ctx.fillRect(x + 5, y + 4, 6, 7);
+        ctx.fillStyle = "#5b3a24";
+        ctx.fillRect(x + 4, y + 3, 8, 2);
+      }
+    } catch {
+    }
+    const hp = clamp01((c.hp ?? 1) / (c.hpMax ?? 1));
+    ctx.fillStyle = "rgba(10,8,5,0.8)";
+    ctx.fillRect(x + 2, y + S - 3, S - 4, 1);
+    ctx.fillStyle = hp > 0.4 ? "#8cc468" : "#e2564f";
+    ctx.fillRect(x + 2, y + S - 3, Math.round((S - 4) * hp), 1);
+    if (on) {
+      const b = 0.5 + 0.5 * Math.sin(t * 4);
+      ctx.globalAlpha = 0.35 + b * 0.5;
+      ctx.fillStyle = "#ffe9a8";
+      ctx.fillRect(x - 1, y - 1, S + 2, 1);
+      ctx.fillRect(x - 1, y + S, S + 2, 1);
+      ctx.globalAlpha = 1;
+    }
+    return { x, y, w: S, h: S };
+  }
+  function buildGland(w = 38) {
+    const h = 42;
+    const cx = w / 2, base = h - 4;
+    const q = new Painter(w, h);
+    q.ellipse(cx, base - 13, 13, 14, { mat: "sporeSac", dome: 11, tint: -0.06 });
+    const back = q.resolve(MATERIALS, { ...LIGHT2, ambient: 0.34, outline: 0 });
+    const f = new Painter(w, h);
+    f.ellipse(cx, base - 13, 11.4, 12.6, { mat: "spore", dome: 9, tint: 0.12 });
+    f.grain("spore", { freq: 0.42, amp: 0.24, seed: 12, height: 0.6 });
+    for (let i = 0; i < 5; i++) {
+      const a = i * 1.31;
+      f.ellipse(
+        cx + Math.cos(a) * 5,
+        base - 13 + Math.sin(a) * 6,
+        1.5,
+        1.5,
+        { mat: "spore", mask: true, dome: 2, tint: 0.42 }
+      );
+    }
+    const fluid = f.resolve(MATERIALS, { ...LIGHT2, ambient: 0.6, outline: 0 });
+    const p = new Painter(w, h);
+    p.capsule(
+      cx - 12,
+      base - 24,
+      cx + 12,
+      base - 24,
+      3.2,
+      3.2,
+      { mat: "chitin", dome: 2.8, tint: 0.04 }
+    );
+    for (const sgn of [-1, 1]) {
+      p.capsule(
+        cx + sgn * 11,
+        base - 23,
+        cx + sgn * 8.5,
+        base - 6,
+        2,
+        1.4,
+        { mat: "chitinDark", dome: 1.8, tint: sgn > 0 ? 0.04 : -0.12 }
+      );
+    }
+    p.field(cx - 15, base - 29, cx + 15, base + 2, (x, y) => {
+      const d = Math.hypot((x - cx) / 13, (y - (base - 13)) / 14);
+      if (d > 1.02 || d < 0.8) return null;
+      const k = clamp01((d - 0.8) / 0.22);
+      return { h: 1.6 + k * 2.4, tint: 0.04 + k * 0.12 };
+    }, { mat: "sporeSac" });
+    p.capsule(cx, base - 2, cx, base + 3, 2.6, 1.9, { mat: "chitin", dome: 2.2, tint: -0.04 });
+    p.ellipse(cx, base + 3, 2.3, 1.2, { mat: "chitinDark", dome: -1.2, tint: -0.3 });
+    const cv = p.resolve(MATERIALS, { ...LIGHT2, outline: 1, outlineColor: "#140a1a" });
+    return { cv, back, fluid, w, h, top: base - 26, bot: base - 1, left: cx - 12, right: cx + 12 };
+  }
+  function drawGland(ctx, x, y, f, t, press = 0, scale = 1) {
+    const G2 = once("gland", () => buildGland(38));
+    const lvl = G2.bot - (G2.bot - G2.top) * clamp01(f);
+    ctx.save();
+    ctx.translate(Math.round(x) + G2.w / 2, Math.round(y) + G2.h / 2);
+    const k = scale * (1 + press * 0.1 + Math.sin(t * 9) * press * 0.03);
+    ctx.scale(k, k * (1 - press * 0.03));
+    ctx.translate(-G2.w / 2, -G2.h / 2);
+    ctx.drawImage(G2.back, 0, 0);
+    if (f > 5e-3) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(0, lvl, G2.w, G2.bot - lvl + 3);
+      ctx.clip();
+      ctx.drawImage(G2.fluid, 0, 0);
+      ctx.restore();
+      ctx.fillStyle = press > 0.05 ? "#f0d4ff" : "#d5a3dd";
+      for (let x2 = G2.left; x2 <= G2.right; x2++) {
+        const wob = Math.sin(t * 3.4 + x2 * 0.6) * 0.8 + Math.sin(t * 1.7 + x2 * 0.2) * 0.5;
+        const yy = Math.round(lvl + wob);
+        if (yy < G2.top - 1 || yy > G2.bot) continue;
+        ctx.fillRect(x2, yy, 1, 1);
+      }
+      if (press > 0.08) {
+        for (let i = 0; i < 5; i++) {
+          const ph = (t * (1.3 + i * 0.4) + i * 0.7) % 1;
+          ctx.globalAlpha = press * (1 - ph) * 0.85;
+          ctx.fillStyle = "#e6c0f2";
+          ctx.fillRect(Math.round(G2.left + 3 + i * 4), Math.round(lvl - ph * 12), 1, 1);
+        }
+        ctx.globalAlpha = 1;
+      }
+    }
+    ctx.drawImage(G2.cv, 0, 0);
+    ctx.restore();
+    return { w: G2.w, h: G2.h };
+  }
+  function buildOrb() {
+    const p = new Painter(30, 30);
+    const cx = 15, cy = 15, r = 11;
+    p.ellipse(cx, cy, r, r, { mat: "glass", dome: r * 1.25, tint: 0.02 });
+    for (let i = 0; i < 22; i++) {
+      const t = i / 21;
+      const a = t * Math.PI * 3.1;
+      const yy = cy - r * 0.72 + t * r * 1.44;
+      for (const sgn of [1, -1]) {
+        const xx = cx + Math.cos(a) * r * 0.46 * sgn;
+        p.ellipse(xx, yy, 1.1, 1.1, { mat: "glow", dome: 1.3, tint: 0.2 + Math.sin(a) * 0.2 });
+      }
+      if (i % 3 === 0) {
+        p.capsule(
+          cx + Math.cos(a) * r * 0.46,
+          yy,
+          cx - Math.cos(a) * r * 0.46,
+          yy,
+          0.5,
+          0.5,
+          { mat: "glow", dome: 0.4, tint: -0.1 }
+        );
+      }
+    }
+    p.ellipse(cx - r * 0.34, cy - r * 0.4, r * 0.26, r * 0.22, { mat: "glass", mask: true, dome: r, tint: 0.7 });
+    return { cv: p.resolve(MATERIALS, { ...LIGHT2, ambient: 0.5, outline: 1, outlineColor: "#0e1a1e" }), w: 30, h: 30 };
+  }
+  function drawOrb(ctx, x, y, t, pulse = 0, scale = 1) {
+    const O = once("orb", buildOrb);
+    ctx.save();
+    ctx.translate(Math.round(x) + 15, Math.round(y) + 15);
+    if (scale !== 1) ctx.scale(scale, scale);
+    const s = 1 + Math.sin(t * 1.7) * 0.03 + pulse * 0.22;
+    ctx.globalAlpha = 0.3 + pulse * 0.5 + Math.sin(t * 2.3) * 0.06;
+    pxDisc(ctx, 0, 0, 13 * s, "#7fe0c8", { p: 1, soft: 4 });
+    ctx.globalAlpha = 1;
+    ctx.scale(s, s);
+    ctx.drawImage(O.cv, -15, -15);
+    ctx.restore();
+    return { w: O.w, h: O.h };
+  }
+  function buildTab(kind) {
+    const p = new Painter(22, 22);
+    const cx = 11, base = 19;
+    switch (kind) {
+      case "flora":
+        p.curve(
+          [{ x: cx, y: base }, { x: cx - 1, y: base - 8 }, { x: cx, y: base - 14 }],
+          1.3,
+          0.8,
+          { mat: "leaf", dome: 1.1, steps: 8 }
+        );
+        for (const sgn of [-1, 1]) {
+          p.curve(
+            [{ x: cx, y: base - 6 }, { x: cx + sgn * 4, y: base - 10 }, { x: cx + sgn * 6, y: base - 7 }],
+            2.4,
+            0.6,
+            { mat: "leaf", dome: 1.5, steps: 8, tint: sgn > 0 ? 0.06 : -0.1 }
+          );
+        }
+        p.ellipse(cx, base - 14, 3.2, 2.6, { mat: "petalPink", dome: 2.2, tint: 0.06 });
+        break;
+      case "fauna":
+        p.ellipse(cx - 1, base - 6, 6.5, 3.6, { mat: "scaleGreen", dome: 3.4, tint: 0.02 });
+        p.ellipse(cx + 6, base - 8, 3.2, 2.4, { mat: "scaleGreen", dome: 2.4, tint: 0.06 });
+        p.curve(
+          [{ x: cx - 7, y: base - 6 }, { x: cx - 10, y: base - 9 }, { x: cx - 9, y: base - 13 }],
+          1.4,
+          0.5,
+          { mat: "scaleGreen", dome: 1.2, steps: 8 }
+        );
+        for (let i = 0; i < 3; i++) {
+          p.capsule(
+            cx - 4 + i * 4,
+            base - 4,
+            cx - 5 + i * 4,
+            base,
+            0.9,
+            0.6,
+            { mat: "scaleGreen", dome: 0.8, tint: -0.1 }
+          );
+        }
+        p.ellipse(cx + 7, base - 9, 0.9, 0.9, { mat: "eye", dome: 1.1, tint: 0.3 });
+        break;
+      case "build":
+        p.rect(cx - 7, base - 9, 14, 9, { mat: "wood", dome: 2.6, tint: -0.02 });
+        p.poly(
+          [{ x: cx - 9, y: base - 9 }, { x: cx, y: base - 16 }, { x: cx + 9, y: base - 9 }],
+          { mat: "leafDry", dome: 2.6, feather: 2, tint: 0.06 }
+        );
+        p.rect(cx - 2, base - 5, 4, 5, { mat: "wood", mask: true, dome: -1.5, tint: -0.4 });
+        break;
+      case "map":
+        p.rect(cx - 9, base - 14, 18, 14, { mat: "petalWhite", dome: 2.2, tint: 0.04 });
+        for (const d of [-3, 3]) {
+          p.rect(cx + d, base - 14, 0.9, 14, { mat: "petalWhite", mask: true, tint: -0.3, dome: 0 });
+        }
+        p.curve(
+          [{ x: cx - 6, y: base - 3 }, { x: cx - 1, y: base - 10 }, { x: cx + 5, y: base - 5 }],
+          0.9,
+          0.5,
+          { mat: "petalWhite", mask: true, tint: -0.45, dome: 0, steps: 10 }
+        );
+        p.ellipse(cx + 5, base - 5, 1.6, 1.6, { mat: "petalPink", dome: 1.8, tint: 0.22 });
+        break;
+      case "codex":
+        p.rect(cx - 8, base - 13, 16, 13, { mat: "leather", dome: 2.6, tint: 0.02 });
+        p.rect(cx - 6, base - 11, 12, 9, { mat: "petalWhite", dome: 1.4, tint: 0.08 });
+        for (let i = 0; i < 3; i++) {
+          p.rect(cx - 4, base - 9 + i * 2.6, 8, 0.9, { mat: "petalWhite", mask: true, tint: -0.42, dome: 0 });
+        }
+        break;
+      default:
+        break;
+    }
+    return p.resolve(MATERIALS, { ...LIGHT2, outline: 1, outlineColor: "#1a140c" });
+  }
+  function drawTab(ctx, kind, x, y) {
+    const cv = once("tab" + kind, () => buildTab(kind));
+    ctx.drawImage(cv, Math.round(x), Math.round(y));
+    return { w: 22, h: 22 };
+  }
+  function buildFrame() {
+    const T = 10;
+    const L = 16;
+    const edge = (horizontal) => {
+      const w = horizontal ? L : T, h = horizontal ? T : L;
+      const p = new Painter(w, h);
+      p.field(0, 0, w, h, (x, y) => {
+        const across = horizontal ? y / T : x / T;
+        const along = horizontal ? x / L : y / L;
+        const d = Math.min(across, 1 - across);
+        const dz = Math.sqrt(Math.max(0, 1 - Math.pow(1 - d * 2, 2)));
+        const grain = Math.sin(along * 22 + across * 3) * 0.5 + Math.sin(along * 61) * 0.2;
+        return { h: 1.4 + dz * 3.4 + grain * 0.4, tint: -0.1 + dz * 0.22 + grain * 0.07 };
+      }, { mat: "wood" });
+      p.grain("wood", { freq: 0.6, amp: 0.16, seed: horizontal ? 3 : 9 });
+      return p.resolve(MATERIALS, { ...LIGHT2, outline: 1, outlineColor: "#1a1109" });
+    };
+    const corner = () => {
+      const p = new Painter(T + 4, T + 4);
+      p.field(0, 0, T + 4, T + 4, (x, y) => {
+        const a = Math.min(x, T + 3 - x) / T, b = Math.min(y, T + 3 - y) / T;
+        const d = Math.min(a, b);
+        if (d < -0.1) return null;
+        const dz = Math.sqrt(Math.max(0, 1 - Math.pow(1 - clamp01(d * 2), 2)));
+        return { h: 1.6 + dz * 3.6, tint: -0.06 + dz * 0.2 };
+      }, { mat: "wood" });
+      for (let i = -1; i < 4; i++) {
+        p.capsule(
+          1 + i * 2.6,
+          T + 2 - i * 1.2,
+          T + 2 - i * 1.2,
+          1 + i * 2.6,
+          1,
+          1,
+          { mat: "rope", dome: 1.1, tint: i % 2 ? 0.1 : -0.06 }
+        );
+      }
+      p.grain("wood", { freq: 0.5, amp: 0.18, seed: 21 });
+      return p.resolve(MATERIALS, { ...LIGHT2, outline: 1, outlineColor: "#1a1109" });
+    };
+    return { top: edge(true), side: edge(false), corner: corner(), T, L };
+  }
+  function drawPanel(ctx, x, y, w, h, opts = {}) {
+    const F = once("frame", buildFrame);
+    const T = F.T;
+    x = Math.round(x);
+    y = Math.round(y);
+    w = Math.round(w);
+    h = Math.round(h);
+    const g = ctx.createLinearGradient(0, y, 0, y + h);
+    g.addColorStop(0, opts.top || "rgba(38,28,18,0.975)");
+    g.addColorStop(1, opts.bottom || "rgba(24,17,11,0.985)");
+    ctx.fillStyle = g;
+    ctx.fillRect(x, y, w, h);
+    ctx.strokeStyle = "rgba(214,186,138,0.16)";
+    ctx.strokeRect(x + T - 1.5, y + T - 1.5, w - (T - 1.5) * 2, h - (T - 1.5) * 2);
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(x, y, w, h);
+    ctx.clip();
+    for (let i = 0; i < Math.ceil(w / F.L); i++) {
+      ctx.drawImage(F.top, x + i * F.L, y);
+      ctx.drawImage(F.top, x + i * F.L, y + h - T);
+    }
+    for (let i = 0; i < Math.ceil(h / F.L); i++) {
+      ctx.drawImage(F.side, x, y + i * F.L);
+      ctx.drawImage(F.side, x + w - T, y + i * F.L);
+    }
+    ctx.restore();
+    const c = F.corner;
+    ctx.drawImage(c, x - 2, y - 2);
+    ctx.drawImage(c, x + w - T - 2, y - 2);
+    ctx.drawImage(c, x - 2, y + h - T - 2);
+    ctx.drawImage(c, x + w - T - 2, y + h - T - 2);
+  }
+  var NODE = {
+    // spring
+    drop: "...1.../..111../.11111./1111111/1111111/1111111/.11111./..111../...1...",
+    tank: "1111111/1.....1/1.111.1/1.111.1/1.111.1/1.....1/1111111/.11111./..111..",
+    moon: "..111../.11..1./11....1/11...../11...../11....1/.11..1./..111../.......",
+    jet: "...1.../...1.../..111../..111../.11111./.11111./11...11/1.....1/.......",
+    sprout: "....11./...11../1.11.../11111../..1..../..1..../..1..../.11111./.......",
+    well: "1111111/1.....1/1.111.1/1.1.1.1/1.111.1/1.....1/.11111./..111../...1...",
+    // shell
+    step: ".....11/.....11/....111/...1111/..11111/.111111/1111111/1111111/.......",
+    leaf: ".....11/....111/...1111/..11.11/.11..11/11...11/11..11./.1111../.......",
+    graft: "11...11/.11.11./..111../...1.../..111../.11.11./11...11/......./.......",
+    fruit: "...1.../..11.../.11111./111.111/11...11/11...11/.11.11./..111../.......",
+    tree: "..111../.11111./1111111/.11111./..111../...1.../...1.../..111../.......",
+    // brood
+    call: "..1..../.11..11/.11.1.1/.111..1/.111..1/.11.1.1/.11..11/..1..../.......",
+    hand: ".1.1.1./1111111/1111111/1111111/1111111/.111111/..1111./...11../.......",
+    nest: "......./1111111/11...11/1.111.1/1.....1/.11111./..111../......./.......",
+    point: "...11../...11../11.11../1.111../1.1111./.11111./..1111./...111./.......",
+    egg: "...11../..1111./.111111/1111111/1111111/.111111/..1111./...11../.......",
+    link: ".11..../1..1.11/1..111./.11...1/11...11/1.111../.11..1./.....11/.......",
+    // pincer
+    claw: "11...11/.11.11./..111../.11111./11...11/1.....1/11...11/.11.11./..111..",
+    saw: "1.1.1.1/11111.1/.11111./..111../.11111./11111.1/1.1.1.1/......./.......",
+    spade: "...1.../...1.../..111../.11111./1111111/1111111/.11111./..111../.......",
+    bolt: "....11./...11../..11.../.11111./..111../.11..../11...../1....../.......",
+    comb: "1111111/1111111/1.1.1.1/1.1.1.1/1.1.1.1/1.1.1.1/1.1.1.1/......./.......",
+    hammer: ".111111/.111111/...11../...11../...11../...11../...11../..1111./.......",
+    // legs
+    leg: "11...../.11..../..11.../..11.../...11../...111./....111/...1111/.......",
+    shield: "1111111/1111111/1111111/.11111./.11111./..111../..111../...1.../.......",
+    burrow: "1111111/1.....1/1.....1/.1...1./..1.1../...1.../..111../.11111./.......",
+    load: "1111111/11...11/1111111/11...11/1111111/..111../..111../.11111./.......",
+    skate: "..11.../.1111../11111../1111111/.111111/..11111/1111111/......./.......",
+    crown: "1.....1/11...11/11.1.11/1111111/1111111/.11111./.11111./1111111/.......",
+    // conditions a plant will only ripen under
+    sun: "1..1..1/.1.1.1./..111../11111.1/..111../.1.1.1./1..1..1/......./.......",
+    dusk: "...1.../..111../.11111./1111111/......./1111111/......./......./.......",
+    shade: "..111../.11111./1111111/......./..1.1../..1.1../..1.1../.11111./.......",
+    weight: "..111../.11111./..1.1../.11111./1111111/1111111/.11111./......./.......",
+    clock: "..111../.1...1./1..1..1/1..11.1/1....11/.1...1./..111../......./.......",
+    // the modes: an animal standing, an animal walking
+    crab: ".11111./1111111/1.1.1.1/1111111/.11111./1.1.1.1/1.1.1.1/......./.......",
+    crabwalk: ".11111./1111111/1.1.1.1/1111111/.11111./1..1..1/11...11/......./......."
+  };
+  function drawNodeIcon(ctx, name, cx, cy, color, scale = 1) {
+    const rows = NODE[name];
+    if (!rows) return;
+    const lines = rows.split("/");
+    const w = Math.max(...lines.map((l) => l.length));
+    const s = Math.max(1, Math.round(scale));
+    const x0 = Math.round(cx - w * s / 2), y0 = Math.round(cy - lines.length * s / 2);
+    ctx.fillStyle = color;
+    for (let y = 0; y < lines.length; y++) {
+      for (let x = 0; x < lines[y].length; x++) {
+        if (lines[y][x] === "1") ctx.fillRect(x0 + x * s, y0 + y * s, s, s);
+      }
+    }
+  }
+  var GLYPHS = {
+    // . transparent, 1 dark, 2 mid, 3 light, 4 accent
+    drop: "....11....../...1221...../..122211..../.12222211.../.12222211.../1222222221../1222222331./1222222331./1222222221./.12222221.../..122221..../....1111....",
+    hand: "..1..1..1.../.121.121.12./.122.122.122/.1222222222./.1222222222./112222222221/122222222221/.12222222221/.1222222222./..122222221./...12222221./....111111..",
+    scale: ".....11...../.....11...../..111111111./.1.1.....1.1/1..1.....1..1/1..1.....1..1/.11.......11./.....11...../.....11...../....1111..../...111111.../..11111111..",
+    map: "111111111111/1..........1/1.11....11..1/1.1.1..1..1.1/1.1..11...1.1/1..1....1.1.1/1...1..1..1.1/1....11...1.1/1.........1.1/1..........1/1..........1/111111111111",
+    seed: ".....11...../....1221..../...122221.../..12222221../.1222222221./.1222222221./.1222222221./.1222222221./..12222221../...122221..../....1221..../.....11.....",
+    paw: ".11...11..../1221.1221.../1221.1221.../.11...11..../......11..11/.....1221122/.....12211221/......11..11/..1111111...:/.122222211../.12222222 1./..11111111..",
+    close: "1..........1/11........11/121......121/.121....121./..121..121../...121121.../....12121..../....12121.../...121121.../..121..121../.121....121./1..........1",
+    pump: "....1111..../...122221.../..12222221../.1222222221./1222222222 1/1224444422 1/1224444422 1/1222222222 1/.1222222221./..12222221../...122221.../....1111...."
+  };
+  var GLYPH_COLS = {
+    1: "#1c130b",
+    2: "#d6ba8a",
+    3: "#f5e7c6",
+    4: "#5fc6d8"
+  };
+  function drawGlyph(ctx, name, x, y, opts = {}) {
+    const rows = GLYPHS[name];
+    if (!rows) {
+      if (NODE[name]) {
+        const s2 = Math.max(1, Math.round((opts.scale || 1) * 1.2));
+        const prev = ctx.globalAlpha;
+        if (opts.alpha !== void 0) ctx.globalAlpha = prev * opts.alpha;
+        drawNodeIcon(
+          ctx,
+          name,
+          x + 6 * (opts.scale || 1),
+          y + 6 * (opts.scale || 1),
+          opts.color || GLYPH_COLS[2],
+          s2
+        );
+        ctx.globalAlpha = prev;
+      }
+      return 12;
+    }
+    const s = opts.scale || 1;
+    const cols = { ...GLYPH_COLS, ...opts.colors || {} };
+    if (opts.color) cols[2] = opts.color;
+    if (opts.accent) cols[4] = opts.accent;
+    if (opts.alpha !== void 0) {
+      ctx.save();
+      ctx.globalAlpha = opts.alpha;
+    }
+    const lines = rows.split("/");
+    for (let ry = 0; ry < lines.length; ry++) {
+      const line = lines[ry];
+      for (let rx = 0; rx < line.length; rx++) {
+        const c = cols[line[rx]];
+        if (!c) continue;
+        ctx.fillStyle = c;
+        ctx.fillRect(Math.round(x + rx * s), Math.round(y + ry * s), s, s);
+      }
+    }
+    if (opts.alpha !== void 0) ctx.restore();
+    return 12 * s;
+  }
+  function buildValve() {
+    const w = 34, h = 34;
+    const p = new Painter(w, h);
+    const cx = w / 2, cy = h / 2;
+    p.ellipse(cx, cy, 15, 15, { mat: "shellRock", dome: 6, tint: -0.06 });
+    p.ellipse(cx, cy, 12.5, 12.5, { mat: "chitin", dome: 5, tint: 0.06 });
+    p.ellipse(cx, cy, 9, 9, { mat: "chitinDark", dome: -6, tint: -0.34 });
+    for (let i = 0; i < 4; i++) {
+      const th = i / 4 * TAU + 0.4;
+      p.poly([
+        { x: cx + Math.cos(th) * 8.6, y: cy + Math.sin(th) * 8.6 },
+        { x: cx + Math.cos(th + 1.2) * 8.6, y: cy + Math.sin(th + 1.2) * 8.6 },
+        { x: cx + Math.cos(th + 0.6) * 2.2, y: cy + Math.sin(th + 0.6) * 2.2 }
+      ], { mat: "chitinPale", dome: 2.6, feather: 2, tint: 0.06 - i * 0.03 });
+    }
+    p.ellipse(cx, cy, 2.4, 2.4, { mat: "flesh", dome: -1.6, tint: -0.3 });
+    p.grain("shellRock", { freq: 0.34, amp: 0.2, seed: 31 });
+    p.grain("chitin", { freq: 0.5, amp: 0.14, seed: 13 });
+    return { cv: p.resolve(MATERIALS, { ...LIGHT2, outline: 1, outlineColor: "#191108" }), w, h };
+  }
+  function drawValve(ctx, x, y, open, t) {
+    const V = once("valve", buildValve);
+    ctx.save();
+    ctx.translate(x + V.w / 2, y + V.h / 2);
+    const k = 1 + open * 0.06 + Math.sin(t * 22) * open * 0.02;
+    ctx.scale(k, k);
+    if (open > 0.01) {
+      pxGlow(ctx, 0, 0, 16, "#9fe8ee", 0.55 * open, { p: 1, steps: 3 });
+    }
+    ctx.drawImage(V.cv, -V.w / 2, -V.h / 2);
+    ctx.restore();
+    return { w: V.w, h: V.h };
+  }
+  function buildNozzle() {
+    const w = 34, h = 34;
+    const p = new Painter(w, h);
+    const cx = w / 2, cy = h / 2;
+    p.ellipse(cx, cy, 15, 15, { mat: "sporeSac", dome: 6, tint: -0.1 });
+    p.ellipse(cx, cy, 12.2, 12.2, { mat: "spore", dome: 5, tint: 0.06 });
+    p.ellipse(cx, cy, 8.4, 8.4, { mat: "spore", dome: -7, tint: -0.4 });
+    for (let i = 0; i < 3; i++) {
+      const th = i / 3 * TAU - 1.1;
+      p.poly([
+        { x: cx + Math.cos(th) * 8.2, y: cy + Math.sin(th) * 8.2 },
+        { x: cx + Math.cos(th + 1.6) * 8.2, y: cy + Math.sin(th + 1.6) * 8.2 },
+        { x: cx + Math.cos(th + 0.8) * 1.8, y: cy + Math.sin(th + 0.8) * 1.8 }
+      ], { mat: "sporeSac", dome: 2.8, feather: 2, tint: 0.1 - i * 0.04 });
+    }
+    p.capsule(cx, cy - 1, cx, cy - 9, 3.4, 2.2, { mat: "chitin", dome: 2.6, tint: 0.02 });
+    p.ellipse(cx, cy - 9.4, 2.2, 1.3, { mat: "chitinDark", dome: -1.4, tint: -0.34 });
+    for (const sgn of [-1, 1]) {
+      p.curve(
+        [
+          { x: cx + sgn * 13, y: cy + 4 },
+          { x: cx + sgn * 8, y: cy + 9 },
+          { x: cx + sgn * 3, y: cy + 6 }
+        ],
+        1.1,
+        0.7,
+        { mat: "spore", dome: 1, steps: 8, tint: 0.24 }
+      );
+    }
+    p.grain("spore", { freq: 0.44, amp: 0.18, seed: 21 });
+    p.speckle("sporeSac", { density: 0.05, amp: 0.35, seed: 7 });
+    return { cv: p.resolve(MATERIALS, { ...LIGHT2, outline: 1, outlineColor: "#140a1a" }), w, h };
+  }
+  function drawNozzle(ctx, x, y, open, t, hot = false) {
+    const N = once("nozzle", buildNozzle);
+    ctx.save();
+    ctx.translate(x + N.w / 2, y + N.h / 2);
+    const k = 1 + open * 0.1 + Math.sin(t * 26) * open * 0.025;
+    ctx.scale(k, k * (1 - open * 0.04));
+    if (open > 0.01 || hot) {
+      pxGlow(ctx, 0, 0, 16, "#c98ade", 0.6 * Math.max(open, hot ? 0.25 : 0), { p: 1, steps: 3 });
+    }
+    ctx.drawImage(N.cv, -N.w / 2, -N.h / 2);
+    if (open > 0.5) {
+      ctx.globalAlpha = (open - 0.5) * 2;
+      ctx.fillStyle = "#f0d4ff";
+      ctx.fillRect(-2, -N.h / 2 + 6, 4, 2);
+      ctx.globalAlpha = 1;
+    }
+    ctx.restore();
+    return { w: N.w, h: N.h };
+  }
+  function drawGauge(ctx, x, y, w, h, f, col, opts = {}) {
+    x = Math.round(x);
+    y = Math.round(y);
+    w = Math.round(w);
+    h = Math.round(h);
+    ctx.fillStyle = opts.rim || "rgba(132,104,56,0.92)";
+    ctx.fillRect(x - 2, y - 2, w + 4, h + 4);
+    ctx.fillStyle = "rgba(198,162,90,0.55)";
+    ctx.fillRect(x - 2, y - 2, w + 4, 1);
+    ctx.fillStyle = opts.back || "rgba(14,10,6,0.90)";
+    ctx.fillRect(x - 1, y - 1, w + 2, h + 2);
+    ctx.fillStyle = "rgba(52,40,26,0.95)";
+    ctx.fillRect(x, y, w, h);
+    const fw = Math.round(w * clamp01(f));
+    if (fw > 0) {
+      ctx.fillStyle = col;
+      ctx.fillRect(x, y, fw, h);
+      ctx.fillStyle = "rgba(255,255,255,0.38)";
+      ctx.fillRect(x, y, fw, 1);
+      ctx.fillStyle = "rgba(0,0,0,0.26)";
+      ctx.fillRect(x, y + h - 1, fw, 1);
+      ctx.fillStyle = "rgba(255,255,255,0.55)";
+      ctx.fillRect(x + fw - 1, y, 1, h);
+    }
+    if (w > 18) {
+      for (let q = 1; q < 4; q++) {
+        ctx.fillStyle = "rgba(0,0,0,0.30)";
+        ctx.fillRect(x + Math.round(w * q / 4), y, 1, h);
+      }
+    }
+    ctx.fillStyle = "rgba(214,176,100,0.75)";
+    ctx.fillRect(x - 2, y - 1, 1, h + 2);
+    ctx.fillRect(x + w + 1, y - 1, 1, h + 2);
+    if (opts.mark !== void 0) {
+      ctx.fillStyle = "rgba(242,228,194,0.85)";
+      ctx.fillRect(x + Math.round(w * clamp01(opts.mark)), y - 2, 1, h + 4);
+    }
+  }
+  var plates = /* @__PURE__ */ new Map();
+  function bakePlate(mat, w, h, seed) {
+    const cv = makeCanvas2(w + 4, h + 6);
+    const g = cv.getContext("2d");
+    g.imageSmoothingEnabled = false;
+    const R = (n) => hash2i(n * 37, seed, 91);
+    g.fillStyle = "rgba(0,0,0,0.32)";
+    g.fillRect(2, 3, w, h);
+    if (mat === "paper") {
+      g.fillStyle = "#e6dcc0";
+      g.fillRect(0, 0, w, h);
+      for (let i = 0; i < w * h * 0.04; i++) {
+        const x = Math.floor(R(i * 3) * w), y = Math.floor(R(i * 3 + 1) * h);
+        g.fillStyle = R(i * 3 + 2) < 0.5 ? "rgba(198,184,150,0.5)" : "rgba(246,238,216,0.5)";
+        g.fillRect(x, y, 1, 1);
+      }
+      g.fillStyle = "rgba(120,140,150,0.26)";
+      for (let y = 8; y < h - 2; y += 9) g.fillRect(2, y, w - 4, 1);
+      if (w > 40) {
+        g.fillStyle = "rgba(168,64,52,0.40)";
+        g.fillRect(6, 1, 1, h - 2);
+      }
+      g.fillStyle = "rgba(0,0,0,0)";
+      g.clearRect(0, h - 1, w, 1);
+      g.fillStyle = "#e6dcc0";
+      for (let x = 0; x < w; x++) {
+        if (R(x + 500) < 0.55) g.fillRect(x, h - 1, 1, 1);
+      }
+      g.fillStyle = "rgba(150,132,96,0.55)";
+      for (let x = 0; x < w; x++) {
+        if (R(x + 900) < 0.35) g.fillRect(x, h - 2, 1, 1);
+      }
+      g.fillStyle = "rgba(120,100,66,0.18)";
+      g.fillRect(0, 0, w, 1);
+    } else if (mat === "scroll") {
+      const roll = Math.min(7, Math.max(4, Math.round(h * 0.34)));
+      g.fillStyle = "#dbc28c";
+      g.fillRect(roll, 0, w - roll * 2, h);
+      for (let i = 0; i < w * h * 0.05; i++) {
+        const x = roll + Math.floor(R(i * 3) * (w - roll * 2));
+        const y = Math.floor(R(i * 3 + 1) * h);
+        g.fillStyle = R(i * 3 + 2) < 0.5 ? "rgba(186,158,106,0.45)" : "rgba(240,220,174,0.4)";
+        g.fillRect(x, y, 1, 1);
+      }
+      for (const side of [0, 1]) {
+        const rx = side ? w - roll : 0;
+        g.fillStyle = "#8a6a3a";
+        g.fillRect(rx, 0, roll, h);
+        g.fillStyle = "#b08c50";
+        g.fillRect(rx + (side ? 0 : 1), 1, roll - 1, h - 2);
+        g.fillStyle = "rgba(244,226,180,0.6)";
+        g.fillRect(rx + (side ? 1 : roll - 2), 1, 1, h - 2);
+        g.fillStyle = "rgba(50,34,14,0.5)";
+        g.fillRect(side ? rx : rx + roll - 1, 0, 1, h);
+      }
+      g.fillStyle = "rgba(110,84,44,0.30)";
+      g.fillRect(roll, 0, 2, h);
+      g.fillRect(w - roll - 2, 0, 2, h);
+    } else if (mat === "leather") {
+      g.fillStyle = "#3a2718";
+      g.fillRect(0, 0, w, h);
+      for (let i = 0; i < w * h * 0.05; i++) {
+        const x = Math.floor(R(i * 3) * w), y = Math.floor(R(i * 3 + 1) * h);
+        g.fillStyle = R(i * 3 + 2) < 0.5 ? "rgba(24,16,10,0.5)" : "rgba(86,60,36,0.4)";
+        g.fillRect(x, y, 1, 1);
+      }
+      g.fillStyle = "rgba(198,162,106,0.34)";
+      for (let x = 3; x < w - 3; x += 4) {
+        g.fillRect(x, 2, 2, 1);
+        g.fillRect(x, h - 3, 2, 1);
+      }
+      for (let y = 3; y < h - 3; y += 4) {
+        g.fillRect(2, y, 1, 2);
+        g.fillRect(w - 3, y, 1, 2);
+      }
+      g.fillStyle = "rgba(240,214,164,0.18)";
+      g.fillRect(0, 0, w, 1);
+    } else {
+      g.fillStyle = "#4a4136";
+      g.fillRect(0, 0, w, h);
+      for (let y = 0; y < h; y++) {
+        const band = Math.sin(y * 0.7 + seed) * 0.5 + 0.5;
+        g.fillStyle = band > 0.62 ? "rgba(92,82,66,0.34)" : band < 0.22 ? "rgba(30,25,18,0.30)" : "rgba(0,0,0,0)";
+        if (g.fillStyle !== "rgba(0, 0, 0, 0)") g.fillRect(0, y, w, 1);
+      }
+      for (let i = 0; i < w * h * 0.05; i++) {
+        const x = Math.floor(R(i * 3) * w), y = Math.floor(R(i * 3 + 1) * h);
+        const r = R(i * 3 + 2);
+        g.fillStyle = r < 0.12 ? "rgba(196,186,162,0.5)" : r < 0.5 ? "rgba(28,23,17,0.45)" : "rgba(106,96,78,0.4)";
+        g.fillRect(x, y, 1, 1);
+      }
+      g.fillStyle = "rgba(150,138,112,0.55)";
+      g.fillRect(0, 0, w, 1);
+      g.fillRect(0, 0, 1, h);
+      g.fillStyle = "rgba(16,12,8,0.55)";
+      g.fillRect(0, h - 1, w, 1);
+      g.fillRect(w - 1, 0, 1, h);
+      if (w > 10 && h > 8) {
+        g.fillStyle = "rgba(20,16,11,0.5)";
+        g.fillRect(2, 2, w - 4, 1);
+        g.fillRect(2, 2, 1, h - 4);
+        g.fillStyle = "rgba(168,156,128,0.35)";
+        g.fillRect(2, h - 3, w - 4, 1);
+        g.fillRect(w - 3, 2, 1, h - 4);
+      }
+      for (const [cx, cy] of [[0, 0], [w - 1, 0], [0, h - 1], [w - 1, h - 1]]) {
+        if (R(cx + cy * 7) < 0.7) g.clearRect(cx, cy, 1, 1);
+      }
+    }
+    return cv;
+  }
+  function plateFor(mat, w, h) {
+    const key2 = `${mat}:${w}x${h}`;
+    let cv = plates.get(key2);
+    if (!cv) {
+      cv = bakePlate(mat, w, h, (w * 31 + h * 17) % 997);
+      if (plates.size > 220) plates.clear();
+      plates.set(key2, cv);
+    }
+    return cv;
+  }
+  function drawPlate(ctx, x, y, w, h, opts = {}) {
+    x = Math.round(x);
+    y = Math.round(y);
+    w = Math.round(w);
+    h = Math.round(h);
+    if (w < 2 || h < 2) return;
+    const mat = opts.mat || "stone";
+    ctx.save();
+    ctx.globalAlpha = opts.alpha ?? 1;
+    ctx.drawImage(plateFor(mat, w, h), x, y);
+    if (opts.edge && opts.edge !== "none") {
+      ctx.strokeStyle = opts.edge;
+      ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+      if (opts.top) {
+        ctx.globalAlpha = (opts.alpha ?? 1) * 0.22;
+        ctx.fillStyle = opts.edge;
+        ctx.fillRect(x + 2, y + 2, w - 4, h - 4);
+      }
+    }
+    ctx.restore();
+  }
+  var MODE_ART = {
+    // an animal standing square on, shell over six legs
+    crab: [
+      "...........",
+      "..2222222..",
+      ".211111112.",
+      ".211111112.",
+      ".221111122.",
+      "..1212121..",
+      ".1.1.1.1.1.",
+      "1..1.1.1..1",
+      "..........."
+    ],
+    // the same animal mid-stride, legs gathered one way, shell tilted
+    crabwalk: [
+      "...........",
+      "...2222222.",
+      "..211111112",
+      "..211111112",
+      "..221111122",
+      "...1212121.",
+      "..11.1.1.1.",
+      ".1...1..11.",
+      "..........."
+    ],
+    // a claw, open, about to close
+    claw: [
+      "..11....11.",
+      ".1221..1221",
+      ".1221..1221",
+      "..122..221.",
+      "...122221..",
+      "....1221...",
+      "....1221...",
+      ".....11....",
+      ".....11...."
+    ],
+    // a spray head, and what comes out of it
+    jet: [
+      ".11........",
+      ".1221...2.2",
+      ".122211.2.2",
+      ".1222211.2.",
+      ".122211.2.2",
+      ".1221...2.2",
+      ".11........",
+      "...........",
+      "..........."
+    ],
+    // a nerve: one node, and everything strung off it
+    link: [
+      ".2.......2.",
+      "..2.....2..",
+      "...12221...",
+      "..1222221..",
+      "...12221...",
+      "..2.....2..",
+      ".2.......2.",
+      "...........",
+      "..........."
+    ]
+  };
+  function drawModeArt(ctx, name, cx, cy, body, edge) {
+    const rows = MODE_ART[name];
+    if (!rows) return;
+    const w = rows[0].length, h = rows.length;
+    const x0 = Math.round(cx - w / 2), y0 = Math.round(cy - h / 2);
+    for (let y = 0; y < h; y++) {
+      const line = rows[y];
+      for (let x = 0; x < line.length; x++) {
+        const c = line[x];
+        if (c === ".") continue;
+        ctx.fillStyle = c === "1" ? body : edge;
+        ctx.fillRect(x0 + x, y0 + y, 1, 1);
+      }
+    }
+  }
+
+  // js/art/floraart.js
+  var LIGHT3 = { lightX: -0.6, lightY: -0.62, lightZ: 0.4, ambient: 0.4, dither: 0.72 };
+  function rng2(seed) {
     let s = seed | 0 || 1;
     return () => {
       s ^= s << 13;
@@ -3076,7 +5220,7 @@ body {
     }
   }
   function petalRing(p, cx, cy, n, r, len, wid, mat, seed, tilt = 0) {
-    const R = rng(seed);
+    const R = rng2(seed);
     for (let i = 0; i < n; i++) {
       const a = i / n * Math.PI * 2 + R() * 0.2;
       const sx = Math.cos(a), sy = Math.sin(a) * 0.42;
@@ -3095,7 +5239,7 @@ body {
     }
   }
   function berryCluster(p, x, y, n, r, mat, seed) {
-    const R = rng(seed);
+    const R = rng2(seed);
     for (let i = 0; i < n; i++) {
       const a = R() * TAU, d = R() * r * 1.7;
       const bx = x + Math.cos(a) * d, by = y + Math.sin(a) * d * 0.8;
@@ -3542,11 +5686,11 @@ body {
       }
     }
   };
-  var cache = /* @__PURE__ */ new Map();
+  var cache3 = /* @__PURE__ */ new Map();
   function buildPlant(def3, stage = 3, variant = 0, size = 1, dark = 0) {
     const K = Math.round(size * 20) / 20;
     const key2 = `${def3.id}|${stage}|${variant}|${K}|${dark}`;
-    const hit = cache.get(key2);
+    const hit = cache3.get(key2);
     if (hit) return hit;
     const g = [0.16, 0.4, 0.7, 1][clamp(stage, 0, 3)];
     const w = Math.ceil(def3.w * g * K) + Math.ceil(14 * K) + 4;
@@ -3554,12 +5698,12 @@ body {
     const p = new Painter(w, h);
     const ox = Math.round(w / 2);
     const oy = def3.arch === "vine" ? 8 : h - 7;
-    const R = rng((def3.seed || 1) * 7919 + variant * 131 + stage * 17);
+    const R = rng2((def3.seed || 1) * 7919 + variant * 131 + stage * 17);
     const D = { ...def3, x: ox, y: oy, w: def3.w * K, h: def3.h * K, k: K };
     (ARCH[def3.arch] || ARCH.bush)(p, D, g, R);
     p.smoothHeight(1, 0.35);
     let cv = p.resolve(MATERIALS, {
-      ...LIGHT,
+      ...LIGHT3,
       outline: def3.outline ?? 0.9,
       outlineColor: def3.outlineColor || "#12180d"
     });
@@ -3575,7 +5719,7 @@ body {
       cv = c2;
     }
     const out = { cv, ox, oy, w, h, g };
-    cache.set(key2, out);
+    cache3.set(key2, out);
     return out;
   }
 
@@ -4024,17 +6168,17 @@ body {
     "Eye"
   ];
   var cacheSeed = null;
-  var cache2 = /* @__PURE__ */ new Map();
+  var cache4 = /* @__PURE__ */ new Map();
   function landmarkAt(seed, ci) {
     if (seed !== cacheSeed) {
       cacheSeed = seed;
-      cache2 = /* @__PURE__ */ new Map();
+      cache4 = /* @__PURE__ */ new Map();
     }
-    let v = cache2.get(ci);
+    let v = cache4.get(ci);
     if (v !== void 0) return v;
     const r = mulberry32((hashStr(String(seed) + "lm") ^ ci * 2654435761) >>> 0);
     if (ci === 0) {
-      cache2.set(ci, null);
+      cache4.set(ci, null);
       return null;
     }
     const kind = KINDS[Math.floor(r() * KINDS.length)];
@@ -4051,7 +6195,7 @@ body {
       seed: (hashStr(String(seed)) ^ ci * 40503) >>> 0,
       biome: biomeAt(x).id
     };
-    cache2.set(ci, v);
+    cache4.set(ci, v);
     return v;
   }
   function landmarksNear(seed, x, radius = CELL) {
@@ -4893,7 +7037,7 @@ body {
   };
 
   // js/art/crabart.js
-  var LIGHT2 = { lightX: -0.52, lightY: -0.7, lightZ: 0.44, ambient: 0.36, dither: 0.7 };
+  var LIGHT4 = { lightX: -0.52, lightY: -0.7, lightZ: 0.44, ambient: 0.36, dither: 0.7 };
   var STAGE_T = { hatchling: 0, juvenile: 0.34, adult: 0.72, ancient: 1 };
   var rnd = (n) => {
     let h = Math.imul(n | 0, 668265261);
@@ -5157,7 +7301,7 @@ body {
     m.faceMid = faceMid;
     p.grain("chitin", { freq: 0.36 / S, amp: 0.14, seed: seed + 9 });
     p.smoothHeight(1, 0.5);
-    const cv = p.resolve(MATERIALS, { ...LIGHT2, outline: 1, outlineColor: "#171009" });
+    const cv = p.resolve(MATERIALS, { ...LIGHT4, outline: 1, outlineColor: "#171009" });
     return { cv, ox: m.ox, oy: m.oy, faceTop: frontY };
   }
   function paintSegment(len, r0, r1, opts = {}) {
@@ -5202,8 +7346,8 @@ body {
     p.grain(mat, { freq: 0.5 / S, amp: 0.13, seed: Math.round(len * 7) });
     p.smoothHeight(1, 0.4);
     const cv = p.resolve(MATERIALS, {
-      ...LIGHT2,
-      ambient: far ? 0.27 : LIGHT2.ambient,
+      ...LIGHT4,
+      ambient: far ? 0.27 : LIGHT4.ambient,
       outline: 1,
       outlineColor: far ? "#100a06" : "#171009"
     });
@@ -5247,8 +7391,8 @@ body {
     }
     p.grain(mat, { freq: 0.6 / S, amp: 0.12, seed: 21 });
     const cv = p.resolve(MATERIALS, {
-      ...LIGHT2,
-      ambient: far ? 0.27 : LIGHT2.ambient,
+      ...LIGHT4,
+      ambient: far ? 0.27 : LIGHT4.ambient,
       outline: 1,
       outlineColor: far ? "#100a06" : "#171009"
     });
@@ -5293,8 +7437,8 @@ body {
     p.grain(mat, { freq: 0.3 / S, amp: 0.17, seed: 29 });
     p.smoothHeight(1, 0.45);
     const palm = p.resolve(MATERIALS, {
-      ...LIGHT2,
-      ambient: far ? 0.27 : LIGHT2.ambient,
+      ...LIGHT4,
+      ambient: far ? 0.27 : LIGHT4.ambient,
       outline: 1,
       outlineColor: far ? "#100a06" : "#171009"
     });
@@ -5320,8 +7464,8 @@ body {
     q.grain(mat, { freq: 0.4 / S, amp: 0.14, seed: 63 });
     q.smoothHeight(1, 0.4);
     const dactyl = q.resolve(MATERIALS, {
-      ...LIGHT2,
-      ambient: far ? 0.27 : LIGHT2.ambient,
+      ...LIGHT4,
+      ambient: far ? 0.27 : LIGHT4.ambient,
       outline: 1,
       outlineColor: far ? "#100a06" : "#171009"
     });
@@ -5348,7 +7492,7 @@ body {
       { mat: "chitin", dome: 1.4 * S, tint: 0 }
     );
     p.ellipse(x0 + len, cy, r, r, { mat: "eye", dome: r * 1.5, tint: -0.18 });
-    const cv = p.resolve(MATERIALS, { ...LIGHT2, outline: 1, outlineColor: "#171009" });
+    const cv = p.resolve(MATERIALS, { ...LIGHT4, outline: 1, outlineColor: "#171009" });
     return { cv, ox: pad, oy: cy, len, r, globe: len };
   }
   function paintMouth(m) {
@@ -5369,12 +7513,12 @@ body {
       );
     }
     p.ellipse(cx, cy + 1 * S, 1.5 * S, 1 * S, { mat: "flesh", dome: 0.8 * S, tint: -0.2 });
-    const cv = p.resolve(MATERIALS, { ...LIGHT2, outline: 1, outlineColor: "#171009" });
+    const cv = p.resolve(MATERIALS, { ...LIGHT4, outline: 1, outlineColor: "#171009" });
     return { cv, ox: cx, oy: cy };
   }
-  var cache3 = /* @__PURE__ */ new Map();
+  var cache5 = /* @__PURE__ */ new Map();
   function buildCrab(stage = "adult") {
-    if (cache3.has(stage)) return cache3.get(stage);
+    if (cache5.has(stage)) return cache5.get(stage);
     const m = crabMetrics(stage);
     const S = Math.max(0.4, m.S);
     const body = paintBody(m);
@@ -5451,7 +7595,7 @@ body {
       shellPoint: (u) => shellPoint(m, u),
       hipY
     };
-    cache3.set(stage, rig);
+    cache5.set(stage, rig);
     return rig;
   }
 
@@ -6126,8 +8270,8 @@ body {
   };
 
   // js/art/personart.js
-  var LIGHT3 = { lightX: -0.58, lightY: -0.66, lightZ: 0.42, ambient: 0.42, dither: 0.62 };
-  var FAR = { ...LIGHT3, ambient: 0.28 };
+  var LIGHT5 = { lightX: -0.58, lightY: -0.66, lightZ: 0.42, ambient: 0.42, dither: 0.62 };
+  var FAR = { ...LIGHT5, ambient: 0.28 };
   var BASE = {
     skin: {
       ramp: ["#5e3627", "#7a4733", "#985c42", "#b47353", "#cd8e69", "#e0a982", "#eec39d", "#f7dcbc"],
@@ -6289,7 +8433,7 @@ body {
   function bake(p, ox, oy, far, kind, extra = {}) {
     return {
       cv: p.resolve(matsFor(kind), {
-        ...far ? FAR : LIGHT3,
+        ...far ? FAR : LIGHT5,
         outline: 1,
         outlineColor: far ? "#0f0a07" : "#191008"
       }),
@@ -7171,10 +9315,10 @@ body {
       })
     };
   }
-  var cache4 = /* @__PURE__ */ new Map();
+  var cache6 = /* @__PURE__ */ new Map();
   function buildPerson(kind = "vess", K = 1) {
     const key2 = kind + ":" + K;
-    if (cache4.has(key2)) return cache4.get(key2);
+    if (cache6.has(key2)) return cache6.get(key2);
     const bone = (len, r0, r1, mat, far, o) => paintBone(len * K, r0 * K, r1 * K, mat, K, far, kind, o);
     const elder = kind === "elder";
     const rig = {
@@ -7229,7 +9373,7 @@ body {
       tube: { x: -T.W * 0.1, y: -T.H * 0.06 }
     };
     rig.standH = (rig.leg.near.upper.len + rig.leg.near.lower.len) * 0.955 + 1.9 * K;
-    cache4.set(key2, rig);
+    cache6.set(key2, rig);
     return rig;
   }
 
@@ -7311,7 +9455,7 @@ body {
   };
 
   // js/art/faces.js
-  var cache5 = /* @__PURE__ */ new Map();
+  var cache7 = /* @__PURE__ */ new Map();
   var INDEX2 = new Int8Array(128).fill(-1);
   for (let i = 0; i < FACE_ALPHA.length; i++) INDEX2[FACE_ALPHA.charCodeAt(i)] = i;
   function hasFace(name) {
@@ -7322,7 +9466,7 @@ body {
     const s = Math.max(1, Math.round(scale));
     const spore = Math.max(0, Math.min(1, opts.spore || 0));
     const key2 = `${name}:${s}:${spore.toFixed(2)}`;
-    let cv = cache5.get(key2);
+    let cv = cache7.get(key2);
     if (cv) return cv;
     const pal = spore > 0.01 ? FACE_PAL.map((c) => mixHex(c, "#a26cd0", spore * 0.55)) : FACE_PAL;
     cv = document.createElement("canvas");
@@ -7338,8 +9482,8 @@ body {
         g.fillRect(x * s, y * s, s, s);
       }
     }
-    if (cache5.size > 96) cache5.clear();
-    cache5.set(key2, cv);
+    if (cache7.size > 96) cache7.clear();
+    cache7.set(key2, cv);
     return cv;
   }
   var FACE_EYE = { x: 27, y: 21 };
@@ -7440,6 +9584,27 @@ body {
   var CAMP_ITEMS = ["bedroll", "canteen", "lantern", "peg", "skull", "spoil", "pick", "brush"];
   var TURN_SECS = 0.26;
   var TURN_MIN = 0.58;
+  var JAW_FRAME = {
+    flat: "talk",
+    talk: "flat",
+    grin: "laugh",
+    laugh: "grin",
+    joy: "grin",
+    smug: "talk",
+    squint: "talk",
+    frown: "gasp",
+    gasp: "frown",
+    glare: "scowl",
+    scowl: "glare",
+    shout: "flat",
+    peer: "talk",
+    blank: "talk",
+    dull: "talk",
+    sad: "talk",
+    tired: "talk",
+    drink: "flat",
+    spore: "gasp"
+  };
   var Person = class {
     constructor(game2, kind, x, opts = {}) {
       this.game = game2;
@@ -7488,6 +9653,7 @@ body {
     say(text, secs = 4.5, mood = null) {
       this.speech = text;
       this.speechT = secs;
+      this.speechAge = 0;
       this.shout = 0;
       this.face = mood !== null ? mood : this._moodFor(text);
       this.mood = this._faceFor(text);
@@ -7502,6 +9668,7 @@ body {
     yell(text, secs = 3.2) {
       this.speech = text;
       this.speechT = secs;
+      this.speechAge = 0;
       this.shout = 1;
       this.face = 2;
       this.mood = "shout";
@@ -7617,8 +9784,15 @@ body {
      * grid - so what he thinks of you is something you can see. The painted
      * head is still what stands in the desert; this is only ever a close-up.
      */
-    portrait(scale = 1) {
-      return facePortrait(this.mood || "flat", scale, (this.game.mind?.blue || 0) > 0.35 ? 1 : 0);
+    /**
+     * His face for a bubble. `talking` flips his jaw open and shut while the
+     * line is still arriving, which is the difference between a portrait next
+     * to some text and a man saying it.
+     */
+    portrait(scale = 1, talking = false) {
+      let f = this.mood || "flat";
+      if (talking && Math.floor((this.game.time || 0) * 9) % 2 === 1) f = JAW_FRAME[f] || "talk";
+      return facePortrait(f, scale, (this.game.mind?.blue || 0) > 0.35 ? 1 : 0);
     }
     setPose(p) {
       if (this.pose !== p) {
@@ -7636,6 +9810,7 @@ body {
       this.breathe += dt * 1.3;
       if (this.speechT > 0) {
         this.speechT -= dt;
+        this.speechAge = (this.speechAge || 0) + dt;
         if (this.speechT <= 0) {
           this.speech = null;
           this.shout = 0;
@@ -8554,2153 +10729,31 @@ body {
   var TOPIC_BY_ID = Object.fromEntries(TOPICS.map((t) => [t.id, t]));
   var TOPIC_BY_WORD = Object.fromEntries(TOPICS.map((t) => [t.word, t]));
 
-  // js/art/faunaart.js
-  var LIGHT4 = { lightX: -0.58, lightY: -0.64, lightZ: 0.4, ambient: 0.37, dither: 0.68 };
-  function rng2(seed) {
-    let s = seed | 0 || 7;
-    return () => {
-      s ^= s << 13;
-      s ^= s >>> 17;
-      s ^= s << 5;
-      s |= 0;
-      return (s >>> 0) % 1e5 / 1e5;
-    };
-  }
-  function spine(pts, radius, n = 34) {
-    const out = [];
-    for (let i = 0; i <= n; i++) {
-      const t = i / n;
-      const p = bezier(pts, t);
-      out.push({ x: p.x, y: p.y, t, r: radius(t) });
-    }
-    for (let i = 0; i <= n; i++) {
-      const a = out[Math.max(0, i - 1)], b = out[Math.min(n, i + 1)];
-      const dx = b.x - a.x, dy = b.y - a.y;
-      const l = Math.hypot(dx, dy) || 1;
-      out[i].tx = dx / l;
-      out[i].ty = dy / l;
-      out[i].nx = -dy / l;
-      out[i].ny = dx / l;
-    }
-    return out;
-  }
-  function tube(p, sp, o = {}) {
-    const squash = o.squash ?? 1;
-    const dome = o.dome ?? 1;
-    const belly = o.belly ?? 0.16;
-    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
-    for (const s of sp) {
-      x0 = Math.min(x0, s.x - s.r - 2);
-      x1 = Math.max(x1, s.x + s.r + 2);
-      y0 = Math.min(y0, s.y - s.r * squash - 2);
-      y1 = Math.max(y1, s.y + s.r * squash + 2);
-    }
-    p.field(x0, y0, x1, y1, (px, py) => {
-      let bestD = Infinity, bestS = null, bestSide = 0;
-      for (const s of sp) {
-        const dx = px - s.x, dy = (py - s.y) / squash;
-        const d = Math.hypot(dx, dy);
-        const k = d / (s.r || 1e-3);
-        if (k < bestD) {
-          bestD = k;
-          bestS = s;
-          bestSide = dy;
-        }
-      }
-      if (!bestS || bestD > 1) return null;
-      const dz = Math.sqrt(clamp01(1 - bestD * bestD));
-      const under = clamp01(bestSide / (bestS.r || 1));
-      let tint = (o.tint ?? 0) + under * belly - (1 - under) * 0.02;
-      if (o.taperShade) tint -= (1 - bestS.t) * o.taperShade;
-      return { h: dz * bestS.r * dome, tint };
-    }, { mat: o.mat, mask: o.mask, under: o.under });
-    return p;
-  }
-  function bodyUV(sp, x, y) {
-    let best = null, bd = Infinity;
-    for (const s of sp) {
-      const d = (s.x - x) ** 2 + (s.y - y) ** 2;
-      if (d < bd) {
-        bd = d;
-        best = s;
-      }
-    }
-    if (!best) return { u: x, v: y };
-    return {
-      u: (x - best.x) * best.tx + (y - best.y) * best.ty + best.t * 90,
-      v: (x - best.x) * best.nx + (y - best.y) * best.ny
-    };
-  }
-  function overMat(p, mat, fn) {
-    const m = p._matIndex.get(mat);
-    if (!m) return false;
-    for (let y = 0; y < p.h; y++) {
-      for (let x = 0; x < p.w; x++) {
-        const i = y * p.w + x;
-        if (p.mat[i] === m) fn(i, x, y);
-      }
-    }
-    return true;
-  }
-  function mottle(p, mat, S, seed, amp = 0.2, scale = 1) {
-    overMat(p, mat, (i, x, y) => {
-      const f = 0.055 / (S * scale);
-      const n = fbmTex(x * f, y * f, seed, 3) - 0.5;
-      const n2 = fbmTex(x * f * 3.1, y * f * 3.1, seed + 71, 2) - 0.5;
-      p.tint[i] += n * amp * 2 + n2 * amp * 0.7;
-    });
-  }
-  function banding(p, mat, S, seed, sp, n = 9, amp = 0.24) {
-    const R = rng2(seed * 13 + 5);
-    if (R() < 0.45) return;
-    const phase = R() * 10, warp = 0.5 + R();
-    overMat(p, mat, (i, x, y) => {
-      const { u, v } = bodyUV(sp, x, y);
-      const w = Math.sin(u * 0.09 * n / 6 + phase + Math.sin(v * 0.11) * warp);
-      const k = Math.pow(Math.max(0, w), 2.2);
-      p.tint[i] -= k * amp;
-      p.hgt[i] += k * 0.2 * S;
-    });
-  }
-  function counterShade(p, mat, S, sp, amp = 0.22) {
-    overMat(p, mat, (i, x, y) => {
-      p.tint[i] += clamp(bodyUV(sp, x, y).v * 0.05, -1, 1) * amp;
-    });
-  }
-  function skinPass(p, mat, kind, S, seed, sp) {
-    switch (kind) {
-      case "scale": {
-        const sx = Math.max(2, 2.8 * S), sy = Math.max(2, 2.2 * S);
-        const ok = overMat(p, mat, (i, x, y) => {
-          const { u, v } = bodyUV(sp, x, y);
-          const row = Math.floor(v / sy);
-          const off = row & 1 ? sx / 2 : 0;
-          const fx = ((u + off) % sx + sx) % sx / sx - 0.5;
-          const fy = (v % sy + sy) % sy / sy - 0.5;
-          const d = Math.sqrt(fx * fx + fy * fy * 1.7);
-          const k = clamp01(1 - d * 2);
-          const keel = clamp01(1 - Math.abs(fx) * 6) * clamp01(1 - Math.abs(fy) * 2.2);
-          const seam = clamp01(1 - Math.abs(fy + 0.5) * 5.5);
-          p.tint[i] += (k - 0.44) * 0.3 + keel * 0.13 - seam * 0.22;
-          p.hgt[i] += k * 0.9 * S + keel * 0.4 * S - seam * 0.6 * S;
-        });
-        if (!ok) break;
-        mottle(p, mat, S, seed + 17, 0.16);
-        banding(p, mat, S, seed, sp, 5, 0.13);
-        p.grain(mat, { freq: 0.55 / S, amp: 0.12, seed: seed + 3, oct: 2 });
-        counterShade(p, mat, S, sp, 0.16);
-        p.speckle(mat, { density: 0.02, amp: 0.3, seed: seed + 41 });
-        break;
-      }
-      case "fur": {
-        p.grain(mat, { freq: 0.8 / S, amp: 0.18, seed, oct: 2, height: 0.4 * S });
-        const R = rng2(seed * 7 + 3);
-        const clumps = [];
-        for (let i = 0; i < 90; i++) clumps.push({ a: R() * TAU, l: 0.5 + R() });
-        overMat(p, mat, (i, x, y) => {
-          const { u, v } = bodyUV(sp, x, y);
-          const lie = u * 0.75 + v * 0.42 + Math.sin(v * 0.18 + u * 0.05) * 3.4;
-          const strand = Math.sin(lie / Math.max(0.9, 1.15 * S));
-          const clump = fbmTex(x * 0.09 / S, y * 0.09 / S, seed + 9, 2) - 0.5;
-          p.tint[i] += strand * 0.13 + clump * 0.26;
-          p.hgt[i] += strand * 0.45 * S + clump * 0.7 * S;
-        });
-        mottle(p, mat, S, seed + 31, 0.22, 1.6);
-        counterShade(p, mat, S, sp, 0.2);
-        p.grain(mat, { freq: 0.16 / S, amp: 0.16, seed: seed + 21, oct: 2 });
-        break;
-      }
-      case "chitin":
-        p.ridges(mat, { angle: 1.42, freq: 0.44 / S, amp: 0.24, height: 1.5 * S, seed, warp: 0.35 });
-        overMat(p, mat, (i, x, y) => {
-          const { u, v } = bodyUV(sp, x, y);
-          const seg2 = Math.sin(u / Math.max(1.4, 3.4 * S));
-          const k = Math.pow(clamp01(seg2), 2);
-          p.tint[i] += k * 0.16 - clamp01(-seg2) * 0.22;
-          p.hgt[i] += k * 1.1 * S;
-          const pit = fbmTex(x * 0.9 / S, y * 0.9 / S, seed + 55, 1);
-          if (pit > 0.72) {
-            p.tint[i] -= 0.22;
-            p.hgt[i] -= 0.7 * S;
-          }
-        });
-        mottle(p, mat, S, seed + 13, 0.16, 1.3);
-        p.grain(mat, { freq: 0.9 / S, amp: 0.09, seed: seed + 5 });
-        p.speckle(mat, { density: 0.03, amp: 0.3, seed: seed + 11 });
-        break;
-      case "shell":
-        overMat(p, mat, (i, x, y) => {
-          const { u, v } = bodyUV(sp, x, y);
-          const r = Math.hypot(u * 0.7, v);
-          const ring = Math.sin(r / Math.max(1.2, 2.6 * S));
-          p.tint[i] += ring * 0.13;
-          p.hgt[i] += ring * 0.8 * S;
-        });
-        mottle(p, mat, S, seed + 5, 0.24, 0.8);
-        p.grain(mat, { freq: 0.17 / S, amp: 0.24, seed, oct: 3, height: 0.8 * S });
-        p.speckle(mat, { density: 0.06, amp: 0.34, seed: seed + 11 });
-        break;
-      case "plate":
-        p.ridges(mat, { angle: 1.5, freq: 0.3 / S, amp: 0.16, height: 1.5 * S, seed, warp: 0.2 });
-        overMat(p, mat, (i, x, y) => {
-          const { u, v } = bodyUV(sp, x, y);
-          const cx2 = Math.round(u / Math.max(3, 5.2 * S));
-          const cy2 = Math.round(v / Math.max(3, 4.4 * S));
-          const du = u - cx2 * Math.max(3, 5.2 * S);
-          const dv = v - cy2 * Math.max(3, 4.4 * S);
-          const d = Math.hypot(du / Math.max(3, 5.2 * S), dv / Math.max(3, 4.4 * S)) * 2;
-          const k = clamp01(1 - d);
-          p.tint[i] += (k - 0.35) * 0.26;
-          p.hgt[i] += k * k * 1.6 * S;
-        });
-        mottle(p, mat, S, seed + 23, 0.18);
-        p.grain(mat, { freq: 0.5 / S, amp: 0.12, seed: seed + 7 });
-        break;
-      default:
-        mottle(p, mat, S, seed + 3, 0.18);
-        p.grain(mat, { freq: 0.42 / S, amp: 0.15, seed });
-    }
-  }
-  function furFringe(p, mat, S, seed, density = 0.55) {
-    const m = p._matIndex.get(mat);
-    if (!m) return;
-    const R = rng2(seed * 31 + 7);
-    const edges = [];
-    for (let y = 1; y < p.h - 1; y++) {
-      for (let x = 1; x < p.w - 1; x++) {
-        const i = y * p.w + x;
-        if (p.mat[i] !== m) continue;
-        let ex = 0, ey = 0, open = false;
-        for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-          if (!p.mat[i + dy * p.w + dx]) {
-            open = true;
-            ex -= dx;
-            ey -= dy;
-          }
-        }
-        if (open) edges.push({ x, y, ex, ey });
-      }
-    }
-    for (const e of edges) {
-      if (R() > density) continue;
-      const l = (1.2 + R() * 3) * S;
-      const a = Math.atan2(-e.ey, -e.ex) + (R() - 0.5) * 0.9;
-      p.capsule(
-        e.x,
-        e.y,
-        e.x + Math.cos(a) * l,
-        e.y + Math.sin(a) * l,
-        0.62 * S,
-        0.28 * S,
-        { mat, dome: 0.5 * S, tint: 0.04 + (R() - 0.5) * 0.36 }
-      );
-    }
-  }
-  function eye(p, x, y, r, D, tint = 0) {
-    p.ellipse(x, y, r * 1.35, r * 1.3, { mat: D.mat, dome: r * 0.8, tint: tint - 0.22 });
-    p.ellipse(x, y, r, r * (D.eyeSlit ? 1.05 : 1), { mat: "eye", dome: r * 1.4, tint });
-    if (D.eyeSlit) {
-      p.capsule(
-        x,
-        y - r * 0.85,
-        x,
-        y + r * 0.85,
-        r * 0.24,
-        r * 0.18,
-        { mat: "eye", mask: true, dome: 0, tint: -0.75 }
-      );
-    }
-    p.ellipse(x - r * 0.36, y - r * 0.4, r * 0.32, r * 0.28, { mat: "eye", mask: true, dome: r, tint: 0.72 });
-  }
-  function paintHead(D, S, R) {
-    const L = D.headL * S, H = D.headH * S;
-    const pad = Math.ceil(Math.max(L, H) * 0.7) + 6;
-    const p = new Painter(Math.ceil(L * 1.6) + pad * 2, Math.ceil(H * 2) + pad * 2);
-    const cx = pad + L * 0.3, cy = p.h / 2;
-    const plan = D.plan;
-    if (plan === "insect" || plan === "arachnid" || plan === "myriapod") {
-      p.ellipse(cx + L * 0.1, cy, L * 0.5, H * 0.46, { mat: D.mat, dome: H * 0.52, tint: 0.03 });
-      if (D.mandible) {
-        for (const sgn of [1, -1]) {
-          p.curve([
-            { x: cx + L * 0.42, y: cy + sgn * H * 0.16 },
-            { x: cx + L * 0.72, y: cy + sgn * H * 0.34 },
-            { x: cx + L * 0.96, y: cy + sgn * H * 0.06 }
-          ], H * 0.15, H * 0.05, {
-            mat: D.jawMat || "horn",
-            dome: H * 0.16,
-            steps: 12,
-            tint: sgn > 0 ? 0.04 : -0.16
-          });
-        }
-      }
-      if (D.palps) {
-        for (const sgn of [1, -1]) {
-          p.capsule(
-            cx + L * 0.34,
-            cy + sgn * H * 0.28,
-            cx + L * 0.66,
-            cy + sgn * H * 0.46,
-            H * 0.1,
-            H * 0.06,
-            { mat: D.mat, dome: H * 0.1, tint: sgn > 0 ? 0 : -0.16 }
-          );
-        }
-      }
-      const er = (D.eyeR ?? 2) * S;
-      eye(p, cx + L * 0.28, cy - H * 0.14, er, D, 0);
-      if (D.ocelli) {
-        for (let i = 0; i < 3; i++) {
-          p.ellipse(
-            cx + L * (0.02 + i * 0.09),
-            cy - H * 0.34,
-            er * 0.28,
-            er * 0.28,
-            { mat: "eye", dome: er * 0.4, tint: 0.1 }
-          );
-        }
-      }
-    } else if (plan === "sprawler") {
-      const sp = spine([
-        { x: cx - L * 0.34, y: cy },
-        { x: cx + L * 0.2, y: cy - H * 0.06 },
-        { x: cx + L * 0.86, y: cy + H * 0.1 }
-      ], (t) => H * (0.52 - 0.3 * Math.pow(t, 1.5)), 16);
-      tube(p, sp, { mat: D.mat, squash: 0.94, dome: 0.95, belly: 0.14 });
-      p.ellipse(
-        cx + L * 0.06,
-        cy - H * 0.28,
-        L * 0.26,
-        H * 0.16,
-        { mat: D.mat, dome: H * 0.3, tint: 0.1 }
-      );
-      p.capsule(
-        cx - L * 0.18,
-        cy + H * 0.2,
-        cx + L * 0.8,
-        cy + H * 0.16,
-        H * 0.09,
-        H * 0.05,
-        { mat: D.mat, mask: true, dome: 0, tint: -0.34 }
-      );
-      p.ellipse(
-        cx + L * 0.84,
-        cy + H * 0.06,
-        H * 0.1,
-        H * 0.08,
-        { mat: "flesh", dome: H * 0.1, tint: -0.1 }
-      );
-      eye(p, cx + L * 0.12, cy - H * 0.14, (D.eyeR ?? 2) * S, D, 0);
-    } else {
-      p.ellipse(cx, cy, L * 0.46, H * 0.46, { mat: D.mat, dome: H * 0.52, tint: 0.02 });
-      if (D.beak) {
-        const bl = D.beak * S;
-        p.curve(
-          [
-            { x: cx + L * 0.32, y: cy + H * 0.02 },
-            { x: cx + L * 0.32 + bl * 0.6, y: cy + H * (D.beakDroop ?? 0.06) },
-            { x: cx + L * 0.32 + bl, y: cy + H * (D.beakDroop ?? 0.06) * 2.2 }
-          ],
-          H * 0.24,
-          0.65 * S,
-          { mat: D.beakMat || "horn", dome: H * 0.2, steps: 12 }
-        );
-      } else if (D.muzzle) {
-        const ml = D.muzzle * S;
-        p.ellipse(
-          cx + L * 0.3 + ml * 0.42,
-          cy + H * 0.14,
-          ml * 0.62,
-          H * 0.3,
-          { mat: D.muzzleMat || D.mat, dome: H * 0.3, tint: 0.04 }
-        );
-        p.ellipse(
-          cx + L * 0.3 + ml * 0.94,
-          cy + H * 0.16,
-          1.3 * S,
-          1.05 * S,
-          { mat: "flesh", dome: 1.2 * S, tint: -0.12 }
-        );
-      }
-      eye(p, cx + L * (D.eyeX ?? 0.14), cy - H * (D.eyeY ?? 0.12), (D.eyeR ?? 2) * S, D, 0);
-    }
-    skinPass(p, D.mat, D.skin, S, D.seed || 3, [{ x: cx, y: cy, tx: 1, ty: 0, nx: 0, ny: 1, t: 0.5 }]);
-    if (D.ear) {
-      for (const near of [false, true]) {
-        const ex = cx - L * 0.16 - (near ? 0 : 1.5 * S), ey = cy - H * 0.34;
-        const el = D.ear * S;
-        p.curve(
-          [{ x: ex, y: ey }, { x: ex - el * 0.26, y: ey - el * 0.6 }, { x: ex + el * 0.14, y: ey - el }],
-          H * 0.22,
-          0.85 * S,
-          {
-            mat: near ? D.mat : D.matFar || D.mat,
-            dome: H * 0.17,
-            steps: 10,
-            tint: near ? 0.05 : -0.22
-          }
-        );
-        if (near) {
-          p.curve(
-            [{ x: ex, y: ey }, { x: ex - el * 0.22, y: ey - el * 0.58 }, { x: ex + el * 0.12, y: ey - el * 0.9 }],
-            H * 0.11,
-            0.45 * S,
-            { mat: "flesh", mask: true, dome: 0, steps: 10, tint: -0.16 }
-          );
-        }
-      }
-    }
-    if (D.horn) {
-      const hl = D.horn * S;
-      for (const sgn of [1, 0]) {
-        p.curve(
-          [
-            { x: cx + L * 0.02 - sgn * 1.4 * S, y: cy - H * 0.36 },
-            { x: cx + L * 0.28, y: cy - H * 0.36 - hl * 0.68 },
-            { x: cx + L * 0.08, y: cy - H * 0.36 - hl }
-          ],
-          1.6 * S,
-          0.55 * S,
-          { mat: "horn", dome: 1.4 * S, steps: 10, tint: sgn ? 0.06 : -0.2 }
-        );
-      }
-    }
-    if (D.frill) {
-      const fr = D.frill * S;
-      for (let i = 0; i < 7; i++) {
-        const a = -1.9 + i * 0.42;
-        p.poly([
-          { x: cx - L * 0.24, y: cy + Math.sin(a) * H * 0.3 },
-          { x: cx - L * 0.24 + Math.cos(a) * fr, y: cy + Math.sin(a) * fr },
-          { x: cx - L * 0.16, y: cy + Math.sin(a) * H * 0.42 }
-        ], { mat: D.hornMat || "horn", dome: 1.4 * S, feather: 1.6, tint: 0.04 - i * 0.02 });
-      }
-    }
-    if (D.crest) {
-      for (let i = 0; i < 5; i++) {
-        const t = i / 4;
-        const x = cx - L * 0.26 + t * L * 0.5;
-        const y = cy - H * 0.4;
-        const cl = D.crest * S * (0.5 + Math.sin(t * Math.PI) * 0.9);
-        p.curve(
-          [{ x, y }, { x: x - cl * 0.4, y: y - cl * 0.7 }, { x: x - cl * 0.8, y: y - cl }],
-          1.15 * S,
-          0.35 * S,
-          { mat: D.crestMat || "horn", dome: 1 * S, steps: 8, tint: 0.05 }
-        );
-      }
-    }
-    if (D.antenna) {
-      for (const sgn of [1, 0]) {
-        const al = D.antenna * S;
-        p.curve(
-          [
-            { x: cx + L * 0.3, y: cy - H * 0.3 - sgn * 1.2 * S },
-            { x: cx + L * 0.3 + al * 0.55, y: cy - H * 0.3 - al * 0.75 },
-            { x: cx + L * 0.3 + al * 1.05, y: cy - H * 0.3 - al * 0.45 }
-          ],
-          0.95 * S,
-          0.35 * S,
-          {
-            mat: D.antMat || D.mat,
-            dome: 0.8 * S,
-            steps: 12,
-            tint: sgn ? 0.02 : -0.2
-          }
-        );
-        if (D.antClub) {
-          p.ellipse(
-            cx + L * 0.3 + al * 1.05,
-            cy - H * 0.3 - al * 0.45,
-            1.5 * S,
-            1.1 * S,
-            { mat: D.antMat || D.mat, dome: 1.3 * S, tint: 0.06 }
-          );
-        }
-      }
-    }
-    if (D.skin === "fur") furFringe(p, D.mat, S, (D.seed || 3) + 5, 0.5);
-    p.smoothHeight(1, 0.38);
-    return {
-      cv: p.resolve(MATERIALS, { ...LIGHT4, outline: 1, outlineColor: D.outline || "#160f0a" }),
-      ox: cx - L * 0.3,
-      oy: cy,
-      L,
-      H
-    };
-  }
-  function paintLimb(len, r0, r1, D, S, far, o = {}) {
-    const mat = far ? D.matFar || D.mat : D.mat;
-    const ft = far ? -0.2 : 0;
-    const pad = Math.ceil(Math.max(r0, r1) * 2.4 + 6);
-    const p = new Painter(Math.ceil(len) + pad * 2, pad * 2 + 4);
-    const cy = p.h / 2, x0 = pad, x1 = pad + len;
-    if (o.style === "chitin") {
-      p.capsule(x0, cy, x1, cy, r0, r1, { mat, dome: r0 * 0.85, tint: ft });
-      for (let i = 1; i < 4; i++) {
-        const x = lerp(x0, x1, i / 4);
-        p.ellipse(
-          x,
-          cy,
-          r0 * 0.28,
-          lerp(r0, r1, i / 4) * 1.02,
-          { mat, mask: true, dome: r0 * 0.2, tint: ft - 0.2 }
-        );
-      }
-      if (o.barbs) {
-        for (let i = 0; i < 4; i++) {
-          const x = lerp(x0 + len * 0.15, x1, i / 4);
-          p.capsule(
-            x,
-            cy + r0 * 0.5,
-            x - r0 * 1.3,
-            cy + r0 * 2,
-            0.5 * S,
-            0.3 * S,
-            { mat: "horn", dome: 0.5 * S, tint: ft }
-          );
-        }
-      }
-    } else {
-      p.curve(
-        [{ x: x0, y: cy }, { x: (x0 + x1) / 2, y: cy - (o.bow || 0) }, { x: x1, y: cy }],
-        r0,
-        r1,
-        { mat, dome: r0 * 0.9, steps: 12, tint: ft }
-      );
-    }
-    p.ellipse(x0, cy, r0 * 1.12, r0 * 1.06, { mat, dome: r0, tint: ft + 0.05 });
-    if (o.foot === "splay") {
-      for (let i = 0; i < 4; i++) {
-        const a = -0.55 + i * 0.38;
-        const tl = r1 * (3.4 - Math.abs(i - 1.5) * 0.6);
-        p.curve(
-          [
-            { x: x1, y: cy },
-            { x: x1 + Math.cos(a) * tl * 0.6, y: cy + Math.sin(a) * tl * 0.6 },
-            { x: x1 + Math.cos(a) * tl, y: cy + Math.sin(a) * tl * 0.8 }
-          ],
-          r1 * 0.62,
-          r1 * 0.22,
-          { mat, dome: r1 * 0.5, steps: 8, tint: ft - i * 0.03 }
-        );
-      }
-    } else if (o.foot === "claw") {
-      p.curve(
-        [{ x: x1, y: cy }, { x: x1 + r1 * 2, y: cy + r1 * 0.5 }, { x: x1 + r1 * 3.2, y: cy + r1 * 1.7 }],
-        r1 * 0.85,
-        0.45,
-        { mat: "horn", dome: r1 * 0.7, steps: 8, tint: ft + 0.05 }
-      );
-    } else if (o.foot === "paw") {
-      p.ellipse(x1 + r1 * 0.5, cy + r1 * 0.2, r1 * 1.7, r1 * 1.15, { mat, dome: r1 * 1.1, tint: ft + 0.03 });
-      for (let i = 0; i < 3; i++) {
-        p.ellipse(
-          x1 + r1 * (0.9 + i * 0.5),
-          cy + r1 * 0.55,
-          r1 * 0.5,
-          r1 * 0.4,
-          { mat: "horn", dome: r1 * 0.5, tint: ft }
-        );
-      }
-    } else if (o.foot === "hoof") {
-      p.ellipse(x1, cy, r1 * 1.5, r1 * 1.25, { mat: "horn", dome: r1 * 1.2, tint: ft + 0.02 });
-    } else if (o.foot === "hook") {
-      p.curve(
-        [{ x: x1, y: cy }, { x: x1 + r1 * 1.6, y: cy + r1 * 1.2 }, { x: x1 + r1 * 1.1, y: cy + r1 * 2.6 }],
-        r1 * 0.7,
-        0.4,
-        { mat: "horn", dome: r1 * 0.6, steps: 8, tint: ft + 0.04 }
-      );
-    }
-    skinPass(p, mat, D.skin, S, 41, [{ x: (x0 + x1) / 2, y: cy, tx: 1, ty: 0, nx: 0, ny: 1, t: 0.5 }]);
-    if (D.skin === "fur" && !far) furFringe(p, mat, S, 61, 0.34);
-    return {
-      cv: p.resolve(MATERIALS, {
-        ...LIGHT4,
-        ambient: far ? 0.28 : LIGHT4.ambient,
-        outline: 1,
-        outlineColor: far ? "#100a06" : D.outline || "#160f0a"
-      }),
-      ox: pad,
-      oy: cy,
-      len
-    };
-  }
-  function paintTail(D, S) {
-    const L = D.tail * S;
-    const W = (D.tailW ?? 0.26) * L;
-    const pad = Math.ceil(W * 2.2) + 6;
-    const p = new Painter(Math.ceil(L) + pad * 2, Math.ceil(W * 3.2) + pad * 2);
-    const x0 = pad, cy = p.h / 2;
-    const kind = D.tailKind || "taper";
-    if (kind === "sting") {
-      const sp = spine([
-        { x: x0, y: cy + W },
-        { x: x0 + L * 0.55, y: cy - W * 1.6 },
-        { x: x0 + L, y: cy + W * 0.2 }
-      ], () => W * 0.55, 22);
-      tube(p, sp, { mat: D.tailMat || D.mat, squash: 1, dome: 1 });
-      for (let i = 1; i < 6; i++) {
-        const s = sp[Math.round(i / 6 * sp.length)];
-        p.ellipse(s.x, s.y, W * 0.6, W * 0.6, { mat: D.tailMat || D.mat, dome: W * 0.55, tint: 0.06 });
-      }
-      const tip = sp[sp.length - 1];
-      p.ellipse(tip.x, tip.y, W * 0.8, W * 0.7, { mat: D.tailMat || D.mat, dome: W * 0.7, tint: 0.04 });
-      p.curve([
-        { x: tip.x, y: tip.y },
-        { x: tip.x + W * 1.1, y: tip.y + W * 0.6 },
-        { x: tip.x + W * 0.5, y: tip.y + W * 2 }
-      ], W * 0.42, 0.4, { mat: "horn", dome: W * 0.4, steps: 8 });
-    } else if (kind === "plume") {
-      for (let i = 0; i < 7; i++) {
-        const a = -0.55 + i * 0.19;
-        p.capsule(
-          x0,
-          cy,
-          x0 + Math.cos(a) * L,
-          cy + Math.sin(a) * L * 0.7,
-          W * 0.42,
-          W * 0.16,
-          { mat: D.tailMat || D.mat, dome: W * 0.4, tint: (i - 3) * 0.045 }
-        );
-      }
-    } else if (kind === "tuft") {
-      p.curve(
-        [{ x: x0, y: cy }, { x: x0 + L * 0.5, y: cy - L * 0.2 }, { x: x0 + L, y: cy - L * 0.05 }],
-        W * 0.55,
-        W * 0.22,
-        { mat: D.mat, dome: W * 0.5, steps: 12 }
-      );
-      p.ellipse(x0 + L, cy - L * 0.05, W * 0.95, W * 0.85, { mat: D.tailMat || D.mat, dome: W * 0.9, tint: 0.06 });
-    } else if (kind === "club") {
-      p.curve(
-        [{ x: x0, y: cy }, { x: x0 + L * 0.55, y: cy - L * 0.12 }, { x: x0 + L, y: cy }],
-        W * 0.6,
-        W * 0.5,
-        { mat: D.tailMat || D.mat, dome: W * 0.55, steps: 12 }
-      );
-      p.ellipse(x0 + L, cy, W * 1.15, W * 1, { mat: D.tailMat || D.mat, dome: W * 1, tint: 0.04 });
-      for (let i = 0; i < 5; i++) {
-        const a = -1.5 + i * 0.7;
-        p.poly(
-          [
-            { x: x0 + L, y: cy },
-            { x: x0 + L + Math.cos(a) * W * 2.1, y: cy + Math.sin(a) * W * 2.1 },
-            { x: x0 + L + Math.cos(a + 0.4) * W * 0.9, y: cy + Math.sin(a + 0.4) * W * 0.9 }
-          ],
-          { mat: "horn", dome: W * 0.5, feather: 1.4, tint: 0.05 }
-        );
-      }
-    } else {
-      const sp = spine([
-        { x: x0, y: cy },
-        { x: x0 + L * 0.48, y: cy - L * (D.tailLift ?? 0.1) },
-        { x: x0 + L, y: cy + L * 0.04 }
-      ], (t) => Math.max(0.55, W * Math.pow(1 - t, 0.72)), 26);
-      tube(p, sp, { mat: D.tailMat || D.mat, squash: D.tailSquash ?? 1, dome: 1, belly: 0.14 });
-      skinPass(p, D.tailMat || D.mat, D.skin, S, 73, sp);
-      if (D.tailCrest) {
-        for (let i = 2; i < sp.length - 2; i += 2) {
-          const s = sp[i];
-          p.poly([
-            { x: s.x - 1.2 * S, y: s.y - s.r },
-            { x: s.x, y: s.y - s.r - D.tailCrest * S },
-            { x: s.x + 1.2 * S, y: s.y - s.r }
-          ], { mat: D.crestMat || "horn", dome: 0.9 * S, feather: 1.2, tint: 0.05 });
-        }
-      }
-    }
-    if (D.skin === "fur") furFringe(p, D.tailMat || D.mat, S, 91, 0.45);
-    return {
-      cv: p.resolve(MATERIALS, { ...LIGHT4, outline: 0.95, outlineColor: D.outline || "#160f0a" }),
-      ox: x0,
-      oy: cy,
-      len: L
-    };
-  }
-  function paintWing(D, S, far) {
-    const L = D.wing * S, W = L * (D.wingW ?? 0.5);
-    const pad = 6;
-    const p = new Painter(Math.ceil(L) + pad * 2, Math.ceil(W * 2) + pad * 2);
-    const x0 = pad, cy = p.h / 2;
-    const mat = D.wingMat || (far ? D.matFar || D.mat : D.mat);
-    const ft = far ? -0.2 : 0;
-    if (D.wingKind === "elytra") {
-      p.field(x0 - 2, cy - W - 2, x0 + L + 2, cy + W + 2, (x, y) => {
-        const u = (x - x0) / L;
-        if (u < 0 || u > 1) return null;
-        const span = W * Math.pow(Math.sin(Math.pow(u, 0.62) * Math.PI * 0.9 + 0.2), 0.55);
-        const dy = (y - cy) / span;
-        if (Math.abs(dy) > 1) return null;
-        const dz = Math.sqrt(clamp01(1 - dy * dy));
-        return { h: dz * W * 0.8, tint: ft + (dy < -0.2 ? 0.06 : -0.04) };
-      }, { mat });
-      p.ridges(mat, { angle: 0, freq: 0.55 / S, amp: 0.14, height: 0.8 * S, seed: 17, warp: 0.2 });
-      p.capsule(
-        x0,
-        cy - W * 0.9,
-        x0 + L * 0.96,
-        cy - W * 0.2,
-        0.7 * S,
-        0.4 * S,
-        { mat, mask: true, dome: 0, tint: ft - 0.3 }
-      );
-    } else if (D.wingKind === "membrane") {
-      p.field(x0 - 2, cy - W - 2, x0 + L + 2, cy + W + 2, (x, y) => {
-        const u = (x - x0) / L;
-        if (u < 0 || u > 1) return null;
-        const span = W * Math.pow(Math.sin(Math.pow(u, 0.7) * Math.PI * 0.92 + 0.16), 0.6);
-        const mid = cy + W * 0.15 * u;
-        const dy = (y - mid) / span;
-        if (dy < -1 || dy > 1) return null;
-        return { h: 1.4 - Math.abs(dy) * 1, tint: ft + (1 - Math.abs(dy)) * 0.12 - 0.05 };
-      }, { mat });
-      for (let i = 0; i < 5; i++) {
-        const a = -0.55 + i * 0.3;
-        p.capsule(
-          x0,
-          cy,
-          x0 + Math.cos(a) * L * 0.96,
-          cy + Math.sin(a) * L * 0.52,
-          0.85 * S,
-          0.35 * S,
-          { mat, mask: true, tint: ft - 0.26, dome: 0 }
-        );
-      }
-    } else {
-      const n = Math.round(6 + 4 * (D.wingFeathers ?? 1));
-      for (let i = 0; i < n; i++) {
-        const t = i / (n - 1);
-        const a = -0.42 + t * 0.85;
-        const fl = L * (0.55 + 0.45 * Math.sin(t * Math.PI * 0.8 + 0.3));
-        p.capsule(
-          x0 + L * 0.06 * t,
-          cy - W * 0.18 + t * W * 0.5,
-          x0 + Math.cos(a) * fl,
-          cy - W * 0.18 + t * W * 0.5 + Math.sin(a) * fl * 0.8,
-          W * 0.2,
-          W * 0.09,
-          { mat, dome: W * 0.18, tint: ft + (t - 0.5) * 0.22 }
-        );
-      }
-      p.ellipse(x0 + L * 0.16, cy, L * 0.22, W * 0.5, { mat, dome: W * 0.4, tint: ft + 0.06 });
-    }
-    return {
-      cv: p.resolve(MATERIALS, {
-        ...LIGHT4,
-        ambient: far ? 0.28 : LIGHT4.ambient,
-        outline: 0.85,
-        outlineColor: D.outline || "#160f0a"
-      }),
-      ox: x0,
-      oy: cy,
-      len: L
-    };
-  }
-  var PLAN = {
-    /** Lizards: long, low, heavy at the hips, head carried out front. */
-    sprawler(D, S) {
-      const L = D.bodyL * S, H = D.bodyH * S;
-      const pad = Math.ceil(H * 1.4) + 6;
-      const p = new Painter(Math.ceil(L) + pad * 2, Math.ceil(H * 2.4) + pad * 2);
-      const cx = p.w / 2, cy = p.h / 2;
-      const sp = spine([
-        { x: cx - L / 2, y: cy + H * 0.1 },
-        { x: cx - L * 0.1, y: cy - H * (D.arch ?? 0.14) },
-        { x: cx + L * 0.24, y: cy - H * (D.arch ?? 0.14) * 0.7 },
-        { x: cx + L / 2, y: cy + H * 0.04 }
-      ], (t) => H * 0.5 * (0.46 + 0.54 * Math.pow(Math.sin(Math.pow(t, 0.86) * Math.PI), 0.42)), 30);
-      tube(p, sp, { mat: D.mat, squash: D.squash ?? 0.86, dome: 0.92, belly: D.belly ?? 0.2 });
-      skinPass(p, D.mat, D.skin, S, D.seed || 3, sp);
-      if (D.dorsal) {
-        for (let i = 4; i < sp.length - 3; i += 2) {
-          const s = sp[i];
-          const k = D.dorsal * S * (0.6 + Math.sin(s.t * Math.PI) * 0.7);
-          p.poly(
-            [
-              { x: s.x - 1.3 * S, y: s.y - s.r * (D.squash ?? 0.86) },
-              { x: s.x - 0.2 * S, y: s.y - s.r * (D.squash ?? 0.86) - k },
-              { x: s.x + 1.3 * S, y: s.y - s.r * (D.squash ?? 0.86) }
-            ],
-            { mat: D.crestMat || "horn", dome: 1 * S, feather: 1.3, tint: 0.05 }
-          );
-        }
-      }
-      if (D.bands) {
-        for (let i = 0; i < D.bands; i++) {
-          const s = sp[Math.round(lerp(6, sp.length - 6, i / Math.max(1, D.bands - 1)))];
-          p.capsule(
-            s.x + s.nx * s.r,
-            s.y + s.ny * s.r,
-            s.x - s.nx * s.r,
-            s.y - s.ny * s.r,
-            1.5 * S,
-            1.1 * S,
-            { mat: D.mat, mask: true, tint: -0.3, dome: 0 }
-          );
-        }
-      }
-      return { p, cx, cy, sp, L, H };
-    },
-    /** Six legs, three tagmata, a waist you can see. */
-    insect(D, S) {
-      const L = D.bodyL * S, H = D.bodyH * S;
-      const pad = Math.ceil(H * 1.5) + 6;
-      const p = new Painter(Math.ceil(L) + pad * 2, Math.ceil(H * 2.4) + pad * 2);
-      const cx = p.w / 2, cy = p.h / 2;
-      const ab = { x: cx - L * 0.26, y: cy + H * 0.04, rx: L * 0.28, ry: H * (D.abdomen ?? 0.52) };
-      const th = { x: cx + L * 0.2, y: cy - H * 0.04, rx: L * 0.22, ry: H * 0.4 };
-      p.ellipse(ab.x, ab.y, ab.rx, ab.ry, { mat: D.mat, dome: ab.ry * 1.1, tint: 0 });
-      p.ellipse(th.x, th.y, th.rx, th.ry, { mat: D.mat, dome: th.ry * 1.15, tint: 0.05 });
-      p.capsule(
-        ab.x + ab.rx * 0.7,
-        ab.y - H * 0.04,
-        th.x - th.rx * 0.6,
-        th.y + H * 0.02,
-        H * 0.16,
-        H * 0.18,
-        { mat: D.mat, dome: H * 0.18, tint: -0.08 }
-      );
-      skinPass(p, D.mat, D.skin, S, D.seed || 3, [{ x: cx, y: cy, tx: 1, ty: 0, nx: 0, ny: 1, t: 0.5 }]);
-      if (D.segments) {
-        for (let i = 1; i < D.segments; i++) {
-          const t = i / D.segments;
-          const x = ab.x - ab.rx + t * ab.rx * 2;
-          p.ellipse(
-            x,
-            ab.y,
-            0.7 * S,
-            ab.ry * Math.sqrt(clamp01(1 - Math.pow(t * 2 - 1, 2))) * 1.02,
-            { mat: D.mat, mask: true, dome: 0.4 * S, tint: -0.22 }
-          );
-        }
-      }
-      const sp = [
-        { x: ab.x, y: ab.y, tx: 1, ty: 0, nx: 0, ny: 1, t: 0.3, r: ab.ry },
-        { x: th.x, y: th.y, tx: 1, ty: 0, nx: 0, ny: 1, t: 0.7, r: th.ry }
-      ];
-      return { p, cx, cy, sp, L, H, thorax: th, abdomen: ab };
-    },
-    /** Eight legs on a fused front, a soft bulb behind. */
-    arachnid(D, S) {
-      const L = D.bodyL * S, H = D.bodyH * S;
-      const pad = Math.ceil(H * 1.5) + 6;
-      const p = new Painter(Math.ceil(L) + pad * 2, Math.ceil(H * 2.4) + pad * 2);
-      const cx = p.w / 2, cy = p.h / 2;
-      const ab = { x: cx - L * 0.24, y: cy + H * 0.02, rx: L * 0.3, ry: H * 0.52 };
-      const ce = { x: cx + L * 0.24, y: cy - H * 0.02, rx: L * 0.26, ry: H * 0.44 };
-      p.ellipse(ab.x, ab.y, ab.rx, ab.ry, { mat: D.mat, dome: ab.ry * 1.15 });
-      p.ellipse(ce.x, ce.y, ce.rx, ce.ry, { mat: D.mat, dome: ce.ry * 1.2, tint: 0.05 });
-      skinPass(p, D.mat, D.skin, S, D.seed || 3, [{ x: cx, y: cy, tx: 1, ty: 0, nx: 0, ny: 1, t: 0.5 }]);
-      const sp = [
-        { x: ab.x, y: ab.y, tx: 1, ty: 0, nx: 0, ny: 1, t: 0.3, r: ab.ry },
-        { x: ce.x, y: ce.y, tx: 1, ty: 0, nx: 0, ny: 1, t: 0.7, r: ce.ry }
-      ];
-      return { p, cx, cy, sp, L, H, thorax: ce, abdomen: ab };
-    },
-    /** Legless: one long smooth tube laid in an S. */
-    serpent(D, S) {
-      const L = D.bodyL * S, H = D.bodyH * S;
-      const pad = Math.ceil(H * 2.2) + 6;
-      const p = new Painter(Math.ceil(L) + pad * 2, Math.ceil(H * 4) + pad * 2);
-      const cx = p.w / 2, cy = p.h / 2;
-      const sp = spine([
-        { x: cx - L / 2, y: cy + H * 0.9 },
-        { x: cx - L * 0.18, y: cy - H * 1.1 },
-        { x: cx + L * 0.2, y: cy + H * 1 },
-        { x: cx + L / 2, y: cy - H * 0.2 }
-      ], (t) => H * 0.5 * (0.3 + 0.7 * Math.pow(Math.sin(Math.pow(t, 1.5) * Math.PI * 0.96), 0.3)), 40);
-      tube(p, sp, { mat: D.mat, squash: 0.94, dome: 0.95, belly: 0.22 });
-      skinPass(p, D.mat, D.skin, S, D.seed || 3, sp);
-      if (D.bands) {
-        for (let i = 0; i < D.bands; i++) {
-          const s2 = sp[Math.round(lerp(4, sp.length - 5, i / Math.max(1, D.bands - 1)))];
-          p.capsule(
-            s2.x + s2.nx * s2.r,
-            s2.y + s2.ny * s2.r,
-            s2.x - s2.nx * s2.r,
-            s2.y - s2.ny * s2.r,
-            1.4 * S,
-            1 * S,
-            { mat: D.mat, mask: true, tint: -0.28, dome: 0 }
-          );
-        }
-      }
-      return { p, cx, cy, sp, L, H };
-    },
-    /** Long, many-segmented, many-legged. */
-    myriapod(D, S) {
-      const L = D.bodyL * S, H = D.bodyH * S;
-      const pad = Math.ceil(H * 1.6) + 6;
-      const p = new Painter(Math.ceil(L) + pad * 2, Math.ceil(H * 2.4) + pad * 2);
-      const cx = p.w / 2, cy = p.h / 2;
-      const n = D.segments || 9;
-      const sp = [];
-      for (let i = 0; i < n; i++) {
-        const t = i / (n - 1);
-        const x = cx - L / 2 + t * L;
-        const y = cy + Math.sin(t * Math.PI * 2.2) * H * 0.1;
-        const r = H * 0.5 * (0.55 + 0.45 * Math.sin(Math.pow(t, 0.8) * Math.PI));
-        p.ellipse(x, y, r * 1.16, r, { mat: D.mat, dome: r * 1.15, tint: i % 2 * 0.06 - 0.02 });
-        sp.push({ x, y, r, t, tx: 1, ty: 0, nx: 0, ny: 1 });
-      }
-      skinPass(p, D.mat, D.skin, S, D.seed || 3, sp);
-      return { p, cx, cy, sp, L, H };
-    },
-    /** Furred quadruped: deep chest, tucked belly, erect limbs. */
-    beast(D, S) {
-      const L = D.bodyL * S, H = D.bodyH * S;
-      const pad = Math.ceil(H * 1.5) + 6;
-      const p = new Painter(Math.ceil(L) + pad * 2, Math.ceil(H * 2.4) + pad * 2);
-      const cx = p.w / 2, cy = p.h / 2;
-      const sp = spine([
-        { x: cx - L / 2, y: cy - H * 0.02 },
-        { x: cx - L * 0.14, y: cy - H * (D.arch ?? 0.2) },
-        { x: cx + L * 0.22, y: cy - H * (D.arch ?? 0.2) * 0.8 },
-        { x: cx + L / 2, y: cy - H * 0.1 }
-      ], (t) => H * 0.5 * (0.38 + 0.62 * Math.pow(Math.sin(Math.pow(t, 1.15) * Math.PI * 0.98), 0.34)), 30);
-      tube(p, sp, { mat: D.mat, squash: D.squash ?? 1, dome: 0.95, belly: D.belly ?? 0.2 });
-      skinPass(p, D.mat, D.skin, S, D.seed || 3, sp);
-      if (D.stripes) {
-        for (let i = 0; i < D.stripes; i++) {
-          const s = sp[Math.round(lerp(6, sp.length - 7, i / Math.max(1, D.stripes - 1)))];
-          p.capsule(
-            s.x,
-            s.y - s.r,
-            s.x - s.r * 0.5,
-            s.y + s.r * 0.5,
-            1.3 * S,
-            0.9 * S,
-            { mat: D.mat, mask: true, tint: -0.3, dome: 0 }
-          );
-        }
-      }
-      if (D.spots) p.speckle(D.mat, { density: 0.028, amp: 0.42, seed: 91, size: Math.max(1, Math.round(1.6 * S)) });
-      furFringe(p, D.mat, S, (D.seed || 3) + 9, 0.5);
-      return { p, cx, cy, sp, L, H };
-    },
-    /** Upright, two legs, wings folded. */
-    bird(D, S) {
-      const L = D.bodyL * S, H = D.bodyH * S;
-      const pad = Math.ceil(H * 1.5) + 6;
-      const p = new Painter(Math.ceil(L) + pad * 2, Math.ceil(H * 2.4) + pad * 2);
-      const cx = p.w / 2, cy = p.h / 2;
-      const sp = spine([
-        { x: cx - L * 0.48, y: cy - H * 0.16 },
-        { x: cx - L * 0.06, y: cy + H * 0.1 },
-        { x: cx + L * 0.46, y: cy - H * 0.22 }
-      ], (t) => H * 0.5 * (0.34 + 0.66 * Math.pow(Math.sin(t * Math.PI), 0.4)), 26);
-      tube(p, sp, { mat: D.mat, squash: 1, dome: 1, belly: 0.2 });
-      skinPass(p, D.mat, D.skin, S, D.seed || 3, sp);
-      return { p, cx, cy, sp, L, H };
-    }
-  };
-  function planSockets(plan, r, D, S) {
-    const { L, H, cx, cy } = r;
-    const rel = (x, y) => ({ x: x - cx, y: y - cy });
-    switch (plan) {
-      case "insect":
-        return {
-          legs: [
-            rel(r.thorax.x + r.thorax.rx * 0.62, r.thorax.y + H * 0.2),
-            rel(r.thorax.x, r.thorax.y + H * 0.26),
-            rel(r.thorax.x - r.thorax.rx * 0.66, r.thorax.y + H * 0.24)
-          ],
-          head: rel(r.thorax.x + r.thorax.rx * 0.85, r.thorax.y - H * 0.06),
-          tail: rel(r.abdomen.x - r.abdomen.rx * 0.9, r.abdomen.y),
-          wing: rel(r.thorax.x - r.thorax.rx * 0.2, r.thorax.y - H * 0.28)
-        };
-      case "arachnid":
-        return {
-          legs: [
-            rel(r.thorax.x + r.thorax.rx * 0.7, r.thorax.y + H * 0.18),
-            rel(r.thorax.x + r.thorax.rx * 0.24, r.thorax.y + H * 0.22),
-            rel(r.thorax.x - r.thorax.rx * 0.24, r.thorax.y + H * 0.22),
-            rel(r.thorax.x - r.thorax.rx * 0.7, r.thorax.y + H * 0.18)
-          ],
-          head: rel(r.thorax.x + r.thorax.rx * 0.9, r.thorax.y),
-          tail: rel(r.abdomen.x - r.abdomen.rx * 0.8, r.abdomen.y - H * 0.18),
-          wing: null
-        };
-      case "serpent": {
-        const nose = r.sp[r.sp.length - 1], root = r.sp[0];
-        return {
-          legs: [],
-          head: rel(nose.x - nose.r * 0.4, nose.y),
-          tail: rel(root.x + root.r * 0.4, root.y),
-          wing: null
-        };
-      }
-      case "myriapod": {
-        const legs = [];
-        const n = Math.min(6, r.sp.length - 2);
-        for (let i = 0; i < n; i++) {
-          const s = r.sp[1 + Math.round(i * (r.sp.length - 3) / Math.max(1, n - 1))];
-          legs.push(rel(s.x, s.y + s.r * 0.6));
-        }
-        return {
-          legs,
-          head: rel(r.sp[r.sp.length - 1].x, r.sp[r.sp.length - 1].y),
-          tail: rel(r.sp[0].x, r.sp[0].y),
-          wing: null
-        };
-      }
-      case "bird":
-        return {
-          legs: [rel(cx - L * 0.02, cy + H * 0.28), rel(cx - L * 0.16, cy + H * 0.26)],
-          head: rel(cx + L * 0.4, cy - H * 0.24),
-          tail: rel(cx - L * 0.48, cy - H * 0.1),
-          wing: rel(cx - L * 0.02, cy - H * 0.22)
-        };
-      default: {
-        const nose = r.sp[r.sp.length - 1], root = r.sp[0];
-        const sq = D.squash ?? 1;
-        return {
-          legs: [
-            rel(cx + L * 0.27, cy + H * (D.plan === "sprawler" ? 0.3 : 0.16) * sq),
-            rel(cx - L * 0.27, cy + H * (D.plan === "sprawler" ? 0.32 : 0.18) * sq)
-          ],
-          head: rel(nose.x - nose.r * 0.5, nose.y - H * (D.neckY ?? 0.06)),
-          tail: rel(root.x + root.r * 0.4, root.y - H * 0.02),
-          wing: rel(cx + L * 0.02, cy - H * 0.26)
-        };
-      }
-    }
-  }
-  var cache6 = /* @__PURE__ */ new Map();
-  function buildCreature(def3) {
-    if (cache6.has(def3.id)) return cache6.get(def3.id);
-    const S = def3.scale ?? 1;
-    const R = rng2(def3.seed || 5);
-    const D = def3;
-    const plan = D.plan || "beast";
-    const built = (PLAN[plan] || PLAN.beast)(D, S);
-    const bodyCv = built.p.smoothHeight(1, 0.36).resolve(MATERIALS, {
-      ...LIGHT4,
-      outline: 1,
-      outlineColor: D.outline || "#160f0a"
-    });
-    const body = { cv: bodyCv, ox: built.cx, oy: built.cy, L: built.L, H: built.H };
-    const sockets = planSockets(plan, built, D, S);
-    const legStyle = plan === "insect" || plan === "arachnid" || plan === "myriapod" ? "chitin" : "curve";
-    const footFor = D.foot || (plan === "sprawler" ? "splay" : plan === "beast" ? "paw" : "hook");
-    const limbR = (D.limbR ?? (legStyle === "chitin" ? 1.15 : 1.9)) * S;
-    if (!D.legU) sockets.legs = [];
-    const legs = {};
-    for (const far of [false, true]) {
-      if (!D.legU) {
-        legs[far ? "far" : "near"] = null;
-        continue;
-      }
-      legs[far ? "far" : "near"] = {
-        upper: paintLimb(
-          D.legU * S,
-          limbR,
-          limbR * 0.82,
-          D,
-          S,
-          far,
-          { style: legStyle, bow: (plan === "sprawler" ? -1 : 0.7) * S }
-        ),
-        lower: paintLimb(
-          D.legL * S,
-          limbR * 0.82,
-          limbR * 0.5,
-          D,
-          S,
-          far,
-          { style: legStyle, bow: (plan === "sprawler" ? 1.1 : -0.7) * S, foot: footFor, barbs: D.barbs }
-        )
-      };
-    }
-    const arm = D.raptorial ? {
-      upper: paintLimb(
-        D.raptorial * S,
-        limbR * 1.35,
-        limbR * 1.05,
-        D,
-        S,
-        false,
-        { style: "chitin", barbs: true }
-      ),
-      lower: paintLimb(
-        D.raptorial * 0.85 * S,
-        limbR * 1.05,
-        limbR * 0.55,
-        D,
-        S,
-        false,
-        { style: "chitin", barbs: true, foot: "hook" }
-      )
-    } : null;
-    const rig = {
-      id: def3.id,
-      def: def3,
-      S,
-      plan,
-      arm,
-      body,
-      head: paintHead(D, S, R),
-      neck: (D.neck || 0) > 2 ? paintLimb((D.neck + 2) * S, (D.neckR ?? 2.6) * S, (D.neckR ?? 2.6) * S * 0.86, D, S, false, { bow: 0.6 * S }) : null,
-      legs,
-      legPairs: sockets.legs.length,
-      wing: D.wing && sockets.wing ? { near: paintWing(D, S, false), far: paintWing(D, S, true) } : null,
-      tail: D.tail ? paintTail(D, S) : null,
-      sockets
-    };
-    const stance2 = plan === "sprawler" ? 0.68 : plan === "insect" || plan === "arachnid" || plan === "myriapod" ? 0.58 : 0.84;
-    rig.standH = D.legU ? (D.legU + D.legL) * S * stance2 + body.H * 0.4 : body.H * 0.5;
-    rig.width = body.L;
-    cache6.set(def3.id, rig);
-    return rig;
-  }
-
-  // js/ui/icons.js
-  var LIGHT5 = { lightX: -0.55, lightY: -0.68, lightZ: 0.42, ambient: 0.42, dither: 0.6 };
-  var cache7 = /* @__PURE__ */ new Map();
-  var once = (key2, make) => {
-    let v = cache7.get(key2);
-    if (!v) {
-      v = make();
-      cache7.set(key2, v);
-    }
-    return v;
-  };
-  function buildShell(W = 38) {
-    const H = Math.round(W * 0.78);
-    const pad = 3;
-    const w = W + pad * 2, h = H + 8;
-    const cx = w / 2, base = h - 4;
-    const domeAt = (u) => Math.pow(Math.sin(clamp01(u) * Math.PI), 0.52);
-    const inner = new Painter(w, h);
-    inner.field(cx - W / 2, base - H, cx + W / 2, base + 2, (x, y) => {
-      const u = (x - (cx - W / 2)) / W;
-      const dome = domeAt(u);
-      const top2 = base - H * 0.86 * dome;
-      if (y < top2 || y > base) return null;
-      const t = (y - top2) / Math.max(1, base - top2);
-      const band = Math.sin((y - top2) / 2.6 * Math.PI * 2);
-      return { h: 1.5 + band * 0.4, tint: -0.42 + t * 0.1 + band * 0.04 };
-    }, { mat: "shellRock" });
-    inner.grain("shellRock", { freq: 0.34, amp: 0.14, seed: 7 });
-    const back = inner.resolve(MATERIALS, { ...LIGHT5, ambient: 0.3, outline: 1, outlineColor: "#191108" });
-    const q = new Painter(w, h);
-    q.field(cx - W / 2, base - H, cx + W / 2, base + 2, (x, y) => {
-      const u = (x - (cx - W / 2)) / W;
-      const dome = domeAt(u);
-      const top2 = base - H * 0.86 * dome + 2.2;
-      const bot2 = base - 2.5;
-      if (y < top2 || y > bot2) return null;
-      const t = (y - top2) / Math.max(1, bot2 - top2);
-      return { h: 3 - t * 3, tint: 0.16 - t * 0.55 };
-    }, { mat: "water" });
-    const water = q.resolve(MATERIALS, { ...LIGHT5, ambient: 0.52, outline: 0 });
-    const front = new Painter(w, h);
-    front.field(cx - W / 2 - 2, base - H - 2, cx + W / 2 + 2, base + 3, (x, y) => {
-      const u = (x - (cx - W / 2)) / W;
-      if (u < -0.06 || u > 1.06) return null;
-      const dome = domeAt(clamp01(u));
-      const top2 = base - H * 0.86 * dome;
-      if (y < top2 - 1 || y > base) return null;
-      const edgeU = Math.min(u, 1 - u) * W;
-      const dEdge = Math.min(edgeU, y - top2, base - y);
-      const wall = 2.6;
-      if (dEdge > wall && y < base - 3) return null;
-      const k = clamp01(1 - dEdge / wall);
-      const band = Math.sin((y - top2) / 2.6 * Math.PI * 2);
-      return { h: 2.4 + k * 2 + band * 0.5, tint: 0.06 + k * 0.1 + band * 0.05 };
-    }, { mat: "shellRock" });
-    front.grain("shellRock", { freq: 0.3, amp: 0.2, seed: 5, height: 0.5 });
-    front.speckle("shellRock", { density: 0.06, amp: 0.3, seed: 9 });
-    for (const sgn of [-1, 1]) {
-      front.capsule(
-        cx + sgn * W * 0.34,
-        base - 2,
-        cx + sgn * W * 0.5,
-        base + 1.5,
-        1.8,
-        1.2,
-        { mat: "chitin", dome: 1.4, tint: sgn > 0 ? 0 : -0.14 }
-      );
-    }
-    const cv = front.resolve(MATERIALS, { ...LIGHT5, outline: 1, outlineColor: "#191108" });
-    let top = q.h, bot = 0, left = q.w, right = 0;
-    for (let y = 0; y < q.h; y++) {
-      for (let x = 0; x < q.w; x++) {
-        if (!q.mat[y * q.w + x]) continue;
-        if (y < top) top = y;
-        if (y > bot) bot = y;
-        if (x < left) left = x;
-        if (x > right) right = x;
-      }
-    }
-    return { cv, back, water, w, h, top, bot, left, right };
-  }
-  function drawShell(ctx, x, y, f, t, scale = 1) {
-    const S = once("shell", () => buildShell(38));
-    const lvl = S.bot - (S.bot - S.top) * clamp01(f);
-    ctx.save();
-    ctx.translate(Math.round(x), Math.round(y));
-    if (scale !== 1) ctx.scale(scale, scale);
-    ctx.drawImage(S.back, 0, 0);
-    if (f > 5e-3) {
-      ctx.save();
-      ctx.beginPath();
-      ctx.rect(0, lvl, S.w, S.bot - lvl + 2);
-      ctx.clip();
-      ctx.drawImage(S.water, 0, 0);
-      ctx.restore();
-      ctx.fillStyle = "#bfeaf2";
-      for (let x2 = S.left; x2 <= S.right; x2++) {
-        const wob = Math.sin(t * 2.6 + x2 * 0.5) * 0.9 + Math.sin(t * 1.3 + x2 * 0.22) * 0.6;
-        const yy = Math.round(lvl + wob);
-        if (yy < S.top - 1 || yy > S.bot) continue;
-        ctx.fillRect(x2, yy, 1, 1);
-      }
-    }
-    ctx.drawImage(S.cv, 0, 0);
-    ctx.restore();
-    return { w: S.w, h: S.h };
-  }
-  function buildBloom(stage) {
-    const p = new Painter(34, 40);
-    const cx = 17, base = 37;
-    const grow = stage / 8;
-    const h = 8 + grow * 22;
-    p.curve(
-      [{ x: cx, y: base }, { x: cx - 1.5, y: base - h * 0.55 }, { x: cx, y: base - h }],
-      1.5,
-      1,
-      { mat: "leaf", dome: 1.3, steps: 12, tint: -0.04 }
-    );
-    const leaves = Math.min(4, Math.ceil(stage / 2));
-    for (let i = 0; i < leaves; i++) {
-      const sgn = i % 2 ? 1 : -1;
-      const ly = base - h * (0.22 + i * 0.17);
-      const ll = 5 + grow * 5;
-      p.curve(
-        [
-          { x: cx, y: ly },
-          { x: cx + sgn * ll * 0.6, y: ly - ll * 0.5 },
-          { x: cx + sgn * ll, y: ly - ll * 0.15 }
-        ],
-        2.4,
-        0.6,
-        { mat: "leaf", dome: 1.6, steps: 10, tint: sgn > 0 ? 0.06 : -0.1 }
-      );
-    }
-    const ty = base - h;
-    if (stage === 0) {
-      p.ellipse(cx, ty, 2, 2.6, { mat: "leaf", dome: 1.8, tint: 0.05 });
-    } else {
-      const petals = Math.min(9, 2 + stage);
-      const pr = 2.6 + grow * 4.4;
-      for (let i = 0; i < petals; i++) {
-        const a = i / petals * TAU;
-        const sx = Math.cos(a), sy = Math.sin(a) * 0.5;
-        p.ellipse(
-          cx + sx * pr,
-          ty + sy * pr,
-          pr * 0.52,
-          pr * 0.36,
-          {
-            mat: stage >= 6 ? "petalGold" : "petalPink",
-            rot: a,
-            dome: pr * 0.5,
-            tint: sy < 0 ? -0.16 : 0.08
-          }
-        );
-      }
-      p.ellipse(cx, ty, pr * 0.44, pr * 0.34, { mat: "fruitGold", dome: pr * 0.5, tint: 0.1 });
-      p.speckle("fruitGold", { density: 0.35, amp: 0.4, seed: 3 });
-    }
-    return { cv: p.resolve(MATERIALS, { ...LIGHT5, outline: 1, outlineColor: "#141c0e" }), w: 34, h: 40 };
-  }
-  function drawBloom(ctx, x, y, stage, sway = 0, scale = 1) {
-    const st = clamp(Math.round(stage), 0, 8);
-    const B = once("bloom" + st, () => buildBloom(st));
-    ctx.save();
-    ctx.translate(Math.round(x) + 17, Math.round(y) + 37);
-    if (scale !== 1) ctx.scale(scale, scale);
-    ctx.rotate(sway);
-    ctx.drawImage(B.cv, -17, -37);
-    ctx.restore();
-    return { w: B.w, h: B.h };
-  }
-  function buildSprig(n) {
-    const p = new Painter(26, 22);
-    const cx = 13, base = 20;
-    p.curve(
-      [{ x: cx - 8, y: base }, { x: cx, y: base - 8 }, { x: cx + 8, y: base - 5 }],
-      1.3,
-      0.8,
-      { mat: "wood", dome: 1.1, steps: 10 }
-    );
-    for (let i = 0; i < 3; i++) {
-      const a = -0.4 - i * 0.5;
-      p.ellipse(
-        cx - 4 + i * 5,
-        base - 7 - i,
-        3.4,
-        2.2,
-        { mat: "leaf", rot: a, dome: 1.6, tint: (i - 1) * 0.07 }
-      );
-    }
-    const shown = Math.min(5, n);
-    for (let i = 0; i < shown; i++) {
-      const bx = cx - 6 + i * 3.4, by = base - 3 - i % 2 * 2.6;
-      p.ellipse(bx, by, 2.3, 2.3, { mat: "berry", dome: 2.6, tint: 0.02 });
-      p.ellipse(bx - 0.7, by - 0.8, 0.8, 0.7, { mat: "berry", mask: true, dome: 2, tint: 0.5 });
-    }
-    return { cv: p.resolve(MATERIALS, { ...LIGHT5, outline: 1, outlineColor: "#1a0d10" }), w: 26, h: 22 };
-  }
-  function drawSprig(ctx, x, y, n, scale = 1) {
-    const k = clamp(n, 0, 5);
-    const S = once("sprig" + k, () => buildSprig(k));
-    ctx.save();
-    ctx.translate(Math.round(x), Math.round(y));
-    if (scale !== 1) ctx.scale(scale, scale);
-    ctx.drawImage(S.cv, 0, 0);
-    ctx.restore();
-    return { w: S.w, h: S.h };
-  }
-  var tameHeads = /* @__PURE__ */ new Map();
-  function tameHead(def3, size = 14) {
-    const key2 = def3.id + ":" + size;
-    let cv = tameHeads.get(key2);
-    if (cv) return cv;
-    const rig = buildCreature(def3);
-    const src = rig.head.cv;
-    const box = opaqueBox(src);
-    cv = makeCanvas2(size, size);
-    const g = cv.getContext("2d");
-    g.imageSmoothingEnabled = false;
-    const k = Math.min((size - 1) / box.w, (size - 1) / box.h);
-    const w = Math.max(1, Math.round(box.w * k));
-    const h = Math.max(1, Math.round(box.h * k));
-    g.drawImage(
-      src,
-      box.x,
-      box.y,
-      box.w,
-      box.h,
-      Math.round((size - w) / 2),
-      Math.round((size - h) / 2),
-      w,
-      h
-    );
-    if (tameHeads.size > 64) tameHeads.clear();
-    tameHeads.set(key2, cv);
-    return cv;
-  }
-  var boxes = /* @__PURE__ */ new WeakMap();
-  function opaqueBox(cv) {
-    let b = boxes.get(cv);
-    if (b) return b;
-    const g = cv.getContext("2d");
-    let x0 = cv.width, y0 = cv.height, x1 = -1, y1 = -1;
-    try {
-      const d = g.getImageData(0, 0, cv.width, cv.height).data;
-      for (let y = 0; y < cv.height; y++) {
-        for (let x = 0; x < cv.width; x++) {
-          if (d[(y * cv.width + x) * 4 + 3] < 8) continue;
-          if (x < x0) x0 = x;
-          if (x > x1) x1 = x;
-          if (y < y0) y0 = y;
-          if (y > y1) y1 = y;
-        }
-      }
-    } catch {
-    }
-    b = x1 < 0 ? { x: 0, y: 0, w: cv.width, h: cv.height } : { x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1 };
-    boxes.set(cv, b);
-    return b;
-  }
-  function drawTame(ctx, x, y, c, opts = {}) {
-    const S = opts.size || 16;
-    const on = !!opts.on;
-    const t = opts.t || 0;
-    drawPlate(ctx, x, y, S, S, {
-      edge: on ? "#ffe9a8" : "rgba(120,96,58,0.45)",
-      top: on ? "rgba(64,52,26,0.95)" : void 0,
-      rivets: false
-    });
-    const def3 = c.def || c;
-    try {
-      if (def3 && def3.headL) {
-        ctx.drawImage(tameHead(def3, S - 2), x + 1, y + 1);
-      } else {
-        ctx.fillStyle = on ? "#e8c3aa" : "#a8846a";
-        ctx.fillRect(x + 5, y + 4, 6, 7);
-        ctx.fillStyle = "#5b3a24";
-        ctx.fillRect(x + 4, y + 3, 8, 2);
-      }
-    } catch {
-    }
-    const hp = clamp01((c.hp ?? 1) / (c.hpMax ?? 1));
-    ctx.fillStyle = "rgba(10,8,5,0.8)";
-    ctx.fillRect(x + 2, y + S - 3, S - 4, 1);
-    ctx.fillStyle = hp > 0.4 ? "#8cc468" : "#e2564f";
-    ctx.fillRect(x + 2, y + S - 3, Math.round((S - 4) * hp), 1);
-    if (on) {
-      const b = 0.5 + 0.5 * Math.sin(t * 4);
-      ctx.globalAlpha = 0.35 + b * 0.5;
-      ctx.fillStyle = "#ffe9a8";
-      ctx.fillRect(x - 1, y - 1, S + 2, 1);
-      ctx.fillRect(x - 1, y + S, S + 2, 1);
-      ctx.globalAlpha = 1;
-    }
-    return { x, y, w: S, h: S };
-  }
-  function buildGland(w = 38) {
-    const h = 42;
-    const cx = w / 2, base = h - 4;
-    const q = new Painter(w, h);
-    q.ellipse(cx, base - 13, 13, 14, { mat: "sporeSac", dome: 11, tint: -0.06 });
-    const back = q.resolve(MATERIALS, { ...LIGHT5, ambient: 0.34, outline: 0 });
-    const f = new Painter(w, h);
-    f.ellipse(cx, base - 13, 11.4, 12.6, { mat: "spore", dome: 9, tint: 0.12 });
-    f.grain("spore", { freq: 0.42, amp: 0.24, seed: 12, height: 0.6 });
-    for (let i = 0; i < 5; i++) {
-      const a = i * 1.31;
-      f.ellipse(
-        cx + Math.cos(a) * 5,
-        base - 13 + Math.sin(a) * 6,
-        1.5,
-        1.5,
-        { mat: "spore", mask: true, dome: 2, tint: 0.42 }
-      );
-    }
-    const fluid = f.resolve(MATERIALS, { ...LIGHT5, ambient: 0.6, outline: 0 });
-    const p = new Painter(w, h);
-    p.capsule(
-      cx - 12,
-      base - 24,
-      cx + 12,
-      base - 24,
-      3.2,
-      3.2,
-      { mat: "chitin", dome: 2.8, tint: 0.04 }
-    );
-    for (const sgn of [-1, 1]) {
-      p.capsule(
-        cx + sgn * 11,
-        base - 23,
-        cx + sgn * 8.5,
-        base - 6,
-        2,
-        1.4,
-        { mat: "chitinDark", dome: 1.8, tint: sgn > 0 ? 0.04 : -0.12 }
-      );
-    }
-    p.field(cx - 15, base - 29, cx + 15, base + 2, (x, y) => {
-      const d = Math.hypot((x - cx) / 13, (y - (base - 13)) / 14);
-      if (d > 1.02 || d < 0.8) return null;
-      const k = clamp01((d - 0.8) / 0.22);
-      return { h: 1.6 + k * 2.4, tint: 0.04 + k * 0.12 };
-    }, { mat: "sporeSac" });
-    p.capsule(cx, base - 2, cx, base + 3, 2.6, 1.9, { mat: "chitin", dome: 2.2, tint: -0.04 });
-    p.ellipse(cx, base + 3, 2.3, 1.2, { mat: "chitinDark", dome: -1.2, tint: -0.3 });
-    const cv = p.resolve(MATERIALS, { ...LIGHT5, outline: 1, outlineColor: "#140a1a" });
-    return { cv, back, fluid, w, h, top: base - 26, bot: base - 1, left: cx - 12, right: cx + 12 };
-  }
-  function drawGland(ctx, x, y, f, t, press = 0, scale = 1) {
-    const G2 = once("gland", () => buildGland(38));
-    const lvl = G2.bot - (G2.bot - G2.top) * clamp01(f);
-    ctx.save();
-    ctx.translate(Math.round(x) + G2.w / 2, Math.round(y) + G2.h / 2);
-    const k = scale * (1 + press * 0.1 + Math.sin(t * 9) * press * 0.03);
-    ctx.scale(k, k * (1 - press * 0.03));
-    ctx.translate(-G2.w / 2, -G2.h / 2);
-    ctx.drawImage(G2.back, 0, 0);
-    if (f > 5e-3) {
-      ctx.save();
-      ctx.beginPath();
-      ctx.rect(0, lvl, G2.w, G2.bot - lvl + 3);
-      ctx.clip();
-      ctx.drawImage(G2.fluid, 0, 0);
-      ctx.restore();
-      ctx.fillStyle = press > 0.05 ? "#f0d4ff" : "#d5a3dd";
-      for (let x2 = G2.left; x2 <= G2.right; x2++) {
-        const wob = Math.sin(t * 3.4 + x2 * 0.6) * 0.8 + Math.sin(t * 1.7 + x2 * 0.2) * 0.5;
-        const yy = Math.round(lvl + wob);
-        if (yy < G2.top - 1 || yy > G2.bot) continue;
-        ctx.fillRect(x2, yy, 1, 1);
-      }
-      if (press > 0.08) {
-        for (let i = 0; i < 5; i++) {
-          const ph = (t * (1.3 + i * 0.4) + i * 0.7) % 1;
-          ctx.globalAlpha = press * (1 - ph) * 0.85;
-          ctx.fillStyle = "#e6c0f2";
-          ctx.fillRect(Math.round(G2.left + 3 + i * 4), Math.round(lvl - ph * 12), 1, 1);
-        }
-        ctx.globalAlpha = 1;
-      }
-    }
-    ctx.drawImage(G2.cv, 0, 0);
-    ctx.restore();
-    return { w: G2.w, h: G2.h };
-  }
-  function buildOrb() {
-    const p = new Painter(30, 30);
-    const cx = 15, cy = 15, r = 11;
-    p.ellipse(cx, cy, r, r, { mat: "glass", dome: r * 1.25, tint: 0.02 });
-    for (let i = 0; i < 22; i++) {
-      const t = i / 21;
-      const a = t * Math.PI * 3.1;
-      const yy = cy - r * 0.72 + t * r * 1.44;
-      for (const sgn of [1, -1]) {
-        const xx = cx + Math.cos(a) * r * 0.46 * sgn;
-        p.ellipse(xx, yy, 1.1, 1.1, { mat: "glow", dome: 1.3, tint: 0.2 + Math.sin(a) * 0.2 });
-      }
-      if (i % 3 === 0) {
-        p.capsule(
-          cx + Math.cos(a) * r * 0.46,
-          yy,
-          cx - Math.cos(a) * r * 0.46,
-          yy,
-          0.5,
-          0.5,
-          { mat: "glow", dome: 0.4, tint: -0.1 }
-        );
-      }
-    }
-    p.ellipse(cx - r * 0.34, cy - r * 0.4, r * 0.26, r * 0.22, { mat: "glass", mask: true, dome: r, tint: 0.7 });
-    return { cv: p.resolve(MATERIALS, { ...LIGHT5, ambient: 0.5, outline: 1, outlineColor: "#0e1a1e" }), w: 30, h: 30 };
-  }
-  function drawOrb(ctx, x, y, t, pulse = 0, scale = 1) {
-    const O = once("orb", buildOrb);
-    ctx.save();
-    ctx.translate(Math.round(x) + 15, Math.round(y) + 15);
-    if (scale !== 1) ctx.scale(scale, scale);
-    const s = 1 + Math.sin(t * 1.7) * 0.03 + pulse * 0.22;
-    ctx.globalAlpha = 0.3 + pulse * 0.5 + Math.sin(t * 2.3) * 0.06;
-    pxDisc(ctx, 0, 0, 13 * s, "#7fe0c8", { p: 1, soft: 4 });
-    ctx.globalAlpha = 1;
-    ctx.scale(s, s);
-    ctx.drawImage(O.cv, -15, -15);
-    ctx.restore();
-    return { w: O.w, h: O.h };
-  }
-  function buildTab(kind) {
-    const p = new Painter(22, 22);
-    const cx = 11, base = 19;
-    switch (kind) {
-      case "flora":
-        p.curve(
-          [{ x: cx, y: base }, { x: cx - 1, y: base - 8 }, { x: cx, y: base - 14 }],
-          1.3,
-          0.8,
-          { mat: "leaf", dome: 1.1, steps: 8 }
-        );
-        for (const sgn of [-1, 1]) {
-          p.curve(
-            [{ x: cx, y: base - 6 }, { x: cx + sgn * 4, y: base - 10 }, { x: cx + sgn * 6, y: base - 7 }],
-            2.4,
-            0.6,
-            { mat: "leaf", dome: 1.5, steps: 8, tint: sgn > 0 ? 0.06 : -0.1 }
-          );
-        }
-        p.ellipse(cx, base - 14, 3.2, 2.6, { mat: "petalPink", dome: 2.2, tint: 0.06 });
-        break;
-      case "fauna":
-        p.ellipse(cx - 1, base - 6, 6.5, 3.6, { mat: "scaleGreen", dome: 3.4, tint: 0.02 });
-        p.ellipse(cx + 6, base - 8, 3.2, 2.4, { mat: "scaleGreen", dome: 2.4, tint: 0.06 });
-        p.curve(
-          [{ x: cx - 7, y: base - 6 }, { x: cx - 10, y: base - 9 }, { x: cx - 9, y: base - 13 }],
-          1.4,
-          0.5,
-          { mat: "scaleGreen", dome: 1.2, steps: 8 }
-        );
-        for (let i = 0; i < 3; i++) {
-          p.capsule(
-            cx - 4 + i * 4,
-            base - 4,
-            cx - 5 + i * 4,
-            base,
-            0.9,
-            0.6,
-            { mat: "scaleGreen", dome: 0.8, tint: -0.1 }
-          );
-        }
-        p.ellipse(cx + 7, base - 9, 0.9, 0.9, { mat: "eye", dome: 1.1, tint: 0.3 });
-        break;
-      case "build":
-        p.rect(cx - 7, base - 9, 14, 9, { mat: "wood", dome: 2.6, tint: -0.02 });
-        p.poly(
-          [{ x: cx - 9, y: base - 9 }, { x: cx, y: base - 16 }, { x: cx + 9, y: base - 9 }],
-          { mat: "leafDry", dome: 2.6, feather: 2, tint: 0.06 }
-        );
-        p.rect(cx - 2, base - 5, 4, 5, { mat: "wood", mask: true, dome: -1.5, tint: -0.4 });
-        break;
-      case "map":
-        p.rect(cx - 9, base - 14, 18, 14, { mat: "petalWhite", dome: 2.2, tint: 0.04 });
-        for (const d of [-3, 3]) {
-          p.rect(cx + d, base - 14, 0.9, 14, { mat: "petalWhite", mask: true, tint: -0.3, dome: 0 });
-        }
-        p.curve(
-          [{ x: cx - 6, y: base - 3 }, { x: cx - 1, y: base - 10 }, { x: cx + 5, y: base - 5 }],
-          0.9,
-          0.5,
-          { mat: "petalWhite", mask: true, tint: -0.45, dome: 0, steps: 10 }
-        );
-        p.ellipse(cx + 5, base - 5, 1.6, 1.6, { mat: "petalPink", dome: 1.8, tint: 0.22 });
-        break;
-      case "codex":
-        p.rect(cx - 8, base - 13, 16, 13, { mat: "leather", dome: 2.6, tint: 0.02 });
-        p.rect(cx - 6, base - 11, 12, 9, { mat: "petalWhite", dome: 1.4, tint: 0.08 });
-        for (let i = 0; i < 3; i++) {
-          p.rect(cx - 4, base - 9 + i * 2.6, 8, 0.9, { mat: "petalWhite", mask: true, tint: -0.42, dome: 0 });
-        }
-        break;
-      default:
-        break;
-    }
-    return p.resolve(MATERIALS, { ...LIGHT5, outline: 1, outlineColor: "#1a140c" });
-  }
-  function drawTab(ctx, kind, x, y) {
-    const cv = once("tab" + kind, () => buildTab(kind));
-    ctx.drawImage(cv, Math.round(x), Math.round(y));
-    return { w: 22, h: 22 };
-  }
-  function buildFrame() {
-    const T = 10;
-    const L = 16;
-    const edge = (horizontal) => {
-      const w = horizontal ? L : T, h = horizontal ? T : L;
-      const p = new Painter(w, h);
-      p.field(0, 0, w, h, (x, y) => {
-        const across = horizontal ? y / T : x / T;
-        const along = horizontal ? x / L : y / L;
-        const d = Math.min(across, 1 - across);
-        const dz = Math.sqrt(Math.max(0, 1 - Math.pow(1 - d * 2, 2)));
-        const grain = Math.sin(along * 22 + across * 3) * 0.5 + Math.sin(along * 61) * 0.2;
-        return { h: 1.4 + dz * 3.4 + grain * 0.4, tint: -0.1 + dz * 0.22 + grain * 0.07 };
-      }, { mat: "wood" });
-      p.grain("wood", { freq: 0.6, amp: 0.16, seed: horizontal ? 3 : 9 });
-      return p.resolve(MATERIALS, { ...LIGHT5, outline: 1, outlineColor: "#1a1109" });
-    };
-    const corner = () => {
-      const p = new Painter(T + 4, T + 4);
-      p.field(0, 0, T + 4, T + 4, (x, y) => {
-        const a = Math.min(x, T + 3 - x) / T, b = Math.min(y, T + 3 - y) / T;
-        const d = Math.min(a, b);
-        if (d < -0.1) return null;
-        const dz = Math.sqrt(Math.max(0, 1 - Math.pow(1 - clamp01(d * 2), 2)));
-        return { h: 1.6 + dz * 3.6, tint: -0.06 + dz * 0.2 };
-      }, { mat: "wood" });
-      for (let i = -1; i < 4; i++) {
-        p.capsule(
-          1 + i * 2.6,
-          T + 2 - i * 1.2,
-          T + 2 - i * 1.2,
-          1 + i * 2.6,
-          1,
-          1,
-          { mat: "rope", dome: 1.1, tint: i % 2 ? 0.1 : -0.06 }
-        );
-      }
-      p.grain("wood", { freq: 0.5, amp: 0.18, seed: 21 });
-      return p.resolve(MATERIALS, { ...LIGHT5, outline: 1, outlineColor: "#1a1109" });
-    };
-    return { top: edge(true), side: edge(false), corner: corner(), T, L };
-  }
-  function drawPanel(ctx, x, y, w, h, opts = {}) {
-    const F = once("frame", buildFrame);
-    const T = F.T;
-    x = Math.round(x);
-    y = Math.round(y);
-    w = Math.round(w);
-    h = Math.round(h);
-    const g = ctx.createLinearGradient(0, y, 0, y + h);
-    g.addColorStop(0, opts.top || "rgba(38,28,18,0.975)");
-    g.addColorStop(1, opts.bottom || "rgba(24,17,11,0.985)");
-    ctx.fillStyle = g;
-    ctx.fillRect(x, y, w, h);
-    ctx.strokeStyle = "rgba(214,186,138,0.16)";
-    ctx.strokeRect(x + T - 1.5, y + T - 1.5, w - (T - 1.5) * 2, h - (T - 1.5) * 2);
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(x, y, w, h);
-    ctx.clip();
-    for (let i = 0; i < Math.ceil(w / F.L); i++) {
-      ctx.drawImage(F.top, x + i * F.L, y);
-      ctx.drawImage(F.top, x + i * F.L, y + h - T);
-    }
-    for (let i = 0; i < Math.ceil(h / F.L); i++) {
-      ctx.drawImage(F.side, x, y + i * F.L);
-      ctx.drawImage(F.side, x + w - T, y + i * F.L);
-    }
-    ctx.restore();
-    const c = F.corner;
-    ctx.drawImage(c, x - 2, y - 2);
-    ctx.drawImage(c, x + w - T - 2, y - 2);
-    ctx.drawImage(c, x - 2, y + h - T - 2);
-    ctx.drawImage(c, x + w - T - 2, y + h - T - 2);
-  }
-  var NODE = {
-    // spring
-    drop: "...1.../..111../.11111./1111111/1111111/1111111/.11111./..111../...1...",
-    tank: "1111111/1.....1/1.111.1/1.111.1/1.111.1/1.....1/1111111/.11111./..111..",
-    moon: "..111../.11..1./11....1/11...../11...../11....1/.11..1./..111../.......",
-    jet: "...1.../...1.../..111../..111../.11111./.11111./11...11/1.....1/.......",
-    sprout: "....11./...11../1.11.../11111../..1..../..1..../..1..../.11111./.......",
-    well: "1111111/1.....1/1.111.1/1.1.1.1/1.111.1/1.....1/.11111./..111../...1...",
-    // shell
-    step: ".....11/.....11/....111/...1111/..11111/.111111/1111111/1111111/.......",
-    leaf: ".....11/....111/...1111/..11.11/.11..11/11...11/11..11./.1111../.......",
-    graft: "11...11/.11.11./..111../...1.../..111../.11.11./11...11/......./.......",
-    fruit: "...1.../..11.../.11111./111.111/11...11/11...11/.11.11./..111../.......",
-    tree: "..111../.11111./1111111/.11111./..111../...1.../...1.../..111../.......",
-    // brood
-    call: "..1..../.11..11/.11.1.1/.111..1/.111..1/.11.1.1/.11..11/..1..../.......",
-    hand: ".1.1.1./1111111/1111111/1111111/1111111/.111111/..1111./...11../.......",
-    nest: "......./1111111/11...11/1.111.1/1.....1/.11111./..111../......./.......",
-    point: "...11../...11../11.11../1.111../1.1111./.11111./..1111./...111./.......",
-    egg: "...11../..1111./.111111/1111111/1111111/.111111/..1111./...11../.......",
-    link: ".11..../1..1.11/1..111./.11...1/11...11/1.111../.11..1./.....11/.......",
-    // pincer
-    claw: "11...11/.11.11./..111../.11111./11...11/1.....1/11...11/.11.11./..111..",
-    saw: "1.1.1.1/11111.1/.11111./..111../.11111./11111.1/1.1.1.1/......./.......",
-    spade: "...1.../...1.../..111../.11111./1111111/1111111/.11111./..111../.......",
-    bolt: "....11./...11../..11.../.11111./..111../.11..../11...../1....../.......",
-    comb: "1111111/1111111/1.1.1.1/1.1.1.1/1.1.1.1/1.1.1.1/1.1.1.1/......./.......",
-    hammer: ".111111/.111111/...11../...11../...11../...11../...11../..1111./.......",
-    // legs
-    leg: "11...../.11..../..11.../..11.../...11../...111./....111/...1111/.......",
-    shield: "1111111/1111111/1111111/.11111./.11111./..111../..111../...1.../.......",
-    burrow: "1111111/1.....1/1.....1/.1...1./..1.1../...1.../..111../.11111./.......",
-    load: "1111111/11...11/1111111/11...11/1111111/..111../..111../.11111./.......",
-    skate: "..11.../.1111../11111../1111111/.111111/..11111/1111111/......./.......",
-    crown: "1.....1/11...11/11.1.11/1111111/1111111/.11111./.11111./1111111/.......",
-    // conditions a plant will only ripen under
-    sun: "1..1..1/.1.1.1./..111../11111.1/..111../.1.1.1./1..1..1/......./.......",
-    dusk: "...1.../..111../.11111./1111111/......./1111111/......./......./.......",
-    shade: "..111../.11111./1111111/......./..1.1../..1.1../..1.1../.11111./.......",
-    weight: "..111../.11111./..1.1../.11111./1111111/1111111/.11111./......./.......",
-    clock: "..111../.1...1./1..1..1/1..11.1/1....11/.1...1./..111../......./.......",
-    // the modes: an animal standing, an animal walking
-    crab: ".11111./1111111/1.1.1.1/1111111/.11111./1.1.1.1/1.1.1.1/......./.......",
-    crabwalk: ".11111./1111111/1.1.1.1/1111111/.11111./1..1..1/11...11/......./......."
-  };
-  function drawNodeIcon(ctx, name, cx, cy, color, scale = 1) {
-    const rows = NODE[name];
-    if (!rows) return;
-    const lines = rows.split("/");
-    const w = Math.max(...lines.map((l) => l.length));
-    const s = Math.max(1, Math.round(scale));
-    const x0 = Math.round(cx - w * s / 2), y0 = Math.round(cy - lines.length * s / 2);
-    ctx.fillStyle = color;
-    for (let y = 0; y < lines.length; y++) {
-      for (let x = 0; x < lines[y].length; x++) {
-        if (lines[y][x] === "1") ctx.fillRect(x0 + x * s, y0 + y * s, s, s);
-      }
-    }
-  }
-  var GLYPHS = {
-    // . transparent, 1 dark, 2 mid, 3 light, 4 accent
-    drop: "....11....../...1221...../..122211..../.12222211.../.12222211.../1222222221../1222222331./1222222331./1222222221./.12222221.../..122221..../....1111....",
-    hand: "..1..1..1.../.121.121.12./.122.122.122/.1222222222./.1222222222./112222222221/122222222221/.12222222221/.1222222222./..122222221./...12222221./....111111..",
-    scale: ".....11...../.....11...../..111111111./.1.1.....1.1/1..1.....1..1/1..1.....1..1/.11.......11./.....11...../.....11...../....1111..../...111111.../..11111111..",
-    map: "111111111111/1..........1/1.11....11..1/1.1.1..1..1.1/1.1..11...1.1/1..1....1.1.1/1...1..1..1.1/1....11...1.1/1.........1.1/1..........1/1..........1/111111111111",
-    seed: ".....11...../....1221..../...122221.../..12222221../.1222222221./.1222222221./.1222222221./.1222222221./..12222221../...122221..../....1221..../.....11.....",
-    paw: ".11...11..../1221.1221.../1221.1221.../.11...11..../......11..11/.....1221122/.....12211221/......11..11/..1111111...:/.122222211../.12222222 1./..11111111..",
-    close: "1..........1/11........11/121......121/.121....121./..121..121../...121121.../....12121..../....12121.../...121121.../..121..121../.121....121./1..........1",
-    pump: "....1111..../...122221.../..12222221../.1222222221./1222222222 1/1224444422 1/1224444422 1/1222222222 1/.1222222221./..12222221../...122221.../....1111...."
-  };
-  var GLYPH_COLS = {
-    1: "#1c130b",
-    2: "#d6ba8a",
-    3: "#f5e7c6",
-    4: "#5fc6d8"
-  };
-  function drawGlyph(ctx, name, x, y, opts = {}) {
-    const rows = GLYPHS[name];
-    if (!rows) {
-      if (NODE[name]) {
-        const s2 = Math.max(1, Math.round((opts.scale || 1) * 1.2));
-        const prev = ctx.globalAlpha;
-        if (opts.alpha !== void 0) ctx.globalAlpha = prev * opts.alpha;
-        drawNodeIcon(
-          ctx,
-          name,
-          x + 6 * (opts.scale || 1),
-          y + 6 * (opts.scale || 1),
-          opts.color || GLYPH_COLS[2],
-          s2
-        );
-        ctx.globalAlpha = prev;
-      }
-      return 12;
-    }
-    const s = opts.scale || 1;
-    const cols = { ...GLYPH_COLS, ...opts.colors || {} };
-    if (opts.color) cols[2] = opts.color;
-    if (opts.accent) cols[4] = opts.accent;
-    if (opts.alpha !== void 0) {
-      ctx.save();
-      ctx.globalAlpha = opts.alpha;
-    }
-    const lines = rows.split("/");
-    for (let ry = 0; ry < lines.length; ry++) {
-      const line = lines[ry];
-      for (let rx = 0; rx < line.length; rx++) {
-        const c = cols[line[rx]];
-        if (!c) continue;
-        ctx.fillStyle = c;
-        ctx.fillRect(Math.round(x + rx * s), Math.round(y + ry * s), s, s);
-      }
-    }
-    if (opts.alpha !== void 0) ctx.restore();
-    return 12 * s;
-  }
-  function buildValve() {
-    const w = 34, h = 34;
-    const p = new Painter(w, h);
-    const cx = w / 2, cy = h / 2;
-    p.ellipse(cx, cy, 15, 15, { mat: "shellRock", dome: 6, tint: -0.06 });
-    p.ellipse(cx, cy, 12.5, 12.5, { mat: "chitin", dome: 5, tint: 0.06 });
-    p.ellipse(cx, cy, 9, 9, { mat: "chitinDark", dome: -6, tint: -0.34 });
-    for (let i = 0; i < 4; i++) {
-      const th = i / 4 * TAU + 0.4;
-      p.poly([
-        { x: cx + Math.cos(th) * 8.6, y: cy + Math.sin(th) * 8.6 },
-        { x: cx + Math.cos(th + 1.2) * 8.6, y: cy + Math.sin(th + 1.2) * 8.6 },
-        { x: cx + Math.cos(th + 0.6) * 2.2, y: cy + Math.sin(th + 0.6) * 2.2 }
-      ], { mat: "chitinPale", dome: 2.6, feather: 2, tint: 0.06 - i * 0.03 });
-    }
-    p.ellipse(cx, cy, 2.4, 2.4, { mat: "flesh", dome: -1.6, tint: -0.3 });
-    p.grain("shellRock", { freq: 0.34, amp: 0.2, seed: 31 });
-    p.grain("chitin", { freq: 0.5, amp: 0.14, seed: 13 });
-    return { cv: p.resolve(MATERIALS, { ...LIGHT5, outline: 1, outlineColor: "#191108" }), w, h };
-  }
-  function drawValve(ctx, x, y, open, t) {
-    const V = once("valve", buildValve);
-    ctx.save();
-    ctx.translate(x + V.w / 2, y + V.h / 2);
-    const k = 1 + open * 0.06 + Math.sin(t * 22) * open * 0.02;
-    ctx.scale(k, k);
-    if (open > 0.01) {
-      pxGlow(ctx, 0, 0, 16, "#9fe8ee", 0.55 * open, { p: 1, steps: 3 });
-    }
-    ctx.drawImage(V.cv, -V.w / 2, -V.h / 2);
-    ctx.restore();
-    return { w: V.w, h: V.h };
-  }
-  function buildNozzle() {
-    const w = 34, h = 34;
-    const p = new Painter(w, h);
-    const cx = w / 2, cy = h / 2;
-    p.ellipse(cx, cy, 15, 15, { mat: "sporeSac", dome: 6, tint: -0.1 });
-    p.ellipse(cx, cy, 12.2, 12.2, { mat: "spore", dome: 5, tint: 0.06 });
-    p.ellipse(cx, cy, 8.4, 8.4, { mat: "spore", dome: -7, tint: -0.4 });
-    for (let i = 0; i < 3; i++) {
-      const th = i / 3 * TAU - 1.1;
-      p.poly([
-        { x: cx + Math.cos(th) * 8.2, y: cy + Math.sin(th) * 8.2 },
-        { x: cx + Math.cos(th + 1.6) * 8.2, y: cy + Math.sin(th + 1.6) * 8.2 },
-        { x: cx + Math.cos(th + 0.8) * 1.8, y: cy + Math.sin(th + 0.8) * 1.8 }
-      ], { mat: "sporeSac", dome: 2.8, feather: 2, tint: 0.1 - i * 0.04 });
-    }
-    p.capsule(cx, cy - 1, cx, cy - 9, 3.4, 2.2, { mat: "chitin", dome: 2.6, tint: 0.02 });
-    p.ellipse(cx, cy - 9.4, 2.2, 1.3, { mat: "chitinDark", dome: -1.4, tint: -0.34 });
-    for (const sgn of [-1, 1]) {
-      p.curve(
-        [
-          { x: cx + sgn * 13, y: cy + 4 },
-          { x: cx + sgn * 8, y: cy + 9 },
-          { x: cx + sgn * 3, y: cy + 6 }
-        ],
-        1.1,
-        0.7,
-        { mat: "spore", dome: 1, steps: 8, tint: 0.24 }
-      );
-    }
-    p.grain("spore", { freq: 0.44, amp: 0.18, seed: 21 });
-    p.speckle("sporeSac", { density: 0.05, amp: 0.35, seed: 7 });
-    return { cv: p.resolve(MATERIALS, { ...LIGHT5, outline: 1, outlineColor: "#140a1a" }), w, h };
-  }
-  function drawNozzle(ctx, x, y, open, t, hot = false) {
-    const N = once("nozzle", buildNozzle);
-    ctx.save();
-    ctx.translate(x + N.w / 2, y + N.h / 2);
-    const k = 1 + open * 0.1 + Math.sin(t * 26) * open * 0.025;
-    ctx.scale(k, k * (1 - open * 0.04));
-    if (open > 0.01 || hot) {
-      pxGlow(ctx, 0, 0, 16, "#c98ade", 0.6 * Math.max(open, hot ? 0.25 : 0), { p: 1, steps: 3 });
-    }
-    ctx.drawImage(N.cv, -N.w / 2, -N.h / 2);
-    if (open > 0.5) {
-      ctx.globalAlpha = (open - 0.5) * 2;
-      ctx.fillStyle = "#f0d4ff";
-      ctx.fillRect(-2, -N.h / 2 + 6, 4, 2);
-      ctx.globalAlpha = 1;
-    }
-    ctx.restore();
-    return { w: N.w, h: N.h };
-  }
-  function drawGauge(ctx, x, y, w, h, f, col, opts = {}) {
-    x = Math.round(x);
-    y = Math.round(y);
-    w = Math.round(w);
-    h = Math.round(h);
-    ctx.fillStyle = opts.rim || "rgba(132,104,56,0.92)";
-    ctx.fillRect(x - 2, y - 2, w + 4, h + 4);
-    ctx.fillStyle = "rgba(198,162,90,0.55)";
-    ctx.fillRect(x - 2, y - 2, w + 4, 1);
-    ctx.fillStyle = opts.back || "rgba(14,10,6,0.90)";
-    ctx.fillRect(x - 1, y - 1, w + 2, h + 2);
-    ctx.fillStyle = "rgba(52,40,26,0.95)";
-    ctx.fillRect(x, y, w, h);
-    const fw = Math.round(w * clamp01(f));
-    if (fw > 0) {
-      ctx.fillStyle = col;
-      ctx.fillRect(x, y, fw, h);
-      ctx.fillStyle = "rgba(255,255,255,0.38)";
-      ctx.fillRect(x, y, fw, 1);
-      ctx.fillStyle = "rgba(0,0,0,0.26)";
-      ctx.fillRect(x, y + h - 1, fw, 1);
-      ctx.fillStyle = "rgba(255,255,255,0.55)";
-      ctx.fillRect(x + fw - 1, y, 1, h);
-    }
-    if (w > 18) {
-      for (let q = 1; q < 4; q++) {
-        ctx.fillStyle = "rgba(0,0,0,0.30)";
-        ctx.fillRect(x + Math.round(w * q / 4), y, 1, h);
-      }
-    }
-    ctx.fillStyle = "rgba(214,176,100,0.75)";
-    ctx.fillRect(x - 2, y - 1, 1, h + 2);
-    ctx.fillRect(x + w + 1, y - 1, 1, h + 2);
-    if (opts.mark !== void 0) {
-      ctx.fillStyle = "rgba(242,228,194,0.85)";
-      ctx.fillRect(x + Math.round(w * clamp01(opts.mark)), y - 2, 1, h + 4);
-    }
-  }
-  var plates = /* @__PURE__ */ new Map();
-  function bakePlate(mat, w, h, seed) {
-    const cv = makeCanvas2(w + 4, h + 6);
-    const g = cv.getContext("2d");
-    g.imageSmoothingEnabled = false;
-    const R = (n) => hash2i(n * 37, seed, 91);
-    g.fillStyle = "rgba(0,0,0,0.32)";
-    g.fillRect(2, 3, w, h);
-    if (mat === "paper") {
-      g.fillStyle = "#e6dcc0";
-      g.fillRect(0, 0, w, h);
-      for (let i = 0; i < w * h * 0.04; i++) {
-        const x = Math.floor(R(i * 3) * w), y = Math.floor(R(i * 3 + 1) * h);
-        g.fillStyle = R(i * 3 + 2) < 0.5 ? "rgba(198,184,150,0.5)" : "rgba(246,238,216,0.5)";
-        g.fillRect(x, y, 1, 1);
-      }
-      g.fillStyle = "rgba(120,140,150,0.26)";
-      for (let y = 8; y < h - 2; y += 9) g.fillRect(2, y, w - 4, 1);
-      if (w > 40) {
-        g.fillStyle = "rgba(168,64,52,0.40)";
-        g.fillRect(6, 1, 1, h - 2);
-      }
-      g.fillStyle = "rgba(0,0,0,0)";
-      g.clearRect(0, h - 1, w, 1);
-      g.fillStyle = "#e6dcc0";
-      for (let x = 0; x < w; x++) {
-        if (R(x + 500) < 0.55) g.fillRect(x, h - 1, 1, 1);
-      }
-      g.fillStyle = "rgba(150,132,96,0.55)";
-      for (let x = 0; x < w; x++) {
-        if (R(x + 900) < 0.35) g.fillRect(x, h - 2, 1, 1);
-      }
-      g.fillStyle = "rgba(120,100,66,0.18)";
-      g.fillRect(0, 0, w, 1);
-    } else if (mat === "scroll") {
-      const roll = Math.min(7, Math.max(4, Math.round(h * 0.34)));
-      g.fillStyle = "#dbc28c";
-      g.fillRect(roll, 0, w - roll * 2, h);
-      for (let i = 0; i < w * h * 0.05; i++) {
-        const x = roll + Math.floor(R(i * 3) * (w - roll * 2));
-        const y = Math.floor(R(i * 3 + 1) * h);
-        g.fillStyle = R(i * 3 + 2) < 0.5 ? "rgba(186,158,106,0.45)" : "rgba(240,220,174,0.4)";
-        g.fillRect(x, y, 1, 1);
-      }
-      for (const side of [0, 1]) {
-        const rx = side ? w - roll : 0;
-        g.fillStyle = "#8a6a3a";
-        g.fillRect(rx, 0, roll, h);
-        g.fillStyle = "#b08c50";
-        g.fillRect(rx + (side ? 0 : 1), 1, roll - 1, h - 2);
-        g.fillStyle = "rgba(244,226,180,0.6)";
-        g.fillRect(rx + (side ? 1 : roll - 2), 1, 1, h - 2);
-        g.fillStyle = "rgba(50,34,14,0.5)";
-        g.fillRect(side ? rx : rx + roll - 1, 0, 1, h);
-      }
-      g.fillStyle = "rgba(110,84,44,0.30)";
-      g.fillRect(roll, 0, 2, h);
-      g.fillRect(w - roll - 2, 0, 2, h);
-    } else if (mat === "leather") {
-      g.fillStyle = "#3a2718";
-      g.fillRect(0, 0, w, h);
-      for (let i = 0; i < w * h * 0.05; i++) {
-        const x = Math.floor(R(i * 3) * w), y = Math.floor(R(i * 3 + 1) * h);
-        g.fillStyle = R(i * 3 + 2) < 0.5 ? "rgba(24,16,10,0.5)" : "rgba(86,60,36,0.4)";
-        g.fillRect(x, y, 1, 1);
-      }
-      g.fillStyle = "rgba(198,162,106,0.34)";
-      for (let x = 3; x < w - 3; x += 4) {
-        g.fillRect(x, 2, 2, 1);
-        g.fillRect(x, h - 3, 2, 1);
-      }
-      for (let y = 3; y < h - 3; y += 4) {
-        g.fillRect(2, y, 1, 2);
-        g.fillRect(w - 3, y, 1, 2);
-      }
-      g.fillStyle = "rgba(240,214,164,0.18)";
-      g.fillRect(0, 0, w, 1);
-    } else {
-      g.fillStyle = "#4a4136";
-      g.fillRect(0, 0, w, h);
-      for (let y = 0; y < h; y++) {
-        const band = Math.sin(y * 0.7 + seed) * 0.5 + 0.5;
-        g.fillStyle = band > 0.62 ? "rgba(92,82,66,0.34)" : band < 0.22 ? "rgba(30,25,18,0.30)" : "rgba(0,0,0,0)";
-        if (g.fillStyle !== "rgba(0, 0, 0, 0)") g.fillRect(0, y, w, 1);
-      }
-      for (let i = 0; i < w * h * 0.05; i++) {
-        const x = Math.floor(R(i * 3) * w), y = Math.floor(R(i * 3 + 1) * h);
-        const r = R(i * 3 + 2);
-        g.fillStyle = r < 0.12 ? "rgba(196,186,162,0.5)" : r < 0.5 ? "rgba(28,23,17,0.45)" : "rgba(106,96,78,0.4)";
-        g.fillRect(x, y, 1, 1);
-      }
-      g.fillStyle = "rgba(150,138,112,0.55)";
-      g.fillRect(0, 0, w, 1);
-      g.fillRect(0, 0, 1, h);
-      g.fillStyle = "rgba(16,12,8,0.55)";
-      g.fillRect(0, h - 1, w, 1);
-      g.fillRect(w - 1, 0, 1, h);
-      if (w > 10 && h > 8) {
-        g.fillStyle = "rgba(20,16,11,0.5)";
-        g.fillRect(2, 2, w - 4, 1);
-        g.fillRect(2, 2, 1, h - 4);
-        g.fillStyle = "rgba(168,156,128,0.35)";
-        g.fillRect(2, h - 3, w - 4, 1);
-        g.fillRect(w - 3, 2, 1, h - 4);
-      }
-      for (const [cx, cy] of [[0, 0], [w - 1, 0], [0, h - 1], [w - 1, h - 1]]) {
-        if (R(cx + cy * 7) < 0.7) g.clearRect(cx, cy, 1, 1);
-      }
-    }
-    return cv;
-  }
-  function plateFor(mat, w, h) {
-    const key2 = `${mat}:${w}x${h}`;
-    let cv = plates.get(key2);
-    if (!cv) {
-      cv = bakePlate(mat, w, h, (w * 31 + h * 17) % 997);
-      if (plates.size > 220) plates.clear();
-      plates.set(key2, cv);
-    }
-    return cv;
-  }
-  function drawPlate(ctx, x, y, w, h, opts = {}) {
-    x = Math.round(x);
-    y = Math.round(y);
-    w = Math.round(w);
-    h = Math.round(h);
-    if (w < 2 || h < 2) return;
-    const mat = opts.mat || "stone";
-    ctx.save();
-    ctx.globalAlpha = opts.alpha ?? 1;
-    ctx.drawImage(plateFor(mat, w, h), x, y);
-    if (opts.edge && opts.edge !== "none") {
-      ctx.strokeStyle = opts.edge;
-      ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
-      if (opts.top) {
-        ctx.globalAlpha = (opts.alpha ?? 1) * 0.22;
-        ctx.fillStyle = opts.edge;
-        ctx.fillRect(x + 2, y + 2, w - 4, h - 4);
-      }
-    }
-    ctx.restore();
-  }
-  var MODE_ART = {
-    // an animal standing square on, shell over six legs
-    crab: [
-      "...........",
-      "..2222222..",
-      ".211111112.",
-      ".211111112.",
-      ".221111122.",
-      "..1212121..",
-      ".1.1.1.1.1.",
-      "1..1.1.1..1",
-      "..........."
-    ],
-    // the same animal mid-stride, legs gathered one way, shell tilted
-    crabwalk: [
-      "...........",
-      "...2222222.",
-      "..211111112",
-      "..211111112",
-      "..221111122",
-      "...1212121.",
-      "..11.1.1.1.",
-      ".1...1..11.",
-      "..........."
-    ],
-    // a claw, open, about to close
-    claw: [
-      "..11....11.",
-      ".1221..1221",
-      ".1221..1221",
-      "..122..221.",
-      "...122221..",
-      "....1221...",
-      "....1221...",
-      ".....11....",
-      ".....11...."
-    ],
-    // a spray head, and what comes out of it
-    jet: [
-      ".11........",
-      ".1221...2.2",
-      ".122211.2.2",
-      ".1222211.2.",
-      ".122211.2.2",
-      ".1221...2.2",
-      ".11........",
-      "...........",
-      "..........."
-    ],
-    // a nerve: one node, and everything strung off it
-    link: [
-      ".2.......2.",
-      "..2.....2..",
-      "...12221...",
-      "..1222221..",
-      "...12221...",
-      "..2.....2..",
-      ".2.......2.",
-      "...........",
-      "..........."
-    ]
-  };
-  function drawModeArt(ctx, name, cx, cy, body, edge) {
-    const rows = MODE_ART[name];
-    if (!rows) return;
-    const w = rows[0].length, h = rows.length;
-    const x0 = Math.round(cx - w / 2), y0 = Math.round(cy - h / 2);
-    for (let y = 0; y < h; y++) {
-      const line = rows[y];
-      for (let x = 0; x < line.length; x++) {
-        const c = line[x];
-        if (c === ".") continue;
-        ctx.fillStyle = c === "1" ? body : edge;
-        ctx.fillRect(x0 + x, y0 + y, 1, 1);
-      }
-    }
-  }
-
   // js/ui/talkscreen.js
   var FAINT = "rgba(240,226,192,0.34)";
   var TAP = "#8fe0cc";
+  var JAW = {
+    flat: "talk",
+    talk: "flat",
+    grin: "laugh",
+    laugh: "grin",
+    joy: "grin",
+    smug: "talk",
+    squint: "talk",
+    frown: "gasp",
+    gasp: "frown",
+    glare: "scowl",
+    scowl: "glare",
+    shout: "flat",
+    peer: "talk",
+    blank: "talk",
+    dull: "talk",
+    sad: "talk",
+    tired: "talk",
+    drink: "flat",
+    spore: "gasp"
+  };
+  var EYES_SHUT = /* @__PURE__ */ new Set(["shut", "sleep", "laugh", "joy"]);
   function board(ctx, x, y, w, h) {
     x = Math.round(x);
     y = Math.round(y);
@@ -10745,6 +10798,12 @@ body {
       this.held = 0;
       this.down = false;
       this.flash = 0;
+      this.think = 0;
+      this.hold = 0;
+      this.mouth = 0;
+      this.blink = 2 + Math.random() * 3;
+      this.lean = 0;
+      this.idle = 0;
     }
     get near() {
       const g = this.game;
@@ -10847,7 +10906,7 @@ body {
           lines: [{ icon: "close", t: `"${word}". I have no idea. Slower - long taps and short ones, and a gap between the letters.` }]
         };
         this.line = 0;
-        this.type = 0;
+        this._begin();
         this.game.npc.mood = "blank";
         this.game.audio?.play("deny");
       }
@@ -10856,7 +10915,7 @@ body {
     ask(tp, tapped = false) {
       this.topic = tp.build ? { ...tp, lines: tp.build(this.game) } : tp;
       this.line = 0;
-      this.type = 0;
+      this._begin();
       this._wear();
       this.said.add(tp.id);
       this.game.audio?.play(tapped ? "discover" : "uiBig");
@@ -10868,13 +10927,18 @@ body {
     advance() {
       const tp = this.topic;
       if (!tp) return;
+      if (this.think > 0) {
+        this.think = 0;
+        return;
+      }
       if (this.type < 1) {
         this.type = 1;
+        this.hold = 0;
         return;
       }
       if (this.line < tp.lines.length - 1) {
         this.line++;
-        this.type = 0;
+        this._begin();
         this._wear();
         this.game.audio?.play("talk");
         return;
@@ -10885,6 +10949,20 @@ body {
         this._byeAfter = false;
         this.close();
       }
+    }
+    /**
+     * Starting a card. Nobody answers the instant they are asked, so there is a
+     * beat first - a short one for a short line, a longer one when he has to
+     * think about it - and he wears a face while he does it.
+     */
+    _begin() {
+      const ln = this.topic?.lines?.[this.line];
+      const n = (ln?.t || "").length;
+      this.type = 0;
+      this.hold = 0;
+      this.mouth = 0;
+      this.think = this.line === 0 ? 0.3 + Math.min(0.42, n * 22e-4) : 0.13;
+      this.lean = 1;
     }
     /**
      * The face he is wearing for the line he is on. A line can name its own -
@@ -10903,7 +10981,40 @@ body {
       if (!this.on) return;
       this.t += dt;
       this.flash = Math.max(0, this.flash - dt * 2);
-      if (this.type < 1) this.type = Math.min(1, this.type + dt * 2.4);
+      this.lean = Math.max(0, this.lean - dt * 2.6);
+      this.blink -= dt;
+      if (this.blink < -0.12) this.blink = 2.4 + Math.random() * 3.4;
+      if (this.think > 0) {
+        this.think -= dt;
+      } else if (this.type < 1) {
+        if (this.hold > 0) {
+          this.hold -= dt;
+        } else {
+          const t = this.topic?.lines?.[this.line]?.t || "";
+          const n = Math.max(1, t.length);
+          const was = Math.floor(this.type * n);
+          this.type = Math.min(1, this.type + dt * 30 / n);
+          const now = Math.floor(this.type * n);
+          for (let k = was; k < now; k++) {
+            const c = t[k];
+            if (c === "." || c === "!" || c === "?") this.hold = Math.max(this.hold, 0.2);
+            else if (c === "," || c === ";" || c === "-") this.hold = Math.max(this.hold, 0.09);
+            if (c && c !== " " && k % 3 === 0) {
+              g.audio?.play("talk", { pitch: 0.82 + Math.random() * 0.2 });
+            }
+          }
+          this.mouth += dt;
+        }
+      }
+      if (!this.topic) {
+        this.idle += dt;
+        if (this.idle > 9) {
+          this.idle = 0;
+          g.npc.mood = ["flat", "squint", "peer", "dull", "smug"][Math.floor(Math.random() * 5)];
+        }
+      } else {
+        this.idle = 0;
+      }
       if (!this.near || g.state !== "play") {
         this.close();
         return;
@@ -10980,9 +11091,13 @@ body {
         K = Math.max(1, Math.min(4, Math.floor(Math.min(W * 0.3 / 59, H * 0.58 / 64, room / 64))));
       }
       const spore = (g.mind?.blue || 0) > 0.35 ? 1 : 0;
+      let face = g.npc.mood || "flat";
+      const saying = this.topic && this.think <= 0 && this.type < 1 && this.hold <= 0;
+      if (saying && Math.floor(this.mouth * 9) % 2 === 1) face = JAW[face] || "talk";
+      if (this.blink < 0 && !EYES_SHUT.has(face)) face = "shut";
       let port = null;
       try {
-        port = facePortrait(g.npc.mood || "flat", K, spore);
+        port = facePortrait(face, K, spore);
       } catch {
         port = null;
       }
@@ -11001,7 +11116,7 @@ body {
       ctx.fillStyle = "rgba(226,198,146,0.10)";
       ctx.fillRect(cardX + PAD - 1, cardY + PAD + ph, pw + 2, 1);
       if (port) {
-        const br = Math.sin(this.t * 1.4) * 0.6 + (this.type < 1 ? Math.sin(this.t * 16) * 0.5 : 0);
+        const br = Math.sin(this.t * 1.4) * 0.6 + (saying ? Math.sin(this.t * 17) * 0.45 : 0) - this.lean * this.lean * 3;
         ctx.save();
         ctx.beginPath();
         ctx.rect(cardX + PAD, cardY + PAD, pw, ph);
@@ -11046,6 +11161,11 @@ body {
         ctx.fillRect(x + 25, y + 6, 1, h - 12);
       }
       const tx = x + 28;
+      if (this.think > 0) {
+        const n2 = 1 + Math.floor((0.7 - this.think) * 7) % 3;
+        drawText(ctx, ".".repeat(Math.max(1, n2)), tx, y + 10, { color: "#7a6a4c" });
+        return;
+      }
       const total = lines.join("").length;
       let budget = Math.ceil(total * this.type);
       lines.forEach((l, i) => {
@@ -22827,9 +22947,10 @@ body {
         const right = W - 8 - this.buttonSize(W, H).w - 12 - 34;
         return { x, y: H - span - 2, w: Math.max(110, right - x), h: span - 8 };
       }
-      const h = clamp(Math.round(H * 0.14), 48, 76);
+      const h = clamp(Math.round(H * 0.095), 38, 52);
+      const w = Math.min(W - 12, 260);
       const floor = this.buildOn ? H - 8 : this.buttonRowY(W, H) - 6;
-      return { x: 6, y: Math.max(24, floor - h), w: W - 12, h };
+      return { x: Math.round((W - w) / 2), y: Math.max(24, floor - h), w, h };
     }
     /**
      * What he asked you to do, on a scrap out of his notebook, pinned to the
@@ -23932,8 +24053,8 @@ Coming back.` };
       const hv = this.game.hive;
       if (!hv || !hv.holding && hv.charge < 0.01) return;
       const k = clamp01(hv.charge / 1.35);
-      const w = Math.min(140, Math.max(96, Math.round(W * 0.28)));
-      const h = 13;
+      const w = Math.min(112, Math.max(80, Math.round(W * 0.2)));
+      const h = 10;
       const sh = hv.pressured ? Math.round(Math.sin(this.t * 40) * 1.4) : 0;
       const x = Math.round(clamp(cx - w / 2, 4, W - w - 4)) + sh;
       const y = Math.round(by - h);
@@ -23965,8 +24086,8 @@ Coming back.` };
       const p = this.game.pump;
       if (!p || p.open < 0.01) return;
       const a = clamp01(p.open);
-      const w = Math.min(140, Math.max(96, Math.round(W * 0.28)));
-      const h = 13;
+      const w = Math.min(112, Math.max(80, Math.round(W * 0.2)));
+      const h = 10;
       const sh = p.shake > 0 ? Math.round(Math.sin(p.shake * 40) * p.shake * 2) : 0;
       const x = Math.round(clamp(cx - w / 2, 4, W - w - 4)) + sh;
       const y = Math.round(by - h);
@@ -26389,10 +26510,12 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
         return;
       }
       if (this.state !== "play") {
-        const skipTap = i.clicked && i.sy < this.renderer.vh - 56 && this.state !== "prologue";
-        if (i.justPressed("Escape") || this.state !== "prologue" && i.justPressed(" ") || skipTap) {
+        const b = this.skipRect;
+        const skipTap = !!(i.clicked && b && i.sx >= b.x && i.sx <= b.x + b.w && i.sy >= b.y && i.sy <= b.y + b.h);
+        if (i.justPressed("Escape") || i.justPressed(" ") || skipTap) {
           i.consumeKey("Escape");
           i.consumeKey(" ");
+          if (skipTap) i.clicked = false;
           this.skipIntro();
         }
       }
@@ -27942,6 +28065,7 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
       if (this.state === "title") {
       } else if (this.state !== "play" && this.state !== "dead") this._drawCine(ui, r);
       else if (!this.talk.on) this.ui.draw(ui, r);
+      this._drawSkip(ui, r);
       if (this.talk.fade > 0.01) this.talk.draw(ui, r.vw, r.vh);
       this.fx.drawText(ui, cam, (c, t, x, y, o) => drawText(c, t, x, y, o));
       if (this.state === "dead") this._drawDead(ui, r);
@@ -28285,7 +28409,11 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
      */
     _drawSpeech(ctx, cam, who, code = false) {
       const s = cam.worldToScreen(who.x, who.y - 40);
-      const port = !code && who.portrait ? who.portrait(1) : null;
+      const age = code ? 99 : who.speechAge || 0;
+      const CPS = 34;
+      const said = code ? 1e9 : Math.floor(Math.max(0, age - 0.1) * CPS);
+      const talking = !code && said < (who.speech || "").length;
+      const port = !code && who.portrait ? who.portrait(1, talking) : null;
       const pw = port ? 40 : 0;
       const lines = wrapText(who.speech, 132 - (port ? pw + 6 : 0));
       const w = Math.max(...lines.map((l) => textWidth(l))) + 14 + (port ? pw + 6 : 0);
@@ -28355,7 +28483,13 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
       ctx.fillRect(tx - 3, y + 3, 1, h - 6);
       ctx.fillStyle = RULE;
       lines.forEach((l, i) => ctx.fillRect(tx, y + 5 + i * LINE_H + 8, w - (tx - x) - 6, 1));
-      lines.forEach((l, i) => drawText(ctx, l, tx, y + 6 + i * LINE_H, { color: INKC }));
+      let left = said;
+      lines.forEach((l, i) => {
+        if (left <= 0) return;
+        const cut = l.slice(0, left);
+        left -= l.length;
+        drawText(ctx, cut, tx, y + 6 + i * LINE_H, { color: INKC });
+      });
       if (code) {
         drawText(
           ctx,
@@ -28435,6 +28569,45 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
         ctx.globalAlpha = 1;
       }
     }
+    /**
+     * SKIP.
+     *
+     * There was a skip before this, but it was a line of faint grey text saying
+     * what you could press, and a rule that any tap in the top of the frame
+     * counted - which meant it was invisible on a phone and went off by accident
+     * on a desk. A thing you are allowed to do needs somewhere to press.
+     *
+     * It sits under the top letterbox, out of the picture, and it is offered for
+     * every scene that is not the game itself - the prologue included, because
+     * the fourth time you see the sea you have seen the sea.
+     */
+    _skipBox(r) {
+      const w = 62, h = 17;
+      const bar = Math.round(24 * (this.letterbox || 0));
+      return { x: r.vw - w - 8, y: bar + 8, w, h };
+    }
+    _drawSkip(ctx, r) {
+      if (this.state === "play" || this.state === "dead" || this.state === "title") {
+        this.skipRect = null;
+        return;
+      }
+      const b = this._skipBox(r);
+      this.skipRect = b;
+      const i = this.input;
+      const hot = i.sx >= b.x && i.sx <= b.x + b.w && i.sy >= b.y && i.sy <= b.y + b.h;
+      drawPlate(ctx, b.x, b.y, b.w, b.h, {
+        mat: "stone",
+        edge: hot ? "#e2b74a" : "rgba(226,200,150,0.35)",
+        top: hot ? 1 : void 0
+      });
+      drawText(
+        ctx,
+        "SKIP  >>",
+        b.x + b.w / 2,
+        b.y + 5,
+        { color: hot ? "#f7ecd0" : "rgba(230,214,180,0.72)", align: "center" }
+      );
+    }
     _drawCutscene(ctx, r) {
       const bar = Math.round(24 * this.letterbox);
       ctx.fillStyle = "#080604";
@@ -28469,13 +28642,6 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
           );
         });
       }
-      drawText(
-        ctx,
-        "space / tap to skip",
-        r.vw - 4,
-        r.vh - bar - 8,
-        { color: "rgba(230,214,180,0.4)", align: "right" }
-      );
     }
     _drawDead(ctx, r) {
       ctx.fillStyle = "rgba(10,6,4,0.6)";

@@ -10,6 +10,7 @@ import { Camera } from './core/camera.js';
 import * as Save from './core/save.js';
 import { Renderer } from './render/renderer.js';
 import { Backdrop } from './render/backdrop.js';
+import { drawPlate } from './ui/icons.js';
 import { Terrain } from './world/terrain.js';
 import { Weather } from './world/weather.js';
 import { biomeAt } from './world/biomes.js';
@@ -1194,9 +1195,14 @@ export class Game {
     }
 
     if (this.state !== 'play') {
-      const skipTap = i.clicked && i.sy < this.renderer.vh - 56 && this.state !== 'prologue';
-      if (i.justPressed('Escape') || (this.state !== 'prologue' && i.justPressed(' ')) || skipTap) {
+      // the plate, or the two keys anybody would try. A tap anywhere used to
+      // count, which skipped the opening whenever you reached for the screen.
+      const b = this.skipRect;
+      const skipTap = !!(i.clicked && b && i.sx >= b.x && i.sx <= b.x + b.w
+        && i.sy >= b.y && i.sy <= b.y + b.h);
+      if (i.justPressed('Escape') || i.justPressed(' ') || skipTap) {
         i.consumeKey('Escape'); i.consumeKey(' ');
+        if (skipTap) i.clicked = false;
         this.skipIntro();
       }
     }
@@ -2700,6 +2706,7 @@ export class Game {
     if (this.state === 'title') { /* the menu is its own chrome */ }
     else if (this.state !== 'play' && this.state !== 'dead') this._drawCine(ui, r);
     else if (!this.talk.on) this.ui.draw(ui, r);
+    this._drawSkip(ui, r);
     if (this.talk.fade > 0.01) this.talk.draw(ui, r.vw, r.vh);
     this.fx.drawText(ui, cam, (c, t, x, y, o) => drawText(c, t, x, y, o));
     if (this.state === 'dead') this._drawDead(ui, r);
@@ -3051,7 +3058,14 @@ export class Game {
     // His face on the card is his own portrait, cropped to the head - a card
     // two words wide has no room for shoulders, and the head is the part you
     // are reading anyway.
-    const port = !code && who.portrait ? who.portrait(1) : null;
+    // A card that appears whole is a caption. A card that fills in is a man
+    // saying something, so the line arrives a letter at a time out here too,
+    // and his jaw moves for exactly as long as letters are still arriving.
+    const age = code ? 99 : (who.speechAge || 0);
+    const CPS = 34;
+    const said = code ? 1e9 : Math.floor(Math.max(0, age - 0.10) * CPS);
+    const talking = !code && said < (who.speech || '').length;
+    const port = !code && who.portrait ? who.portrait(1, talking) : null;
     const pw = port ? 40 : 0;
     const lines = wrapText(who.speech, 132 - (port ? pw + 6 : 0));
     const w = Math.max(...lines.map((l) => textWidth(l))) + 14 + (port ? pw + 6 : 0);
@@ -3128,7 +3142,14 @@ export class Game {
     ctx.fillRect(tx - 3, y + 3, 1, h - 6);
     ctx.fillStyle = RULE;
     lines.forEach((l, i) => ctx.fillRect(tx, y + 5 + i * LINE_H + 8, w - (tx - x) - 6, 1));
-    lines.forEach((l, i) => drawText(ctx, l, tx, y + 6 + i * LINE_H, { color: INKC }));
+    // only as much of it as he has actually got out
+    let left = said;
+    lines.forEach((l, i) => {
+      if (left <= 0) return;
+      const cut = l.slice(0, left);
+      left -= l.length;
+      drawText(ctx, cut, tx, y + 6 + i * LINE_H, { color: INKC });
+    });
     if (code) {
       drawText(ctx, this.morse.learned ? 'he is listening' : 'tapping',
         x + w / 2, y - 9, { color: 'rgba(159,232,212,0.5)', align: 'center' });
@@ -3194,6 +3215,40 @@ export class Game {
     }
   }
 
+  /**
+   * SKIP.
+   *
+   * There was a skip before this, but it was a line of faint grey text saying
+   * what you could press, and a rule that any tap in the top of the frame
+   * counted - which meant it was invisible on a phone and went off by accident
+   * on a desk. A thing you are allowed to do needs somewhere to press.
+   *
+   * It sits under the top letterbox, out of the picture, and it is offered for
+   * every scene that is not the game itself - the prologue included, because
+   * the fourth time you see the sea you have seen the sea.
+   */
+  _skipBox(r) {
+    const w = 62, h = 17;
+    const bar = Math.round(24 * (this.letterbox || 0));
+    return { x: r.vw - w - 8, y: bar + 8, w, h };
+  }
+
+  _drawSkip(ctx, r) {
+    if (this.state === 'play' || this.state === 'dead' || this.state === 'title') {
+      this.skipRect = null;
+      return;
+    }
+    const b = this._skipBox(r);
+    this.skipRect = b;
+    const i = this.input;
+    const hot = i.sx >= b.x && i.sx <= b.x + b.w && i.sy >= b.y && i.sy <= b.y + b.h;
+    drawPlate(ctx, b.x, b.y, b.w, b.h, {
+      mat: 'stone', edge: hot ? '#e2b74a' : 'rgba(226,200,150,0.35)', top: hot ? 1 : undefined,
+    });
+    drawText(ctx, 'SKIP  >>', b.x + b.w / 2, b.y + 5,
+      { color: hot ? '#f7ecd0' : 'rgba(230,214,180,0.72)', align: 'center' });
+  }
+
   _drawCutscene(ctx, r) {
     const bar = Math.round(24 * this.letterbox);
     ctx.fillStyle = '#080604';
@@ -3223,8 +3278,6 @@ export class Game {
           { color: nar ? 'rgba(230,214,180,0.82)' : '#f2e4c2', outline: nar, outlineColor: 'rgba(0,0,0,0.6)' });
       });
     }
-    drawText(ctx, 'space / tap to skip', r.vw - 4, r.vh - bar - 8,
-      { color: 'rgba(230,214,180,0.4)', align: 'right' });
   }
 
   _drawDead(ctx, r) {

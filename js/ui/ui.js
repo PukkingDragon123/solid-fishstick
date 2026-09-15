@@ -607,10 +607,17 @@ export class UI {
       return { x, y: H - span - 2, w: Math.max(110, right - x), h: span - 8 };
     }
     // upright: it sits above the button row rather than over it, so you can
-    // still walk away from a job you have changed your mind about
-    const h = clamp(Math.round(H * 0.14), 48, 76);
+    // still walk away from a job you have changed your mind about.
+    //
+    // It used to be a slab fourteen percent of the screen tall running the
+    // whole width, which on a phone was a third of the desert gone. A thumb
+    // needs a target it can hit, not the whole bottom of the window: this is
+    // as small as one comfortably is, and centred, so the world is still
+    // visible on both sides of it.
+    const h = clamp(Math.round(H * 0.095), 38, 52);
+    const w = Math.min(W - 12, 260);
     const floor = this.buildOn ? H - 8 : this.buttonRowY(W, H) - 6;
-    return { x: 6, y: Math.max(24, floor - h), w: W - 12, h };
+    return { x: Math.round((W - w) / 2), y: Math.max(24, floor - h), w, h };
   }
 
   /**
@@ -1698,8 +1705,8 @@ export class UI {
     const hv = this.game.hive;
     if (!hv || (!hv.holding && hv.charge < 0.01)) return;
     const k = clamp01(hv.charge / 1.35);
-    const w = Math.min(140, Math.max(96, Math.round(W * 0.28)));
-    const h = 13;
+    const w = Math.min(112, Math.max(80, Math.round(W * 0.20)));
+    const h = 10;
     const sh = hv.pressured ? Math.round(Math.sin(this.t * 40) * 1.4) : 0;
     const x = Math.round(clamp(cx - w / 2, 4, W - w - 4)) + sh;
     const y = Math.round(by - h);
@@ -1735,8 +1742,8 @@ export class UI {
     const p = this.game.pump;
     if (!p || p.open < 0.01) return;
     const a = clamp01(p.open);
-    const w = Math.min(140, Math.max(96, Math.round(W * 0.28)));
-    const h = 13;
+    const w = Math.min(112, Math.max(80, Math.round(W * 0.20)));
+    const h = 10;
     const sh = p.shake > 0 ? Math.round(Math.sin(p.shake * 40) * p.shake * 2) : 0;
     const x = Math.round(clamp(cx - w / 2, 4, W - w - 4)) + sh;
     const y = Math.round(by - h);

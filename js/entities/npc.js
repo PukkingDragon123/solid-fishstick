@@ -72,6 +72,14 @@ const CAMP_ITEMS = ['bedroll', 'canteen', 'lantern', 'peg', 'skull', 'spoil', 'p
 const TURN_SECS = 0.26;
 const TURN_MIN = 0.58;
 
+/** Two frames make a jaw: whatever he is wearing, and its opposite number. */
+const JAW_FRAME = {
+  flat: 'talk', talk: 'flat', grin: 'laugh', laugh: 'grin', joy: 'grin',
+  smug: 'talk', squint: 'talk', frown: 'gasp', gasp: 'frown', glare: 'scowl',
+  scowl: 'glare', shout: 'flat', peer: 'talk', blank: 'talk', dull: 'talk',
+  sad: 'talk', tired: 'talk', drink: 'flat', spore: 'gasp',
+};
+
 export class Person {
   constructor(game, kind, x, opts = {}) {
     this.game = game;
@@ -122,6 +130,7 @@ export class Person {
   say(text, secs = 4.5, mood = null) {
     this.speech = text;
     this.speechT = secs;
+    this.speechAge = 0;      // he says it, he does not post it
     this.shout = 0;
     this.face = mood !== null ? mood : this._moodFor(text);
     this.mood = this._faceFor(text);
@@ -137,6 +146,7 @@ export class Person {
   yell(text, secs = 3.2) {
     this.speech = text;
     this.speechT = secs;
+    this.speechAge = 0;
     this.shout = 1;
     this.face = 2;
     this.mood = 'shout';
@@ -266,8 +276,15 @@ export class Person {
    * grid - so what he thinks of you is something you can see. The painted
    * head is still what stands in the desert; this is only ever a close-up.
    */
-  portrait(scale = 1) {
-    return facePortrait(this.mood || 'flat', scale, (this.game.mind?.blue || 0) > 0.35 ? 1 : 0);
+  /**
+   * His face for a bubble. `talking` flips his jaw open and shut while the
+   * line is still arriving, which is the difference between a portrait next
+   * to some text and a man saying it.
+   */
+  portrait(scale = 1, talking = false) {
+    let f = this.mood || 'flat';
+    if (talking && Math.floor((this.game.time || 0) * 9) % 2 === 1) f = JAW_FRAME[f] || 'talk';
+    return facePortrait(f, scale, (this.game.mind?.blue || 0) > 0.35 ? 1 : 0);
   }
 
   setPose(p) { if (this.pose !== p) { this.pose = p; this.animT = 0; } this.poseT = 0; }
@@ -280,7 +297,11 @@ export class Person {
     this.poseT += dt;
     this.animT += dt;
     this.breathe += dt * 1.3;
-    if (this.speechT > 0) { this.speechT -= dt; if (this.speechT <= 0) { this.speech = null; this.shout = 0; } }
+    if (this.speechT > 0) {
+      this.speechT -= dt;
+      this.speechAge = (this.speechAge || 0) + dt;
+      if (this.speechT <= 0) { this.speech = null; this.shout = 0; }
+    }
     this._watch(dt);
 
     const crab = this.game.crab;
