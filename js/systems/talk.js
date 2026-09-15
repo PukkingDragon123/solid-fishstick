@@ -308,11 +308,38 @@ export const TOPICS = [
     then: (g) => { const n = g.quests.next(); if (!g.quests.active && n) g.quests.take(n); },
   },
   {
+    // The door into the ugly thing. You do not need a relic and a patch of
+    // sand for this: you need him close enough and low enough, and the way
+    // you get a man to put his head next to yours is to ask him to.
+    id: 'closer', word: 'CLOSER', group: 'him',
+    ask: 'Come closer.',
+    when: (g) => (g.mind?.stage === 'free' || g.mind?.stage === 'lured') && !g.mind?.owned,
+    lines: [
+      { icon: 'hand', mood: 'squint',
+        t: "Closer? I am a foot away from something that could take my arm off. ...Fine. Fine." },
+      { icon: 'point', mood: 'peer',
+        t: "There. Down at your level. What is it - is there something on the shell? Hold still, let me look." },
+    ],
+    then: (g) => { g.mind?.leanIn(); },
+  },
+  {
     id: 'help', word: 'HELP', group: 'him',
     ask: 'Help me.',
     lines: [
       { icon: 'hand', t: "Always. Say where and I will do the digging - I have the hands and you have the reach." },
     ],
+  },
+  {
+    // Not a thing you say. It only appears once he is actually down in front
+    // of you with a spore in your gland, and taking it is the whole of the
+    // ugly thing in one tile.
+    id: 'spray', word: 'SPRAY', group: 'him',
+    ask: '',
+    when: (g) => !!g.mind?.ready && (g.economy?.parasites || 0) > 0 && !g.mind?.owned,
+    lines: [
+      { icon: 'jet', mood: 'gasp', t: 'He is looking at your shell. His head is level with the gland.' },
+    ],
+    then: (g) => { g.talk?.close(); g.sprayVess(); },
   },
   {
     id: 'bye', word: 'BYE', group: 'him',

@@ -121,10 +121,15 @@ export class TalkScreen {
     this.word = '';
     this.rows = [];
     this.game.audio?.play('ui');
-    // he turns to face you, because you are talking to his
+    // He turns to face you, and he WALKS OVER. Two people having a
+    // conversation stand within arm's length of each other; he used to hold
+    // his ground at forty pixels and shout across it, which is also why you
+    // could never reach him with anything.
     const g = this.game;
     g.npc.setFacing(Math.sign(g.crab.x - g.npc.x) || -1);
-    g.npc.moveTo = undefined;
+    const side = Math.sign(g.npc.x - g.crab.x) || 1;
+    g.npc.moveTo = g.crab.x + side * (g.crab.m.shellW * 0.5 + 18);
+    g.npc.keepAway = false;
     g.npc.speech = null;
     // and the camera comes in on the pair of you. A conversation is a
     // two-shot; the wide shot is for walking.

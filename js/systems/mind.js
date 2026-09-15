@@ -41,6 +41,7 @@ export class Mind {
     this.cloudY = 0;
     this.work = null;         // what he is doing under orders
     this.workT = 0;
+    this.lean = 0;            // how long he will stay down in front of you
   }
 
   get npc() { return this.game.npc; }
@@ -73,9 +74,37 @@ export class Mind {
 
   /** Is he down over the bait with his head where you can reach it? */
   get ready() {
-    if (this.stage !== 'lured' || !this.bait) return false;
+    if (this.stage !== 'lured') return false;
     const n = this.npc;
+    // leaning in over you counts the same as crouching over a relic: what
+    // matters is that his head is low and near, not why it is
+    if ((this.lean || 0) > 0) {
+      return Math.abs(n.x - this.game.crab.x) < SPRAY_RANGE;
+    }
+    if (!this.bait) return false;
     return Math.abs(n.x - this.bait.x) < LURE_RANGE && n.pose === POSE.CROUCH;
+  }
+
+  /**
+   * The second way in, and the one anybody finds first: you asked him to come
+   * closer and he did.
+   *
+   * The bait route needs a relic in your pack and a patch of sand to put it
+   * on, which is a lot of rules to discover by accident. Talking to somebody
+   * is not. So a conversation puts him at arm's length, and asking him to
+   * lean in puts his head at the height of your gland - for a while. He does
+   * straighten up again; he is suspicious, not stupid.
+   */
+  leanIn(secs = 11) {
+    if (this.stage === 'owned' || this.stage === 'dosing' || this.stage === 'down') return;
+    this.stage = 'lured';
+    this.lean = secs;
+    const n = this.npc;
+    n.mode = 'free';
+    n.keepAway = false;
+    n.moveTo = this.game.crab.x + Math.sign(n.x - this.game.crab.x || 1) * 20;
+    n.setPose(POSE.CROUCH);
+    this.game.fx?.spark(n.x, n.y - 10, '#9ad4c8', 6, 18);
   }
 
   // -- step two: the spray --------------------------------------------------
@@ -90,7 +119,9 @@ export class Mind {
     if (d > SPRAY_RANGE + this.game.crab.m.shellW * 0.5) {
       return { ok: false, why: 'Too far. He has to be right up against you.' };
     }
-    if (!this.ready) return { ok: false, why: 'Not while he is standing. Put bait down and wait.' };
+    if (!this.ready) {
+      return { ok: false, why: 'Not while he is standing. Talk to him and ask him to come closer.' };
+    }
     e.parasites--;
     e.markDirty();
     this.stage = 'dosing';
@@ -134,6 +165,25 @@ export class Mind {
     const n = this.npc;
     const g = this.game;
     if (this.cloud > 0) this.cloud = Math.max(0, this.cloud - dt * 0.5);
+
+    // he does not stay crouched in front of you indefinitely
+    if ((this.lean || 0) > 0) {
+      this.lean -= dt;
+      if (this.lean <= 0) {
+        this.lean = 0;
+        if (this.stage === 'lured' && !this.bait) {
+          this.stage = 'free';
+          n.mode = 'follow';
+          n.keepAway = true;
+          n.setPose(POSE.IDLE);
+          n.say('Nothing. All right. Whatever it was, it has gone.', 3.4, 7);
+        }
+      } else if (this.stage === 'lured' && !this.bait) {
+        // he holds the crouch while it lasts, whatever else he was doing
+        n.setPose(POSE.CROUCH);
+        n.moveTo = undefined;
+      }
+    }
 
     if (this.stage === 'lured' && this.bait) {
       this.bait.t += dt;
