@@ -42,7 +42,7 @@ import { Garden } from './systems/garden.js';
 import { Economy } from './systems/economy.js';
 import { Wildlife } from './systems/wildlife.js';
 import { Encounters } from './systems/encounters.js';
-import { UI } from './ui/ui.js';
+import { UI, MODES } from './ui/ui.js';
 import { FLORA_BY_ID } from './data/flora.js';
 import { buildPlant } from './art/floraart.js';
 import { OBSERVE_STEPS } from './data/fauna.js';
@@ -150,6 +150,11 @@ export class Game {
     this.quests = new Quests(this);
     this.critters = new Critters(this, this.seed);
     this.roamTarget = null;
+    // What you have been given. You wake up able to walk and dig; everything
+    // else arrives when the world first gives you a reason for it, and the
+    // mode column in the corner grows as this set does.
+    this.unlocked = new Set();
+    this.unlockCard = null;      // { name, desc, got, tint, glyph, t }
     this.ui = new UI(this);
 
     this.seeds = { dustmoss: 3, saltgrass: 2 };
@@ -1375,6 +1380,11 @@ export class Game {
     // a job is held with the same key that started it
     this.work.update(sdt, i.key('e') || !!this.ui.actHeld);
     this.quests.update(sdt);
+    this._checkUnlocks();
+    if (this.unlockCard) {
+      this.unlockCard.t += dt;
+      if (this.unlockCard.t > 4) this.unlockCard = null;
+    }
     this.craft.update(sdt);
     this.mind.update(sdt);
     this.combat.update(sdt);
@@ -2670,6 +2680,36 @@ export class Game {
     this.economy.markDirty();
   }
 
+  /**
+   * Hand over a mode. Once only, with a card that stops long enough to be
+   * read, because a new verb appearing silently in the corner is a verb
+   * nobody ever presses.
+   */
+  unlock(id) {
+    if (this.unlocked.has(id)) return false;
+    const m = MODES.find((x) => x.need === id);
+    if (!m) return false;
+    this.unlocked.add(id);
+    this.unlockCard = { m, t: 0 };
+    this.audio?.play('evolve');
+    this.cam.shake(3);
+    return true;
+  }
+
+  /** The world reporting things that a mode is the answer to. */
+  _checkUnlocks() {
+    if (this.state !== 'play') return;
+    // a claw, the moment anything is actually coming at you
+    if (!this.unlocked.has('hunt') && this.wildlife.hostiles.some(
+      (c) => Math.abs(c.x - this.crab.x) < 190)) this.unlock('hunt');
+    // the gland, once you are carrying something to put in it
+    if (!this.unlocked.has('spore') && (this.economy.parasites > 0
+      || this.garden.plots.some((p) => p.plant?.def?.id === 'mindcap'))) this.unlock('spore');
+    // and the two that were always skills
+    if (!this.unlocked.has('auto') && this.economy.skills.has('stride')) this.unlock('auto');
+    if (!this.unlocked.has('hive') && this.economy.skills.has('command')) this.unlock('hive');
+  }
+
   onFirstSighting(def) {
     if (!def.hostile) this.ui.say(`${def.name} - new`, 3);
   }
@@ -2729,7 +2769,7 @@ export class Game {
       digs: this.digs.toJSON(), relics: this.relics,
       mining: this.mining.toJSON(), craft: this.craft.toJSON(), mind: this.mind.toJSON(),
       combat: this.combat.toJSON(), quests: this.quests.save(),
-      fountains: this.fountains.save(),
+      fountains: this.fountains.save(), unlocked: [...this.unlocked],
     });
   }
 
@@ -2765,7 +2805,9 @@ export class Game {
       this.quests.load(d.quests);
       this.relics = d.relics || {};
       this.fountains.load(d.fountains);
-      if (d.mode) this.ui.mode = d.mode;
+      this.unlocked = new Set(d.unlocked || []);
+      if (d.mode && this.ui.modeUnlocked(d.mode)) this.ui.mode = d.mode;
+      else this.ui.mode = 'direct';
       this.economy.recomputeGenes();
       this.economy.markDirty();
       this.cam.followEntity(this.crab, true);
@@ -2816,6 +2858,7 @@ export class Game {
     if (!this.npc.riding && !this.npc.hidden) this.npc.draw(ctx, cam);
     this._drawCrab(ctx, cam);
     if (this.npc.riding && !this.npc.hidden) this.npc.draw(ctx, cam);
+    this._workMark(ctx, cam);
     if (this.state === 'title') this.menu.drawBottle(ctx, cam);
     if (this.lifeK) this._drawNewLife(ctx, cam);
     if (this.sleep) this._drawSleep(ctx, cam);
@@ -2887,7 +2930,11 @@ export class Game {
     if (this.talk.fade > 0.01) this.talk.draw(ui, r.vw, r.vh);
     this.fx.drawText(ui, cam, (c, t, x, y, o) => drawText(c, t, x, y, o));
     if (this.state === 'dead') this._drawDead(ui, r);
-    const inside = this.ui.tree.dive > 0.4;
+    // Anything that belongs to the WORLD stops at the edge of a screen. A
+    // speech bubble floating over an open bench is the single thing that made
+    // the panels read as an overlay somebody forgot to finish.
+    const inside = this.ui.tree.dive > 0.4 || this.ui.drawer > 0.02
+      || this.ui.paused || !!this.unlockCard;
     if (this.npc.speech && this.state === 'play' && !inside && !this.talk.on) this._drawSpeech(ui, cam, this.npc);
     if (this.state === 'play' && !inside) {
       const m = this.morse.render();
@@ -2897,6 +2944,39 @@ export class Game {
       }
     }
     r.dctx.drawImage(r.uiC, 0, 0, r.vw, r.vh, 0, 0, r.vw * r.scale, r.vh * r.scale);
+  }
+
+  /**
+   * He has work, and you have none.
+   *
+   * There is no quest log in this game and no marker floating over a thing -
+   * except this one, because the whole system runs through one man and a
+   * player who never walks up to him never sees any of it. So when he has a
+   * job waiting there is a mark over his hat: his own notebook, bobbing.
+   */
+  _workMark(ctx, cam) {
+    if (this.state !== 'play' || this.npc.hidden || this.talk.on) return;
+    const q = this.quests;
+    if (!q || q.active || !q.next()) return;
+    if (!cam.isVisible(this.npc.x, this.npc.y, 60)) return;
+    // clear of his hat, and small - it is a badge, not a billboard
+    const s = cam.worldToScreen(this.npc.x, this.npc.y - 46);
+    const p = Math.min(2, pxSize(cam.zoom));
+    const bob = Math.sin(this.time * 3.2) * p;
+    const x = Math.round(s.x), y = Math.round(s.y + bob);
+    const W = 7 * p, H = 9 * p;
+    const x0 = x - Math.round(W / 2), y0 = y - H;
+    ctx.fillStyle = 'rgba(12,8,5,0.75)';
+    ctx.fillRect(x0 - p, y0 - p, W + p * 2, H + p * 2);
+    ctx.fillStyle = '#e8dcbc';
+    ctx.fillRect(x0, y0, W, H);
+    ctx.fillStyle = '#9a433d';
+    ctx.fillRect(x0, y0, W, p);                       // the red board along its top
+    ctx.fillStyle = 'rgba(58,47,30,0.55)';
+    for (let r = 0; r < 3; r++) ctx.fillRect(x0 + p, y0 + p * (2 + r * 2), W - p * 2, p);
+    // a tail, so the badge belongs to the man under it
+    ctx.fillStyle = 'rgba(12,8,5,0.75)';
+    ctx.fillRect(x - p, y0 + H + p, p * 2, p * 2)
   }
 
   /**

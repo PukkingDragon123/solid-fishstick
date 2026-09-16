@@ -6,7 +6,7 @@
 // into. Everything else lives in a drawer that slides out of the right edge
 // when you want it and is not there when you do not.
 
-import { clamp, clamp01, lerp, damp, TAU, easeOutCubic } from '../lib/math.js';
+import { clamp, clamp01, lerp, damp, TAU, easeOutCubic, mixHex } from '../lib/math.js';
 import * as Save from '../core/save.js';
 import { pxDisc, pxGlow, pxRing, pxSize } from '../render/pix.js';
 import { drawText, textWidth, wrapText, ellipsize, LINE_H } from '../lib/font.js';
@@ -26,13 +26,18 @@ const DIM = 'rgba(240,226,192,0.66)';
 const FAINT = 'rgba(240,226,192,0.36)';
 const OUT = 'rgba(12,8,5,0.72)';
 
+/** How long the controls take to hand over when you change mode. */
+const MODE_SWAP = 0.3;
+
 // The popup is for things you read. Anything you *do* to your own shell now
 // happens on the shell itself, in build mode.
 const TABS = [
-  { id: 'map', icon: 'map', name: 'MAP', sub: 'the basin, and what is left standing in it' },
-  { id: 'fleet', icon: 'fauna', name: 'FLEET', sub: 'what lives on you, and where it is' },
-  { id: 'codex', icon: 'codex', name: 'FIELD', sub: "Dr. Vess's notes - you have to be with him to read them" },
-  { id: 'craft', icon: 'build', name: 'BENCH', sub: 'his bag, and what his hands can make out of it' },
+  { id: 'fleet', icon: 'fauna', name: 'FLEET', tint: '#9ad86a',
+    sub: 'what lives on you, and where it has got to' },
+  { id: 'craft', icon: 'build', name: 'BENCH', tint: '#e2b74a',
+    sub: 'his pack, and what his hands can make out of it' },
+  { id: 'codex', icon: 'codex', name: 'FIELD', tint: '#7fd0dd',
+    sub: 'his notes - you have to be standing with him to read them' },
 ];
 
 // and build mode has its own two, down the side
@@ -49,14 +54,18 @@ const BUILD_TABS = [
 export const MODES = [
   { id: 'direct', name: 'CRAB', glyph: 'crab', tint: '#e2b74a',
     desc: 'You steer, you dig, you plant. Everything an animal does with its own body.' },
-  { id: 'auto', name: 'ROAM', glyph: 'crabwalk', tint: '#9ad86a', skill: 'stride',
-    desc: 'Click where you want to be and it walks itself there. It will not wander off on its own.' },
-  { id: 'hunt', name: 'HUNT', glyph: 'claw', tint: '#e2564f',
-    desc: 'Three verbs and nothing else. Drag the claw to swing, hold to guard, roll to get out.' },
-  { id: 'spore', name: 'SPORE', glyph: 'jet', tint: '#c98ade',
-    desc: 'Hold to charge, release at pressure. A spore only takes in something willing.' },
-  { id: 'hive', name: 'HIVE', glyph: 'link', tint: '#6fd8ee', skill: 'command',
-    desc: 'Everything on your nerve, and the nerve itself. Click one and you are it.' },
+  { id: 'hunt', name: 'HUNT', glyph: 'claw', tint: '#e2564f', need: 'hunt',
+    desc: 'Three verbs and nothing else. Drag the claw to swing, hold to guard, roll to get out.',
+    got: 'Something came at you, and the claw came up on its own.' },
+  { id: 'auto', name: 'ROAM', glyph: 'crabwalk', tint: '#9ad86a', need: 'auto', skill: 'stride',
+    desc: 'Click where you want to be and it walks itself there. It will not wander off on its own.',
+    got: 'Your legs know the ground well enough now to cross it without you.' },
+  { id: 'spore', name: 'SPORE', glyph: 'jet', tint: '#c98ade', need: 'spore',
+    desc: 'Hold to charge, release at pressure. A spore only takes in something willing.',
+    got: 'The gland under your shell has filled. You can throw what is in it.' },
+  { id: 'hive', name: 'HIVE', glyph: 'link', tint: '#6fd8ee', need: 'hive', skill: 'command',
+    desc: 'Everything on your nerve, and the nerve itself. Click one and you are it.',
+    got: 'There are enough of them on your nerve now to hold them all at once.' },
 ];
 
 export class UI {
@@ -69,7 +78,6 @@ export class UI {
     this.tab = 'flora';
     this.scroll = 0;
     this.pick = null;            // the item shown in the detail pane
-    this.mapX = null;            // where the map is looking, world x
     this.build = 0;              // 0..1 how far into build mode
     this.buildOn = false;
     this.buildTab = 'flora';
@@ -86,6 +94,7 @@ export class UI {
     this.stick = null;
     this.stickZone = null;
     this.mode = 'direct';
+    this.modeT = 0;
     this.valveHeld = false;
     this.valveTapped = false;
     this.selected = null;        // a commanded creature
@@ -151,10 +160,19 @@ export class UI {
   /** True while the camera is pulled in on the shell to plant things. */
   get building() { return this.buildOn; }
 
+  /**
+   * You start as an animal that can walk and dig, and nothing else.
+   *
+   * Five modes on the first screen was five things to learn before you had
+   * done anything, and four of them did nothing until much later anyway - a
+   * claw with nothing to fight, a nerve with nothing on it. So the column
+   * grows: each mode arrives at the moment the world first hands you the
+   * thing it is for, and it arrives with a card saying so.
+   */
   modeUnlocked(id) {
     const m = MODES.find((x) => x.id === id);
-    if (!m || !m.skill) return true;
-    return this.game.economy.skills.has(m.skill);
+    if (!m || !m.need) return true;
+    return this.game.unlocked.has(m.need);
   }
 
   cycleMode() {
@@ -174,6 +192,10 @@ export class UI {
     if (id !== 'auto') this.game.roamTarget = null;
     this.mode = id;
     this.selected = null;
+    // A mode change swapped one set of controls for another between two
+    // frames, which reads as a glitch rather than as putting something down
+    // and picking something else up. So the bar goes out and comes back.
+    this.modeT = MODE_SWAP;
     this.say(`${m.name}: ${m.desc}`, 4);
     this.game.audio?.play('ui');
   }
@@ -184,6 +206,7 @@ export class UI {
     // the conversation owns the keyboard while it is up
     if (this.game.talk && this.game.talk.on) { this.t += dt; return; }
     this.t += dt;
+    if (this.modeT > 0) this.modeT = Math.max(0, this.modeT - dt);
     const i = this.game.input;
     if (this.toastT > 0) { this.toastT -= dt; if (this.toastT <= 0) this.toast = null; }
     this.drawer = damp(this.drawer, this.drawerOpen ? 1 : 0, 0.0009, dt);
@@ -527,8 +550,18 @@ export class UI {
     this._hud(ctx, W, H);
     if (this.build > 0.005) this._buildRail(ctx, W, H);
     if (this.placing) this._placingHud(ctx, W, H);
-    if (this.drawer > 0.005) this._panel(ctx, W, H);
-    else if (this.touchEnabled) this._touchControls(ctx, W, H);
+
+    // A screen is a SCREEN. While one is open nothing from the world gets to
+    // carry on drawing on top of it - not the band, not the note pinned to
+    // the shell, not a toast. That was the whole of why the panels read as a
+    // debug overlay: there was always something else on top of them.
+    if (this.drawer > 0.005) {
+      this._panel(ctx, W, H);
+      this._exitChip(ctx, W, H);
+      if (this.hover && !this.drag) this._tooltip(ctx, W, H);
+      return;
+    }
+    if (this.touchEnabled) this._touchControls(ctx, W, H);
 
     // on touch the thumb band replaces the little tablet at the work: one
     // control, thumb-sized, in the one place a thumb already is
@@ -538,6 +571,7 @@ export class UI {
     if (this.toast) this._toast(ctx, W, H);
     if (this.game.taming?.live) this._songCard(ctx, W, H);
     if (this.drag) this._drawCarried(ctx, W, H);
+    this._unlockCard(ctx, W, H);
     this._exitChip(ctx, W, H);
     if (this.paused) this._pauseCard(ctx, W, H);
     if (this.hover && !this.drag) this._tooltip(ctx, W, H);
@@ -647,22 +681,134 @@ export class UI {
     if (!q) return;
     const done = q.doneT > 0 ? q.justDone : null;
     const job = done || q.active;
-    if (!job) return;
-    const note = done ? `${job.name}  ${job.gain}` : job.note;
-    const tw = Math.min(W - 24, textWidth(note) + 22);
+    // Nothing on, and there IS something on: say so, and say where he is.
+    // A job you never heard about is a job that does not exist.
+    if (!job) { this._questCall(ctx, W, H); return; }
+
+    const took = !done && q.tookT > 0;
+    const prog = done ? null : q.progress;
+    const label = done ? `${job.name}  ${job.gain}` : job.name;
+    const line = done ? 'done' : job.note;
+    const w = Math.min(W - 16, Math.max(132,
+      Math.max(textWidth(label), textWidth(line)) + 26));
+    const h = prog ? 34 : 28;
     const x = 6, y = this.build > 0.005 ? 6 : 56;
-    const h = 18;
-    drawPlate(ctx, x, y, tw, h, {
-      mat: 'paper',
-      edge: done ? '#9ad86a' : 'rgba(120,96,58,0.5)',
-      alpha: 0.94,
-    });
-    // a red margin rule, because it is a page out of the same notebook
+    // landing and finishing both get a beat where the card is bigger and lit
+    const beat = done ? clamp01(q.doneT / 4) : took ? clamp01(q.tookT / 2.8) : 0;
+    const pop = 1 + easeOutCubic(clamp01(beat * 1.6)) * 0.06;
+
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.scale(pop, pop);
+    ctx.translate(-x, -y);
+    const tint = done ? '#9ad86a' : took ? '#ffe9a8' : '#c8a05a';
+    drawPlate(ctx, x, y, w, h, { mat: 'paper', edge: tint, alpha: 0.95 });
+    // a red margin rule, because it is a page out of his notebook
     ctx.fillStyle = done ? 'rgba(120,190,100,0.6)' : 'rgba(150,52,42,0.45)';
-    ctx.fillRect(x + 11, y + 3, 1, h - 6);
-    drawNodeIcon(ctx, done ? 'sun' : 'hand', x + 6, y + h / 2, done ? '#5f8a3a' : '#7a5a2a', 1);
-    drawText(ctx, ellipsize(note, tw - 20), x + 16, y + (h - 7) / 2,
-      { color: done ? '#3f6a2a' : '#3a2f1e' });
+    ctx.fillRect(x + 13, y + 3, 1, h - 6);
+    drawNodeIcon(ctx, done ? 'sun' : 'hand', x + 7, y + 11, done ? '#5f8a3a' : '#7a5a2a', 1);
+    drawText(ctx, done ? 'DONE' : took ? 'NEW JOB' : 'JOB', x + 18, y + 4,
+      { color: done ? '#3f6a2a' : '#8a5a2a' });
+    drawText(ctx, ellipsize(label, w - 24 - textWidth(done ? 'DONE' : 'JOB')),
+      x + w - 6, y + 4, { color: '#3a2f1e', align: 'right' });
+    drawText(ctx, ellipsize(line, w - 22), x + 18, y + 14, { color: '#5a4a32' });
+    // and how far through it you are, when it is a thing that can be counted
+    if (prog) {
+      const cnt = `${prog.have}/${prog.need}`;
+      const pw = w - 30 - textWidth(cnt);
+      ctx.fillStyle = 'rgba(58,47,30,0.28)';
+      ctx.fillRect(x + 18, y + 25, pw, 3);
+      ctx.fillStyle = '#6a8a3a';
+      ctx.fillRect(x + 18, y + 25, Math.round(pw * clamp01(prog.have / prog.need)), 3);
+      drawText(ctx, cnt, x + w - 6, y + 22, { color: '#5a4a32', align: 'right' });
+    }
+    ctx.restore();
+  }
+
+  /**
+   * No job, and he has one.
+   *
+   * The card does not go blank when you finish something - it turns into the
+   * thing that sends you back to him, with an arrow that says which way he
+   * is. Quests in this game only exist because a man says them out loud, so
+   * the interface's job when you have none is to point at the man.
+   */
+  _questCall(ctx, W, H) {
+    const g = this.game;
+    const q = g.quests;
+    if (!q.next() || g.state !== 'play' || g.npc?.hidden) return;
+    const d = Math.abs(g.npc.x - g.crab.x);
+    const near = d < 90;
+    const x = 6, y = this.build > 0.005 ? 6 : 56;
+    const label = near ? 'HE HAS WORK - TALK TO HIM' : 'DR. VESS HAS WORK FOR YOU';
+    const w = Math.min(W - 16, textWidth(label) + 34);
+    const h = 20;
+    const pulse = 0.72 + 0.28 * Math.sin(this.t * 3);
+    ctx.save();
+    ctx.globalAlpha = 0.86;
+    drawPlate(ctx, x, y, w, h, { mat: 'paper', edge: `rgba(226,183,74,${pulse})`, alpha: 0.9 });
+    drawNodeIcon(ctx, 'call', x + 8, y + h / 2, '#8a5a2a', 1);
+    drawText(ctx, label, x + 17, y + (h - 7) / 2, { color: '#3a2f1e' });
+    // which way, and how far
+    if (!near) {
+      const east = g.npc.x > g.crab.x;
+      ctx.fillStyle = '#7a5a2a';
+      for (let k = 0; k < 4; k++) {
+        const ax = Math.round(x + w - 8 + (east ? k : -k));
+        ctx.fillRect(ax, Math.round(y + h / 2 - k), 1, 1 + k * 2);
+      }
+      drawText(ctx, `${Math.round(d / 10)}m`, x + w - 12, y + (h - 7) / 2,
+        { color: '#6a5540', align: 'right' });
+    }
+    ctx.restore();
+  }
+
+  /**
+   * A mode arriving.
+   *
+   * The column in the corner grows over the run, and something appearing in
+   * a corner is something nobody notices. So the moment it lands the world
+   * dims, its own glyph comes up at four times size in its own colour, and
+   * the card says what happened and what the thing is for. It holds for four
+   * seconds and then folds away - long enough to read, short enough that it
+   * is not a dialog you have to dismiss.
+   */
+  _unlockCard(ctx, W, H) {
+    const u = this.game.unlockCard;
+    if (!u) return;
+    const m = u.m;
+    // in, hold, out
+    const k = u.t < 0.34 ? easeOutCubic(u.t / 0.34)
+      : u.t > 3.5 ? 1 - easeOutCubic(clamp01((u.t - 3.5) / 0.5)) : 1;
+    if (k <= 0.01) return;
+    const cw = Math.min(280, W - 40);
+    const lines = wrapText(`${m.got}\n\n${m.desc}`, cw - 78);
+    const ch = Math.max(56, 26 + lines.length * LINE_H + 12);
+    const cx = Math.round((W - cw) / 2);
+    const cy = Math.round(H * 0.3 - ch / 2 + (1 - k) * 14);
+
+    ctx.globalAlpha = k * 0.58;
+    ctx.fillStyle = '#0a0705';
+    ctx.fillRect(0, 0, W, H);
+    ctx.globalAlpha = k;
+    drawPanel(ctx, cx, cy, cw, ch);
+    // its own colour down the left edge, so the card IS the mode
+    ctx.fillStyle = m.tint;
+    ctx.fillRect(cx + 4, cy + 4, 2, ch - 8);
+    // and the glyph at size, on its own tinted ground
+    ctx.globalAlpha = k * 0.2;
+    ctx.fillStyle = m.tint;
+    ctx.fillRect(cx + 10, cy + 10, 44, 44);
+    ctx.globalAlpha = k;
+    drawModeArt(ctx, m.glyph, cx + 32, cy + 32, m.tint, mixHex(m.tint, '#120c08', 0.55), 2);
+    const tx = cx + 62;
+    drawText(ctx, 'NEW', tx, cy + 10, { color: FAINT });
+    drawText(ctx, m.name, tx + 22, cy + 9, { color: m.tint, scale: 1 });
+    let ty = cy + 24;
+    for (const ln of lines) { drawText(ctx, ln, tx, ty, { color: INK }); ty += LINE_H; }
+    drawText(ctx, this.touchEnabled ? 'the column, bottom left' : 'M, or the column bottom left',
+      cx + cw - 8, cy + ch - 11, { color: FAINT, align: 'right' });
+    ctx.globalAlpha = 1;
   }
 
   /**
@@ -856,12 +1002,19 @@ export class UI {
       }
     });
 
-    // and the mode's own controls, to the right of the column
+    // and the mode's own controls, to the right of the column - fading up
+    // out of nothing for a third of a second, so what you are holding is
+    // handed over rather than swapped between two frames
+    const swap = this.modeT > 0 ? easeOutCubic(1 - this.modeT / MODE_SWAP) : 1;
     const ax = bx + S + 7, ay = bottom - S;
+    ctx.save();
+    ctx.globalAlpha *= swap;
+    ctx.translate(0, (1 - swap) * 5);
     if (this.mode === 'hunt') this._huntBar(ctx, ax, ay, W, H);
     else if (this.mode === 'spore') this._sporeBar(ctx, ax, ay, W, H);
     else if (this.mode === 'hive') this._hiveBar(ctx, ax, ay, W, H);
     else if (this.mode === 'auto') this._roamBar(ctx, ax, ay, W, H);
+    ctx.restore();
   }
 
   /**
@@ -2215,57 +2368,94 @@ export class UI {
    * put on your back down the left, and everything worth knowing about the one
    * you are looking at down the right.
    */
+  /**
+   * THE PANEL.
+   *
+   * It used to be a small box with four tabs crammed into a strip along the
+   * top and whatever fitted underneath them, which is how the bench ended up
+   * as a stack of identical grey bars and the fleet ended up as an empty
+   * brown room. It is a menu now, built the way a menu is built:
+   *
+   *   - a RAIL down the left with one big target per tab, its own colour, its
+   *     own picture, and the name under it, which is the one arrangement that
+   *     survives being tapped with a thumb;
+   *   - a HEADER with the name of the thing you are looking at and a line
+   *     saying what it is for;
+   *   - and a BODY that each tab lays out for itself, in two columns when
+   *     there is room for two, because every one of these screens is a list
+   *     of things and one of those things in detail.
+   *
+   * It opens by growing out of the middle rather than appearing, and the
+   * world behind it goes dark and stays dark, so nothing out there draws over
+   * the top of it.
+   */
   _panel(ctx, W, H) {
     const k = easeOutCubic(this.drawer);
-    const pw = Math.min(420, W - 20);
-    const ph = Math.min(232, H - 20);
+    const pw = Math.min(560, W - 16);
+    const ph = Math.min(330, H - 16);
     const px = Math.round((W - pw) / 2);
-    const py = Math.round((H - ph) / 2 + (1 - k) * 26);
+    const py = Math.round((H - ph) / 2);
 
-    ctx.globalAlpha = k * 0.62;
+    ctx.globalAlpha = k * 0.78;
     ctx.fillStyle = '#0a0705';
     ctx.fillRect(0, 0, W, H);
+    ctx.globalAlpha = 1;
+
+    // grown out of the centre. A panel that slides is a panel that arrives
+    // from somewhere, and this one is not anywhere - it is the thing you were
+    // already looking at, opened up.
+    ctx.save();
+    ctx.translate(px + pw / 2, py + ph / 2);
+    ctx.scale(lerp(0.9, 1, k), lerp(0.9, 1, k));
+    ctx.translate(-(px + pw / 2), -(py + ph / 2));
     ctx.globalAlpha = k;
 
     drawPanel(ctx, px, py, pw, ph);
+    const tab = TABS.find((t) => t.id === this.tab) || TABS[0];
 
-    const inX = px + 12, inY = py + 12, inW = pw - 24, inH = ph - 24;
-
-    // -- the tab rail -------------------------------------------------------
-    // a tab is a thing you hit with a thumb on a phone, so it gets taller
-    const tabH = this.touchEnabled ? 28 : 20;
-    const tabW = Math.floor(inW / TABS.length);
+    // ---- the rail --------------------------------------------------------
+    const railW = pw < 360 ? 46 : 64;
+    const rx = px + 8, ry = py + 8;
+    const cellH = Math.min(58, Math.floor((ph - 16) / 4));
+    ctx.fillStyle = 'rgba(12,8,5,0.42)';
+    ctx.fillRect(rx, ry, railW, ph - 16);
     TABS.forEach((t, i) => {
-      const tx = inX + i * tabW;
+      const ty = ry + 4 + i * cellH;
       const on = this.tab === t.id;
-      const hot = this._hit(tx, inY, tabW, tabH);
+      const hot = this._hit(rx, ty, railW, cellH - 2);
       if (on) {
-        ctx.fillStyle = 'rgba(104,80,48,0.95)';
-        ctx.fillRect(tx, inY, tabW - 1, tabH);
-        ctx.fillStyle = '#d6ba8a';
-        ctx.fillRect(tx, inY + tabH - 1, tabW - 1, 1);
+        ctx.fillStyle = 'rgba(96,74,44,0.95)';
+        ctx.fillRect(rx, ty, railW, cellH - 2);
+        ctx.fillStyle = t.tint;
+        ctx.fillRect(rx, ty, 2, cellH - 2);
       } else if (hot) {
-        ctx.fillStyle = 'rgba(70,54,34,0.9)';
-        ctx.fillRect(tx, inY, tabW - 1, tabH);
+        ctx.fillStyle = 'rgba(62,48,30,0.9)';
+        ctx.fillRect(rx, ty, railW, cellH - 2);
       }
-      ctx.globalAlpha = k * (on ? 1 : 0.62);
-      // narrow screens get the pictogram alone; there is no room for both
-      const lw = tabW >= 58 ? textWidth(t.name) : 0;
-      const gx = tx + Math.round((tabW - 1 - (18 + (lw ? 2 + lw : 0))) / 2);
-      drawTab(ctx, t.icon, gx, inY + Math.round((tabH - 22) / 2) + 1);
-      if (lw) drawText(ctx, t.name, gx + 20, inY + Math.round((tabH - 7) / 2), { color: on ? INK : DIM });
+      ctx.globalAlpha = k * (on ? 1 : 0.6);
+      drawTab(ctx, t.icon, rx + Math.round((railW - 18) / 2) - 1,
+        ty + Math.round((cellH - 2 - 30) / 2));
+      drawText(ctx, t.name, rx + railW / 2, ty + cellH - 14,
+        { color: on ? t.tint : DIM, align: 'center' });
       ctx.globalAlpha = k;
       if (hot && this.game.input.clicked) {
         this.game.input.clicked = false;
-        this.tab = t.id; this.scroll = 0; this.pick = null;
+        this.tab = t.id; this.scroll = 0; this.pick = null; this.codexPick = null;
         this.game.audio?.play('ui');
       }
     });
 
-    // -- close --------------------------------------------------------------
-    const cx0 = px + pw - 20, cy0 = py + 4;
-    // the target around it is finger-sized even though the mark stays small
-    const cpad = this.touchEnabled ? 8 : 0;
+    // ---- the header ------------------------------------------------------
+    const bx = rx + railW + 10;
+    const bw = px + pw - 8 - bx;
+    drawText(ctx, tab.name, bx, py + 11, { color: tab.tint });
+    drawText(ctx, ellipsize(tab.sub, bw - 26), bx, py + 22, { color: FAINT });
+    ctx.fillStyle = 'rgba(200,168,112,0.22)';
+    ctx.fillRect(bx, py + 33, bw, 1);
+
+    // ---- close -----------------------------------------------------------
+    const cx0 = px + pw - 22, cy0 = py + 7;
+    const cpad = this.touchEnabled ? 9 : 2;
     const closeHot = this._hit(cx0 - cpad, cy0 - cpad, 14 + cpad * 2, 14 + cpad * 2);
     drawGlyph(ctx, 'close', cx0 + 1, cy0 + 1, { color: closeHot ? '#f5e7c6' : '#a08a64' });
     if (closeHot) {
@@ -2273,114 +2463,183 @@ export class UI {
       if (this.game.input.clicked) { this.game.input.clicked = false; this.drawerOpen = false; }
     }
 
-    const bodyY = inY + tabH + 6, bodyH = inH - tabH - 6;
-    const tab = TABS.find((t) => t.id === this.tab) || TABS[0];
-    if (this.tab === 'codex' || this.tab === 'map' || this.tab === 'craft') {
-      drawText(ctx, ellipsize(tab.sub, inW - 6), inX, bodyY - 4, { color: FAINT });
-      ctx.save();
-      ctx.beginPath(); ctx.rect(inX, bodyY + 6, inW, bodyH - 6); ctx.clip();
-      if (this.tab === 'map') this._mapTab(ctx, inX, bodyY + 6, inW, bodyH - 6);
-      else if (this.tab === 'craft') this._craftTab(ctx, inX, bodyY + 6, inW, bodyH - 6);
-      else this._codexTab(ctx, inX, bodyY + 6, inW, bodyH - 6);
-      ctx.restore();
-      ctx.globalAlpha = 1;
-      return;
-    }
-
-    drawText(ctx, ellipsize(tab.sub, inW - 6), inX, bodyY - 4, { color: FAINT });
+    const by0 = py + 39, bh = py + ph - 8 - by0;
     ctx.save();
-    ctx.beginPath(); ctx.rect(inX, bodyY + 6, inW, bodyH - 6); ctx.clip();
-    this._fleetTab(ctx, inX, bodyY + 6, inW, bodyH - 6);
+    ctx.beginPath(); ctx.rect(bx, by0, bw, bh); ctx.clip();
+    if (this.tab === 'craft') this._craftTab(ctx, bx, by0, bw, bh);
+    else if (this.tab === 'fleet') this._fleetTab(ctx, bx, by0, bw, bh);
+    else this._codexTab(ctx, bx, by0, bw, bh);
+    ctx.restore();
     ctx.restore();
     ctx.globalAlpha = 1;
   }
 
+  /** A slot: the square a thing sits in, everywhere in this panel. */
+  _cell(ctx, x, y, w, h, opts = {}) {
+    ctx.fillStyle = opts.on ? 'rgba(96,74,44,0.95)'
+      : opts.hot ? 'rgba(70,54,34,0.95)' : 'rgba(30,22,14,0.85)';
+    ctx.fillRect(x, y, w, h);
+    ctx.strokeStyle = opts.on ? (opts.tint || 'rgba(214,186,138,0.75)')
+      : 'rgba(150,122,78,0.26)';
+    ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+  }
+
   /**
-   * The bench. His bag along the top, the recipe tree under it, and every
-   * card says in icons what it needs and whether he has it - so you can read
-   * the whole tree without a word of explanation.
+   * THE BENCH.
+   *
+   * Left: what is in his pack, as actual slots you can see the contents of.
+   * Right: everything he could make, as rows you pick rather than rows you
+   * fire - because picking one and then reading what it needs and then
+   * pressing MAKE is how you find out what you are short of, and a row that
+   * makes the thing the instant you touch it never tells you anything.
+   *
+   * The detail strip at the bottom is fixed. It is the only part of this
+   * screen that can say "you need two more of these", and a thing that can
+   * say that should never be off the bottom of a scroll.
    */
   _craftTab(ctx, x, y, w, h) {
     const g = this.game;
     const craft = g.craft;
     const owned = g.mind.owned;
+    // Wide, the pack sits beside the recipes. Narrow - a phone held upright -
+    // there is no beside, so the pack becomes one row along the top and the
+    // list takes everything under it. Same screen, two shapes.
+    const wide = w > 300;
+    const detH = wide ? 62 : 74;
+    const S = 26, gap = 2;
 
-    // ---- the bag ----------------------------------------------------------
+    // ---- his pack --------------------------------------------------------
     const bag = craft.list();
-    drawText(ctx, 'IN HER PACK', x, y, { color: '#e2b74a' });
-    let bx = x, by = y + 11;
+    drawText(ctx, 'HIS PACK', x, y, { color: '#e2b74a' });
+    const packW = wide ? Math.round(w * 0.36) : w;
+    const cols = Math.max(1, Math.floor((packW + gap) / (S + gap)));
+    const packRows = wide ? 3 : 1;
+    for (let i = 0; i < cols * packRows; i++) {
+      const cxp = x + (i % cols) * (S + gap);
+      const cyp = y + 12 + Math.floor(i / cols) * (S + gap);
+      const e = bag[i];
+      const hot = !!e && this._hit(cxp, cyp, S, S);
+      this._cell(ctx, cxp, cyp, S, S, { hot });
+      if (!e) continue;
+      drawNodeIcon(ctx, e.def.icon, cxp + S / 2, cyp + S / 2 - 3, e.def.tint, 1);
+      drawText(ctx, `${e.n}`, cxp + S - 2, cyp + S - 8, { color: INK, align: 'right' });
+      if (hot) this.hover = { title: e.def.name, body: e.def.desc };
+    }
+    const packBottom = y + 12 + packRows * (S + gap);
+    let noteLines = [];
     if (!bag.length) {
-      drawText(ctx, 'Nothing. Put him on a seam.', x, by, { color: FAINT });
-      by += 11;
+      const note = wide
+        ? 'Empty. Put him on a seam and let him swing a pick at it.'
+        : 'Empty. Put him on a seam.';
+      noteLines = wrapText(note, packW - 2);
+      noteLines.forEach((l, i) =>
+        drawText(ctx, l, x, packBottom + 2 + i * LINE_H, { color: FAINT }));
     }
-    for (const e of bag) {
-      const cw = 30;
-      if (bx + cw > x + w) { bx = x; by += 14; }
-      drawPlate(ctx, bx, by, cw - 2, 12, { rivets: false });
-      drawNodeIcon(ctx, e.def.icon, bx + 8, by + 6, e.def.tint, 1);
-      drawText(ctx, `${e.n}`, bx + cw - 5, by + 3, { color: INK, align: 'right' });
-      if (this._hit(bx, by, cw - 2, 12)) {
-        this.hover = { title: `${e.def.name} x${e.n}`, body: e.def.desc };
-      }
-      bx += cw;
-    }
-    by += 18;
 
-    // ---- what is being made right now -------------------------------------
+    // ---- what he can make ------------------------------------------------
+    const lx = wide ? x + packW + 8 : x;
+    const lw = wide ? w - packW - 8 : w;
+    const ly = wide ? y : packBottom + 6 + noteLines.length * LINE_H;
+    // everything in this column stops dead at the detail strip, which is the
+    // one part of the screen that is never allowed to be scrolled off
+    const listBottom = y + h - detH - 6;
+    drawText(ctx, 'HE CAN MAKE', lx, ly, { color: '#e2b74a' });
+    const list = craft.recipes();
+    if (!this.pick || !list.some((e) => e.r.id === this.pick)) this.pick = list[0]?.r.id || null;
+    const rowH = this.touchEnabled ? 20 : 17;
+    const top = ly + 12;
+    this.scroll = clamp(this.scroll, 0, Math.max(0, list.length * rowH - (listBottom - top)));
+    ctx.save();
+    ctx.beginPath(); ctx.rect(lx, top, lw, Math.max(0, listBottom - top)); ctx.clip();
+    list.forEach(({ r, why }, i) => {
+      const ry = top + i * rowH - this.scroll;
+      if (ry + rowH < top || ry > listBottom) return;
+      const out = ITEM_BY_ID[r.out[0]];
+      const on = this.pick === r.id;
+      const hot = this._hit(lx, ry, lw, rowH - 1) && ry >= top && ry + rowH <= listBottom + rowH;
+      this._cell(ctx, lx, ry, lw, rowH - 1, { on, hot, tint: out.tint });
+      ctx.globalAlpha = why ? 0.55 : 1;
+      drawNodeIcon(ctx, out.icon, lx + 10, ry + (rowH - 1) / 2, out.tint, 1);
+      drawText(ctx, ellipsize(`${out.name}${r.out[1] > 1 ? ` x${r.out[1]}` : ''}`, lw - 52),
+        lx + 19, ry + (rowH - 8) / 2, { color: why ? DIM : INK });
+      // a mark when everything for it is already in the pack
+      if (!why) drawNodeIcon(ctx, 'sun', lx + lw - 9, ry + (rowH - 1) / 2, '#9ad86a', 1);
+      ctx.globalAlpha = 1;
+      if (hot && this.game.input.clicked) {
+        this.game.input.clicked = false;
+        this.pick = r.id;
+        this.game.audio?.play('ui');
+      }
+    });
+    ctx.restore();
+
+    // ---- the detail strip, nailed to the bottom --------------------------
+    // Opaque, not a wash: a strip you can read the list through is a strip
+    // that reads as a mistake.
+    const dy = y + h - detH;
+    ctx.fillStyle = '#17100a';
+    ctx.fillRect(x, dy, w, detH);
+    ctx.fillStyle = 'rgba(200,168,112,0.22)';
+    ctx.fillRect(x, dy, w, 1);
+    const sel = list.find((e) => e.r.id === this.pick);
+
+    // something already on the bench beats anything you might pick
     if (craft.job) {
       const out = ITEM_BY_ID[craft.job.r.out[0]];
-      drawText(ctx, `making ${out.name}`, x, by, { color: '#9fe8d4' });
-      drawGauge(ctx, x, by + 10, w - 8, 4, craft.progress, '#9fe8d4');
-      by += 22;
+      drawNodeIcon(ctx, out.icon, x + 12, dy + 20, out.tint, 1);
+      drawText(ctx, `making ${out.name}`, x + 24, dy + 10, { color: '#9fe8d4' });
+      drawText(ctx, ellipsize('He is doing it by hand. It takes as long as it takes.', w - 30),
+        x + 24, dy + 22, { color: FAINT });
+      drawGauge(ctx, x + 12, dy + 38, w - 24, 6, craft.progress, '#9fe8d4');
+      return;
+    }
+    if (!sel) return;
+    const out = ITEM_BY_ID[sel.r.out[0]];
+    const why = sel.why || (!owned ? 'he has to be yours' : null);
+    const atName = STATIONS[sel.r.at].name;
+    drawNodeIcon(ctx, out.icon, x + 11, dy + 15, out.tint, 1);
+    drawText(ctx, ellipsize(out.name, w - 28 - textWidth(atName)), x + 22, dy + 6, { color: INK });
+    drawText(ctx, atName, x + w - 4, dy + 6, { color: FAINT, align: 'right' });
+    drawText(ctx, ellipsize(out.desc, w - 26), x + 22, dy + 17, { color: DIM });
+
+    // every ingredient, with what he has of it against what it takes
+    let cx2 = x + 10;
+    const iy = dy + 32;
+    for (const [id, n] of sel.r.need) {
+      const d = ITEM_BY_ID[id];
+      const have = craft.count(id);
+      const short = have < n;
+      const cnt = `${have}/${n}`;
+      if (cx2 + 16 + textWidth(cnt) > x + w - 6) break;
+      drawNodeIcon(ctx, d.icon, cx2 + 5, iy + 4, short ? '#c07a6a' : d.tint, 1);
+      drawText(ctx, cnt, cx2 + 12, iy + 1, { color: short ? '#c07a6a' : '#9ad86a' });
+      cx2 += 18 + textWidth(cnt);
     }
 
-    // ---- the tree ---------------------------------------------------------
-    drawText(ctx, 'SHE CAN MAKE', x, by, { color: '#e2b74a' });
-    by += 12;
-    const list = craft.recipes();
-    for (const { r, why } of list) {
-      const out = ITEM_BY_ID[r.out[0]];
-      const rowH = 20;
-      if (by > y + h - 4) break;
-      const hot = this._hit(x, by, w - 6, rowH - 2);
-      const can = !why && owned && !craft.job;
-      drawPlate(ctx, x, by, w - 6, rowH - 2, {
-        top: can && hot ? 'rgba(66,52,30,0.95)' : undefined,
-        edge: can ? 'rgba(180,146,86,0.6)' : 'rgba(90,74,50,0.35)',
-      });
-      ctx.globalAlpha = can ? 1 : 0.5;
-      // what it makes, on its own margin down the left of the row
-      drawNodeIcon(ctx, out.icon, x + 11, by + (rowH - 2) / 2, out.tint, 1);
-      // and where it has to be made, only when the row is wide enough that
-      // the words are not sitting on the ingredients
-      const roomy = w > 210;
-      const nameW = roomy ? w - 44 - textWidth(STATIONS[r.at].name) : w - 44;
-      drawText(ctx, ellipsize(`${out.name}${r.out[1] > 1 ? ` x${r.out[1]}` : ''}`, nameW),
-        x + 20, by + 2, { color: can ? INK : DIM });
-      // what it takes, as chips
-      let cx2 = x + 20;
-      for (const [id, n] of r.need) {
-        const d = ITEM_BY_ID[id];
-        const short = craft.count(id) < n;
-        drawNodeIcon(ctx, d.icon, cx2 + 4, by + 13, short ? '#c07a6a' : d.tint, 1);
-        drawText(ctx, `${n}`, cx2 + 10, by + 10, { color: short ? '#c07a6a' : FAINT });
-        cx2 += 17;
+    // ---- and the one button ----------------------------------------------
+    // Full width on a phone, where a small plate in a corner is a plate you
+    // miss; tucked in the corner on a desktop, where it is not.
+    const bh2 = this.touchEnabled ? 24 : 20;
+    const bw2 = wide ? 84 : w;
+    const bx2 = wide ? x + w - bw2 : x;
+    const by2 = y + h - bh2 - 2;
+    const can = !why;
+    const hot = this._hit(bx2, by2, bw2, bh2);
+    drawPlate(ctx, bx2, by2, bw2, bh2, {
+      top: can ? (hot ? 'rgba(126,98,52,0.98)' : 'rgba(96,74,44,0.95)') : 'rgba(40,30,20,0.95)',
+      edge: can ? '#d6ba8a' : 'rgba(90,74,50,0.45)',
+    });
+    drawText(ctx, can ? 'MAKE' : ellipsize(why.toUpperCase(), bw2 - 10),
+      bx2 + bw2 / 2, by2 + (bh2 - 7) / 2,
+      { color: can ? '#ffe9a8' : '#c07a6a', align: 'center' });
+    if (hot) {
+      this.hover = can ? null : { title: 'Not yet', body: `${why}.` };
+      if (can && this.game.input.clicked) {
+        this.game.input.clicked = false;
+        const res = craft.start(sel.r.id);
+        if (res.ok) { g.audio.play('uiBig'); g.npc.setPose('write'); }
+        else { this.say(res.why, 3); g.audio.play('deny'); }
       }
-      if (roomy) {
-        drawText(ctx, STATIONS[r.at].name, x + w - 12, by + 2, { color: FAINT, align: 'right' });
-      }
-      ctx.globalAlpha = 1;
-      if (hot) {
-        this.hover = { title: out.name, body: why ? `${out.desc}\n\n${why}.`
-          : owned ? out.desc : `${out.desc}\n\nShe has to be yours to make it.` };
-        if (can && this.game.input.clicked) {
-          this.game.input.clicked = false;
-          const res = craft.start(r.id);
-          if (res.ok) { this.game.audio.play('ui'); this.game.npc.setPose('write'); }
-          else { this.say(res.why, 3); this.game.audio.play('deny'); }
-        }
-      }
-      by += rowH;
     }
   }
 
@@ -2667,192 +2926,121 @@ export class UI {
     const fleet = g.wildlife.fleet.slice();
     const held = g.wildlife.list.filter((c) => c.puppet);
     const all = fleet.concat(held.filter((c) => !fleet.includes(c)));
+
+    // ---- nothing yet -----------------------------------------------------
+    // An empty list used to be one grey sentence in the top-left of an empty
+    // brown room, which reads as a screen that is broken rather than a screen
+    // that is empty. So the empty state says what this is FOR.
     if (!all.length) {
-      wrapText('Nothing lives on you yet.', w - 4)
-        .forEach((l, i) => drawText(ctx, l, x, y + 6 + i * LINE_H, { color: FAINT }));
+      const cy = y + h / 2;
+      drawNodeIcon(ctx, 'nest', x + w / 2, cy - 30, 'rgba(154,216,106,0.55)', 2);
+      drawText(ctx, 'NOTHING LIVES ON YOU YET', x + w / 2, cy - 8,
+        { color: DIM, align: 'center' });
+      wrapText('Things move in when there is a reason to. Grow something on your'
+        + ' back, keep water in the basin, and the desert comes to you - then'
+        + ' win one over with fruit and water and it stays.', Math.min(300, w - 20))
+        .forEach((l, i) => drawText(ctx, l, x + w / 2, cy + 8 + i * LINE_H,
+          { color: FAINT, align: 'center' }));
       return;
     }
-    const ch = 34, gap = 3;
-    let row = 0;
-    for (const c of all) {
-      const by = y + row * (ch + gap) - this.scroll;
-      row++;
-      if (by > y + h || by + ch < y) continue;
+
+    // ---- the cards -------------------------------------------------------
+    // Two to a row when there is room. A card is a picture of the animal, its
+    // name, where it has got to, and the two things you can do to it - and
+    // the two things are BUTTONS, because "click the row to drive, click it
+    // again to stop" was one control doing two jobs and neither was labelled.
+    const cols = w > 320 ? 2 : 1;
+    const gap = 5;
+    const cw = Math.floor((w - gap * (cols - 1)) / cols);
+    const ch = 54;
+    const orders = g.wildlife.orders;
+
+    // the standing order, across the top: it applies to all of them at once
+    const OR = [['follow', 'FOLLOW'], ['ride', 'RIDE'], ['stay', 'HOLD']];
+    let ox = x;
+    OR.forEach(([id, name]) => {
+      const bw = 52, bh = 16;
+      const on = orders === id;
+      const hot = this._hit(ox, y, bw, bh);
+      this._cell(ctx, ox, y, bw, bh, { on, hot, tint: '#9ad86a' });
+      drawText(ctx, name, ox + bw / 2, y + 5, { color: on ? '#b6de8f' : DIM, align: 'center' });
+      if (hot && g.input.clicked) {
+        g.input.clicked = false;
+        g.wildlife.setOrders(id);
+        this.say(`Everything on you: ${name.toLowerCase()}.`, 2.4);
+        g.audio?.play('ui');
+      }
+      ox += bw + 3;
+    });
+
+    const top = y + 22;
+    const rows = Math.ceil(all.length / cols);
+    this.scroll = clamp(this.scroll, 0, Math.max(0, rows * (ch + gap) - (h - 22)));
+
+    all.forEach((c, i) => {
+      const cxp = x + (i % cols) * (cw + gap);
+      const cyp = top + Math.floor(i / cols) * (ch + gap) - this.scroll;
+      if (cyp + ch < top || cyp > y + h) return;
       const on = this.driving === c;
       const puppet = !!c.puppet;
-      const hot = this._hit(x, by, w, ch);
-      ctx.fillStyle = on ? 'rgba(104,80,48,0.95)' : hot ? 'rgba(80,62,38,0.95)' : 'rgba(44,34,22,0.9)';
-      ctx.fillRect(x, by, w, ch);
-      ctx.fillStyle = puppet ? '#b46ad0' : c.onShell ? '#8cc468' : '#e2b74a';
-      ctx.fillRect(x, by, 2, ch);
+      const tint = puppet ? '#b46ad0' : c.onShell ? '#8cc468' : '#e2b74a';
+      this._cell(ctx, cxp, cyp, cw, ch, { on, tint });
+      ctx.fillStyle = tint;
+      ctx.fillRect(cxp, cyp, 2, ch);
 
-      drawText(ctx, ellipsize(c.name, w - 60), x + 6, by + 3, { color: INK });
-      drawText(ctx, puppet ? 'RIDDEN' : c.onShell ? 'aboard' : 'out there', x + w - 4, by + 3,
-        { color: puppet ? '#d79ae8' : c.onShell ? '#b6de8f' : DIM, align: 'right' });
-      const d = Math.round(Math.abs(c.x - g.crab.x) / 10);
-      drawNodeIcon(ctx, 'step', x + 10, by + 20, FAINT, 1);
-      drawText(ctx, `${d}m`, x + 16, by + 17, { color: FAINT });
-      if (on) {
-        drawText(ctx, 'DRIVING', x + w - 4, by + 17, { color: '#ffe9a8', align: 'right' });
-      } else {
-        drawNodeIcon(ctx, 'point', x + w - 8, by + 20, FAINT, 1);
+      // its own portrait, in a lit-up window, so a card is the ANIMAL
+      const pw2 = 40;
+      ctx.fillStyle = 'rgba(12,8,5,0.55)';
+      ctx.fillRect(cxp + 5, cyp + 5, pw2, ch - 10);
+      const art = c.rig?.body;
+      if (art) {
+        const sc = Math.min((pw2 - 6) / art.cv.width, (ch - 16) / art.cv.height, 1.6);
+        ctx.save();
+        ctx.beginPath(); ctx.rect(cxp + 5, cyp + 5, pw2, ch - 10); ctx.clip();
+        ctx.imageSmoothingEnabled = false;
+        ctx.drawImage(art.cv, Math.round(cxp + 5 + (pw2 - art.cv.width * sc) / 2),
+          Math.round(cyp + 4 + (ch - 10 - art.cv.height * sc) / 2),
+          Math.round(art.cv.width * sc), Math.round(art.cv.height * sc));
+        ctx.restore();
       }
-      if (hot) {
-        this.hover = { title: c.name, body: c.def.desc };
-        if (g.input.clicked) {
+
+      const tx = cxp + pw2 + 10;
+      const tw2 = cw - pw2 - 16;
+      drawText(ctx, ellipsize(c.name, tw2), tx, cyp + 6, { color: INK });
+      const where = puppet ? 'ridden' : c.onShell ? 'aboard'
+        : `${Math.round(Math.abs(c.x - g.crab.x) / 10)}m ${c.x > g.crab.x ? 'east' : 'west'}`;
+      drawText(ctx, where, tx, cyp + 17, { color: tint });
+
+      // and its two verbs
+      const bh = 15, bw = Math.min(46, Math.floor((tw2 - 4) / 2));
+      const byb = cyp + ch - bh - 5;
+      const verbs = [
+        [on ? 'LET GO' : 'DRIVE', () => { if (on) this.release(); else this.drive(c); }],
+        ['CALL', () => {
+          c.commanded = { x: g.crab.x + (g.crab.facing || 1) * 18 };
+          this.say(`${c.name} on its way.`, 2.4);
+        }],
+      ];
+      verbs.forEach(([name, run], n) => {
+        const bxb = tx + n * (bw + 4);
+        const hot = this._hit(bxb, byb, bw, bh);
+        drawPlate(ctx, bxb, byb, bw, bh, {
+          top: hot ? 'rgba(112,88,50,0.98)' : 'rgba(64,50,32,0.92)',
+          edge: hot ? '#d6ba8a' : 'rgba(150,122,78,0.4)',
+        });
+        drawText(ctx, name, bxb + bw / 2, byb + (bh - 7) / 2,
+          { color: hot ? '#ffe9a8' : DIM, align: 'center' });
+        if (hot && g.input.clicked) {
           g.input.clicked = false;
-          if (on) this.release(); else this.drive(c);
+          run();
+          g.audio?.play('ui');
         }
+      });
+
+      if (this._hit(cxp, cyp, cw, ch - bh - 8)) {
+        this.hover = { title: c.name, body: c.def.desc };
       }
-    }
-    this.scroll = clamp(this.scroll, 0, Math.max(0, row * (ch + gap) - h));
-  }
-
-  /**
-   * The map. One long strip of the basin with everything you have found on it,
-   * because the world is one long strip of the basin.
-   */
-  _mapTab(ctx, x, y, w, h) {
-    const g = this.game;
-    const span = 16000;                       // world units shown across
-    if (this.mapX === null) this.mapX = g.crab.x;
-    this.mapX = damp(this.mapX, g.crab.x, 0.02, 1 / 60);
-    const cx = x + w / 2;
-    const toX = (wx) => cx + (wx - this.mapX) * (w / span);
-
-    ctx.fillStyle = 'rgba(14,10,7,0.9)';
-    ctx.fillRect(x, y, w, h);
-    // survey ruling, so the empty air over the basin still reads as a chart
-    ctx.fillStyle = 'rgba(214,186,138,0.055)';
-    for (let ry2 = y + 12; ry2 < y + h; ry2 += 9) ctx.fillRect(x, ry2, w, 1);
-
-    // the band of country you are crossing, coloured by biome
-    const bandH = 7;
-    for (let i = 0; i < w; i += 4) {
-      const wx = this.mapX + (i - w / 2) * (span / w);
-      const b = biomeAt(wx);
-      ctx.fillStyle = (b.sky && b.sky[2]) || '#8a5f38';
-      ctx.globalAlpha = 0.55;
-      ctx.fillRect(x + i, y, 4, bandH);
-      ctx.globalAlpha = 1;
-    }
-    ctx.fillStyle = 'rgba(214,186,138,0.25)';
-    ctx.fillRect(x, y + bandH, w, 1);
-    drawText(ctx, biomeAt(this.mapX).name.toUpperCase(), cx, y + 1,
-      { color: '#f2e4c2', align: 'center' });
-
-    // the ground itself, sampled from the real terrain
-    const gy = y + Math.round(h * 0.74);
-    const here = g.terrain.surfaceY(this.mapX);
-    ctx.beginPath();
-    ctx.moveTo(x, y + h);
-    for (let i = 0; i <= w; i += 2) {
-      const wx = this.mapX + (i - w / 2) * (span / w);
-      const sy = gy + (g.terrain.surfaceY(wx) - here) * 0.13;
-      ctx.lineTo(x + i, clamp(sy, y + bandH + 10, y + h - 2));
-    }
-    ctx.lineTo(x + w, y + h);
-    ctx.closePath();
-    ctx.fillStyle = 'rgba(112,84,50,0.62)';
-    ctx.fill();
-    ctx.strokeStyle = 'rgba(214,175,112,0.85)';
-    ctx.lineWidth = 1;
-    ctx.stroke();
-
-    // Distance ticks. Every two hundred metres is right on a desktop panel
-    // and unreadable on a phone, where the labels end up on top of each
-    // other - so the step doubles until they have room to be read.
-    let step = 2000;
-    while (step * (w / span) < 40) step *= 2;
-    for (let m = Math.floor((this.mapX - span / 2) / step) * step; m < this.mapX + span / 2; m += step) {
-      const tx = toX(m);
-      if (tx < x + 14 || tx > x + w - 14) continue;
-      ctx.fillStyle = 'rgba(214,186,138,0.16)';
-      ctx.fillRect(Math.round(tx), y + bandH + 2, 1, gy - y - bandH - 2);
-      drawText(ctx, `${Math.round(m / 10)}m`, tx, gy + 3, { color: FAINT, align: 'center' });
-    }
-
-    // everything worth walking to
-    const marks = g.world.marksNear(this.mapX, span);
-    const labelled = [];
-    for (const m of marks) {
-      const mx = toX(m.x);
-      if (mx < x - 6 || mx > x + w + 6) continue;
-      const found = g.world.found.has(m.key);
-      const col = m.kind === 'oasis' ? '#5fc6d8'
-        : m.kind === 'ruin' ? '#d6ba8a'
-          : m.kind === 'wreck' ? '#c39163'
-            : m.kind === 'bonefield' ? '#c8c0ae' : '#e2b74a';
-      const mxr = Math.round(mx);
-      ctx.globalAlpha = found ? 1 : 0.40;
-      ctx.fillStyle = 'rgba(20,14,9,0.85)';
-      ctx.fillRect(mxr, gy - 15, 1, 15);
-      ctx.fillStyle = col;
-      switch (m.kind) {
-        case 'oasis':
-          ctx.beginPath(); ctx.arc(mxr, gy - 18, 3.2, 0, TAU); ctx.fill();
-          ctx.fillStyle = 'rgba(255,255,255,0.5)';
-          ctx.fillRect(mxr - 1, gy - 19, 1, 1);
-          break;
-        case 'ruin':
-          ctx.fillRect(mxr - 4, gy - 20, 2, 6);
-          ctx.fillRect(mxr - 1, gy - 23, 2, 9);
-          ctx.fillRect(mxr + 2, gy - 19, 2, 5);
-          ctx.fillRect(mxr - 5, gy - 14, 10, 1);
-          break;
-        case 'wreck':
-          ctx.fillRect(mxr - 5, gy - 17, 10, 2);
-          ctx.fillRect(mxr - 3, gy - 19, 7, 2);
-          ctx.fillRect(mxr, gy - 26, 1, 7);
-          ctx.fillRect(mxr + 1, gy - 25, 3, 3);
-          break;
-        case 'bonefield':
-          ctx.fillRect(mxr - 4, gy - 17, 9, 1);
-          ctx.fillRect(mxr - 3, gy - 20, 1, 3);
-          ctx.fillRect(mxr, gy - 21, 1, 4);
-          ctx.fillRect(mxr + 3, gy - 19, 1, 2);
-          break;
-        default:
-          ctx.fillRect(mxr - 1, gy - 26, 3, 12);
-          ctx.fillRect(mxr - 2, gy - 16, 5, 2);
-      }
-      ctx.globalAlpha = 1;
-      const hot = Math.abs(this.game.input.sx - mx) < 8
-        && this.game.input.sy > gy - 30 && this.game.input.sy < gy + 6;
-      if (hot) {
-        const d = Math.round(Math.abs(m.x - g.crab.x) / 10);
-        this.hover = {
-          title: found ? m.name : 'Something out there',
-          body: found
-            ? `${m.note}\n${d}m ${m.x > g.crab.x ? 'east' : 'west'}`
-            : `${d}m ${m.x > g.crab.x ? 'east' : 'west'}. You have not stood in it.`,
-        };
-      }
-      labelled.push({ mx, col, found, name: m.name, hot });
-    }
-    // labels last, thinned out so they never stack
-    let lastX = -1e9;
-    for (const L of labelled.sort((p, q) => p.mx - q.mx)) {
-      if (!L.hot && L.mx - lastX < 52) continue;
-      lastX = L.mx;
-      drawText(ctx, L.found ? L.name : '?', L.mx, gy - 34,
-        { color: L.found ? L.col : 'rgba(226,183,74,0.55)', align: 'center' });
-    }
-
-    // you
-    const you = toX(g.crab.x);
-    ctx.fillStyle = '#f2e4c2';
-    ctx.fillRect(Math.round(you) - 2, gy - 9, 5, 2);
-    ctx.fillRect(Math.round(you), gy - 7, 1, 7);
-    ctx.fillRect(Math.round(you) - 3, gy - 11, 2, 2);
-    ctx.fillRect(Math.round(you) + 2, gy - 11, 2, 2);
-
-    const far = `${Math.round(g.crab.x / 10)}m`;
-    const tight = w < 240;
-    drawText(ctx, tight ? `${g.world.found.size} found` : `${g.world.found.size} places found`,
-      x, y + h - 9, { color: FAINT });
-    drawText(ctx, tight ? far : `${far} from where you woke`, x + w, y + h - 9,
-      { color: FAINT, align: 'right' });
+    });
   }
 
   // -- field notes ----------------------------------------------------------
@@ -2863,7 +3051,7 @@ export class UI {
     // him to read them, which is the whole reason to keep him around.
     if (!g.vessClose) {
       const d = Math.round(Math.abs(g.npc.x - g.crab.x) / 10);
-      drawText(ctx, 'HER NOTEBOOK IS NOT HERE', x, y + 6, { color: '#e2b74a' });
+      drawText(ctx, 'HIS NOTEBOOK IS NOT HERE', x, y + 6, { color: '#e2b74a' });
       wrapText(`The field notes are Dr. Vess's, and he is carrying them. Get to him - he is ${d}m ${g.npc.x > g.crab.x ? 'east' : 'west'} - and read over his shoulder.`, w - 4)
         .forEach((l, i) => drawText(ctx, l, x, y + 20 + i * LINE_H, { color: DIM }));
       wrapText('F calls him over. He will follow you, and ride on you once you are big enough to carry him.', w - 4)

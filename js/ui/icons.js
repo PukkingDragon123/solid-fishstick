@@ -1141,18 +1141,18 @@ const MODE_ART = {
  * push the body up to full colour while the edge stays dark and the shape
  * still reads against a bright plate.
  */
-export function drawModeArt(ctx, name, cx, cy, body, edge) {
+export function drawModeArt(ctx, name, cx, cy, body, edge, s = 1) {
   const rows = MODE_ART[name];
   if (!rows) return;
   const w = rows[0].length, h = rows.length;
-  const x0 = Math.round(cx - w / 2), y0 = Math.round(cy - h / 2);
+  const x0 = Math.round(cx - w * s / 2), y0 = Math.round(cy - h * s / 2);
   for (let y = 0; y < h; y++) {
     const line = rows[y];
     for (let x = 0; x < line.length; x++) {
       const c = line[x];
       if (c === '.') continue;
       ctx.fillStyle = c === '1' ? body : edge;
-      ctx.fillRect(x0 + x, y0 + y, 1, 1);
+      ctx.fillRect(x0 + x * s, y0 + y * s, s, s);
     }
   }
 }

@@ -55,7 +55,7 @@ npm run build     # -> dist/crabden.html + dist/crabden.body.html
 | water a new seed | click the drop over it | tap the drop |
 | Vess: follow, get on, get off | `F` | — |
 | act — dig, win over, strike | `E` | **ACT** |
-| map / fleet / field notes | `1` / `2` / `3` | **SHOP**, then a tab |
+| fleet / bench / field notes | `1` / `2` / `3` | **SHOP**, then a tab |
 | inside you | `G` | tap the orb |
 | control mode | `M` | **MODE** |
 | zoom / pan | wheel, drag (locked while you are on your own back) | pinch, drag (same) |
@@ -397,10 +397,25 @@ and the only other thing written there is whose desert this is.
 
 ![The front door](docs/shot-22-title.png)
 
-### Five things you can be doing
+### One thing you can be doing, and then five
 
-The bottom-left corner is a column of five badges, and each one is **a picture
-of the thing, painted pixel by pixel** rather than a symbol standing in for it:
+**You start with one mode.** The column used to open with five badges in it,
+which is five things to learn before you have done anything, and four of them
+did nothing for an hour — a claw with nothing to fight, a nerve with nothing on
+it. So the column GROWS. Each mode arrives at the moment the world first hands
+you the thing it is for, and it arrives as a card that stops the screen, says
+what just happened and says what the mode is:
+
+| mode | it turns up when |
+| --- | --- |
+| **CRAB** | you wake up. It is the animal, and it is all you need to start |
+| **HUNT** | something hostile is actually coming at you |
+| **SPORE** | you are carrying something to put in the gland |
+| **ROAM** | your legs learn the ground — the **stride** skill |
+| **HIVE** | there are enough of them on your nerve — the **command** skill |
+
+The bottom-left corner is that column, and each badge is **a picture of the
+thing, painted pixel by pixel** rather than a symbol standing in for it:
 the animal standing square on, the same animal mid-stride with its legs gathered
 one way, a claw about to close, a spray head with what comes out of it, and a
 nerve with everything strung off it. The one you are in sits proud of the
@@ -810,15 +825,14 @@ The clock in the corner is a real dial: the sun and the moon go round it, the
 lit half of the day is light and the dark half is dark, and it counts the days.
 Things come up out of the sand at night.
 
-### The map
+### There is no map
 
-One long strip of the basin, because the world is one long strip of the basin:
-the real terrain profile under a band of the country you are crossing, distance
-ticks in metres from where you woke, and every landmark within reach — oases,
-human ruins, bonefields, wind-cut spires, and the occasional hull sitting
-kilometres from any sea. Somewhere you have not stood is a `?`.
-
-![The map](docs/shot-06-notes.png)
+There was one: a strip chart of the basin with everything you had found on it.
+It is gone, and the game is better without it. The world is **one line** — you
+walk left or you walk right — so a map of it was a picture of a line telling
+you the thing the compass already tells you and the horizon already shows you.
+What replaced it is nothing: you find places by walking to them, and the only
+marker in the game is the one over the man who wants something done.
 
 ---
 
@@ -1243,10 +1257,40 @@ in order, and they are all things a man with two hands and no shell cannot do:
 | **BRING IT BACK** | water dead ground until three things come up on their own |
 | **OPEN A SEAM** | find metal and get it out |
 
-When he has finished telling you about one, you are doing it. There is no
-marker floating over anything and nothing to turn in: the check runs on the
-world you already have, and while it is open the job sits on a scrap of his
-notebook in the corner and goes green for a few seconds when it is done.
+**He does not wait to be asked.** Asking a man with a clipboard what he wants
+is not something anybody thinks to do, and a job nobody ever asks for is a job
+that does not exist. So sitting down with nothing on your plate, the first
+thing out of his mouth is the work — and when he has work and you have none,
+there is **a notebook over his hat** out in the desert and a card in the corner
+that says which way he is and how far.
+
+**And you have to say yes.** He describes the job, and then he stops and asks,
+and the answers come up under the card: *I'll do it* and *Not now*. Nothing
+dismisses them — you cannot click past a question, because a question you can
+click past is one the game answered for you. Say no and the job is still there
+when you change your mind.
+
+While it is open the job sits on a scrap of his notebook in the corner with
+**a bar under it**, counting the thing it is actually counting — litres in the
+shell, plants up out of dead ground — and it goes green when it is done. The
+check runs on the world you already have. There is still nothing to turn in.
+
+### You answer him
+
+You have no voice and he has no patience, and between those two facts there is
+now a conversation rather than a menu of things to make him talk.
+
+A card can **end on a question**. When it does, the answers come up underneath
+it on the same stone every word you can say is cut into, **with the code under
+each one**, because the code is the language and hiding it would be like hiding
+the words. You can pick one four ways and they are the same answer: the mouse,
+the arrows, a number key, or by **tapping the word out on the key**, which is
+the one that costs you something and is therefore the one that counts.
+
+An answer can take a job, do something in the world, and **put words in his
+mouth** — and when it does, those words become the rest of the card stack, so
+saying "give me a different one" gets you a man telling you he is not running a
+menu rather than a conversation that stops dead the moment you choose.
 
 ### He notices things
 
@@ -1323,6 +1367,46 @@ never talks over himself.
   **keycaps** along the bottom that fade out once you have been playing a few
   minutes, and come back if you reach for them. What is left of the writing is
   spoken: Dr. Vess says it, in his bubble, with his face doing the work.
+
+### The panel
+
+There are three screens behind the corner button — **FLEET**, **BENCH** and
+**FIELD** — and they used to be a small box with the tabs crammed into a strip
+along the top and whatever fitted underneath. That is how the bench ended up as
+a stack of identical grey bars and the fleet ended up as an empty brown room
+with one sentence in the corner of it.
+
+It is built like a menu now:
+
+- a **rail down the left** with one big target per tab, its own colour, its own
+  picture and the name under it — the one arrangement that survives a thumb;
+- a **header** saying what you are looking at and what it is for;
+- and a **body** each screen lays out for itself, in two columns where there is
+  room and one where there is not.
+
+**The bench** is his pack as actual slots you can see the contents of, the
+recipes as rows you *pick* rather than rows you fire, and a detail strip nailed
+to the bottom that never scrolls — because it is the only part of the screen
+that can say "you need two more of these", and a thing that can say that should
+never be off the bottom of a list. One button, and when it cannot be pressed it
+says why on its own face.
+
+**The fleet** is cards: the animal's own portrait in a lit window, its name,
+where it has got to, and two labelled verbs — **DRIVE** and **CALL** — instead
+of one row that drove on the first click and stopped on the second. The
+standing order for all of them sits across the top. And when nothing lives on
+you yet it says so in the middle of the screen and then says what to do about
+it, because an empty list with one grey line in the corner reads as a screen
+that is broken rather than a screen that is empty.
+
+**It opens by growing out of the middle**, and while it is open **nothing else
+draws**. Not the band, not the note pinned to the shell, not a toast, and not a
+speech bubble from a man standing outside in the sand — which was the whole of
+why these screens read as an overlay somebody forgot to finish.
+
+Changing mode does the same thing at a smaller scale: the controls that belong
+to the old mode fade down and the new ones fade up over a third of a second, so
+what you are holding is handed over rather than swapped between two frames.
 
 ### The interface is made of something
 

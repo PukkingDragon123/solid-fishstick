@@ -19,6 +19,7 @@ import { drawText, textWidth, wrapText, ellipsize, LINE_H } from '../lib/font.js
 import { drawPlate, drawNodeIcon } from './icons.js';
 import { facePortrait } from '../art/faces.js';
 import { CODE, TOPICS, TOPIC_BY_WORD, morseFor } from '../systems/talk.js';
+import { QUEST_BY_ID, offerCards } from '../systems/quests.js';
 
 const INK = '#f2e4c2';
 const DIM = 'rgba(240,226,192,0.66)';
@@ -79,6 +80,8 @@ export class TalkScreen {
     this.fade = 0;
     this.pick = 0;
     this.rows = [];          // the topic boxes, for the mouse
+    this.arows = [];         // and the answer plates, when he asks you one
+    this.apick = 0;
     this.said = new Set();   // which topics you have been through
 
     // what he is in the middle of answering
@@ -120,6 +123,8 @@ export class TalkScreen {
     this.marks = '';
     this.word = '';
     this.rows = [];
+    this.arows = [];
+    this.apick = 0;
     this.game.audio?.play('ui');
     // He turns to face you, and he WALKS OVER. Two people having a
     // conversation stand within arm's length of each other; he used to hold
@@ -135,6 +140,8 @@ export class TalkScreen {
     // two-shot; the wide shot is for walking.
     g.cam.follow = null;
     g.cam.free = true;
+    // and he does not wait to be asked
+    this._offerWork();
   }
 
   close() {
@@ -211,6 +218,15 @@ export class TalkScreen {
     this.marks = '';
     this.gap = 0;
     if (!word) return;
+    // while he is waiting on an answer the key answers HIM, not the topic
+    // list - the same word, tapped, means the same thing
+    const ch = this.choices;
+    if (ch) {
+      const c = ch.find((o) => o.word === word);
+      if (c) { this.flash = 1; this.game.morse.learned = true; this.choose(c); return; }
+      this.game.audio?.play('deny');
+      return;
+    }
     const hit = TOPIC_BY_WORD[word];
     if (hit && this.list().includes(hit)) {
       this.flash = 1;
@@ -242,6 +258,87 @@ export class TalkScreen {
     if (tp.id === 'bye') { this._byeAfter = true; }
   }
 
+  /**
+   * Is he waiting on an answer?
+   *
+   * A card can end on a question, and when it does the conversation stops
+   * being a thing you click through: the answers come up underneath it and
+   * one of them has to be chosen. This is the only kind of card that does not
+   * advance on a tap anywhere.
+   */
+  get choices() {
+    const ln = this.topic?.lines?.[this.line];
+    if (!ln?.choices) return null;
+    if (this.think > 0 || this.type < 1) return null;
+    return ln.choices;
+  }
+
+  /**
+   * You answered.
+   *
+   * An answer can take a job, run something in the world, and put words in
+   * his mouth - and if it does put words in his mouth those words become the
+   * rest of the card stack, so a conversation can actually go somewhere
+   * rather than stopping dead the moment you choose.
+   */
+  choose(c) {
+    if (!c) return;
+    const g = this.game;
+    if (c.take) {
+      const job = QUEST_BY_ID[c.take];
+      if (job && g.quests.take(job)) {
+        g.ui?.say(`TAKEN: ${job.name}`, 3.4);
+        g.quests.tookT = 2.6;
+      }
+    }
+    c.then?.(g);
+    this.arows = [];
+    this.apick = 0;
+    if (c.go && c.go.length) {
+      // he answers your answer
+      this.topic = { ...this.topic, lines: c.go };
+      this.line = 0;
+      this._begin();
+      this._wear();
+      g.audio?.play('uiBig');
+      return;
+    }
+    const tp = this.topic;
+    tp?.then?.(g);
+    this.topic = null;
+    g.audio?.play('ui');
+    if (this._byeAfter) { this._byeAfter = false; this.close(); }
+  }
+
+  /**
+   * He puts work in front of you.
+   *
+   * Asking a man with a clipboard what he wants is not something a player
+   * thinks to do, and a quest nobody ever asks for is a quest that does not
+   * exist. So he does not wait to be asked: the moment you sit down with
+   * nothing on your plate, the first thing out of his mouth is the job, and
+   * it comes with the same two answers as if you had asked.
+   */
+  _offerWork() {
+    const g = this.game;
+    const q = g.quests;
+    if (!q || q.active) return false;
+    const next = q.next();
+    if (!next) return false;
+    const cards = offerCards(next);
+    // he opens it himself, so the first card gets a line saying he brought it
+    this.topic = { id: '_offer', word: 'WORK', lines: [
+      { icon: 'call', mood: 'peer',
+        t: 'Before you go. There is a thing I cannot do with these hands and you can do with yours.' },
+      ...cards,
+    ] };
+    this.line = 0;
+    this._begin();
+    this._wear();
+    g.audio?.play('uiBig');
+    return true;
+  }
+
   /** Next card, or back to the list when the answer has run out. */
   advance() {
     const tp = this.topic;
@@ -252,6 +349,8 @@ export class TalkScreen {
     // tapping through the beat before it skips his thinking about it
     if (this.think > 0) { this.think = 0; return; }
     if (this.type < 1) { this.type = 1; this.hold = 0; return; }
+    // a question is not something you can click past
+    if (this.choices) return;
     if (this.line < tp.lines.length - 1) {
       this.line++;
       this._begin();
@@ -261,7 +360,8 @@ export class TalkScreen {
     }
     tp.then?.(this.game);
     this.topic = null;
-    if (this._byeAfter) { this._byeAfter = false; this.close(); }
+    if (this._byeAfter) { this._byeAfter = false; this.close(); return; }
+    if (tp.id !== '_offer' && tp.id !== 'work') this._offerWork();
   }
 
   /**
@@ -277,6 +377,8 @@ export class TalkScreen {
     this.mouth = 0;
     this.think = this.line === 0 ? 0.30 + Math.min(0.42, n * 0.0022) : 0.13;
     this.lean = 1;
+    this.arows = [];
+    this.apick = 0;
   }
 
   /**
@@ -362,6 +464,33 @@ export class TalkScreen {
     this._tap(dt, i.key('t') || pressing);
 
     if (i.justPressed('Escape')) { i.consumeKey('Escape'); this.close(); return; }
+
+    // ---- he asked you something -----------------------------------------
+    const ch = this.choices;
+    if (ch) {
+      if (i.justPressed('ArrowDown') || i.justPressed('s')) { this.apick = (this.apick + 1) % ch.length; g.audio?.play('ui'); }
+      if (i.justPressed('ArrowUp') || i.justPressed('w')) { this.apick = (this.apick + ch.length - 1) % ch.length; g.audio?.play('ui'); }
+      for (let n = 0; n < ch.length && n < 4; n++) {
+        if (i.justPressed(String(n + 1))) { i.consumeKey(String(n + 1)); this.choose(ch[n]); return; }
+      }
+      if (i.justPressed('Enter') || i.justPressed(' ')) {
+        i.consumeKey('Enter'); i.consumeKey(' ');
+        this.choose(ch[this.apick]);
+        return;
+      }
+      for (const r of this.arows) {
+        if (i.sx < r.x || i.sx > r.x + r.w || i.sy < r.y || i.sy > r.y + r.h) continue;
+        if (this.apick !== r.i) { this.apick = r.i; g.audio?.play('ui'); }
+        if (i.clicked) { i.clicked = false; this.choose(ch[r.i]); }
+        return;
+      }
+      // and a click anywhere else does NOTHING, because a question is a
+      // question and clicking past it is how you end up with a quest you
+      // never agreed to
+      if (i.clicked) i.clicked = false;
+      return;
+    }
+
     if (i.justPressed('Enter') || i.justPressed(' ')) {
       i.consumeKey('Enter'); i.consumeKey(' ');
       if (this.topic) this.advance();
@@ -548,6 +677,11 @@ export class TalkScreen {
       ctx.fillStyle = i <= this.line ? '#7a5a2a' : 'rgba(140,122,90,0.5)';
       ctx.fillRect(x + w - 8 - (n - i) * 5, y + h - 6, 3, 3);
     }
+
+    // ---- and if he asked you something, the answers ---------------------
+    const ch = this.choices;
+    if (ch) { this._answers(ctx, x, y + h + 8, w, ch); return; }
+
     // a caret that breathes, meaning there is more
     const b = 0.5 + 0.5 * Math.sin(this.t * 4);
     ctx.globalAlpha = 0.3 + b * 0.6;
@@ -557,6 +691,52 @@ export class TalkScreen {
       ctx.fillRect(Math.round(x + w - 14 + k), Math.round(y + h + 4 - k), 4 - k, 1);
     }
     ctx.globalAlpha = 1;
+  }
+
+  /**
+   * WHAT YOU SAY BACK.
+   *
+   * He stops, and the things you could say to him come up underneath what he
+   * just said - on the same stone every word you can say is cut into, with
+   * the code under each one, because you have no voice and the code is the
+   * language. Pick one with the mouse, the arrows, a number, or by tapping
+   * the word out on the key, which is the answer that actually costs you
+   * something and is therefore the one that counts.
+   *
+   * Nothing dismisses these. A question you can click past is a question the
+   * game answered for you.
+   */
+  _answers(ctx, x, y, w, ch) {
+    this.arows = [];
+    const touch = !!this.game.ui?.touchEnabled;
+    const h = touch ? 30 : 24;
+    const gap = 4;
+    ch.forEach((c, i) => {
+      const by = y + i * (h + gap);
+      const on = this.apick === i;
+      const tint = c.tint || (on ? '#e8d3a2' : '#c2ab80');
+      drawPlate(ctx, x, by, w, h, {
+        mat: 'stone',
+        top: on ? 'rgba(96,84,60,0.98)' : 'rgba(54,46,32,0.94)',
+        edge: on ? tint : 'rgba(140,118,80,0.45)',
+      });
+      if (on) { ctx.fillStyle = tint; ctx.fillRect(x, by, 2, h); }
+      // the number, so a keyboard can answer without moving a cursor
+      drawText(ctx, `${i + 1}`, x + 8, by + (h - 7) / 2, { color: on ? tint : FAINT });
+      drawText(ctx, ellipsize(c.text, w - 32 - textWidth(morseFor(c.word))),
+        x + 17, by + (h - 7) / 2 - (c.word ? 3 : 0), { color: on ? '#f4e6c4' : DIM });
+      // and its code, down in the corner, because that is how you say it
+      if (c.word) {
+        drawText(ctx, morseFor(c.word), x + w - 6, by + h - 10,
+          { color: on ? TAP : 'rgba(143,224,204,0.4)', align: 'right' });
+      }
+      this.arows.push({ i, x, y: by, w, h });
+    });
+    // and a line saying that this one is on you
+    const fy = y + ch.length * (h + gap) + 1;
+    const hint = touch ? 'he is waiting on you' : 'he is waiting on you - 1/2, or tap it';
+    drawText(ctx, ellipsize(hint, w), x + w, fy,
+      { color: 'rgba(240,226,192,0.34)', align: 'right' });
   }
 
   /**

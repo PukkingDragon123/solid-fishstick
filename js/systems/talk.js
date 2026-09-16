@@ -1,3 +1,5 @@
+import { offerCards } from './quests.js';
+
 // CRABDEN - saying something.
 //
 // You have no voice, no hands you can write with, and a face that does not
@@ -286,9 +288,16 @@ export const TOPICS = [
       const q = g.quests;
       if (q.active) {
         return [
-          { icon: 'map', mood: 'squint',
+          { icon: 'hand', mood: 'squint',
             t: `You are in the middle of something. ${q.active.ask}` },
-          { icon: 'hand', mood: 'flat', t: 'Go and do that, and then come back and ask me again.' },
+          { icon: 'clock', mood: 'flat',
+            t: 'Go and do that, and then come back and ask me again.',
+            choices: [
+              { word: 'YES', text: "I'm on it." },
+              { word: 'DROP', text: 'Give me a different one.',
+                go: [{ icon: 'close', mood: 'glare',
+                  t: 'No. You asked, I answered, and I am not running a menu. Finish it.' }] },
+            ] },
         ];
       }
       const next = q.next();
@@ -296,16 +305,14 @@ export const TOPICS = [
         return [
           { icon: 'sun', mood: 'laugh',
             t: 'Nothing. You have done every single thing I could think of and two I could not.' },
-          { icon: 'seed', mood: 'grin',
+          { icon: 'sprout', mood: 'grin',
             t: 'Go and grow something for yourself. That is the job now.' },
         ];
       }
-      return [
-        { icon: 'hand', mood: 'talk', t: next.ask },
-        { icon: 'clock', mood: 'smug', t: 'Take your time. I have had eleven years of it.' },
-      ];
+      // The offer, which is the same two cards he uses when he brings work
+      // up himself - because it is the same conversation.
+      return offerCards(next);
     },
-    then: (g) => { const n = g.quests.next(); if (!g.quests.active && n) g.quests.take(n); },
   },
   {
     // The door into the ugly thing. You do not need a relic and a patch of
