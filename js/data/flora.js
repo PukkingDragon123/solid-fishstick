@@ -1,8 +1,23 @@
-// CRABDEN - the plants you can buy, and what each one does for you.
+// CRABDEN - the plants, and what each one does for you.
 //
 // A plant costs water up front and drinks a trickle for ever after. In return
 // it fixes nutrients, expresses a gene the evolution tree needs, and draws
 // particular creatures out of the desert. Nothing here is decoration only.
+//
+// Two things gate a species, and they are different things:
+//
+//   RESEARCH  you have to have studied a wild one. Knowing what a plant is
+//             comes from kneeling next to one in the desert and looking at
+//             it, not from a menu unlocking.
+//   SEED      and then you have to have a seed of it in the pack. Studying a
+//             wild one gives you seed; so does picking your own, sometimes.
+//             Nothing here is bought.
+//
+// `crops` is the other new number, and it is the one you plan around. A plant
+// with `crops: 1` is an ANNUAL - one pick and it is spent, and you get the
+// bed back. Everything else is a perennial that goes on cropping until it
+// dies of thirst or you pull it up. An annual has to pay much better per pick
+// to be worth the bed, and they do.
 
 export const FLORA = [
   {
@@ -105,6 +120,72 @@ export const FLORA = [
     unlock: { pond: 0.5 },
   },
   {
+    id: 'sandwheat', name: 'Sandwheat', arch: 'grass', tier: 1,
+    w: 20, h: 26, mat: 'leafDry', seedHead: true, seedMat: 'fruitGold', seed: 181,
+    cost: 54, upkeep: 0.03, yield: 0.30, grow: 34,
+    gene: 'sugar', attracts: ['saltlark', 'quilljerboa'],
+    desc: 'Runs up, sets a head, and dies, all inside a fortnight. It has been doing that '
+      + 'since before the water went, which is why it is still here.',
+    boon: { berryRate: 1.18 }, boonText: 'Sets a heavy head. More fruit, for one season.',
+    unlock: { study: 1 },
+  },
+  {
+    id: 'sunpod', name: 'Sunpod', arch: 'succulent', tier: 1,
+    w: 22, h: 18, mat: 'leaf', fruitMat: 'fruitGold', fruitR: 2.8, seed: 191,
+    cost: 96, upkeep: 0.02, yield: 0.34, grow: 52,
+    gene: 'reservoir', attracts: ['duneskink', 'copperscarab'],
+    desc: 'Swells all day and splits at noon. Everything in the pod is the water it '
+      + 'has spent a month not losing.',
+    boon: { waterMax: 24 }, boonText: 'Holds a day of water in each pod.',
+    unlock: { study: 1 },
+  },
+  {
+    id: 'ashroot', name: 'Ashroot', arch: 'bush', tier: 2,
+    w: 28, h: 24, mat: 'leafDry', stemMat: 'wood', trunks: 4, depth: 2, spread: 0.8, seed: 197,
+    cost: 150, upkeep: 0.04, yield: 0.46, grow: 72,
+    gene: 'mycelium', attracts: ['huskhound', 'ashchameleon'],
+    desc: 'Grows on burnt ground and puts everything into the root. The part above the '
+      + 'sand is an apology for the part below it.',
+    boon: { upkeep: -0.12 }, boonText: 'Roots run wide. The whole shell drinks less.',
+    hands: { by: "digger", why: "The root ball is wider than the bed. Something has to open it." },
+    unlock: { study: 2, genes: ['chlorophyll'] },
+  },
+  {
+    id: 'saltpetal', name: 'Saltpetal', arch: 'flower', tier: 2,
+    w: 18, h: 26, mat: 'petalWhite', stemMat: 'leafDry', coreMat: 'petalPink',
+    petals: 6, headR: 3.0, stems: 2, seed: 199,
+    cost: 168, upkeep: 0.06, yield: 0.52, grow: 66,
+    gene: 'pollen', attracts: ['sunmoth', 'glasswing', 'saltlark'],
+    desc: 'Opens white and closes grey, once, and that is the whole of its life. '
+      + 'The crust it grows out of would kill anything else.',
+    boon: { attract: 1.28 }, boonText: 'One enormous flowering. Everything with wings notices.',
+    unlock: { study: 2, genes: ['chlorophyll'] },
+  },
+  {
+    id: 'stonefig', name: 'Stonefig', arch: 'tree', tier: 3,
+    w: 34, h: 40, mat: 'leaf', stemMat: 'woodPale', fruitMat: 'berry', fruit: 7, fruitR: 2.1,
+    depth: 3, seed: 223,
+    cost: 360, upkeep: 0.18, yield: 0.86, grow: 130,
+    gene: 'heartwood', attracts: ['boneheron', 'ridgeback', 'quilljerboa'],
+    desc: 'Cracks rock to get at what is under it and then lives in the crack. Fruits '
+      + 'twice a season, for about ninety years.',
+    boon: { hp: 22, yield: 1.10 }, boonText: 'Splits the hardpan. Everything beside it does better.',
+    hands: { by: "tool", why: "It wants a slot cut in rock, and you have a claw." },
+    unlock: { study: 3, genes: ['reservoir'] },
+  },
+  {
+    id: 'nightcup', name: 'Nightcup', arch: 'fungus', tier: 3,
+    w: 20, h: 22, mat: 'petalPink', stemMat: 'bone', gillMat: 'glow', capMat: 'petalPink',
+    stems: 3, seed: 227,
+    cost: 320, upkeep: 0.12, yield: 0.70, grow: 108,
+    gene: 'luminance', attracts: ['lanternbeetle', 'sunmoth'],
+    desc: 'Fruits in one night, lights up, drops, and is gone by morning. Nobody has '
+      + 'ever seen one in daylight.',
+    boon: { attract: 1.20, trust: 1.08 }, boonText: 'A light in the dark. Night things come to it.',
+    hands: { by: "hands", why: "The stipe is the width of a hair until it is not." },
+    unlock: { study: 3, genes: ['mycelium'] },
+  },
+  {
     id: 'ironwood', name: 'Ironwood', arch: 'tree', tier: 3,
     w: 40, h: 46, mat: 'leaf', stemMat: 'wood', fruitMat: 'fruitGold', fruit: 6, fruitR: 1.9,
     depth: 4, seed: 113,
@@ -173,6 +254,12 @@ export const FLORA = [
 const HARVEST = {
   dustmoss:   { ripen: 14, pay: 3, mass: 0.6 },
   saltgrass:  { ripen: 18, pay: 5, mass: 0.7 },
+  sandwheat:  { ripen: 20, pay: 26, mass: 0.8, crops: 1 },
+  sunpod:     { ripen: 30, pay: 40, mass: 1.1, crops: 1, needs: 'sun' },
+  ashroot:    { ripen: 40, pay: 30, mass: 1.9 },
+  saltpetal:  { ripen: 34, pay: 58, mass: 1.0, crops: 1, needs: 'dusk' },
+  stonefig:   { ripen: 56, pay: 46, mass: 3.4 },
+  nightcup:   { ripen: 44, pay: 74, mass: 1.2, crops: 1, needs: 'night' },
   emberberry: { ripen: 26, pay: 14, mass: 1.5, needs: 'dusk' },
   bluefern:   { ripen: 30, pay: 13, mass: 1.6, needs: 'shade' },
   sunspindle: { ripen: 22, pay: 12, mass: 1.2, needs: 'sun' },
@@ -204,6 +291,9 @@ export const NEEDS_TEXT = {
 };
 
 for (const f of FLORA) Object.assign(f, HARVEST[f.id] || { ripen: 30, pay: 10, mass: 1.4 });
+
+/** True when picking this one uses it up. */
+export function isAnnual(def) { return !!def && (def.crops || 0) === 1; }
 
 export const FLORA_BY_ID = Object.fromEntries(FLORA.map((f) => [f.id, f]));
 

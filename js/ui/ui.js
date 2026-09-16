@@ -10,7 +10,7 @@ import { clamp, clamp01, lerp, damp, TAU, easeOutCubic } from '../lib/math.js';
 import * as Save from '../core/save.js';
 import { pxDisc, pxGlow, pxRing, pxSize } from '../render/pix.js';
 import { drawText, textWidth, wrapText, ellipsize, LINE_H } from '../lib/font.js';
-import { FLORA, FLORA_BY_ID, NEEDS_TEXT, NEEDS_ICON } from '../data/flora.js';
+import { FLORA, FLORA_BY_ID, NEEDS_TEXT, NEEDS_ICON, isAnnual } from '../data/flora.js';
 import { ITEM_BY_ID, STATIONS } from '../data/craft.js';
 import { FAUNA, FAUNA_BY_ID, CLADES, OBSERVE_STEPS } from '../data/fauna.js';
 import { BUILDINGS, BUILD_BY_ID, GENES, GENE_BY_ID, SKILL_BY_ID } from '../data/progress.js';
@@ -1943,6 +1943,33 @@ export class UI {
         }
         continue;
       }
+      // THIRST. A plant does not die suddenly, it dies over a minute of you
+      // not noticing, so it says so first: a cracked drop over the bed, at
+      // every growth stage, before the health starts coming off it.
+      if (pl && pl.thirst > 0.42) {
+        const w2 = g.garden.plotWorld(plot);
+        const s2 = cam.worldToScreen(w2.x, w2.y - 13);
+        if (s2.x > -20 && s2.x < g.renderer.vw + 20) {
+          const urgent = pl.thirst > 0.72;
+          const b = 0.5 + 0.5 * Math.sin(this.t * (urgent ? 7 : 3.4) + plot.i);
+          ctx.globalAlpha = 0.5 + b * 0.5;
+          const col = urgent ? '#e2564f' : '#e2b74a';
+          // an empty drop: the outline of one, with a crack through it
+          const r = 3.2;
+          pxRing(ctx, s2.x, s2.y - b, r, col, { p: 1 });
+          ctx.fillStyle = col;
+          ctx.fillRect(Math.round(s2.x), Math.round(s2.y - b - r - 2), 1, 2);
+          ctx.fillRect(Math.round(s2.x - 1), Math.round(s2.y - b - 1), 1, 1);
+          ctx.fillRect(Math.round(s2.x), Math.round(s2.y - b + 1), 1, 1);
+          ctx.globalAlpha = 1;
+          if (Math.hypot(i.sx - s2.x, i.sy - s2.y) < 12) {
+            this.hover = { title: `${pl.def.name} is dry`,
+              body: urgent ? 'It is losing condition. Work the spring.'
+                : 'Work the spring, or fill the basin and it will drink on its own.' };
+          }
+        }
+      }
+
       if (!pl || pl.stage < 3) continue;
       const w = g.garden.plotWorld(plot);
       const s = cam.worldToScreen(w.x, w.y - 9);
@@ -2329,10 +2356,13 @@ export class UI {
         const chips = isB
           ? [['drop', `${def.cost}`, afford ? '#5fc6d8' : '#e08c9c'],
             ['leaf', `${def.nut}`, '#cfe89a']]
-          : [['drop', `${def.cost}`, afford ? '#5fc6d8' : '#e08c9c'],
+          : [['seed', `${g.seeds[def.id] || 0}`, (g.seeds[def.id] || 0) > 0 ? '#e0c188' : '#e08c9c'],
+            ['drop', `${def.cost}`, afford ? '#5fc6d8' : '#e08c9c'],
             ['fruit', `+${def.pay}`, '#8cc468'],
             ['clock', `${Math.round(def.ripen)}s`, 'rgba(214,186,138,0.8)'],
-            ['weight', def.mass.toFixed(1), 'rgba(214,186,138,0.6)']];
+            ['weight', def.mass.toFixed(1), 'rgba(214,186,138,0.6)'],
+            // one crop, or for ever - the number you actually plan around
+            isAnnual(def) ? ['leaf', 'x1', '#e2b74a'] : ['graft', '\u221e', '#8cc468']];
         if (!isB && def.needs) chips.push([NEEDS_ICON[def.needs] || 'sun', '', '#e2b74a']);
         // and who has to put it in, which is the one that stops you rather
         // than just costing you
@@ -2421,7 +2451,8 @@ export class UI {
       if (cy > y + h || cy + cell < y) return;
       const unlock = g.unlockOf(f);
       const locked = !unlock.ok;
-      const afford = g.economy.water >= f.cost;
+      const seeds = g.seeds[f.id] || 0;
+      const afford = g.economy.water >= f.cost && seeds > 0;
       const hot = this._slot(ctx, cxi, cy, cell - 1, cell, {
         locked, selected: this.pick === f.id,
         accent: locked ? null : afford ? '#8cc468' : '#8a4a44',
@@ -2432,9 +2463,25 @@ export class UI {
       if (locked) ctx.globalAlpha = 0.22;
       ctx.drawImage(art.cv, Math.round(cxi + cell / 2 - art.ox), Math.round(cy + cell - 5 - art.oy));
       ctx.restore();
-      // how many you already carry, in the corner
+      // how many are already growing, top right; how many seeds you hold,
+      // bottom left - the second one is what decides whether you can plant it
       const have = g.garden.countOf(f.id);
       if (have) drawText(ctx, `${have}`, cxi + cell - 4, cy + 2, { color: '#b6de8f', align: 'right' });
+      if (!locked) {
+        drawText(ctx, `${seeds}`, cxi + 3, cy + cell - 9,
+          { color: seeds > 0 ? '#e0c188' : '#a06a5c' });
+        // an annual is marked, because planting one is a different decision
+        if (isAnnual(f)) {
+          drawText(ctx, 'x1', cxi + cell - 4, cy + cell - 9,
+            { color: 'rgba(226,183,74,0.8)', align: 'right' });
+        }
+        if (!seeds) {
+          ctx.globalAlpha = 0.45;
+          ctx.fillStyle = '#15100a';
+          ctx.fillRect(cxi, cy, cell - 1, cell);
+          ctx.globalAlpha = 1;
+        }
+      }
       if (locked) {
         // a shut seed case rather than a cross: you have not opened it yet
         ctx.fillStyle = 'rgba(18,13,8,0.55)';
@@ -2444,7 +2491,7 @@ export class UI {
       if (hot) {
         this.pickHover = f.id;
         // press and drag lifts the seed straight out of its slot
-        if (!locked && g.input.down && !this.drag && !g.input.clicked) {
+        if (!locked && seeds > 0 && g.input.down && !this.drag && !g.input.clicked) {
           this.drag = { kind: 'flora', id: f.id, t: 0 };
           this.pick = f.id;
           g.audio?.play('ui');

@@ -10,7 +10,7 @@ import { clamp, clamp01, lerp, damp, TAU } from '../lib/math.js';
 import { pxArc, pxEllipse, pxRing } from '../render/pix.js';
 import { buildPlant } from '../art/floraart.js';
 import { buildStructure } from '../art/buildart.js';
-import { FLORA_BY_ID, STAGE_NAME, NEEDS_TEXT } from '../data/flora.js';
+import { FLORA_BY_ID, STAGE_NAME, NEEDS_TEXT, isAnnual } from '../data/flora.js';
 import { MATERIALS } from '../lib/palette.js';
 
 const GROW_STAGES = 4;
@@ -184,10 +184,33 @@ export class Garden {
     const parasite = pl.def.parasite || 0;
     pl.ripe = 0;
     pl.picked = (pl.picked || 0) + 1;
-    return {
-      ok: true, amount, parasite,
-      msg: parasite ? `+${parasite} parasite` : `+${amount} nutrients`,
-    };
+
+    // Seed back. An annual is a plant whose entire strategy is seed, so it
+    // always gives some; a perennial keeps most of what it makes for itself
+    // and only occasionally lets one go.
+    const annual = isAnnual(pl.def);
+    let seed = 0;
+    if (annual) seed = 1 + (Math.random() < 0.55 ? 1 : 0);
+    else if (Math.random() < 0.22) seed = 1;
+    if (seed) {
+      const g = this.game;
+      g.seeds[pl.id] = (g.seeds[pl.id] || 0) + seed;
+    }
+
+    // and if it has given everything it had, it is finished. The bed is
+    // yours again, which is the point of growing an annual at all.
+    let spent = false;
+    if (pl.def.crops && pl.picked >= pl.def.crops) {
+      spent = true;
+      pl.spent = 1;              // it goes over and drops out on its own
+    }
+
+    const bits = [];
+    if (parasite) bits.push(`+${parasite} parasite`);
+    else bits.push(`+${amount} nutrients`);
+    if (seed) bits.push(`+${seed} seed`);
+    if (spent) bits.push('spent');
+    return { ok: true, amount, parasite, seed, spent, msg: bits.join(', ') };
   }
 
   uproot(plotIndex) {
@@ -245,6 +268,18 @@ export class Garden {
         - (heavySide ? dt * 0.05 * (Math.abs(trim) - 0.42) * 3 : 0));
 
       if (pl.pop > 0) pl.pop = Math.max(0, pl.pop - dt * 1.7);
+
+      // a spent annual goes over where it stands, and then it is gone
+      if (pl.spent) {
+        pl.spent += dt;
+        pl.health = Math.max(0, pl.health - dt * 0.7);
+        if (pl.spent > 2.4) {
+          const wp = this.plotWorld(plot);
+          this.game.fx?.drift(wp.x, wp.y - 4, '#a58e4a', 4);
+          plot.plant = null;
+        }
+        continue;
+      }
 
       if (pl.stage < GROW_STAGES - 1) {
         const rate = (1 - pl.thirst * 0.8) * (0.6 + this.pond * 0.7) * (pl.def.growBoost || 1)

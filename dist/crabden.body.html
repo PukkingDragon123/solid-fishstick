@@ -2550,7 +2550,7 @@ body {
       sky: ["#2c3f56", "#7f93a4", "#cbb7ac", "#efd9c4"],
       fog: "#e6dcd0",
       heat: 1.2,
-      plants: ["saltgrass", "dustmoss", "pipereed"],
+      plants: ["saltgrass", "dustmoss", "pipereed", "saltpetal", "sandwheat"],
       fauna: ["boneheron", "duneskink", "sandserpent"],
       props: ["saltcrust", "driftwood", "bonerib"]
     },
@@ -2570,7 +2570,7 @@ body {
       sky: ["#2a3a52", "#6f86a0", "#c3b49c", "#e9dcc0"],
       fog: "#ded3b8",
       heat: 0.9,
-      plants: ["ribbonkelp", "dustmoss", "emberberry"],
+      plants: ["ribbonkelp", "dustmoss", "emberberry", "sunpod"],
       fauna: ["boneheron", "glasstail", "copperscarab"],
       props: ["coral", "bonerib", "skull", "rock"]
     },
@@ -2590,7 +2590,7 @@ body {
       sky: ["#2b3f66", "#7c93b4", "#d9b58a", "#f2d9a8"],
       fog: "#e6bc84",
       heat: 1,
-      plants: ["dustmoss", "saltgrass", "emberberry", "sunspindle", "thornmelon"],
+      plants: ["dustmoss", "saltgrass", "emberberry", "sunspindle", "thornmelon", "sandwheat", "sunpod"],
       fauna: ["saltlark", "duneskink", "quilljerboa", "copperscarab", "huskhound"],
       props: ["rock", "boulder", "cactus", "deadtree", "bonerib"]
     },
@@ -2610,7 +2610,7 @@ body {
       sky: ["#22344f", "#6c8bab", "#bfd2dc", "#e6f1f5"],
       fog: "#d3e6ef",
       heat: 1.4,
-      plants: ["glasslily", "dustmoss", "bluefern"],
+      plants: ["glasslily", "dustmoss", "bluefern", "saltpetal"],
       fauna: ["glasswing", "sunmoth", "agama"],
       props: ["shard", "rock", "crater"]
     },
@@ -2630,7 +2630,7 @@ body {
       sky: ["#33263a", "#8a6a72", "#c98a5e", "#e8b276"],
       fog: "#c08a58",
       heat: 1.05,
-      plants: ["worldvine", "dustmoss", "emberberry"],
+      plants: ["worldvine", "dustmoss", "emberberry", "ashroot", "stonefig"],
       fauna: ["saltlark", "ironback", "huskhound", "carrionkite"],
       props: ["ruinwall", "pillar", "car", "rock"]
     },
@@ -2650,7 +2650,7 @@ body {
       sky: ["#231b2c", "#5a4a63", "#94748a", "#c9a4ac"],
       fog: "#8e7d92",
       heat: 0.7,
-      plants: ["bluefern", "cloudcap", "ironwood"],
+      plants: ["bluefern", "cloudcap", "ironwood", "ashroot", "nightcup"],
       fauna: ["sunmoth", "ashchameleon", "ridgeback", "thorniguana"],
       props: ["deadtree", "boulder", "rock"]
     },
@@ -2670,7 +2670,7 @@ body {
       sky: ["#101c26", "#294453", "#3f6b7c", "#5e97a6"],
       fog: "#3f6d80",
       heat: 0.5,
-      plants: ["dustmoss", "heartbloom", "ghostpalm"],
+      plants: ["dustmoss", "heartbloom", "ghostpalm", "nightcup", "stonefig"],
       fauna: ["lanternbeetle", "boneheron", "stonebasilisk"],
       props: ["pillar", "coral", "boulder"]
     }
@@ -5987,6 +5987,151 @@ body {
       unlock: { pond: 0.5 }
     },
     {
+      id: "sandwheat",
+      name: "Sandwheat",
+      arch: "grass",
+      tier: 1,
+      w: 20,
+      h: 26,
+      mat: "leafDry",
+      seedHead: true,
+      seedMat: "fruitGold",
+      seed: 181,
+      cost: 54,
+      upkeep: 0.03,
+      yield: 0.3,
+      grow: 34,
+      gene: "sugar",
+      attracts: ["saltlark", "quilljerboa"],
+      desc: "Runs up, sets a head, and dies, all inside a fortnight. It has been doing that since before the water went, which is why it is still here.",
+      boon: { berryRate: 1.18 },
+      boonText: "Sets a heavy head. More fruit, for one season.",
+      unlock: { study: 1 }
+    },
+    {
+      id: "sunpod",
+      name: "Sunpod",
+      arch: "succulent",
+      tier: 1,
+      w: 22,
+      h: 18,
+      mat: "leaf",
+      fruitMat: "fruitGold",
+      fruitR: 2.8,
+      seed: 191,
+      cost: 96,
+      upkeep: 0.02,
+      yield: 0.34,
+      grow: 52,
+      gene: "reservoir",
+      attracts: ["duneskink", "copperscarab"],
+      desc: "Swells all day and splits at noon. Everything in the pod is the water it has spent a month not losing.",
+      boon: { waterMax: 24 },
+      boonText: "Holds a day of water in each pod.",
+      unlock: { study: 1 }
+    },
+    {
+      id: "ashroot",
+      name: "Ashroot",
+      arch: "bush",
+      tier: 2,
+      w: 28,
+      h: 24,
+      mat: "leafDry",
+      stemMat: "wood",
+      trunks: 4,
+      depth: 2,
+      spread: 0.8,
+      seed: 197,
+      cost: 150,
+      upkeep: 0.04,
+      yield: 0.46,
+      grow: 72,
+      gene: "mycelium",
+      attracts: ["huskhound", "ashchameleon"],
+      desc: "Grows on burnt ground and puts everything into the root. The part above the sand is an apology for the part below it.",
+      boon: { upkeep: -0.12 },
+      boonText: "Roots run wide. The whole shell drinks less.",
+      hands: { by: "digger", why: "The root ball is wider than the bed. Something has to open it." },
+      unlock: { study: 2, genes: ["chlorophyll"] }
+    },
+    {
+      id: "saltpetal",
+      name: "Saltpetal",
+      arch: "flower",
+      tier: 2,
+      w: 18,
+      h: 26,
+      mat: "petalWhite",
+      stemMat: "leafDry",
+      coreMat: "petalPink",
+      petals: 6,
+      headR: 3,
+      stems: 2,
+      seed: 199,
+      cost: 168,
+      upkeep: 0.06,
+      yield: 0.52,
+      grow: 66,
+      gene: "pollen",
+      attracts: ["sunmoth", "glasswing", "saltlark"],
+      desc: "Opens white and closes grey, once, and that is the whole of its life. The crust it grows out of would kill anything else.",
+      boon: { attract: 1.28 },
+      boonText: "One enormous flowering. Everything with wings notices.",
+      unlock: { study: 2, genes: ["chlorophyll"] }
+    },
+    {
+      id: "stonefig",
+      name: "Stonefig",
+      arch: "tree",
+      tier: 3,
+      w: 34,
+      h: 40,
+      mat: "leaf",
+      stemMat: "woodPale",
+      fruitMat: "berry",
+      fruit: 7,
+      fruitR: 2.1,
+      depth: 3,
+      seed: 223,
+      cost: 360,
+      upkeep: 0.18,
+      yield: 0.86,
+      grow: 130,
+      gene: "heartwood",
+      attracts: ["boneheron", "ridgeback", "quilljerboa"],
+      desc: "Cracks rock to get at what is under it and then lives in the crack. Fruits twice a season, for about ninety years.",
+      boon: { hp: 22, yield: 1.1 },
+      boonText: "Splits the hardpan. Everything beside it does better.",
+      hands: { by: "tool", why: "It wants a slot cut in rock, and you have a claw." },
+      unlock: { study: 3, genes: ["reservoir"] }
+    },
+    {
+      id: "nightcup",
+      name: "Nightcup",
+      arch: "fungus",
+      tier: 3,
+      w: 20,
+      h: 22,
+      mat: "petalPink",
+      stemMat: "bone",
+      gillMat: "glow",
+      capMat: "petalPink",
+      stems: 3,
+      seed: 227,
+      cost: 320,
+      upkeep: 0.12,
+      yield: 0.7,
+      grow: 108,
+      gene: "luminance",
+      attracts: ["lanternbeetle", "sunmoth"],
+      desc: "Fruits in one night, lights up, drops, and is gone by morning. Nobody has ever seen one in daylight.",
+      boon: { attract: 1.2, trust: 1.08 },
+      boonText: "A light in the dark. Night things come to it.",
+      hands: { by: "hands", why: "The stipe is the width of a hair until it is not." },
+      unlock: { study: 3, genes: ["mycelium"] }
+    },
+    {
       id: "ironwood",
       name: "Ironwood",
       arch: "tree",
@@ -6114,6 +6259,12 @@ body {
   var HARVEST = {
     dustmoss: { ripen: 14, pay: 3, mass: 0.6 },
     saltgrass: { ripen: 18, pay: 5, mass: 0.7 },
+    sandwheat: { ripen: 20, pay: 26, mass: 0.8, crops: 1 },
+    sunpod: { ripen: 30, pay: 40, mass: 1.1, crops: 1, needs: "sun" },
+    ashroot: { ripen: 40, pay: 30, mass: 1.9 },
+    saltpetal: { ripen: 34, pay: 58, mass: 1, crops: 1, needs: "dusk" },
+    stonefig: { ripen: 56, pay: 46, mass: 3.4 },
+    nightcup: { ripen: 44, pay: 74, mass: 1.2, crops: 1, needs: "night" },
     emberberry: { ripen: 26, pay: 14, mass: 1.5, needs: "dusk" },
     bluefern: { ripen: 30, pay: 13, mass: 1.6, needs: "shade" },
     sunspindle: { ripen: 22, pay: 12, mass: 1.2, needs: "sun" },
@@ -6145,6 +6296,9 @@ body {
     fleet: "ripens while something lives on you"
   };
   for (const f of FLORA) Object.assign(f, HARVEST[f.id] || { ripen: 30, pay: 10, mass: 1.4 });
+  function isAnnual(def3) {
+    return !!def3 && (def3.crops || 0) === 1;
+  }
   var FLORA_BY_ID = Object.fromEntries(FLORA.map((f) => [f.id, f]));
 
   // js/world/props.js
@@ -6813,7 +6967,7 @@ body {
         "pipereed",
         list[Math.floor(r() * list.length)]
       ];
-      const id = wet > 0.5 ? wetMix[Math.floor(r() * wetMix.length)] : r() < 0.68 ? "saltgrass" : "dustmoss";
+      const id = wet > 0.5 ? wetMix[Math.floor(r() * wetMix.length)] : r() < 0.17 ? list[Math.floor(r() * list.length)] : r() < 0.68 ? "saltgrass" : "dustmoss";
       const def3 = FLORA_BY_ID[id];
       if (!def3) continue;
       out.push({
@@ -7065,6 +7219,26 @@ body {
         this.found.add(lm.id);
         this.game.onLandmark?.(lm);
       }
+    }
+    /**
+     * The wild plant close enough to kneel next to. Studying one is how a
+     * species becomes something you know rather than something you have seen,
+     * and it is the only way seed of it gets into your pack.
+     */
+    wildPlantAt(x, reach = 20) {
+      const c0 = Math.floor((x - reach) / 512), c1 = Math.floor((x + reach) / 512);
+      let best = null, bd = reach;
+      for (let ci = c0; ci <= c1; ci++) {
+        for (const v of this.chunkScatter(ci)) {
+          if (v.stage < 2) continue;
+          const d = Math.abs(v.x - x);
+          if (d < bd) {
+            bd = d;
+            best = v;
+          }
+        }
+      }
+      return best;
     }
     /** The mast standing close enough to cut, or null. */
     mastAt(x, reach = 26) {
@@ -9597,7 +9771,7 @@ body {
     };
   }
   function paintTorso(K, far, kind) {
-    const W = 8.6 * K, H = 10.6 * K;
+    const W = 8.6 * K, H = 13.4 * K;
     const pad = Math.ceil(7 * K) + 5;
     const p = new Painter(Math.ceil(W * 2) + pad, Math.ceil(H) + pad * 2);
     const cx = p.w * 0.5, hipY = p.h - pad;
@@ -9892,11 +10066,11 @@ body {
     return h;
   }
   function paintHeadSide(K, far, kind, opts = {}) {
-    const px = Math.max(1, Math.round(K * 1.32));
+    const px = Math.max(1, Math.round(K * 0.92));
     const rows = HEAD_ART.slice();
     const mood = opts.mood | 0;
-    const shut = mood === 7 || mood === 12;
-    const open = mood === 2 || mood === 3 || mood === 8 || mood === 9;
+    const shut = (mood === 7 || mood === 12) && !opts.open;
+    const open = !!opts.open || mood === 2 || mood === 3 || mood === 8 || mood === 9;
     const patch = shut ? HEAD_SHUT : open ? HEAD_OPEN : null;
     if (patch) for (const k of Object.keys(patch)) rows[+k] = patch[k];
     const W = rows[0].length, H = rows.length;
@@ -10486,32 +10660,32 @@ body {
       props: paintProps(K, kind),
       arm: {
         near: {
-          upper: bone(5.8, 1.9, 1.6, "shirt", false, { bow: -0.45 * K, shade: -0.16 }),
-          lower: bone(5.4, 1.5, 1.2, "skin", false, { bow: 0.3 * K, hand: true, sleeve: true, grip: 0.55 })
+          upper: bone(7, 1.85, 1.55, "shirt", false, { bow: -0.45 * K, shade: -0.16 }),
+          lower: bone(6.6, 1.45, 1.15, "skin", false, { bow: 0.3 * K, hand: true, sleeve: true, grip: 0.55 })
         },
         far: {
-          upper: bone(5.8, 1.9, 1.6, "shirt", true, { bow: -0.45 * K, shade: -0.16 }),
-          lower: bone(5.4, 1.5, 1.2, "skin", true, { bow: 0.3 * K, hand: true, sleeve: true, grip: 0.55 })
+          upper: bone(7, 1.85, 1.55, "shirt", true, { bow: -0.45 * K, shade: -0.16 }),
+          lower: bone(6.6, 1.45, 1.15, "skin", true, { bow: 0.3 * K, hand: true, sleeve: true, grip: 0.55 })
         }
       },
       leg: {
         near: {
-          upper: bone(7.2, 2.6, 2.1, "trouser", false, { bow: 0.45 * K }),
-          lower: bone(6.4, 2.1, 1.6, "trouser", false, { bow: -0.4 * K, knee: true })
+          upper: bone(9.7, 2.5, 2, "trouser", false, { bow: 0.45 * K }),
+          lower: bone(8.6, 2, 1.5, "trouser", false, { bow: -0.4 * K, knee: true })
         },
         far: {
-          upper: bone(7.2, 2.6, 2.1, "trouser", true, { bow: 0.45 * K }),
-          lower: bone(6.4, 2.1, 1.6, "trouser", true, { bow: -0.4 * K, knee: true })
+          upper: bone(9.7, 2.5, 2, "trouser", true, { bow: 0.45 * K }),
+          lower: bone(8.6, 2, 1.5, "trouser", true, { bow: -0.4 * K, knee: true })
         }
       }
     };
     rig.satchel = rig.pack;
     const heads = /* @__PURE__ */ new Map();
-    rig.headFor = (mood = 0, goggles = false, bare = false, spore = false) => {
-      const k = `${mood}:${goggles ? 1 : 0}:${bare ? 1 : 0}:${spore ? 1 : 0}`;
+    rig.headFor = (mood = 0, goggles = false, bare = false, spore = false, open = false) => {
+      const k = `${mood}:${goggles ? 1 : 0}:${bare ? 1 : 0}:${spore ? 1 : 0}:${open ? 1 : 0}`;
       let v = heads.get(k);
       if (!v) {
-        v = paintHeadSide(K, false, kind, { mood, goggles, noHat: bare, spore });
+        v = paintHeadSide(K, false, kind, { mood, goggles, noHat: bare, spore, open });
         heads.set(k, v);
       }
       return v;
@@ -11337,7 +11511,9 @@ body {
       const tilt = clamp(Math.round(want / STEP), -2, 2) * STEP;
       const goggles = P.tool === "lens" || P.tool === "canteen";
       const blue = this.game.mind ? this.game.mind.blue : 0;
-      const art3 = rig.headFor(this.face | 0, goggles, !!this.hatOff, blue > 0.35);
+      const saying = !!this.speech && (this.speechAge || 0) * 34 < this.speech.length + 4;
+      const open = saying && Math.floor(this.t * 8.5) % 2 === 1;
+      const art3 = rig.headFor(this.face | 0, goggles, !!this.hatOff, blue > 0.35, open);
       ctx.save();
       ctx.translate(neck.x, neck.y + breath);
       ctx.rotate(tilt);
@@ -14651,6 +14827,19 @@ body {
       tint: "#c97a4a",
       hint: "Hit the seam where it is already cracked."
     },
+    study: {
+      name: "Studying",
+      secs: 4.2,
+      band: 0.34,
+      sweep: 0.95,
+      care: 0.2,
+      verb: "study",
+      pose: "crouch",
+      sound: "step",
+      icon: "leaf",
+      tint: "#9ad86a",
+      hint: "Look at the whole thing. The root tells you more than the flower."
+    },
     fell: {
       name: "Cutting",
       secs: 6.4,
@@ -17798,12 +17987,25 @@ body {
       const parasite = pl.def.parasite || 0;
       pl.ripe = 0;
       pl.picked = (pl.picked || 0) + 1;
-      return {
-        ok: true,
-        amount,
-        parasite,
-        msg: parasite ? `+${parasite} parasite` : `+${amount} nutrients`
-      };
+      const annual = isAnnual(pl.def);
+      let seed = 0;
+      if (annual) seed = 1 + (Math.random() < 0.55 ? 1 : 0);
+      else if (Math.random() < 0.22) seed = 1;
+      if (seed) {
+        const g = this.game;
+        g.seeds[pl.id] = (g.seeds[pl.id] || 0) + seed;
+      }
+      let spent = false;
+      if (pl.def.crops && pl.picked >= pl.def.crops) {
+        spent = true;
+        pl.spent = 1;
+      }
+      const bits = [];
+      if (parasite) bits.push(`+${parasite} parasite`);
+      else bits.push(`+${amount} nutrients`);
+      if (seed) bits.push(`+${seed} seed`);
+      if (spent) bits.push("spent");
+      return { ok: true, amount, parasite, seed, spent, msg: bits.join(", ") };
     }
     uproot(plotIndex) {
       const plot = this.plots[plotIndex];
@@ -17847,6 +18049,16 @@ body {
         const heavySide = Math.abs(trim) > 0.42 && Math.sign(plot.a) === Math.sign(trim);
         pl.health = clamp01(pl.health + (pl.thirst > 0.7 ? -dt * 0.09 : dt * 0.06) - (heavySide ? dt * 0.05 * (Math.abs(trim) - 0.42) * 3 : 0));
         if (pl.pop > 0) pl.pop = Math.max(0, pl.pop - dt * 1.7);
+        if (pl.spent) {
+          pl.spent += dt;
+          pl.health = Math.max(0, pl.health - dt * 0.7);
+          if (pl.spent > 2.4) {
+            const wp = this.plotWorld(plot);
+            this.game.fx?.drift(wp.x, wp.y - 4, "#a58e4a", 4);
+            plot.plant = null;
+          }
+          continue;
+        }
         if (pl.stage < GROW_STAGES - 1) {
           const rate = (1 - pl.thirst * 0.8) * (0.6 + this.pond * 0.7) * (pl.def.growBoost || 1) * (1 - over * 0.55);
           pl.growth += dt / pl.def.grow * Math.max(0.06, rate);
@@ -25669,6 +25881,29 @@ Coming back.` };
           }
           continue;
         }
+        if (pl && pl.thirst > 0.42) {
+          const w2 = g.garden.plotWorld(plot);
+          const s2 = cam.worldToScreen(w2.x, w2.y - 13);
+          if (s2.x > -20 && s2.x < g.renderer.vw + 20) {
+            const urgent = pl.thirst > 0.72;
+            const b = 0.5 + 0.5 * Math.sin(this.t * (urgent ? 7 : 3.4) + plot.i);
+            ctx.globalAlpha = 0.5 + b * 0.5;
+            const col = urgent ? "#e2564f" : "#e2b74a";
+            const r = 3.2;
+            pxRing(ctx, s2.x, s2.y - b, r, col, { p: 1 });
+            ctx.fillStyle = col;
+            ctx.fillRect(Math.round(s2.x), Math.round(s2.y - b - r - 2), 1, 2);
+            ctx.fillRect(Math.round(s2.x - 1), Math.round(s2.y - b - 1), 1, 1);
+            ctx.fillRect(Math.round(s2.x), Math.round(s2.y - b + 1), 1, 1);
+            ctx.globalAlpha = 1;
+            if (Math.hypot(i.sx - s2.x, i.sy - s2.y) < 12) {
+              this.hover = {
+                title: `${pl.def.name} is dry`,
+                body: urgent ? "It is losing condition. Work the spring." : "Work the spring, or fill the basin and it will drink on its own."
+              };
+            }
+          }
+        }
         if (!pl || pl.stage < 3) continue;
         const w = g.garden.plotWorld(plot);
         const s = cam.worldToScreen(w.x, w.y - 9);
@@ -26050,10 +26285,13 @@ She has to be yours to make it.` };
             ["drop", `${def3.cost}`, afford ? "#5fc6d8" : "#e08c9c"],
             ["leaf", `${def3.nut}`, "#cfe89a"]
           ] : [
+            ["seed", `${g.seeds[def3.id] || 0}`, (g.seeds[def3.id] || 0) > 0 ? "#e0c188" : "#e08c9c"],
             ["drop", `${def3.cost}`, afford ? "#5fc6d8" : "#e08c9c"],
             ["fruit", `+${def3.pay}`, "#8cc468"],
             ["clock", `${Math.round(def3.ripen)}s`, "rgba(214,186,138,0.8)"],
-            ["weight", def3.mass.toFixed(1), "rgba(214,186,138,0.6)"]
+            ["weight", def3.mass.toFixed(1), "rgba(214,186,138,0.6)"],
+            // one crop, or for ever - the number you actually plan around
+            isAnnual(def3) ? ["leaf", "x1", "#e2b74a"] : ["graft", "\u221E", "#8cc468"]
           ];
           if (!isB && def3.needs) chips.push([NEEDS_ICON[def3.needs] || "sun", "", "#e2b74a"]);
           const hand = !isB && def3.hands ? g.plantWorker(def3) : null;
@@ -26147,7 +26385,8 @@ She has to be yours to make it.` };
         if (cy > y + h || cy + cell < y) return;
         const unlock = g.unlockOf(f);
         const locked = !unlock.ok;
-        const afford = g.economy.water >= f.cost;
+        const seeds = g.seeds[f.id] || 0;
+        const afford = g.economy.water >= f.cost && seeds > 0;
         const hot = this._slot(ctx, cxi, cy, cell - 1, cell, {
           locked,
           selected: this.pick === f.id,
@@ -26163,6 +26402,30 @@ She has to be yours to make it.` };
         ctx.restore();
         const have = g.garden.countOf(f.id);
         if (have) drawText(ctx, `${have}`, cxi + cell - 4, cy + 2, { color: "#b6de8f", align: "right" });
+        if (!locked) {
+          drawText(
+            ctx,
+            `${seeds}`,
+            cxi + 3,
+            cy + cell - 9,
+            { color: seeds > 0 ? "#e0c188" : "#a06a5c" }
+          );
+          if (isAnnual(f)) {
+            drawText(
+              ctx,
+              "x1",
+              cxi + cell - 4,
+              cy + cell - 9,
+              { color: "rgba(226,183,74,0.8)", align: "right" }
+            );
+          }
+          if (!seeds) {
+            ctx.globalAlpha = 0.45;
+            ctx.fillStyle = "#15100a";
+            ctx.fillRect(cxi, cy, cell - 1, cell);
+            ctx.globalAlpha = 1;
+          }
+        }
         if (locked) {
           ctx.fillStyle = "rgba(18,13,8,0.55)";
           ctx.fillRect(cxi, cy, cell - 1, cell);
@@ -26170,7 +26433,7 @@ She has to be yours to make it.` };
         }
         if (hot) {
           this.pickHover = f.id;
-          if (!locked && g.input.down && !this.drag && !g.input.clicked) {
+          if (!locked && seeds > 0 && g.input.down && !this.drag && !g.input.clicked) {
             this.drag = { kind: "flora", id: f.id, t: 0 };
             this.pick = f.id;
             g.audio?.play("ui");
@@ -26900,6 +27163,7 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
       this.roamTarget = null;
       this.ui = new UI(this);
       this.seeds = { dustmoss: 3, saltgrass: 2 };
+      this.studied = { dustmoss: 9, saltgrass: 9 };
       this.research = {};
       this.readInscriptions = 0;
       this.biome = biomeAt(0);
@@ -28408,6 +28672,8 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
       if (vent) return "Break the cap";
       const mast = this.world.mastAt(c.x + (c.facing || 1) * 16);
       if (mast) return "Cut the mast";
+      const wild = this.world.wildPlantAt(c.x + (c.facing || 1) * 12, 22);
+      if (wild && FLORA_BY_ID[wild.id]) return `Study the ${FLORA_BY_ID[wild.id].name}`;
       if (this.encounters.hint) return this.encounters.hint;
       if (Math.abs(this.npc.x - c.x) < TALK_RANGE) return "C: talk to Dr. Vess";
       return null;
@@ -28472,6 +28738,8 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
         res.parasite ? `+${res.parasite} parasite` : `+${res.amount}`,
         res.parasite ? "#d79ae8" : "#cfe89a"
       );
+      if (res.seed) this.fx.popup(w.x, w.y - 18, `+${res.seed} seed`, "#e0c188");
+      if (res.spent && !quiet) this.ui.say("That was its one crop. The bed is yours again.", 3.5);
       this.fx.spark(w.x, w.y - 3, res.parasite ? "#c98ade" : "#e2f0a8", 14, 44);
       this.audio.play("pickup", { pitch: 0.9 + Math.random() * 0.3 });
       this.cam.shake(1.2);
@@ -28754,6 +29022,32 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
         this.work.strike();
         return;
       }
+      const wild = this.world.wildPlantAt(c.x + (c.facing || 1) * 12, 22);
+      if (wild && FLORA_BY_ID[wild.id]) {
+        const def3 = FLORA_BY_ID[wild.id];
+        this.work.begin("study", {
+          tag: "study:" + wild.id + ":" + Math.round(wild.x),
+          x: wild.x,
+          y: this.terrain.surfaceY(wild.x),
+          label: `Study the ${def3.name}`,
+          onDone: () => {
+            const before = this.studied[wild.id] || 0;
+            this.studied[wild.id] = before + 1;
+            const seed = 1 + (Math.random() < 0.45 ? 1 : 0);
+            this.seeds[wild.id] = (this.seeds[wild.id] || 0) + seed;
+            this.fx.spark(wild.x, this.terrain.surfaceY(wild.x) - 6, "#cfe89a", 12, 30);
+            this.audio.play("discover");
+            const u = def3.unlock?.study;
+            if (u !== void 0 && before < u && before + 1 >= u) {
+              this.ui.say(`${def3.name}: you know this one now. +${seed} seed.`, 4.5);
+              this.npc?.say(`${def3.name}. Write that down - we can grow that.`, 4.5, 4);
+            } else {
+              this.ui.say(`${def3.name}: +${seed} seed.`, 3);
+            }
+          }
+        });
+        return;
+      }
       const mast = this.world.mastAt(c.x + (c.facing || 1) * 16);
       if (mast) {
         this.work.begin("fell", {
@@ -29034,9 +29328,14 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
       if (def3.needsPond && this.garden.pond < 0.35) return { ok: false, msg: "That one needs standing water." };
       if (this.economy.water < def3.cost) return { ok: false, msg: `Needs ${def3.cost} water.` };
       if (plot.plant || plot.build) return { ok: false, msg: "It will not take there." };
+      if ((this.seeds[id] || 0) <= 0) {
+        return { ok: false, msg: `No ${def3.name} seed. Study a wild one.` };
+      }
       const hand = this.plantWorker(def3);
       if (!hand.ok) return { ok: false, msg: hand.why };
       this.economy.water -= def3.cost;
+      this.seeds[id] = (this.seeds[id] || 1) - 1;
+      if (!this.seeds[id]) delete this.seeds[id];
       this.economy.markDirty();
       plot.pending = { id, def: def3, by: hand.by };
       this.planting = { plot, def: def3, by: hand.by, phase: "coming", t: 0 };
@@ -29056,6 +29355,7 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
       this.planting = null;
       if (this.work.live && this.work.job.kind === "plant") this.work.stop(why);
       this.economy.water += j.def.cost;
+      this.seeds[j.def.id] = (this.seeds[j.def.id] || 0) + 1;
       this.economy.markDirty();
       this.ui.say(why || "Left it.", 3);
     }
@@ -29192,6 +29492,13 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
       if (u.pond !== void 0 && this.garden.pond < u.pond) missing.push("fill the shell pool");
       if (u.nutrients !== void 0 && e.nutrients < u.nutrients) missing.push(`bank ${u.nutrients} nutrients`);
       if (u.seen !== void 0 && this.wildlife.seen.size < u.seen) missing.push(`record ${u.seen} creatures`);
+      if (u.study !== void 0) {
+        const have = this.studied[def3.id] || 0;
+        if (have < u.study) {
+          const n = u.study - have;
+          missing.push(`study ${n} more wild ${n === 1 ? "one" : "ones"}`);
+        }
+      }
       return missing.length ? { ok: false, why: "Unlocks when you " + missing.join(", ") + "." } : { ok: true, why: "" };
     }
     floraEffect(def3) {
@@ -29460,6 +29767,7 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
         tutorial: this.tutorial,
         world: this.world.toJSON(),
         research: this.research,
+        studied: this.studied,
         mode: this.ui.mode,
         insc: this.readInscriptions,
         morse: this.morse.toJSON(),
@@ -29492,6 +29800,7 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
         this.world.fromJSON(d.world);
         this.tutorial = d.tutorial || 3;
         this.research = d.research || {};
+        this.studied = d.studied || this.studied;
         this.readInscriptions = d.insc || 0;
         this.morse.fromJSON(d.morse);
         this.pump.fromJSON(d.pump);

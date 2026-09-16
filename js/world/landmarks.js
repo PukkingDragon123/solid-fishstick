@@ -128,9 +128,15 @@ export function scatterAt(seed, terrain, x0, x1) {
     // occasional tall thing, not a wall of reeds
     const wetMix = ['dustmoss', 'dustmoss', 'saltgrass', 'saltgrass', 'bluefern',
       'pipereed', list[Math.floor(r() * list.length)]];
+    // Dry ground used to be nothing but saltgrass and dustmoss, for ever, in
+    // every biome - which was dull to walk through and, once studying a wild
+    // specimen became the only way to learn a species, made most of the
+    // catalogue unreachable. One dry plant in six is now whatever this stretch
+    // of desert actually grows.
     const id = wet > 0.5
       ? wetMix[Math.floor(r() * wetMix.length)]
-      : (r() < 0.68 ? 'saltgrass' : 'dustmoss');
+      : (r() < 0.17 ? list[Math.floor(r() * list.length)]
+        : r() < 0.68 ? 'saltgrass' : 'dustmoss');
     const def = FLORA_BY_ID[id];
     if (!def) continue;
     out.push({
@@ -397,6 +403,24 @@ export class World {
       this.found.add(lm.id);
       this.game.onLandmark?.(lm);
     }
+  }
+
+  /**
+   * The wild plant close enough to kneel next to. Studying one is how a
+   * species becomes something you know rather than something you have seen,
+   * and it is the only way seed of it gets into your pack.
+   */
+  wildPlantAt(x, reach = 20) {
+    const c0 = Math.floor((x - reach) / 512), c1 = Math.floor((x + reach) / 512);
+    let best = null, bd = reach;
+    for (let ci = c0; ci <= c1; ci++) {
+      for (const v of this.chunkScatter(ci)) {
+        if (v.stage < 2) continue;              // a seedling tells you nothing
+        const d = Math.abs(v.x - x);
+        if (d < bd) { bd = d; best = v; }
+      }
+    }
+    return best;
   }
 
   /** The mast standing close enough to cut, or null. */

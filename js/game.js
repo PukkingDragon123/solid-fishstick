@@ -153,6 +153,8 @@ export class Game {
     this.ui = new UI(this);
 
     this.seeds = { dustmoss: 3, saltgrass: 2 };
+    // flora id -> how many wild specimens of it you have actually studied
+    this.studied = { dustmoss: 9, saltgrass: 9 };
     this.research = {};
     this.readInscriptions = 0;
     this.biome = biomeAt(0);
@@ -1679,6 +1681,8 @@ export class Game {
     if (vent) return 'Break the cap';
     const mast = this.world.mastAt(c.x + (c.facing || 1) * 16);
     if (mast) return 'Cut the mast';
+    const wild = this.world.wildPlantAt(c.x + (c.facing || 1) * 12, 22);
+    if (wild && FLORA_BY_ID[wild.id]) return `Study the ${FLORA_BY_ID[wild.id].name}`;
     if (this.encounters.hint) return this.encounters.hint;
     if (Math.abs(this.npc.x - c.x) < TALK_RANGE) return 'C: talk to Dr. Vess';
     return null;
@@ -1740,6 +1744,10 @@ export class Game {
     const w = this.garden.plotWorld(plot);
     this.fx.popup(w.x, w.y - 8, res.parasite ? `+${res.parasite} parasite` : `+${res.amount}`,
       res.parasite ? '#d79ae8' : '#cfe89a');
+    // seed saved off your own crop, which is how an annual pays for the next
+    // one without you ever going near a shop
+    if (res.seed) this.fx.popup(w.x, w.y - 18, `+${res.seed} seed`, '#e0c188');
+    if (res.spent && !quiet) this.ui.say('That was its one crop. The bed is yours again.', 3.5);
     this.fx.spark(w.x, w.y - 3, res.parasite ? '#c98ade' : '#e2f0a8', 14, 44);
     this.audio.play('pickup', { pitch: 0.9 + Math.random() * 0.3 });
     this.cam.shake(1.2);
@@ -2004,6 +2012,35 @@ export class Game {
 
     // something in the ground right under you comes first: it is the only
     // thing here you can lose by walking past
+    // A wild plant you have not finished learning. Studying it is how a
+    // species stops being scenery and becomes something you can grow - and it
+    // is where seed comes from, because nothing here is bought.
+    const wild = this.world.wildPlantAt(c.x + (c.facing || 1) * 12, 22);
+    if (wild && FLORA_BY_ID[wild.id]) {
+      const def = FLORA_BY_ID[wild.id];
+      this.work.begin('study', {
+        tag: 'study:' + wild.id + ':' + Math.round(wild.x),
+        x: wild.x, y: this.terrain.surfaceY(wild.x),
+        label: `Study the ${def.name}`,
+        onDone: () => {
+          const before = this.studied[wild.id] || 0;
+          this.studied[wild.id] = before + 1;
+          const seed = 1 + (Math.random() < 0.45 ? 1 : 0);
+          this.seeds[wild.id] = (this.seeds[wild.id] || 0) + seed;
+          this.fx.spark(wild.x, this.terrain.surfaceY(wild.x) - 6, '#cfe89a', 12, 30);
+          this.audio.play('discover');
+          const u = def.unlock?.study;
+          if (u !== undefined && before < u && before + 1 >= u) {
+            this.ui.say(`${def.name}: you know this one now. +${seed} seed.`, 4.5);
+            this.npc?.say(`${def.name}. Write that down - we can grow that.`, 4.5, 4);
+          } else {
+            this.ui.say(`${def.name}: +${seed} seed.`, 3);
+          }
+        },
+      });
+      return;
+    }
+
     // A mast standing next to you. Cutting one is a job, not a keypress: it
     // takes a while, it throws chips, and it is the only source of a long
     // straight stiff thing in the whole basin.
@@ -2261,11 +2298,18 @@ export class Game {
     if (def.needsPond && this.garden.pond < 0.35) return { ok: false, msg: 'That one needs standing water.' };
     if (this.economy.water < def.cost) return { ok: false, msg: `Needs ${def.cost} water.` };
     if (plot.plant || plot.build) return { ok: false, msg: 'It will not take there.' };
+    // and you have to actually have one. Nothing here is bought; a seed is a
+    // thing you found, studied out of a wild plant, or saved off your own.
+    if ((this.seeds[id] || 0) <= 0) {
+      return { ok: false, msg: `No ${def.name} seed. Study a wild one.` };
+    }
 
     const hand = this.plantWorker(def);
     if (!hand.ok) return { ok: false, msg: hand.why };
 
     this.economy.water -= def.cost;
+    this.seeds[id] = (this.seeds[id] || 1) - 1;
+    if (!this.seeds[id]) delete this.seeds[id];
     this.economy.markDirty();
     plot.pending = { id, def, by: hand.by };
     this.planting = { plot, def, by: hand.by, phase: 'coming', t: 0 };
@@ -2286,6 +2330,7 @@ export class Game {
     this.planting = null;
     if (this.work.live && this.work.job.kind === 'plant') this.work.stop(why);
     this.economy.water += j.def.cost;
+    this.seeds[j.def.id] = (this.seeds[j.def.id] || 0) + 1;
     this.economy.markDirty();
     this.ui.say(why || 'Left it.', 3);
   }
@@ -2413,6 +2458,13 @@ export class Game {
     if (u.pond !== undefined && this.garden.pond < u.pond) missing.push('fill the shell pool');
     if (u.nutrients !== undefined && e.nutrients < u.nutrients) missing.push(`bank ${u.nutrients} nutrients`);
     if (u.seen !== undefined && this.wildlife.seen.size < u.seen) missing.push(`record ${u.seen} creatures`);
+    if (u.study !== undefined) {
+      const have = this.studied[def.id] || 0;
+      if (have < u.study) {
+        const n = u.study - have;
+        missing.push(`study ${n} more wild ${n === 1 ? 'one' : 'ones'}`);
+      }
+    }
     return missing.length ? { ok: false, why: 'Unlocks when you ' + missing.join(', ') + '.' } : { ok: true, why: '' };
   }
 
@@ -2673,7 +2725,8 @@ export class Game {
       wildlife: this.wildlife.toJSON(), seeds: this.seeds,
       taken: [...this.encounters.taken], tutorial: this.tutorial,
       world: this.world.toJSON(),
-      research: this.research, mode: this.ui.mode, insc: this.readInscriptions,
+      research: this.research, studied: this.studied,
+      mode: this.ui.mode, insc: this.readInscriptions,
       morse: this.morse.toJSON(), green: this.green.toJSON(), pump: this.pump.toJSON(),
       digs: this.digs.toJSON(), relics: this.relics,
       mining: this.mining.toJSON(), craft: this.craft.toJSON(), mind: this.mind.toJSON(),
@@ -2701,6 +2754,7 @@ export class Game {
       this.world.fromJSON(d.world);
       this.tutorial = d.tutorial || 3;
       this.research = d.research || {};
+      this.studied = d.studied || this.studied;
       this.readInscriptions = d.insc || 0;
       this.morse.fromJSON(d.morse);
       this.pump.fromJSON(d.pump);

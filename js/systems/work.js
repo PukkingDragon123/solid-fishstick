@@ -55,6 +55,12 @@ export const JOBS = {
     tint: '#c97a4a',
     hint: 'Hit the seam where it is already cracked.',
   },
+  study: {
+    name: 'Studying', secs: 4.2, band: 0.34, sweep: 0.95, care: 0.2,
+    verb: 'study', pose: 'crouch', sound: 'step', icon: 'leaf',
+    tint: '#9ad86a',
+    hint: 'Look at the whole thing. The root tells you more than the flower.',
+  },
   fell: {
     name: 'Cutting', secs: 6.4, band: 0.26, sweep: 1.15, care: 0.55,
     verb: 'cut', pose: 'swing', sound: 'claw', icon: 'tree',

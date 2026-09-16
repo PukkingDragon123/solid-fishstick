@@ -106,7 +106,11 @@ function bake(p, ox, oy, far, kind, extra = {}) {
  * even when he is a hundred pixels away.
  */
 function paintTorso(K, far, kind) {
-  const W = 8.6 * K, H = 10.6 * K;
+  // He used to be two heads tall, which is a doll. A person is four or five,
+  // and most of the extra is in the trunk and the thigh - so the torso is a
+  // quarter longer and no wider, the legs are a third longer, and the head is
+  // painted smaller. Nothing about the drawing changed; the numbers did.
+  const W = 8.6 * K, H = 13.4 * K;
   const pad = Math.ceil(7 * K) + 5;
   const p = new Painter(Math.ceil(W * 2.0) + pad, Math.ceil(H) + pad * 2);
   const cx = p.w * 0.5, hipY = p.h - pad;
@@ -367,16 +371,19 @@ function headHeight(x, y, ch, W) {
 }
 
 function paintHeadSide(K, far, kind, opts = {}) {
-  // The head is drawn a third larger than the body's own pixel, because his
-  // head is the half of him you are meant to read - the hat, the hair and the
-  // glasses are the character, and at the body's scale they were four pixels
-  // of brown.
-  const px = Math.max(1, Math.round(K * 1.32));
+  // Drawn slightly UNDER the body's own pixel now. It was a third larger,
+  // which made the hat and the glasses legible and made him a doll: the head
+  // came out half his height. At this scale he reads as a man in a hat, and
+  // the hat is still the thing you recognise across the desert.
+  const px = Math.max(1, Math.round(K * 0.92));
   const rows = HEAD_ART.slice();
   const mood = opts.mood | 0;
   // 7 weary and 12 grim read as shut at this size; 2, 3, 8 and 9 are open
-  const shut = mood === 7 || mood === 12;
-  const open = mood === 2 || mood === 3 || mood === 8 || mood === 9;
+  const shut = (mood === 7 || mood === 12) && !opts.open;
+  // `open` is forced while he is actually saying something, so the sprite out
+  // in the desert moves its mouth for as long as the words are arriving
+  // rather than being a photograph with a speech bubble next to it
+  const open = !!opts.open || mood === 2 || mood === 3 || mood === 8 || mood === 9;
   const patch = shut ? HEAD_SHUT : open ? HEAD_OPEN : null;
   if (patch) for (const k of Object.keys(patch)) rows[+k] = patch[k];
 
@@ -445,8 +452,8 @@ function paintHeadSide(K, far, kind, opts = {}) {
 
 /** His head at a given size, baked once per look. */
 export function headSide(K = 1, opts = {}) {
-  const k = `${Math.max(1, Math.round(K * 1.32))}:${opts.kind || 'vess'}:${opts.mood | 0}:` +
-    `${opts.noHat ? 1 : 0}:${opts.spore ? 1 : 0}:${opts.far ? 1 : 0}`;
+  const k = `${Math.max(1, Math.round(K * 0.92))}:${opts.kind || 'vess'}:${opts.mood | 0}:` +
+    `${opts.noHat ? 1 : 0}:${opts.spore ? 1 : 0}:${opts.far ? 1 : 0}:${opts.open ? 1 : 0}`;
   let v = sideHeads.get(k);
   if (!v) {
     v = paintHeadSide(K, !!opts.far, opts.kind || 'vess', opts);
@@ -976,22 +983,22 @@ export function buildPerson(kind = 'vess', K = 1) {
     props: paintProps(K, kind),
     arm: {
       near: {
-        upper: bone(5.8, 1.9, 1.6, 'shirt', false, { bow: -0.45 * K, shade: -0.16 }),
-        lower: bone(5.4, 1.5, 1.2, 'skin', false, { bow: 0.30 * K, hand: true, sleeve: true, grip: 0.55 }),
+        upper: bone(7.0, 1.85, 1.55, 'shirt', false, { bow: -0.45 * K, shade: -0.16 }),
+        lower: bone(6.6, 1.45, 1.15, 'skin', false, { bow: 0.30 * K, hand: true, sleeve: true, grip: 0.55 }),
       },
       far: {
-        upper: bone(5.8, 1.9, 1.6, 'shirt', true, { bow: -0.45 * K, shade: -0.16 }),
-        lower: bone(5.4, 1.5, 1.2, 'skin', true, { bow: 0.30 * K, hand: true, sleeve: true, grip: 0.55 }),
+        upper: bone(7.0, 1.85, 1.55, 'shirt', true, { bow: -0.45 * K, shade: -0.16 }),
+        lower: bone(6.6, 1.45, 1.15, 'skin', true, { bow: 0.30 * K, hand: true, sleeve: true, grip: 0.55 }),
       },
     },
     leg: {
       near: {
-        upper: bone(7.2, 2.6, 2.1, 'trouser', false, { bow: 0.45 * K }),
-        lower: bone(6.4, 2.1, 1.6, 'trouser', false, { bow: -0.4 * K, knee: true }),
+        upper: bone(9.7, 2.5, 2.0, 'trouser', false, { bow: 0.45 * K }),
+        lower: bone(8.6, 2.0, 1.5, 'trouser', false, { bow: -0.4 * K, knee: true }),
       },
       far: {
-        upper: bone(7.2, 2.6, 2.1, 'trouser', true, { bow: 0.45 * K }),
-        lower: bone(6.4, 2.1, 1.6, 'trouser', true, { bow: -0.4 * K, knee: true }),
+        upper: bone(9.7, 2.5, 2.0, 'trouser', true, { bow: 0.45 * K }),
+        lower: bone(8.6, 2.0, 1.5, 'trouser', true, { bow: -0.4 * K, knee: true }),
       },
     },
   };
@@ -1001,10 +1008,13 @@ export function buildPerson(kind = 'vess', K = 1) {
   // heads are baked the first time a face is worn, which is cheap enough that
   // he can change expression in the world and not only in a speech bubble
   const heads = new Map();
-  rig.headFor = (mood = 0, goggles = false, bare = false, spore = false) => {
-    const k = `${mood}:${goggles ? 1 : 0}:${bare ? 1 : 0}:${spore ? 1 : 0}`;
+  rig.headFor = (mood = 0, goggles = false, bare = false, spore = false, open = false) => {
+    const k = `${mood}:${goggles ? 1 : 0}:${bare ? 1 : 0}:${spore ? 1 : 0}:${open ? 1 : 0}`;
     let v = heads.get(k);
-    if (!v) { v = paintHeadSide(K, false, kind, { mood, goggles, noHat: bare, spore }); heads.set(k, v); }
+    if (!v) {
+      v = paintHeadSide(K, false, kind, { mood, goggles, noHat: bare, spore, open });
+      heads.set(k, v);
+    }
     return v;
   };
   rig.head = rig.headFor(0, false);

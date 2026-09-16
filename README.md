@@ -70,6 +70,7 @@ npm run build     # -> dist/crabden.html + dist/crabden.body.html
 | spray the spore | `V` (again to let him go) | `SPRAY` on the board while he leans in |
 | break a capped vent | `E`, at the cap | **ACT** |
 | cut a mast | `E`, at the tree | **ACT** |
+| study a wild plant | `E`, at the plant | **ACT** |
 | scoop sand / pour it | hold `Z` / hold `Shift`+`Z` | hold **DIG** / hold **POUR** |
 | skip a cutscene | `Space` or `Escape` | the **SKIP** plate, top right |
 | his pick, once he is yours | `E` | — |
@@ -306,6 +307,29 @@ ripens, and the shape of the whole loop the first time you pick. Each beat fires
 once, and growing is something you can watch happen — the husk splits on a ring
 of light, every stage up **springs** the plant with an overshoot that settles,
 and a mature one goes off with a ring and its name.
+
+### You cannot buy a seed
+
+There is no shop. A species is gated on two things and they are different
+things: **research** — you have to have knelt next to a wild one in the desert
+and studied it, which is what turns a plant from scenery into something you
+know — and then a **seed**, which studying gives you, and which picking your own
+crop gives you back.
+
+Twenty-one species grow here, and every one of them grows wild somewhere,
+because otherwise half the catalogue would be unreachable. What is in front of
+you depends on which stretch of desert you are standing in.
+
+The other number to plan around is **crops**. Most plants are perennials: they
+go on cropping until they die of thirst or you pull them up. Some are
+**annuals** — one pick and they are spent, they go over where they stand and
+the bed is yours again. An annual pays two or three times as much per pick to
+be worth the bed at all, and always hands back seed, which is how it pays for
+the next one.
+
+And a plant that is dry **says so**, at any growth stage, before its condition
+starts coming off: a cracked empty drop over the bed, which beats faster the
+worse it gets.
 
 ### Nothing comes out of the ground by itself
 

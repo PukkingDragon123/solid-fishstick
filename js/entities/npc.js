@@ -726,7 +726,11 @@ export class Person {
     const goggles = P.tool === 'lens' || P.tool === 'canteen';
     // the spore shows in exactly one place, and it is the place you look
     const blue = this.game.mind ? this.game.mind.blue : 0;
-    const art = rig.headFor(this.face | 0, goggles, !!this.hatOff, blue > 0.35);
+    // his jaw, while the line is still arriving. Two frames is a mouth.
+    const saying = !!this.speech
+      && (this.speechAge || 0) * 34 < (this.speech.length + 4);
+    const open = saying && Math.floor(this.t * 8.5) % 2 === 1;
+    const art = rig.headFor(this.face | 0, goggles, !!this.hatOff, blue > 0.35, open);
     ctx.save();
     ctx.translate(neck.x, neck.y + breath);
     ctx.rotate(tilt);
