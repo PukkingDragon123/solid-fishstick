@@ -290,7 +290,13 @@ function paintBoulder(p) {
   pt.speckle(mat, { density: 0.05, amp: 0.5, seed: (p.seed >> 3) & 1023 });
   pt.smoothHeight(1, 0.3);
   const cv = pt.resolve(MATERIALS, { outline: 0.9, outlineColor: '#1a1210' });
-  return { cv, ox: cx, oy: base, top };
+  // A rock coming out of sand has no line along the bottom of it - that line
+  // is exactly what made every boulder read as a sticker laid on the desert.
+  // The last two rows of outline come off, and the sand is drawn over the
+  // join at draw time.
+  const g2 = cv.getContext('2d');
+  g2.clearRect(0, H - 1, W, 1);
+  return { cv, ox: cx, oy: base - 1, top };
 }
 
 /** A dead bush: a knot of thorn, no leaves left worth the name. */

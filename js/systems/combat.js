@@ -1,123 +1,247 @@
-// CRABDEN - the strike.
+// CRABDEN - the fight.
 //
-// You are two tonnes of animal with a claw that closes at the speed of a door
-// slamming, and that is not a button you hold. It is a swing you have to time.
+// A fight used to be a needle sweeping a bar: you pressed a button in time
+// with a gauge and the animal took damage. That is a rhythm minigame with a
+// scorpion drawn next to it.
 //
-// The gauge sweeps. Somewhere on it is a window where the claw is actually
-// closing on the thing rather than travelling toward it, and inside that
-// window is a much narrower one where it lands on the joint. Hit the band and
-// you do damage. Hit the core and you do a great deal of it, the animal is
-// staggered, and the next swing comes round faster.
+// This is a duel, and a duel has three verbs and nothing else:
 //
-// Miss and the claw is out and open and you are the one standing there with
-// your chest exposed, which is exactly as long as it sounds.
+//   SWING   you do not press attack. You DRAG the claw - a stick under your
+//           thumb - and flick it at something. Where you flick decides the
+//           arc: low takes the legs, level takes the body, and the reach is
+//           the reach of an actual claw, so you have to be close.
+//   DODGE   one roll, backwards, with a moment of nothing-can-touch-you in
+//           the middle of it, and then you are winded and cannot do it again
+//           for a second. It is for getting OUT.
+//   GUARD   the claw comes up. Held, it eats most of a hit. Raised in the
+//           quarter-second before one lands, it is a PARRY: nothing gets
+//           through at all, the thing that swung is knocked off its feet, and
+//           the next swing you make lands on an animal that cannot move.
+//
+// The whole thing turns on the enemy telling you first. Everything that can
+// hurt you winds up - rears, plants its feet, goes still - for most of a
+// second before it commits, and that wind-up is the only clock in the fight.
+// Read it and you have all three answers. Do not and you have none.
 
-import { clamp, clamp01, lerp } from '../lib/math.js';
+import { clamp, clamp01, lerp, TAU } from '../lib/math.js';
 
-const BASE_SPEED = 1.15;        // sweeps per second at combo zero
-const BASE_BAND = 0.26;         // how much of the sweep lands at all
-const CORE = 0.34;              // how much of the band is the good part
-const MAX_COMBO = 6;
-const OPEN_SECS = 0.85;         // how long a miss leaves you open
+const REACH = 46;             // how far a claw is, in world units
+const SWING_COOL = 0.42;
+const DODGE_SECS = 0.42;      // how long the roll lasts
+const DODGE_IFRAME = 0.26;    // and how much of it is untouchable
+const DODGE_COOL = 0.95;
+const PARRY_WINDOW = 0.26;    // how recently the guard has to have gone up
+const GUARD_SOAK = 0.78;      // how much a held guard eats
+const STAM_MAX = 100;
 
 export class Combat {
   constructor(game) {
     this.game = game;
     this.live = false;
-    this.pos = 0;               // 0..1 along the sweep
-    this.dir = 1;
-    this.band = 0.5;            // where the window is centred this sweep
-    this.combo = 0;
-    this.best = 0;
-    this.open = 0;              // >0 means the last swing missed
-    this.cool = 0;
     this.target = null;
+
+    this.guard = 0;           // 0..1, how far the claw is up
+    this.guarding = false;
+    this.guardAge = 9;        // seconds since it went up - the parry clock
+
+    this.dodgeT = 0;          // >0 while rolling
+    this.dodgeDir = 1;
+    this.dodgeCool = 0;
+
+    this.swingCool = 0;
+    this.swing = null;        // { a, t, life } the arc being drawn
+    this.stam = STAM_MAX;
+
+    this.best = 0;            // longest chain of clean hits, kept for the HUD
+    this.chain = 0;
     this.flash = 0;
     this.crit = 0;
+    this.parryFlash = 0;
   }
 
-  get speed() { return BASE_SPEED * (1 + Math.min(this.combo, MAX_COMBO) * 0.16); }
-
-  /** The window narrows as the combo climbs, because of course it does. */
-  get width() { return BASE_BAND * (1 - Math.min(this.combo, MAX_COMBO) * 0.085); }
-
-  get mult() { return 1 + Math.min(this.combo, MAX_COMBO) * 0.22; }
-
-  /** Where on the sweep the window starts and ends. */
-  get window() {
-    const w = this.width;
-    return [this.band - w / 2, this.band + w / 2];
+  /** Anything hostile within a claw's length and a half. */
+  get near() {
+    return this.game.wildlife?.nearest(this.game.crab.x, this.game.crab.y,
+      REACH * 1.8, (q) => q.hostile && q.alive) || null;
   }
 
-  /** Bring the gauge up against a target, or drop it if there is nothing. */
   engage(target) {
     if (!target || !target.alive) { this.stop(); return false; }
     this.target = target;
-    if (!this.live) {
-      this.live = true;
-      this.pos = 0;
-      this.dir = 1;
-      this.combo = 0;
-      this._reband();
-    }
+    this.live = true;
     return true;
   }
 
   stop() {
     this.live = false;
     this.target = null;
-    this.combo = 0;
+    this.chain = 0;
+    this.guarding = false;
   }
 
-  _reband() {
-    // never right at the ends, so there is always a swing to be made
-    this.band = 0.22 + Math.random() * 0.56;
+  /**
+   * How close whatever is in front of you is to actually swinging, 0..1. This
+   * is the only number in the fight and the UI draws it as a ring round the
+   * animal rather than as a bar in a corner.
+   */
+  get threat() {
+    const t = this.target;
+    if (!t || !t.alive) return 0;
+    return clamp01(t.wind || 0);
   }
 
   update(dt) {
     this.flash = Math.max(0, this.flash - dt * 3);
     this.crit = Math.max(0, this.crit - dt * 2.4);
-    if (this.cool > 0) this.cool -= dt;
-    if (this.open > 0) this.open -= dt;
-    if (!this.live) return;
-    // the target dying, or walking off, ends it
-    const t = this.target;
-    if (!t || !t.alive || Math.abs(t.x - this.game.crab.x) > 260) { this.stop(); return; }
+    this.parryFlash = Math.max(0, this.parryFlash - dt * 2.2);
+    this.swingCool = Math.max(0, this.swingCool - dt);
+    this.dodgeCool = Math.max(0, this.dodgeCool - dt);
+    if (this.dodgeT > 0) this.dodgeT = Math.max(0, this.dodgeT - dt);
+    this.guardAge += dt;
 
-    this.pos += this.dir * this.speed * dt;
-    if (this.pos >= 1) { this.pos = 1; this.dir = -1; this._reband(); }
-    else if (this.pos <= 0) { this.pos = 0; this.dir = 1; this._reband(); }
+    // the claw comes up fast and drops slowly, which is what makes a late
+    // guard a real mistake rather than a free one
+    this.guard = this.guarding
+      ? Math.min(1, this.guard + dt * 7)
+      : Math.max(0, this.guard - dt * 3.4);
+
+    // holding a guard costs; so does rolling. Standing still gets it back.
+    const drain = (this.guarding ? 9 : 0) + (this.dodgeT > 0 ? 0 : 0);
+    this.stam = clamp(this.stam - drain * dt + (this.guarding ? 0 : 16 * dt), 0, STAM_MAX);
+    if (this.stam <= 0 && this.guarding) this.setGuard(false);
+
+    if (this.swing) {
+      this.swing.t += dt;
+      if (this.swing.t > this.swing.life) this.swing = null;
+    }
+
+    // engagement follows whatever is closest and still standing
+    const n = this.near;
+    if (n) this.engage(n);
+    else if (this.live) this.stop();
+  }
+
+  setGuard(on) {
+    if (on && !this.guarding) {
+      if (this.stam < 12) return;
+      this.guardAge = 0;                 // the parry clock starts here
+      this.game.audio?.play('ui', { pitch: 0.6 });
+    }
+    this.guarding = !!on;
+  }
+
+  /** One roll. Backwards, because forwards into a mouth is not a dodge. */
+  roll(dir) {
+    if (this.dodgeT > 0 || this.dodgeCool > 0 || this.stam < 25) {
+      return { ok: false };
+    }
+    const g = this.game;
+    this.dodgeT = DODGE_SECS;
+    this.dodgeCool = DODGE_COOL;
+    this.dodgeDir = dir || -(g.crab.facing || 1);
+    this.stam -= 25;
+    g.crab.vx = this.dodgeDir * g.crab.speed * 2.1;
+    g.crab.dodge = 1;
+    g.audio?.play('step', { pitch: 1.5 });
+    g.fx?.dust(g.crab.x, g.crab.y + g.crab.standH * 0.6, 1.2);
+    return { ok: true };
+  }
+
+  get invulnerable() { return this.dodgeT > DODGE_SECS - DODGE_IFRAME; }
+
+  /**
+   * A swing, aimed. `dx, dy` is the flick, in screen terms, and its angle is
+   * the arc the claw takes: down low sweeps the legs out, level goes for the
+   * body, up is a hook that costs more and staggers.
+   */
+  strike(dx, dy) {
+    const g = this.game;
+    if (this.swingCool > 0) return { kind: 'early' };
+    if (this.dodgeT > 0) return { kind: 'rolling' };
+    if (this.stam < 10) return { kind: 'spent' };
+    const len = Math.hypot(dx, dy) || 1;
+    const a = Math.atan2(dy / len, dx / len);
+    this.swingCool = SWING_COOL;
+    this.stam -= 10;
+    this.swing = { a, t: 0, life: 0.26 };
+    const c = g.crab;
+    c.clawOpen = 1;
+    c.swingT = 0.3;
+    c.swingA = a;
+
+    // where the claw actually gets to
+    const face = Math.sign(Math.cos(a)) || (c.facing || 1);
+    c.facing = face;
+    const hx = c.x + Math.cos(a) * REACH * 0.72;
+    const hy = c.y - c.standH * 0.45 + Math.sin(a) * REACH * 0.5;
+
+    // low sweeps wide and takes legs; high is narrow and staggers
+    const low = Math.sin(a) > 0.35;
+    const high = Math.sin(a) < -0.35;
+    const spread = low ? REACH * 0.88 : REACH * 0.6;
+    const power = g.economy ? g.economy.stat('dmg') : 8;
+    const mult = high ? 1.35 : low ? 0.85 : 1;
+
+    let hit = 0;
+    for (const q of g.wildlife.hostiles) {
+      if (Math.abs(q.x - hx) > spread || Math.abs(q.y - hy) > 44) continue;
+      // a staggered animal takes the lot
+      const bonus = (q.stagger || 0) > 0 ? 2.2 : 1;
+      q.hurt(power * mult * bonus, c.x, { limb: low || bonus > 1 });
+      if (high || bonus > 1) q.stagger = Math.max(q.stagger || 0, 1.1);
+      if (low) { q.vx += face * 90; q.trip = 0.8; }
+      hit++;
+    }
+    if (hit) {
+      this.chain++;
+      this.best = Math.max(this.best, this.chain);
+      this.flash = 1;
+      if (high) this.crit = 1;
+      g.cam.shake(high ? 4 : 2.6);
+      g.audio?.play('hit', { pitch: high ? 0.8 : 1 });
+    } else {
+      this.chain = 0;
+      g.audio?.play('claw');
+    }
+    g.fx?.dust(hx, hy + 6, 0.8);
+    return { kind: hit ? (high ? 'crit' : 'hit') : 'miss', hit };
   }
 
   /**
-   * One swing. Returns what it was worth: `miss`, `hit` or `crit`, and the
-   * multiplier that goes with it.
+   * Something is landing on you. Returns how much of it gets through, and
+   * this is where the three verbs pay off.
    */
-  strike() {
-    if (!this.live) return { kind: 'none' };
-    if (this.open > 0) return { kind: 'open' };
-    if (this.cool > 0) return { kind: 'early' };
-    this.cool = 0.16;
-    const [lo, hi] = this.window;
-    const p = this.pos;
-    if (p < lo || p > hi) {
-      // a clean miss: the combo goes, and you are open
-      this.combo = 0;
-      this.open = OPEN_SECS;
-      this._reband();
-      return { kind: 'miss' };
+  incoming(dmg, from) {
+    if (this.invulnerable) {
+      this.game.fx?.popup(this.game.crab.x, this.game.crab.y - 24, 'miss', '#9de3ee');
+      return { dmg: 0, kind: 'dodge' };
     }
-    const off = Math.abs(p - this.band) / (this.width / 2);   // 0 dead centre
-    const core = off <= CORE;
-    this.combo++;
-    this.best = Math.max(this.best, this.combo);
-    this.flash = 1;
-    if (core) this.crit = 1;
-    this._reband();
-    return { kind: core ? 'crit' : 'hit', mult: this.mult * (core ? 2.1 : 1), off };
+    if (this.guard > 0.4 && this.guardAge <= PARRY_WINDOW) {
+      // PARRY. The whole reason to wait rather than hold.
+      this.parryFlash = 1;
+      this.stam = Math.min(STAM_MAX, this.stam + 22);
+      if (from) {
+        from.stagger = 2.0;
+        from.vx += Math.sign(from.x - this.game.crab.x) * 140;
+        from.trip = 1.0;
+      }
+      this.game.cam?.shake(5);
+      this.game.audio?.play('evolve', { pitch: 1.5 });
+      this.game.fx?.ring(this.game.crab.x, this.game.crab.y - 18, '#ffe9a8', 20);
+      this.game.fx?.popup(this.game.crab.x, this.game.crab.y - 26, 'PARRY', '#ffe9a8');
+      return { dmg: 0, kind: 'parry' };
+    }
+    if (this.guard > 0.5) {
+      this.stam = Math.max(0, this.stam - 18);
+      this.game.audio?.play('hit', { pitch: 0.55 });
+      this.game.fx?.spark(this.game.crab.x, this.game.crab.y - 16, '#cfd8dc', 10, 40);
+      this.game.fx?.popup(this.game.crab.x, this.game.crab.y - 26, 'block', '#cfd8dc');
+      return { dmg: dmg * (1 - GUARD_SOAK), kind: 'block' };
+    }
+    this.chain = 0;
+    return { dmg, kind: 'hit' };
   }
 
   toJSON() { return { best: this.best }; }
-
   fromJSON(d) { if (d) this.best = d.best || 0; }
 }

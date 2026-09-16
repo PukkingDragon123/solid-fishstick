@@ -6485,7 +6485,9 @@ body {
     pt.speckle(mat, { density: 0.05, amp: 0.5, seed: p.seed >> 3 & 1023 });
     pt.smoothHeight(1, 0.3);
     const cv = pt.resolve(MATERIALS, { outline: 0.9, outlineColor: "#1a1210" });
-    return { cv, ox: cx, oy: base, top };
+    const g2 = cv.getContext("2d");
+    g2.clearRect(0, H - 1, W, 1);
+    return { cv, ox: cx, oy: base - 1, top };
   }
   function paintBush(p) {
     const r = mulberry32(p.seed);
@@ -6942,6 +6944,17 @@ body {
     }
     return d;
   }
+  function poolSurface(lm, terrain) {
+    if (lm.surface !== void 0) return lm.surface;
+    let deep = -Infinity;
+    const step = Math.max(2, lm.size / 24);
+    for (let x = lm.x - lm.size; x <= lm.x + lm.size; x += step) {
+      const y = terrain.baseY(x);
+      if (y > deep) deep = y;
+    }
+    lm.surface = deep - lm.depth * 0.42;
+    return lm.surface;
+  }
   var SCATTER_CELL = 26;
   function scatterAt(seed, terrain, x0, x1) {
     const out = [];
@@ -7304,6 +7317,33 @@ body {
       }
     }
     /**
+     * THE THING THAT MAKES A SPRITE STAND ON THE GROUND.
+     *
+     * Not the position - the position was always right. It is the shadow. A
+     * sprite drawn at exactly the correct height with nothing under it reads as
+     * floating, because in the real world the one cue your eye uses for contact
+     * is the dark patch where the light cannot get. So everything that stands on
+     * the sand gets one: a squashed smear on the surface, wider and fainter for
+     * a taller thing, and it follows the ground rather than being a flat ellipse.
+     */
+    _contact(ctx, cam, x, halfW, strength = 1) {
+      const t = this.game.terrain;
+      const z = cam.zoom;
+      const step = Math.max(1, Math.round(2 / z));
+      const sun = this.game.weather ? clamp01(1 - (this.game.weather.haze || 0) * 0.5) : 1;
+      ctx.globalAlpha = 0.34 * strength * (0.45 + sun * 0.55);
+      ctx.fillStyle = "#2a1d13";
+      for (let dx = -halfW; dx <= halfW; dx += step) {
+        const k = 1 - Math.abs(dx) / halfW;
+        if (k <= 0) continue;
+        const wx = x + dx;
+        const s = cam.worldToScreen(wx, t.surfaceY(wx));
+        const h = Math.max(1, Math.round(k * k * 2.2 * z));
+        ctx.fillRect(Math.round(s.x), Math.round(s.y - h * 0.35), Math.max(1, Math.round(step * z)), h);
+      }
+      ctx.globalAlpha = 1;
+    }
+    /**
      * Rock and scrub. Boulders go down first because the ground is already
      * shaped like them - the sprite only has to sit in the dent it makes - and
      * the dry stuff goes on top, leaning with the wind.
@@ -7321,6 +7361,10 @@ body {
           if ((big ? "far" : "near") !== layer) continue;
           const art3 = propArt(p, p.kind === "mast" && this.felled.has(p.id));
           if (!art3) continue;
+          if (p.kind !== "boulder") {
+            const hw = p.kind === "mast" ? 7 + p.h * 0.05 : 5 + (p.s || 1) * 5;
+            this._contact(ctx, cam, p.x, hw, p.kind === "mast" ? 1.1 : 0.8);
+          }
           const gy = p.kind === "boulder" ? t.baseY(p.x) + (art3.top || 0) : t.surfaceY(p.x);
           const s = cam.worldToScreen(p.x, gy);
           ctx.save();
@@ -7350,7 +7394,7 @@ body {
       const b = cam.bounds(80);
       for (const lm of landmarksNear(this.seed, cam.rx, cam.vw / cam.zoom + 400)) {
         if (lm.kind !== "oasis") continue;
-        if (lm.surface === void 0) lm.surface = t.baseY(lm.x) - lm.depth * 0.42;
+        poolSurface(lm, t);
         const x0 = Math.max(b.x0, lm.x - lm.size), x1 = Math.min(b.x1, lm.x + lm.size);
         if (x1 <= x0) continue;
         const step = Math.max(1, Math.round(2 / z));
@@ -7427,6 +7471,7 @@ body {
           if (!def3) continue;
           const art3 = buildPlant(def3, v.stage, v.variant, v.size);
           const gy = t.surfaceY(v.x);
+          this._contact(ctx, cam, v.x, 3 + v.size * 7, 0.55 + v.size * 0.4);
           const s = cam.worldToScreen(v.x, gy);
           ctx.save();
           ctx.translate(Math.round(s.x), Math.round(s.y));
@@ -9977,9 +10022,9 @@ body {
   var HEAD_KEY = {
     o: "#301d1f",
     // his outline, off the darkest of his own tones
-    h: "#6b4131",
+    h: "#7c4c36",
     // hair
-    H: "#a06a4a",
+    H: "#a8724e",
     // hair, lit
     s: "#df8b69",
     // skin
@@ -9987,7 +10032,7 @@ body {
     // skin, lit
     d: "#c8765c",
     // skin, shaded
-    q: "#c08063",
+    q: "#b4755f",
     // the stubble along his jaw
     t: "#c89574",
     // the helmet
@@ -9999,43 +10044,43 @@ body {
     // the band
     g: "#946958",
     // the brass of the goggles
-    e: "#56637e",
-    // the goggle lens on the brim
-    l: "#56637e",
-    // and the round lens over his eye
-    L: "#8896ad",
+    e: "#4f5c76",
+    // the goggle lens, up on the crown and in its own shade
+    l: "#6d7b96",
+    // the round lens over his eye, which catches the sky
+    L: "#aebbcf",
     // the catch of light in it
-    r: "#3a2a2c",
-    // the rim of the glasses
-    m: "#7a3630"
+    r: "#4a3134",
+    // the rim of the glasses, and the pupil behind it
+    m: "#6d2c27"
     // mouth
   };
   var HEAD_ART = [
-    ".....oTTTToo....",
-    "....oTTTTTggo...",
-    "...ottTTTgeeo...",
-    "...ottTTTgeeo...",
-    "..obbbbbbbbbbo..",
-    ".otttttttttttto.",
-    "otttttttttttttto",
-    "uuohhhhhhHHhoouu",
-    "oohhhhhhhhhso.oo",
-    "ohhHhhhhdsSSso..",
-    "ohhHhhhhrrrso...",
-    "ohhHhhhhrlLrso..",
-    ".ohhhhhsssssSso.",
-    "ohhhhHhhsssdoo..",
-    ".ohhhHhssssso...",
-    ".ohhhHhqqmmmso..",
-    ".ohhhhhqqqqso...",
-    "..ohhhhsssoo....",
-    "...ohhbbbdo....."
+    ".....oTTTTToo...",
+    "....ottTTTTgeo..",
+    "....ottTTTTggo..",
+    "...obbbbbbbbbo..",
+    ".oouTTTTTTTTuoo.",
+    "ouuuuuuuuuuuuuuo",
+    ".ohhhhhhHHHssoo.",
+    ".oHhhhhhsssSSso.",
+    "oHhhhhhhsssrrro.",
+    "oHhhhhhhsdsLLlo.",
+    "oHhhhhhssdslrso.",
+    "oHhhhhhssssssSSo",
+    ".oHhhhhhsssssddo",
+    ".ohhhhhsssssdoo.",
+    ".ohhhhhsqqqqmmo.",
+    "..ohhhsqqqqqdo..",
+    "..ohhhqqqqdoo...",
+    "...ooobbbso....."
   ];
   var HEAD_SHUT = {
-    11: "ohhHhhhhrrrrso.."
+    9: "oHhhhhhhsdsrrro."
   };
   var HEAD_OPEN = {
-    16: ".ohhhhhqqmmso..."
+    14: ".ohhhhhsqqqmmmo.",
+    15: ".ohhhhsqqqqmmo.."
   };
   var HEAD_BAYER = [
     [0, 32, 8, 40, 2, 34, 10, 42],
@@ -10053,16 +10098,17 @@ body {
       const d = ((x - cx) / rx) ** 2 + ((y - cy) / ry) ** 2;
       return d >= 1 ? 0 : Math.sqrt(1 - d);
     };
-    if (y <= 4) return 0.52 + dome(7.4, 3.4, 5, 4.6) * 0.48;
-    if (y <= 6) {
+    if (y <= 2) return 0.56 + dome(8, 2.6, 4.4, 3.8) * 0.44;
+    if (y === 3) return 0.66;
+    if (y <= 5) {
       const t = 1 - Math.abs(x - 7.5) / (W / 2);
-      return 0.22 + t * t * 0.22;
+      return (y === 4 ? 0.64 : 0.46) + t * t * 0.18;
     }
-    let h = 0.34 + dome(6.6, 12, 7.6, 8.4) * 0.62;
-    if (y >= 11 && y <= 12 && x >= 11) h += 0.16;
-    if (y === 9 && x >= 10) h += 0.07;
-    if (y === 15 && x >= 9) h += 0.05;
-    if (y >= 10 && y <= 11 && x >= 8 && x <= 11) h -= 0.1;
+    let h = 0.62 + dome(6.8, 11.4, 7.4, 8.4) * 0.26;
+    if (y === 8 && x >= 11) h += 0.06;
+    if (y >= 11 && y <= 12 && x >= 12) h += 0.2;
+    if (y >= 14 && y <= 15 && x >= 11) h += 0.05;
+    if (y >= 8 && y <= 10 && x >= 10 && x <= 13) h -= 0.11;
     return h;
   }
   function paintHeadSide(K, far, kind, opts = {}) {
@@ -10113,8 +10159,8 @@ body {
           const bay = HEAD_BAYER[y & 7][x & 7];
           const step = 0.16;
           const q = Math.round((lam + (bay - 0.5) * step * 0.34) / step) * step;
-          const s = clamp01(q) - 0.58;
-          col = s > 0 ? mixHex(col, "#fff1cf", Math.min(0.34, s * 0.72)) : mixHex(col, "#2a1a20", Math.min(0.4, -s * 0.62));
+          const s = clamp01(q) - 0.6;
+          col = s > 0 ? mixHex(col, "#fff1cf", Math.min(0.2, s * 0.44)) : mixHex(col, "#2a1a20", Math.min(0.24, -s * 0.4));
         }
         if (far) col = mixHex(col, "#8a7a63", 0.34);
         g.fillStyle = col;
@@ -10128,7 +10174,7 @@ body {
       oy: (H - 1) * px,
       W: W * px,
       H: H * px,
-      eye: { x: 2 * px, y: -7 * px }
+      eye: { x: 3 * px, y: -7 * px }
     };
   }
   function paintBone(len, r0, r1, mat, K, far, kind, opts = {}) {
@@ -15439,112 +15485,201 @@ body {
   };
 
   // js/systems/combat.js
-  var BASE_SPEED2 = 1.15;
-  var BASE_BAND2 = 0.26;
-  var CORE2 = 0.34;
-  var MAX_COMBO2 = 6;
-  var OPEN_SECS = 0.85;
+  var REACH3 = 46;
+  var SWING_COOL = 0.42;
+  var DODGE_SECS = 0.42;
+  var DODGE_IFRAME = 0.26;
+  var DODGE_COOL = 0.95;
+  var PARRY_WINDOW = 0.26;
+  var GUARD_SOAK = 0.78;
+  var STAM_MAX = 100;
   var Combat = class {
     constructor(game2) {
       this.game = game2;
       this.live = false;
-      this.pos = 0;
-      this.dir = 1;
-      this.band = 0.5;
-      this.combo = 0;
-      this.best = 0;
-      this.open = 0;
-      this.cool = 0;
       this.target = null;
+      this.guard = 0;
+      this.guarding = false;
+      this.guardAge = 9;
+      this.dodgeT = 0;
+      this.dodgeDir = 1;
+      this.dodgeCool = 0;
+      this.swingCool = 0;
+      this.swing = null;
+      this.stam = STAM_MAX;
+      this.best = 0;
+      this.chain = 0;
       this.flash = 0;
       this.crit = 0;
+      this.parryFlash = 0;
     }
-    get speed() {
-      return BASE_SPEED2 * (1 + Math.min(this.combo, MAX_COMBO2) * 0.16);
+    /** Anything hostile within a claw's length and a half. */
+    get near() {
+      return this.game.wildlife?.nearest(
+        this.game.crab.x,
+        this.game.crab.y,
+        REACH3 * 1.8,
+        (q) => q.hostile && q.alive
+      ) || null;
     }
-    /** The window narrows as the combo climbs, because of course it does. */
-    get width() {
-      return BASE_BAND2 * (1 - Math.min(this.combo, MAX_COMBO2) * 0.085);
-    }
-    get mult() {
-      return 1 + Math.min(this.combo, MAX_COMBO2) * 0.22;
-    }
-    /** Where on the sweep the window starts and ends. */
-    get window() {
-      const w = this.width;
-      return [this.band - w / 2, this.band + w / 2];
-    }
-    /** Bring the gauge up against a target, or drop it if there is nothing. */
     engage(target) {
       if (!target || !target.alive) {
         this.stop();
         return false;
       }
       this.target = target;
-      if (!this.live) {
-        this.live = true;
-        this.pos = 0;
-        this.dir = 1;
-        this.combo = 0;
-        this._reband();
-      }
+      this.live = true;
       return true;
     }
     stop() {
       this.live = false;
       this.target = null;
-      this.combo = 0;
+      this.chain = 0;
+      this.guarding = false;
     }
-    _reband() {
-      this.band = 0.22 + Math.random() * 0.56;
+    /**
+     * How close whatever is in front of you is to actually swinging, 0..1. This
+     * is the only number in the fight and the UI draws it as a ring round the
+     * animal rather than as a bar in a corner.
+     */
+    get threat() {
+      const t = this.target;
+      if (!t || !t.alive) return 0;
+      return clamp01(t.wind || 0);
     }
     update(dt) {
       this.flash = Math.max(0, this.flash - dt * 3);
       this.crit = Math.max(0, this.crit - dt * 2.4);
-      if (this.cool > 0) this.cool -= dt;
-      if (this.open > 0) this.open -= dt;
-      if (!this.live) return;
-      const t = this.target;
-      if (!t || !t.alive || Math.abs(t.x - this.game.crab.x) > 260) {
-        this.stop();
-        return;
+      this.parryFlash = Math.max(0, this.parryFlash - dt * 2.2);
+      this.swingCool = Math.max(0, this.swingCool - dt);
+      this.dodgeCool = Math.max(0, this.dodgeCool - dt);
+      if (this.dodgeT > 0) this.dodgeT = Math.max(0, this.dodgeT - dt);
+      this.guardAge += dt;
+      this.guard = this.guarding ? Math.min(1, this.guard + dt * 7) : Math.max(0, this.guard - dt * 3.4);
+      const drain = (this.guarding ? 9 : 0) + (this.dodgeT > 0 ? 0 : 0);
+      this.stam = clamp(this.stam - drain * dt + (this.guarding ? 0 : 16 * dt), 0, STAM_MAX);
+      if (this.stam <= 0 && this.guarding) this.setGuard(false);
+      if (this.swing) {
+        this.swing.t += dt;
+        if (this.swing.t > this.swing.life) this.swing = null;
       }
-      this.pos += this.dir * this.speed * dt;
-      if (this.pos >= 1) {
-        this.pos = 1;
-        this.dir = -1;
-        this._reband();
-      } else if (this.pos <= 0) {
-        this.pos = 0;
-        this.dir = 1;
-        this._reband();
+      const n = this.near;
+      if (n) this.engage(n);
+      else if (this.live) this.stop();
+    }
+    setGuard(on) {
+      if (on && !this.guarding) {
+        if (this.stam < 12) return;
+        this.guardAge = 0;
+        this.game.audio?.play("ui", { pitch: 0.6 });
       }
+      this.guarding = !!on;
+    }
+    /** One roll. Backwards, because forwards into a mouth is not a dodge. */
+    roll(dir) {
+      if (this.dodgeT > 0 || this.dodgeCool > 0 || this.stam < 25) {
+        return { ok: false };
+      }
+      const g = this.game;
+      this.dodgeT = DODGE_SECS;
+      this.dodgeCool = DODGE_COOL;
+      this.dodgeDir = dir || -(g.crab.facing || 1);
+      this.stam -= 25;
+      g.crab.vx = this.dodgeDir * g.crab.speed * 2.1;
+      g.crab.dodge = 1;
+      g.audio?.play("step", { pitch: 1.5 });
+      g.fx?.dust(g.crab.x, g.crab.y + g.crab.standH * 0.6, 1.2);
+      return { ok: true };
+    }
+    get invulnerable() {
+      return this.dodgeT > DODGE_SECS - DODGE_IFRAME;
     }
     /**
-     * One swing. Returns what it was worth: `miss`, `hit` or `crit`, and the
-     * multiplier that goes with it.
+     * A swing, aimed. `dx, dy` is the flick, in screen terms, and its angle is
+     * the arc the claw takes: down low sweeps the legs out, level goes for the
+     * body, up is a hook that costs more and staggers.
      */
-    strike() {
-      if (!this.live) return { kind: "none" };
-      if (this.open > 0) return { kind: "open" };
-      if (this.cool > 0) return { kind: "early" };
-      this.cool = 0.16;
-      const [lo, hi] = this.window;
-      const p = this.pos;
-      if (p < lo || p > hi) {
-        this.combo = 0;
-        this.open = OPEN_SECS;
-        this._reband();
-        return { kind: "miss" };
+    strike(dx, dy) {
+      const g = this.game;
+      if (this.swingCool > 0) return { kind: "early" };
+      if (this.dodgeT > 0) return { kind: "rolling" };
+      if (this.stam < 10) return { kind: "spent" };
+      const len = Math.hypot(dx, dy) || 1;
+      const a = Math.atan2(dy / len, dx / len);
+      this.swingCool = SWING_COOL;
+      this.stam -= 10;
+      this.swing = { a, t: 0, life: 0.26 };
+      const c = g.crab;
+      c.clawOpen = 1;
+      c.swingT = 0.3;
+      c.swingA = a;
+      const face = Math.sign(Math.cos(a)) || (c.facing || 1);
+      c.facing = face;
+      const hx = c.x + Math.cos(a) * REACH3 * 0.72;
+      const hy = c.y - c.standH * 0.45 + Math.sin(a) * REACH3 * 0.5;
+      const low = Math.sin(a) > 0.35;
+      const high = Math.sin(a) < -0.35;
+      const spread = low ? REACH3 * 0.88 : REACH3 * 0.6;
+      const power = g.economy ? g.economy.stat("dmg") : 8;
+      const mult = high ? 1.35 : low ? 0.85 : 1;
+      let hit = 0;
+      for (const q of g.wildlife.hostiles) {
+        if (Math.abs(q.x - hx) > spread || Math.abs(q.y - hy) > 44) continue;
+        const bonus = (q.stagger || 0) > 0 ? 2.2 : 1;
+        q.hurt(power * mult * bonus, c.x, { limb: low || bonus > 1 });
+        if (high || bonus > 1) q.stagger = Math.max(q.stagger || 0, 1.1);
+        if (low) {
+          q.vx += face * 90;
+          q.trip = 0.8;
+        }
+        hit++;
       }
-      const off = Math.abs(p - this.band) / (this.width / 2);
-      const core = off <= CORE2;
-      this.combo++;
-      this.best = Math.max(this.best, this.combo);
-      this.flash = 1;
-      if (core) this.crit = 1;
-      this._reband();
-      return { kind: core ? "crit" : "hit", mult: this.mult * (core ? 2.1 : 1), off };
+      if (hit) {
+        this.chain++;
+        this.best = Math.max(this.best, this.chain);
+        this.flash = 1;
+        if (high) this.crit = 1;
+        g.cam.shake(high ? 4 : 2.6);
+        g.audio?.play("hit", { pitch: high ? 0.8 : 1 });
+      } else {
+        this.chain = 0;
+        g.audio?.play("claw");
+      }
+      g.fx?.dust(hx, hy + 6, 0.8);
+      return { kind: hit ? high ? "crit" : "hit" : "miss", hit };
+    }
+    /**
+     * Something is landing on you. Returns how much of it gets through, and
+     * this is where the three verbs pay off.
+     */
+    incoming(dmg, from) {
+      if (this.invulnerable) {
+        this.game.fx?.popup(this.game.crab.x, this.game.crab.y - 24, "miss", "#9de3ee");
+        return { dmg: 0, kind: "dodge" };
+      }
+      if (this.guard > 0.4 && this.guardAge <= PARRY_WINDOW) {
+        this.parryFlash = 1;
+        this.stam = Math.min(STAM_MAX, this.stam + 22);
+        if (from) {
+          from.stagger = 2;
+          from.vx += Math.sign(from.x - this.game.crab.x) * 140;
+          from.trip = 1;
+        }
+        this.game.cam?.shake(5);
+        this.game.audio?.play("evolve", { pitch: 1.5 });
+        this.game.fx?.ring(this.game.crab.x, this.game.crab.y - 18, "#ffe9a8", 20);
+        this.game.fx?.popup(this.game.crab.x, this.game.crab.y - 26, "PARRY", "#ffe9a8");
+        return { dmg: 0, kind: "parry" };
+      }
+      if (this.guard > 0.5) {
+        this.stam = Math.max(0, this.stam - 18);
+        this.game.audio?.play("hit", { pitch: 0.55 });
+        this.game.fx?.spark(this.game.crab.x, this.game.crab.y - 16, "#cfd8dc", 10, 40);
+        this.game.fx?.popup(this.game.crab.x, this.game.crab.y - 26, "block", "#cfd8dc");
+        return { dmg: dmg * (1 - GUARD_SOAK), kind: "block" };
+      }
+      this.chain = 0;
+      return { dmg, kind: "hit" };
     }
     toJSON() {
       return { best: this.best };
@@ -17255,6 +17390,31 @@ body {
       }
     }
     /**
+     * GIBS. Not blood - pieces. A heavy hit takes something off, and the piece
+     * flies, tumbles, lands, and STAYS, because a fight you won should still be
+     * readable on the ground a minute later.
+     */
+    gib(x, y, dir, n, color, size = 2) {
+      for (let i = 0; i < n; i++) {
+        const a = -0.3 + (Math.random() - 0.5) * 1.5;
+        const sp = 60 + Math.random() * 170;
+        this._add({
+          k: "gib",
+          x,
+          y,
+          color,
+          vx: Math.sign(dir || 1) * Math.cos(a) * sp,
+          vy: Math.sin(a) * sp - 70 - Math.random() * 80,
+          life: 1.1 + Math.random() * 1.2,
+          t: 0,
+          grav: 460,
+          r: size * (0.6 + Math.random() * 0.9),
+          spin: (Math.random() - 0.5) * 16,
+          rot: 0
+        });
+      }
+    }
+    /**
      * Water under pressure. Not a burst in every direction like a spark - a jet
      * goes up, in a narrow cone, and then gravity has it and it comes back
      * down, which is the only reason a fountain looks like a fountain.
@@ -17351,6 +17511,18 @@ body {
             const gy = this.game.terrain.surfaceY(q.x);
             if (q.y >= gy && q.vy > 0) {
               this.stain(q.x, gy, q.r * (1.4 + Math.random()), q.color);
+              q.t = q.life;
+            }
+            break;
+          }
+          case "gib": {
+            q.vy += (q.grav || 460) * dt;
+            q.vx *= Math.pow(0.6, dt);
+            q.rot += q.spin * dt;
+            const gy2 = this.game.terrain.surfaceY(q.x);
+            if (q.y >= gy2 && q.vy > 0) {
+              this.stain(q.x, gy2, q.r * 1.6, q.color);
+              this.stain(q.x + (Math.random() - 0.5) * 4, gy2, q.r, q.color);
               q.t = q.life;
             }
             break;
@@ -17546,6 +17718,20 @@ body {
             ctx.translate(s.x, s.y);
             ctx.rotate(ang);
             ctx.fillRect(0, 0, len, Math.max(1, Math.round(q.r * z * 0.7)));
+            ctx.restore();
+            break;
+          }
+          case "gib": {
+            ctx.globalAlpha = a;
+            ctx.save();
+            ctx.translate(Math.round(s.x), Math.round(s.y));
+            ctx.rotate(q.rot);
+            const w = Math.max(2, Math.round(q.r * z));
+            const h = Math.max(1, Math.round(q.r * z * 0.7));
+            ctx.fillStyle = "rgba(16,8,8,0.8)";
+            ctx.fillRect(-w / 2 - 1, -h / 2 - 1, w + 2, h + 2);
+            ctx.fillStyle = q.color;
+            ctx.fillRect(-w / 2, -h / 2, w, h);
             ctx.restore();
             break;
           }
@@ -19496,12 +19682,17 @@ body {
           }
           this.mood = ad < reach ? MOOD.ATTACK : MOOD.HUNT;
           this.moveTo = ad < reach ? this.x : crab.x - Math.sign(d) * (reach - 6);
-          if (this.mood === MOOD.ATTACK && this.atkT <= 0) {
-            this.atkT = 1.7;
-            this.recoil = 0.9;
-            this.bite = 1;
-            this.game.onCreatureAttack?.(this);
-          }
+          if (this.mood === MOOD.ATTACK && this.atkT <= 0 && (this.stagger || 0) <= 0) {
+            this.wind = (this.wind || 0) + dt / this.windSecs;
+            this.moveTo = this.x;
+            if (this.wind >= 1) {
+              this.wind = 0;
+              this.atkT = 1.7;
+              this.recoil = 0.9;
+              this.bite = 1;
+              this.game.onCreatureAttack?.(this);
+            }
+          } else this.wind = 0;
         } else this._wander(dt);
         return;
       }
@@ -19570,7 +19761,13 @@ body {
         this.hp = Math.min(this.hpMax, this.hp + 1);
       }
     }
+    /** How long this one takes to commit. Big slow things telegraph longer. */
+    get windSecs() {
+      const d = this.def;
+      return 0.42 + Math.min(0.55, (d.hp || 30) / 320) + (d.boss ? 0.3 : 0);
+    }
     _wander(dt) {
+      this.wind = 0;
       if (this.def.dmg > 0 && !this.tamed) {
         const kill = this.game.wildlife?.nearestKill?.(this.x, 150);
         if (kill) {
@@ -19672,7 +19869,7 @@ body {
       const ground = n ? sy / n : t.surfaceY(this.x);
       this.y = damp(this.y, ground - this.rig.standH, 6e-4, dt);
     }
-    hurt(n, fromX) {
+    hurt(n, fromX, opts = {}) {
       if (!this.alive) return;
       const was = this.hp;
       this.hp -= n;
@@ -19680,6 +19877,30 @@ body {
       const col = this.def.blood || (this.def.clade === "insect" || this.def.clade === "arachnid" ? "#c8d07a" : "#8e1f22");
       const dir = fromX === void 0 ? 1 : Math.sign(this.x - fromX) || 1;
       this.game.fx?.blood(this.x, this.y - 4, dir, this.hp <= 0 ? 1.8 : clamp(n / 8, 0.3, 1.2), col);
+      this.lost = this.lost || /* @__PURE__ */ new Set();
+      const heavy = opts.limb || n > (this.hpMax || 30) * 0.28;
+      const frac = this.hp / Math.max(1, this.hpMax || 30);
+      if (heavy && this.legs && this.lost.size < Math.max(0, this.legs.length - 2) && (frac < 0.65 || this.hp <= 0) && Math.random() < 0.55) {
+        const spare = this.legs.map((_, i) => i).filter((i) => !this.lost.has(i));
+        const pick = spare[Math.floor(Math.random() * spare.length)];
+        if (pick !== void 0) {
+          this.lost.add(pick);
+          const l = this.legs[pick];
+          this.game.fx?.gib(l.foot.x, l.foot.y - 4, dir, 3, col, 2.2 * (this.S || 1));
+          this.game.fx?.blood(l.hip.x, l.hip.y, dir, 0.9, col);
+          this.game.audio?.play("hit", { pitch: 0.6 });
+        }
+      }
+      if (this.hp <= 0 && was > 0) {
+        this.game.fx?.gib(
+          this.x,
+          this.y - 6,
+          dir,
+          4 + Math.floor(Math.random() * 4),
+          col,
+          2.4 * (this.S || 1)
+        );
+      }
       if (this.hp <= 0 && was > 0) {
         this.game.cam?.shake(3);
         this.game.fx?.ring(this.x, this.y - 4, col, 12);
@@ -19709,7 +19930,7 @@ body {
       const sq = (this.squash || 0) - (this.pounceT > 0 ? 0.22 : 0);
       if (Math.abs(sq) > 4e-3) ctx.scale(1 - sq * 0.45, 1 + sq);
       if (!this.alive) {
-        ctx.globalAlpha = Math.max(0, 1 - this.moodT / 4);
+        ctx.globalAlpha = 1;
         ctx.rotate(clamp(this.moodT * 1.6, 0, 1) * 1.5 * f);
       } else if (this.hurtT > 0) {
         ctx.globalAlpha = 0.55 + Math.sin(this.hurtT * 60) * 0.45;
@@ -19759,6 +19980,7 @@ body {
       const f = this.faceT < 0 ? -1 : 1;
       for (const l of this.legs) {
         if (l.far !== far) continue;
+        if (this.lost && this.lost.has(this.legs.indexOf(l))) continue;
         const lx = (l.foot.x - this.x) * f;
         const ly = l.foot.y - (this.y + this.bob);
         const hx = l.hip.x + (far ? -1.2 * this.S : 0.7 * this.S);
@@ -21190,10 +21412,11 @@ body {
         c.orders = c.tamed ? this.orders : void 0;
         c.update(dt);
         const far = Math.abs(c.x - g.crab.x) > 620;
-        if (!c.alive && c.moodT > 4) {
+        if (!c.alive && (c.moodT > 300 || (c.eaten || 0) > 6 || Math.abs(c.x - g.crab.x) > 1100)) {
           this.list.splice(i, 1);
           continue;
         }
+        if (!c.alive) continue;
         if (far && !c.tamed) {
           this.list.splice(i, 1);
           continue;
@@ -23899,10 +24122,10 @@ body {
   var MODES = [
     {
       id: "direct",
-      name: "WALK",
+      name: "CRAB",
       glyph: "crab",
       tint: "#e2b74a",
-      desc: "You steer. A crab goes sideways."
+      desc: "You steer, you dig, you plant. Everything an animal does with its own body."
     },
     {
       id: "auto",
@@ -23917,7 +24140,7 @@ body {
       name: "HUNT",
       glyph: "claw",
       tint: "#e2564f",
-      desc: "The claw, on a timer. Hit the band for damage and the core for a great deal of it."
+      desc: "Three verbs and nothing else. Drag the claw to swing, hold to guard, roll to get out."
     },
     {
       id: "spore",
@@ -24088,8 +24311,17 @@ body {
       }
       if (!this.buildOn && !this.drawerOpen && !this.placing && !this.driving && this.game.state === "play" && i.clicked && this._overCrab() && !this._overRipe()) {
         i.clicked = false;
-        this.toggleBuild();
+        const g = this.game;
+        const s = g.cam.worldToScreen(g.crab.x, g.crab.y - g.crab.m.rx * 0.35);
+        if (i.sy > s.y && this.mode !== "hunt") {
+          this.digTap = 0.45;
+          g.scoopSand(0.05);
+        } else this.toggleBuild();
       }
+      if (this.digTap > 0) {
+        this.digTap -= dt;
+        this.scoopTap = true;
+      } else this.scoopTap = false;
       if (i.justPressed("g")) {
         i.consumeKey("g");
         this._openTree();
@@ -24863,37 +25095,47 @@ body {
         const iw = w - 6, ix = x + 3, iy = gy + 3;
         ctx.fillStyle = "rgba(12,8,5,0.9)";
         ctx.fillRect(ix, iy, iw, 7);
-        const [lo, hi] = cb.window;
-        ctx.fillStyle = "rgba(226,86,79,0.42)";
-        ctx.fillRect(ix + iw * lo, iy, iw * (hi - lo), 7);
-        const cw = (hi - lo) * 0.34;
-        ctx.fillStyle = "rgba(255,214,120,0.75)";
-        ctx.fillRect(ix + iw * (cb.band - cw / 2), iy, iw * cw, 7);
-        ctx.fillStyle = cb.flash > 0 ? "#fff4d0" : "#f2e4c2";
-        ctx.fillRect(Math.round(ix + iw * cb.pos), iy - 1, 1, 9);
-        if (cb.combo > 0) {
-          drawText(
-            ctx,
-            `x${cb.mult.toFixed(1)}`,
-            x + w - 3,
-            gy - 9,
-            { color: "#ffd678", align: "right" }
-          );
+        const th = cb.threat;
+        ctx.fillStyle = th > 0.78 ? "#e2564f" : th > 0.4 ? "#e2b74a" : "#8a7a52";
+        ctx.fillRect(ix, iy, Math.round(iw * th), 7);
+        if (th > 0.78) {
+          ctx.globalAlpha = 0.4 + 0.6 * Math.sin(this.t * 18);
+          ctx.fillStyle = "#ffd678";
+          ctx.fillRect(ix + Math.round(iw * 0.78), iy - 1, Math.round(iw * 0.22), 9);
+          ctx.globalAlpha = 1;
         }
-        if (cb.open > 0) drawText(ctx, "OPEN", x + 3, gy - 9, { color: "#e2564f" });
+        drawText(
+          ctx,
+          foe ? ellipsize(foe.def.name, w - 8) : "",
+          x + 3,
+          gy - 9,
+          { color: "rgba(226,200,150,0.75)" }
+        );
+        if (cb.chain > 1) {
+          drawText(ctx, `x${cb.chain}`, x + w - 3, gy - 9, { color: "#ffd678", align: "right" });
+        }
       }
-      const label = cb.open > 0 ? "OPEN" : cb.live ? "STRIKE" : "NOTHING NEAR";
+      const guarding = cb.guard > 0.5;
+      const label = cb.dodgeT > 0 ? "ROLLING" : guarding ? "GUARD" : cb.live ? "SWING" : "NOTHING NEAR";
       if (this._actBtn(ctx, x, y, w, 14, "claw", label, "Q", {
-        tint: "#e2564f",
-        dim: !cb.live || cb.open > 0,
-        hover: { title: "Strike", body: foe ? `${foe.def.name}. Land it on the band for damage and on the core for a great deal of it.` : "Nothing close enough to hit." }
+        tint: guarding ? "#9de3ee" : "#e2564f",
+        dim: !cb.live,
+        hover: {
+          title: "The claw",
+          body: foe ? `${foe.def.name}. Drag the claw and flick it - low takes the legs, high staggers. S guards, and a guard raised just as it swings is a parry. Shift rolls.` : "Nothing close enough to hit."
+        }
       })) {
         g.input.clicked = false;
-        g.strike();
+        g.strike(g.crab.facing || 1, 0);
       }
+      const st = clamp01(cb.stam / 100);
+      ctx.fillStyle = "rgba(12,8,5,0.8)";
+      ctx.fillRect(x, y + 15, w, 3);
+      ctx.fillStyle = st > 0.3 ? "#8fe0cc" : "#e2564f";
+      ctx.fillRect(x, y + 15, Math.round(w * st), 3);
       const abil = g.economy.abilities ? g.economy.abilities() : [];
       let ax = x + w + 5;
-      abil.slice(0, 4).forEach((a, i) => {
+      abil.slice(0, 4).forEach((a) => {
         const hot = this._hit(ax, y, 15, 14);
         const ready = !a.cool || a.cool <= 0;
         drawPlate(ctx, ax, y, 15, 14, { edge: ready ? "rgba(160,130,78,0.6)" : "rgba(80,66,44,0.4)" });
@@ -25474,11 +25716,79 @@ Coming back.` };
       drawText(ctx, "CLIMB DOWN", x + bw / 2, y + (bh - 7) / 2, { color: INK, align: "center" });
     }
     /**
+     * THE CLAW.
+     *
+     * In HUNT the corner is not a valve. It is the claw itself, and you do not
+     * press it - you DRAG it. Push your thumb out from the middle and the claw
+     * goes with it; flick and it swings where you flicked. Low sweeps the legs,
+     * level goes for the body, high is a hook. It is the same hand and the same
+     * corner as the spring, which is the point: one thumb, one place, and the
+     * mode decides what is under it.
+     */
+    _clawStick(ctx, W, H) {
+      const g = this.game;
+      const b = this.valveBox(W, H);
+      const R = Math.round(b.size * 0.92);
+      const cx = b.x + b.size / 2, cy = b.y + b.size / 2;
+      const i = g.input;
+      const live = g.state === "play" && !this.drawerOpen;
+      const hot = Math.hypot(i.sx - cx, i.sy - cy) < R * 1.5;
+      if (live && hot && i.down && !this._claw) {
+        this._claw = { x: 0, y: 0, peak: 0 };
+        i.clicked = false;
+      }
+      if (this._claw) {
+        if (i.down) {
+          const dx = clamp((i.sx - cx) / R, -1, 1);
+          const dy = clamp((i.sy - cy) / R, -1, 1);
+          const len = Math.hypot(dx, dy);
+          this._claw.x = dx;
+          this._claw.y = dy;
+          this._claw.peak = Math.max(this._claw.peak, len);
+          this.clawVec = len > 0.25 ? { x: dx, y: dy } : null;
+          i.clicked = false;
+        } else {
+          if (this._claw.peak > 0.42) g.strike(this._claw.x || (g.crab.facing || 1), this._claw.y);
+          this._claw = null;
+          this.clawVec = null;
+        }
+      }
+      const c = this._claw;
+      const k = c ? Math.hypot(c.x, c.y) : 0;
+      ctx.globalAlpha = 0.55 + k * 0.3;
+      pxRing(ctx, cx, cy, R, c ? "#e2564f" : "rgba(226,86,79,0.6)", { p: 1 });
+      ctx.globalAlpha = 0.18;
+      pxDisc(ctx, cx, cy, R - 1, "#3a1410", { p: 1 });
+      ctx.globalAlpha = 1;
+      ctx.globalAlpha = 0.2;
+      ctx.fillStyle = "#e2b74a";
+      for (const a of [-0.9, 0, 0.9]) {
+        ctx.fillRect(Math.round(cx + Math.cos(a) * (R - 6)), Math.round(cy + Math.sin(a) * (R - 6)), 2, 2);
+      }
+      ctx.globalAlpha = 1;
+      const hx = cx + (c ? c.x : 0) * (R - 7);
+      const hy = cy + (c ? c.y : 0) * (R - 7);
+      const cool = g.combat ? g.combat.swingCool : 0;
+      drawGlyph(ctx, "claw", hx - 6, hy - 6, { color: cool > 0 ? "#8a5a52" : "#f0a49a" });
+      if (c && k > 0.42) {
+        ctx.globalAlpha = 0.5 + Math.sin(this.t * 14) * 0.2;
+        pxRing(ctx, hx, hy, 9, "#ffd678", { p: 1 });
+        ctx.globalAlpha = 1;
+      }
+      const st = g.combat ? g.combat.stam / 100 : 1;
+      ctx.fillStyle = "rgba(12,8,6,0.75)";
+      ctx.fillRect(Math.round(cx - R), Math.round(cy + R + 3), R * 2, 3);
+      ctx.fillStyle = st > 0.3 ? "#8fe0cc" : "#e2564f";
+      ctx.fillRect(Math.round(cx - R), Math.round(cy + R + 3), Math.round(R * 2 * st), 3);
+      if (this.touchEnabled) this.clawRect = { x: cx - R * 1.5, y: cy - R * 1.5, w: R * 3, h: R * 3 };
+    }
+    /**
      * The pump. It is a valve in your own shell, so it is drawn as one, and it
      * behaves like one: every tap is one stroke of the muscle behind it.
      */
     _pumpButton(ctx, W, H) {
       if (this.mode === "spore") return this._sprayButton(ctx, W, H);
+      if (this.mode === "hunt") return this._clawStick(ctx, W, H);
       const g = this.game;
       const size = 34;
       const { x, y } = this.valveBox(W, H);
@@ -26966,15 +27276,25 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
       const hint = g.actionHint();
       this.scoopHeld = false;
       this.pourHeld = false;
+      this.guardHeld = false;
       const wanted = [];
       if (g.npc && g.talk && !g.talk.on && Math.abs(g.npc.x - g.crab.x) < 64) {
         wanted.push({ label: "TALK", key: "c", colour: "#e8c98a" });
       }
       if (g.garden.ripeCount) wanted.push({ label: `PICK ${g.garden.ripeCount}`, key: "r", colour: "#cfe89a" });
       if (hint) wanted.push({ label: "ACT", key: "e" });
-      const carrying = (g.sandHeld || 0) > 0.5;
-      wanted.push({ label: "DIG", key: "zdig", colour: "#e0c188", hold: true });
-      wanted.push({ label: "POUR", key: "zpour", colour: "#cfe89a", hold: true, dim: !carrying });
+      if (this.mode === "hunt") {
+        wanted.push({ label: "GUARD", key: "zguard", colour: "#9de3ee", hold: true });
+        const rollReady = g.combat && g.combat.dodgeCool <= 0 && g.combat.stam >= 25;
+        wanted.push({ label: "ROLL", key: "zroll", colour: "#e2b74a", dim: !rollReady });
+      } else {
+        const carrying = (g.sandHeld || 0) > 0.5;
+        wanted.push({ label: "DIG", key: "zdig", colour: "#e0c188", hold: true });
+        wanted.push({ label: "POUR", key: "zpour", colour: "#cfe89a", hold: true, dim: !carrying });
+        if (this.mode === "direct") {
+          wanted.push({ label: "PLANT", key: "b", colour: "#9ad86a" });
+        }
+      }
       wanted.push({ label: "MODE", key: "m" });
       const gap = 6;
       const plate = (b, bx, by, bw, bh) => {
@@ -27008,10 +27328,12 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
           const down = hot && this.game.input.down;
           if (b.key === "zdig") this.scoopHeld = down;
           if (b.key === "zpour") this.pourHeld = down;
+          if (b.key === "zguard") this.guardHeld = down;
           if (down) this.game.input.clicked = false;
         } else if (hot && this.game.input.clicked) {
           this.game.input.clicked = false;
-          if (b.key) this.game.input.pulseVirtual(b.key);
+          if (b.key === "zroll") this.rollWant = true;
+          else if (b.key) this.game.input.pulseVirtual(b.key);
         }
       };
       let hintY;
@@ -28282,15 +28604,25 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
           }
         }
         if (play && !this.talk.on) this.morse.update(sdt, i.key("t"));
-        if (play && i.justPressed("q")) {
-          if (this.ui.mode === "hunt" && this.combat.live) this.strike();
-          else this.attack();
+        if (play && this.ui.mode === "hunt") {
+          const st = this.ui.clawVec;
+          if (i.justPressed("q")) {
+            this.strike(st ? st.x : this.crab.facing || 1, st ? st.y : 0);
+          }
+          this.combat.setGuard(i.key("s") || !!this.ui.guardHeld);
+          if (i.justPressed("Shift") || this.ui.rollWant) {
+            this.ui.rollWant = false;
+            this.combat.roll();
+          }
+        } else {
+          this.combat.setGuard(false);
+          if (play && i.justPressed("q")) this.attack();
         }
         this.sandT = Math.max(0, this.sandT - dt);
         if (play && !this.ui.building) {
           const pour = i.key("z") && i.key("Shift") || this.ui.pourHeld;
           if (pour) this.pourSand(sdt);
-          else if (i.key("z") || this.ui.scoopHeld) this.scoopSand(sdt);
+          else if (i.key("z") || this.ui.scoopHeld || this.ui.scoopTap) this.scoopSand(sdt);
         }
         if (play && this.ui.mode === "spore") this.hive.hold(i.key("v") || !!this.ui.nozzleHeld);
         else if (this.hive.holding) this.hive.hold(false);
@@ -28529,7 +28861,6 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
         }
         this.fx.ring(c.x, c.y - c.m.rx * 0.4, "#fff4d0", 48);
       }
-      if (id === "strike") this.combat.band = this.combat.pos;
       return true;
     }
     /**
@@ -29209,45 +29540,22 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
      * damage, on the core it does a great deal of it and staggers the animal,
      * and off it entirely you are stood there with the claw open.
      */
-    strike() {
-      const res = this.combat.strike();
+    strike(dx = this.crab.facing || 1, dy = 0) {
       const c = this.crab;
-      if (res.kind === "none") {
-        this.ui.say("Nothing close enough.", 2);
-        return;
-      }
-      if (res.kind === "open") {
+      const res = this.combat.strike(dx, dy);
+      if (res.kind === "early") return;
+      if (res.kind === "rolling") return;
+      if (res.kind === "spent") {
+        this.ui.say("Winded.", 1.6);
         this.audio.play("deny");
         return;
       }
-      if (res.kind === "early") return;
-      c.clawOpen = 1;
       this.attackT = 0.4;
-      const t = this.combat.target;
-      if (res.kind === "miss") {
-        this.audio.play("claw");
-        this.fx.dust(c.x + (c.facing || 1) * c.m.shellW * 0.5, c.y + c.standH * 0.6, 1.2);
+      if (!res.hit) {
         this.fx.popup(c.x, c.y - c.m.rx, "wide", "#9a8a70");
         return;
       }
-      const dmg = this.economy.stat("dmg") * res.mult;
-      if (t && t.alive) {
-        t.hurt(dmg, c.x);
-        this.gore(t, res.kind === "crit" ? 1.6 : 0.8, c.x);
-        if (res.kind === "crit") {
-          t.stagger = 0.9;
-          t.vx += Math.sign(t.x - c.x) * 120;
-          this.cam.shake(6);
-          this.renderer.modeHit(1.1);
-          this.fx.popup(t.x, t.y - 18, `${Math.round(dmg)}!`, "#ffd678");
-          this.audio.play("hit", { pitch: 0.7 });
-        } else {
-          this.cam.shake(2.6);
-          this.renderer.modeHit(0.5);
-          this.fx.popup(t.x, t.y - 16, `${Math.round(dmg)}`, "#f2e4c2");
-          this.audio.play("hit");
-        }
-      }
+      this.renderer.modeHit(res.kind === "crit" ? 1.1 : 0.5);
     }
     /**
      * Something bled. Gore is a spray of it in the direction it was hit from,
@@ -29610,10 +29918,17 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
       if (this.state !== "play") return;
       if (Math.abs(c.x - crab.x) > 24 + crab.m.shellW * 0.34) return;
       if ((crab.iframe || 0) > 0) return;
+      let dmg = c.def.dmg * (1 - this.economy.stat("armour"));
+      const res = this.combat.incoming(dmg, c);
+      dmg = res.dmg;
+      if (res.kind === "dodge" || res.kind === "parry") {
+        crab.iframe = 0.35;
+        return;
+      }
       crab.iframe = 0.55;
-      const dmg = c.def.dmg * (1 - this.economy.stat("armour"));
+      if (dmg <= 0) return;
       crab.hp = Math.max(0, crab.hp - dmg);
-      this.cam.shake(4);
+      this.cam.shake(res.kind === "block" ? 2 : 4);
       this.audio.play("hurt");
       this.fx.blood(crab.x + (c.x - crab.x) * 0.4, crab.y, 5);
       if (crab.hp <= 0) this.onDown();

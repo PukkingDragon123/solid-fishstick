@@ -307,12 +307,22 @@ export class Creature {
         }
         this.mood = ad < reach ? MOOD.ATTACK : MOOD.HUNT;
         this.moveTo = ad < reach ? this.x : crab.x - Math.sign(d) * (reach - 6);
-        if (this.mood === MOOD.ATTACK && this.atkT <= 0) {
-          this.atkT = 1.7;
-          this.recoil = 0.9;
-          this.bite = 1;
-          this.game.onCreatureAttack?.(this);
-        }
+        // NOTHING BITES WITHOUT TELLING YOU FIRST. It rears, plants its feet
+        // and goes still for most of a second, and that wind-up is the entire
+        // clock the fight runs on: it is what you dodge, block or parry
+        // against. An animal that simply bit you on a timer is not a fight,
+        // it is a tax.
+        if (this.mood === MOOD.ATTACK && this.atkT <= 0 && (this.stagger || 0) <= 0) {
+          this.wind = (this.wind || 0) + dt / this.windSecs;
+          this.moveTo = this.x;
+          if (this.wind >= 1) {
+            this.wind = 0;
+            this.atkT = 1.7;
+            this.recoil = 0.9;
+            this.bite = 1;
+            this.game.onCreatureAttack?.(this);
+          }
+        } else this.wind = 0;
       } else this._wander(dt);
       return;
     }
@@ -383,7 +393,14 @@ export class Creature {
     }
   }
 
+  /** How long this one takes to commit. Big slow things telegraph longer. */
+  get windSecs() {
+    const d = this.def;
+    return 0.42 + Math.min(0.55, (d.hp || 30) / 320) + (d.boss ? 0.3 : 0);
+  }
+
   _wander(dt) {
+    this.wind = 0;
     // Anything that would hunt you will stop for a body instead, and a body
     // is easier than you are.
     if (this.def.dmg > 0 && !this.tamed) {
@@ -481,7 +498,7 @@ export class Creature {
     this.y = damp(this.y, ground - this.rig.standH, 0.0006, dt);
   }
 
-  hurt(n, fromX) {
+  hurt(n, fromX, opts = {}) {
     if (!this.alive) return;
     const was = this.hp;
     this.hp -= n;
@@ -491,6 +508,30 @@ export class Creature {
     const dir = fromX === undefined ? 1 : Math.sign(this.x - fromX) || 1;
     // a killing blow opens it up properly
     this.game.fx?.blood(this.x, this.y - 4, dir, this.hp <= 0 ? 1.8 : clamp(n / 8, 0.3, 1.2), col);
+
+    // A LIMB. A low sweep or a hit on something already half down takes a leg
+    // off, and it does not grow back - the animal limps for the rest of the
+    // fight and the leg is on the sand where you can see it.
+    this.lost = this.lost || new Set();
+    const heavy = opts.limb || n > (this.hpMax || 30) * 0.28;
+    const frac = this.hp / Math.max(1, this.hpMax || 30);
+    if (heavy && this.legs && this.lost.size < Math.max(0, this.legs.length - 2)
+      && (frac < 0.65 || this.hp <= 0) && Math.random() < 0.55) {
+      const spare = this.legs.map((_, i) => i).filter((i) => !this.lost.has(i));
+      const pick = spare[Math.floor(Math.random() * spare.length)];
+      if (pick !== undefined) {
+        this.lost.add(pick);
+        const l = this.legs[pick];
+        this.game.fx?.gib(l.foot.x, l.foot.y - 4, dir, 3, col, 2.2 * (this.S || 1));
+        this.game.fx?.blood(l.hip.x, l.hip.y, dir, 0.9, col);
+        this.game.audio?.play('hit', { pitch: 0.6 });
+      }
+    }
+    if (this.hp <= 0 && was > 0) {
+      // and dying scatters more of it than any single hit does
+      this.game.fx?.gib(this.x, this.y - 6, dir, 4 + Math.floor(Math.random() * 4), col,
+        2.4 * (this.S || 1));
+    }
     if (this.hp <= 0 && was > 0) {
       this.game.cam?.shake(3);
       this.game.fx?.ring(this.x, this.y - 4, col, 12);
@@ -526,7 +567,10 @@ export class Creature {
     const sq = (this.squash || 0) - (this.pounceT > 0 ? 0.22 : 0);
     if (Math.abs(sq) > 0.004) ctx.scale(1 - sq * 0.45, 1 + sq);
     if (!this.alive) {
-      ctx.globalAlpha = Math.max(0, 1 - this.moodT / 4);
+      // A CARCASS STAYS. It goes over in the first second and then it is part
+      // of the landscape: it bleaches, it does not evaporate, and everything
+      // out here that eats meat knows exactly where it is.
+      ctx.globalAlpha = 1;
       ctx.rotate(clamp(this.moodT * 1.6, 0, 1) * 1.5 * f);
     } else if (this.hurtT > 0) {
       ctx.globalAlpha = 0.55 + Math.sin(this.hurtT * 60) * 0.45;
@@ -584,6 +628,7 @@ export class Creature {
     const f = this.faceT < 0 ? -1 : 1;
     for (const l of this.legs) {
       if (l.far !== far) continue;
+      if (this.lost && this.lost.has(this.legs.indexOf(l))) continue;
       const lx = (l.foot.x - this.x) * f;
       const ly = l.foot.y - (this.y + this.bob);
       const hx = l.hip.x + (far ? -1.2 * this.S : 0.7 * this.S);

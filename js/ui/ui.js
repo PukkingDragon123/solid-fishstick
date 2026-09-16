@@ -47,12 +47,12 @@ const BUILD_TABS = [
  * glyph, so what you are holding is never a word you have to remember.
  */
 export const MODES = [
-  { id: 'direct', name: 'WALK', glyph: 'crab', tint: '#e2b74a',
-    desc: 'You steer. A crab goes sideways.' },
+  { id: 'direct', name: 'CRAB', glyph: 'crab', tint: '#e2b74a',
+    desc: 'You steer, you dig, you plant. Everything an animal does with its own body.' },
   { id: 'auto', name: 'ROAM', glyph: 'crabwalk', tint: '#9ad86a', skill: 'stride',
     desc: 'Click where you want to be and it walks itself there. It will not wander off on its own.' },
   { id: 'hunt', name: 'HUNT', glyph: 'claw', tint: '#e2564f',
-    desc: 'The claw, on a timer. Hit the band for damage and the core for a great deal of it.' },
+    desc: 'Three verbs and nothing else. Drag the claw to swing, hold to guard, roll to get out.' },
   { id: 'spore', name: 'SPORE', glyph: 'jet', tint: '#c98ade',
     desc: 'Hold to charge, release at pressure. A spore only takes in something willing.' },
   { id: 'hive', name: 'HIVE', glyph: 'link', tint: '#6fd8ee', skill: 'command',
@@ -204,12 +204,27 @@ export class UI {
       i.consumeKey('Escape');
       this.back();
     }
-    // clicking the animal itself is how you get onto its back
+    // Touching the animal. WHERE you touch it decides what happens, which is
+    // the only version of this that makes sense once digging exists: the
+    // shell is the garden and always has been, and the body underneath it is
+    // the animal - so the shell opens your back and the legs start digging.
     if (!this.buildOn && !this.drawerOpen && !this.placing && !this.driving
       && this.game.state === 'play' && i.clicked && this._overCrab() && !this._overRipe()) {
       i.clicked = false;
-      this.toggleBuild();
+      const g = this.game;
+      const s = g.cam.worldToScreen(g.crab.x, g.crab.y - g.crab.m.rx * 0.35);
+      if (i.sy > s.y && this.mode !== 'hunt') {
+        // the low half: it digs, at once, and keeps digging while you hold
+        this.digTap = 0.45;
+        g.scoopSand(0.05);
+      } else this.toggleBuild();
     }
+    // a tap on the body keeps scooping for a moment, so one tap is a real
+    // bite out of the sand rather than a single frame of one
+    if (this.digTap > 0) {
+      this.digTap -= dt;
+      this.scoopTap = true;
+    } else this.scoopTap = false;
     if (i.justPressed('g')) { i.consumeKey('g'); this._openTree(); }
     if (i.justPressed('m')) { i.consumeKey('m'); this.cycleMode(); }
     // B is the bench, because that is the one you reach for most once he is
@@ -949,39 +964,59 @@ export class UI {
     const cb = g.combat;
     const foe = cb.target || g.nearestHostile?.(g.crab.x, 150);
     const w = 92;
-    // the gauge itself, above the button, only while something is in reach
+
+    // THE ONLY NUMBER IN THE FIGHT. Not a sweeping needle - what is about to
+    // happen to you. The wind-up of whatever is in front of you, filling, and
+    // the three things you can do about it.
     if (cb.live) {
       const gy = y - 16;
       drawPlate(ctx, x, gy, w, 13);
       const iw = w - 6, ix = x + 3, iy = gy + 3;
       ctx.fillStyle = 'rgba(12,8,5,0.9)';
       ctx.fillRect(ix, iy, iw, 7);
-      // the window, and the core inside it
-      const [lo, hi] = cb.window;
-      ctx.fillStyle = 'rgba(226,86,79,0.42)';
-      ctx.fillRect(ix + iw * lo, iy, iw * (hi - lo), 7);
-      const cw = (hi - lo) * 0.34;
-      ctx.fillStyle = 'rgba(255,214,120,0.75)';
-      ctx.fillRect(ix + iw * (cb.band - cw / 2), iy, iw * cw, 7);
-      // the needle
-      ctx.fillStyle = cb.flash > 0 ? '#fff4d0' : '#f2e4c2';
-      ctx.fillRect(Math.round(ix + iw * cb.pos), iy - 1, 1, 9);
-      if (cb.combo > 0) {
-        drawText(ctx, `x${cb.mult.toFixed(1)}`, x + w - 3, gy - 9,
-          { color: '#ffd678', align: 'right' });
+      const th = cb.threat;
+      // it goes yellow as it fills and red at the top, because the top of it
+      // is the quarter second the parry lives in
+      ctx.fillStyle = th > 0.78 ? '#e2564f' : th > 0.4 ? '#e2b74a' : '#8a7a52';
+      ctx.fillRect(ix, iy, Math.round(iw * th), 7);
+      if (th > 0.78) {
+        ctx.globalAlpha = 0.4 + 0.6 * Math.sin(this.t * 18);
+        ctx.fillStyle = '#ffd678';
+        ctx.fillRect(ix + Math.round(iw * 0.78), iy - 1, Math.round(iw * 0.22), 9);
+        ctx.globalAlpha = 1;
       }
-      if (cb.open > 0) drawText(ctx, 'OPEN', x + 3, gy - 9, { color: '#e2564f' });
+      drawText(ctx, foe ? ellipsize(foe.def.name, w - 8) : '', x + 3, gy - 9,
+        { color: 'rgba(226,200,150,0.75)' });
+      if (cb.chain > 1) {
+        drawText(ctx, `x${cb.chain}`, x + w - 3, gy - 9, { color: '#ffd678', align: 'right' });
+      }
     }
-    const label = cb.open > 0 ? 'OPEN' : cb.live ? 'STRIKE' : 'NOTHING NEAR';
+
+    const guarding = cb.guard > 0.5;
+    const label = cb.dodgeT > 0 ? 'ROLLING' : guarding ? 'GUARD'
+      : cb.live ? 'SWING' : 'NOTHING NEAR';
     if (this._actBtn(ctx, x, y, w, 14, 'claw', label, 'Q', {
-      tint: '#e2564f', dim: !cb.live || cb.open > 0,
-      hover: { title: 'Strike', body: foe ? `${foe.def.name}. Land it on the band for damage and on the core for a great deal of it.` : 'Nothing close enough to hit.' },
-    })) { g.input.clicked = false; g.strike(); }
+      tint: guarding ? '#9de3ee' : '#e2564f', dim: !cb.live,
+      hover: {
+        title: 'The claw',
+        body: foe
+          ? `${foe.def.name}. Drag the claw and flick it - low takes the legs, high staggers. `
+            + 'S guards, and a guard raised just as it swings is a parry. Shift rolls.'
+          : 'Nothing close enough to hit.',
+      },
+    })) { g.input.clicked = false; g.strike(g.crab.facing || 1, 0); }
+
+    // stamina, under the button, because every verb spends it
+    const st = clamp01(cb.stam / 100);
+    ctx.fillStyle = 'rgba(12,8,5,0.8)';
+    ctx.fillRect(x, y + 15, w, 3);
+    ctx.fillStyle = st > 0.3 ? '#8fe0cc' : '#e2564f';
+    ctx.fillRect(x, y + 15, Math.round(w * st), 3);
 
     // abilities, as a row of slots to the right
     const abil = g.economy.abilities ? g.economy.abilities() : [];
     let ax = x + w + 5;
-    abil.slice(0, 4).forEach((a, i) => {
+    abil.slice(0, 4).forEach((a) => {
       const hot = this._hit(ax, y, 15, 14);
       const ready = !a.cool || a.cool <= 0;
       drawPlate(ctx, ax, y, 15, 14, { edge: ready ? 'rgba(160,130,78,0.6)' : 'rgba(80,66,44,0.4)' });
@@ -1528,6 +1563,82 @@ export class UI {
   }
 
   /**
+   * THE CLAW.
+   *
+   * In HUNT the corner is not a valve. It is the claw itself, and you do not
+   * press it - you DRAG it. Push your thumb out from the middle and the claw
+   * goes with it; flick and it swings where you flicked. Low sweeps the legs,
+   * level goes for the body, high is a hook. It is the same hand and the same
+   * corner as the spring, which is the point: one thumb, one place, and the
+   * mode decides what is under it.
+   */
+  _clawStick(ctx, W, H) {
+    const g = this.game;
+    const b = this.valveBox(W, H);
+    const R = Math.round(b.size * 0.92);
+    const cx = b.x + b.size / 2, cy = b.y + b.size / 2;
+    const i = g.input;
+    const live = g.state === 'play' && !this.drawerOpen;
+    const hot = Math.hypot(i.sx - cx, i.sy - cy) < R * 1.5;
+
+    // grab it, drag it, let go
+    if (live && hot && i.down && !this._claw) {
+      this._claw = { x: 0, y: 0, peak: 0 };
+      i.clicked = false;
+    }
+    if (this._claw) {
+      if (i.down) {
+        const dx = clamp((i.sx - cx) / R, -1, 1);
+        const dy = clamp((i.sy - cy) / R, -1, 1);
+        const len = Math.hypot(dx, dy);
+        this._claw.x = dx; this._claw.y = dy;
+        this._claw.peak = Math.max(this._claw.peak, len);
+        this.clawVec = len > 0.25 ? { x: dx, y: dy } : null;
+        i.clicked = false;
+      } else {
+        // a flick is a swing; a nudge is nothing
+        if (this._claw.peak > 0.42) g.strike(this._claw.x || (g.crab.facing || 1), this._claw.y);
+        this._claw = null;
+        this.clawVec = null;
+      }
+    }
+
+    const c = this._claw;
+    const k = c ? Math.hypot(c.x, c.y) : 0;
+    // the ring it lives in
+    ctx.globalAlpha = 0.55 + k * 0.3;
+    pxRing(ctx, cx, cy, R, c ? '#e2564f' : 'rgba(226,86,79,0.6)', { p: 1 });
+    ctx.globalAlpha = 0.18;
+    pxDisc(ctx, cx, cy, R - 1, '#3a1410', { p: 1 });
+    ctx.globalAlpha = 1;
+    // the three arcs it can take, drawn faintly so the verbs are visible
+    ctx.globalAlpha = 0.20;
+    ctx.fillStyle = '#e2b74a';
+    for (const a of [-0.9, 0, 0.9]) {
+      ctx.fillRect(Math.round(cx + Math.cos(a) * (R - 6)), Math.round(cy + Math.sin(a) * (R - 6)), 2, 2);
+    }
+    ctx.globalAlpha = 1;
+    // the claw itself, sitting where your thumb has pushed it
+    const hx = cx + (c ? c.x : 0) * (R - 7);
+    const hy = cy + (c ? c.y : 0) * (R - 7);
+    const cool = g.combat ? g.combat.swingCool : 0;
+    drawGlyph(ctx, 'claw', hx - 6, hy - 6, { color: cool > 0 ? '#8a5a52' : '#f0a49a' });
+    if (c && k > 0.42) {
+      // it is loaded: show which arc
+      ctx.globalAlpha = 0.5 + Math.sin(this.t * 14) * 0.2;
+      pxRing(ctx, hx, hy, 9, '#ffd678', { p: 1 });
+      ctx.globalAlpha = 1;
+    }
+    // stamina, as a short arc under it - the only number the fight has
+    const st = g.combat ? g.combat.stam / 100 : 1;
+    ctx.fillStyle = 'rgba(12,8,6,0.75)';
+    ctx.fillRect(Math.round(cx - R), Math.round(cy + R + 3), R * 2, 3);
+    ctx.fillStyle = st > 0.3 ? '#8fe0cc' : '#e2564f';
+    ctx.fillRect(Math.round(cx - R), Math.round(cy + R + 3), Math.round(R * 2 * st), 3);
+    if (this.touchEnabled) this.clawRect = { x: cx - R * 1.5, y: cy - R * 1.5, w: R * 3, h: R * 3 };
+  }
+
+  /**
    * The pump. It is a valve in your own shell, so it is drawn as one, and it
    * behaves like one: every tap is one stroke of the muscle behind it.
    */
@@ -1536,6 +1647,7 @@ export class UI {
     // entirely different organ - so it gets its own drawing rather than the
     // valve with a different tint on it.
     if (this.mode === 'spore') return this._sprayButton(ctx, W, H);
+    if (this.mode === 'hunt') return this._clawStick(ctx, W, H);
     const g = this.game;
     const size = 34;
     const { x, y } = this.valveBox(W, H);
@@ -2993,20 +3105,37 @@ export class UI {
     const hint = g.actionHint();
     this.scoopHeld = false;
     this.pourHeld = false;
+    this.guardHeld = false;
     const wanted = [];
     if (g.npc && g.talk && !g.talk.on && Math.abs(g.npc.x - g.crab.x) < 64) {
       wanted.push({ label: 'TALK', key: 'c', colour: '#e8c98a' });
     }
     if (g.garden.ripeCount) wanted.push({ label: `PICK ${g.garden.ripeCount}`, key: 'r', colour: '#cfe89a' });
     if (hint) wanted.push({ label: 'ACT', key: 'e' });
-    // The sand. BOTH plates, always - an empty claw cannot pour and the plate
-    // says so by going dim, but it stays where it is. Showing POUR only once
-    // you were carrying something meant the row re-laid itself out the instant
-    // you picked up your first grain, which slid DIG out from under the thumb
-    // that was holding it down.
-    const carrying = (g.sandHeld || 0) > 0.5;
-    wanted.push({ label: 'DIG', key: 'zdig', colour: '#e0c188', hold: true });
-    wanted.push({ label: 'POUR', key: 'zpour', colour: '#cfe89a', hold: true, dim: !carrying });
+
+    // WHAT IS UNDER YOUR THUMB DEPENDS ON THE MODE, because the modes are
+    // different activities and a row that offers all of them at once offers
+    // none of them clearly.
+    if (this.mode === 'hunt') {
+      // a duel has three verbs. The claw is the stick in the corner; these
+      // are the other two, and they are the ones that have to be instant.
+      wanted.push({ label: 'GUARD', key: 'zguard', colour: '#9de3ee', hold: true });
+      const rollReady = g.combat && g.combat.dodgeCool <= 0 && g.combat.stam >= 25;
+      wanted.push({ label: 'ROLL', key: 'zroll', colour: '#e2b74a', dim: !rollReady });
+    } else {
+      // The sand. BOTH plates, always - an empty claw cannot pour and the
+      // plate says so by going dim, but it stays where it is. Showing POUR
+      // only once you were carrying something meant the row re-laid itself
+      // out the instant you picked up your first grain, which slid DIG out
+      // from under the thumb that was holding it down.
+      const carrying = (g.sandHeld || 0) > 0.5;
+      wanted.push({ label: 'DIG', key: 'zdig', colour: '#e0c188', hold: true });
+      wanted.push({ label: 'POUR', key: 'zpour', colour: '#cfe89a', hold: true, dim: !carrying });
+      // and in CRAB mode you can go straight to your own back and plant
+      if (this.mode === 'direct') {
+        wanted.push({ label: 'PLANT', key: 'b', colour: '#9ad86a' });
+      }
+    }
     wanted.push({ label: 'MODE', key: 'm' });
 
     const gap = 6;
@@ -3032,10 +3161,12 @@ export class UI {
         const down = hot && this.game.input.down;
         if (b.key === 'zdig') this.scoopHeld = down;
         if (b.key === 'zpour') this.pourHeld = down;
+        if (b.key === 'zguard') this.guardHeld = down;
         if (down) this.game.input.clicked = false;
       } else if (hot && this.game.input.clicked) {
         this.game.input.clicked = false;
-        if (b.key) this.game.input.pulseVirtual(b.key);
+        if (b.key === 'zroll') this.rollWant = true;
+        else if (b.key) this.game.input.pulseVirtual(b.key);
       }
     };
 

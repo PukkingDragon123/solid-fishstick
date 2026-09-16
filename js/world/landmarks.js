@@ -89,15 +89,34 @@ export function groundOffset(seed, x) {
   return d;
 }
 
+/**
+ * Where the water stands in a bowl.
+ *
+ * This used to be measured off the ground at the oasis's exact centre, which
+ * worked right up until a boulder or a rock bench could land in the bowl and
+ * LIFT that one sample - and then the whole pool rose with it and hung in the
+ * air above the sand. A body of water finds the lowest point, so that is what
+ * it is measured from now: the deepest ground anywhere in the bowl.
+ */
+function poolSurface(lm, terrain) {
+  if (lm.surface !== undefined) return lm.surface;
+  let deep = -Infinity;
+  const step = Math.max(2, lm.size / 24);
+  for (let x = lm.x - lm.size; x <= lm.x + lm.size; x += step) {
+    const y = terrain.baseY(x);
+    if (y > deep) deep = y;
+  }
+  lm.surface = deep - lm.depth * 0.42;
+  return lm.surface;
+}
+
 /** Water surface height for an oasis, or null if this is not in one. */
 export function poolAt(seed, x, terrain) {
   for (const lm of landmarksNear(seed, x, CELL)) {
     if (lm.kind !== 'oasis') continue;
     if (Math.abs(x - lm.x) > lm.size) continue;
-    if (lm.surface === undefined) {
-      lm.surface = terrain.baseY(lm.x) - lm.depth * 0.42;
-    }
-    if (terrain.baseY(x) > lm.surface) return { lm, y: lm.surface };
+    const surface = poolSurface(lm, terrain);
+    if (terrain.baseY(x) > surface) return { lm, y: surface };
   }
   return null;
 }
@@ -491,6 +510,34 @@ export class World {
   }
 
   /**
+   * THE THING THAT MAKES A SPRITE STAND ON THE GROUND.
+   *
+   * Not the position - the position was always right. It is the shadow. A
+   * sprite drawn at exactly the correct height with nothing under it reads as
+   * floating, because in the real world the one cue your eye uses for contact
+   * is the dark patch where the light cannot get. So everything that stands on
+   * the sand gets one: a squashed smear on the surface, wider and fainter for
+   * a taller thing, and it follows the ground rather than being a flat ellipse.
+   */
+  _contact(ctx, cam, x, halfW, strength = 1) {
+    const t = this.game.terrain;
+    const z = cam.zoom;
+    const step = Math.max(1, Math.round(2 / z));
+    const sun = this.game.weather ? clamp01(1 - (this.game.weather.haze || 0) * 0.5) : 1;
+    ctx.globalAlpha = 0.34 * strength * (0.45 + sun * 0.55);
+    ctx.fillStyle = '#2a1d13';
+    for (let dx = -halfW; dx <= halfW; dx += step) {
+      const k = 1 - Math.abs(dx) / halfW;
+      if (k <= 0) continue;
+      const wx = x + dx;
+      const s = cam.worldToScreen(wx, t.surfaceY(wx));
+      const h = Math.max(1, Math.round(k * k * 2.2 * z));
+      ctx.fillRect(Math.round(s.x), Math.round(s.y - h * 0.35), Math.max(1, Math.round(step * z)), h);
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  /**
    * Rock and scrub. Boulders go down first because the ground is already
    * shaped like them - the sprite only has to sit in the dent it makes - and
    * the dry stuff goes on top, leaning with the wind.
@@ -508,6 +555,11 @@ export class World {
         if ((big ? 'far' : 'near') !== layer) continue;
         const art = propArt(p, p.kind === 'mast' && this.felled.has(p.id));
         if (!art) continue;
+        // the shadow goes down first, under everything
+        if (p.kind !== 'boulder') {
+          const hw = p.kind === 'mast' ? 7 + p.h * 0.05 : 5 + (p.s || 1) * 5;
+          this._contact(ctx, cam, p.x, hw, p.kind === 'mast' ? 1.1 : 0.8);
+        }
         // A boulder is drawn against the sand AROUND it, not the ground on
         // top of it - the ground on top of it is the boulder. baseY already
         // has the bump subtracted, so adding the bump back gets the level the
@@ -547,7 +599,7 @@ export class World {
     const b = cam.bounds(80);
     for (const lm of landmarksNear(this.seed, cam.rx, cam.vw / cam.zoom + 400)) {
       if (lm.kind !== 'oasis') continue;
-      if (lm.surface === undefined) lm.surface = t.baseY(lm.x) - lm.depth * 0.42;
+      poolSurface(lm, t);
       const x0 = Math.max(b.x0, lm.x - lm.size), x1 = Math.min(b.x1, lm.x + lm.size);
       if (x1 <= x0) continue;
       const step = Math.max(1, Math.round(2 / z));
@@ -623,6 +675,7 @@ export class World {
         if (!def) continue;
         const art = buildPlant(def, v.stage, v.variant, v.size);
         const gy = t.surfaceY(v.x);
+        this._contact(ctx, cam, v.x, 3 + v.size * 7, 0.55 + v.size * 0.4);
         const s = cam.worldToScreen(v.x, gy);
         ctx.save();
         ctx.translate(Math.round(s.x), Math.round(s.y));

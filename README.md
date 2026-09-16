@@ -44,7 +44,8 @@ npm run build     # -> dist/crabden.html + dist/crabden.body.html
 | dig in (opening only) | `E` | **DIG IN** |
 | the spring | tap `Space` in time with the gauge | tap the valve in time with the gauge |
 | pick what is ripe | `R` | **PICK**, or tap the bead over a plant |
-| build on your own back | click yourself | tap yourself |
+| build on your own back | click your **shell** | tap your shell |
+| start digging | click your **body** | tap your body, or hold **DIG** |
 | put a parasite on something | `X` | — |
 | put a relic in your basin | `K` | — |
 | tap out a word | hold/release `T` | hold the key on the talk screen |
@@ -59,7 +60,9 @@ npm run build     # -> dist/crabden.html + dist/crabden.body.html
 | control mode | `M` | **MODE** |
 | zoom / pan | wheel, drag (locked while you are on your own back) | pinch, drag (same) |
 | switch mode | `M`, or click one of the five chips | the same chips |
-| the claw (HUNT) | `Q`, on the band | **STRIKE** |
+| swing the claw (HUNT) | `Q` | drag the **claw stick** at it |
+| guard / parry (HUNT) | hold `S` | hold **GUARD** |
+| roll (HUNT) | `Shift` | **ROLL** |
 | an ability (HUNT) | click its slot | the same |
 | the spore (SPORE) | hold `V`, release at pressure | hold the button |
 | take one of yours (HIVE) | click it, or its token | the same |
@@ -72,6 +75,7 @@ npm run build     # -> dist/crabden.html + dist/crabden.body.html
 | cut a mast | `E`, at the tree | **ACT** |
 | study a wild plant | `E`, at the plant | **ACT** |
 | scoop sand / pour it | hold `Z` / hold `Shift`+`Z` | hold **DIG** / hold **POUR** |
+| plant a seed | click the shell, then the seed | **PLANT** |
 | skip a cutscene | `Space` or `Escape` | the **SKIP** plate, top right |
 | his pick, once he is yours | `E` | — |
 | his bench | `B` | **SHOP**, then BENCH |
@@ -410,21 +414,56 @@ holding by looking at the thing you are holding it with. Beside the column is
 whatever that mode actually puts in your hand, and it changes completely
 between them.
 
-**WALK** steers. **ROAM** does not wander: click anywhere in the desert and a
-pin goes in the sand and it walks itself there and stops. It will never pick
-its own destination — an animal that wanders off while you are reading a panel
-is an animal you then have to go and find.
+**CRAB** steers, and it is also where you work: the same bar carries **DIG**
+and **POUR** for the sand and **PLANT** for your own back, because walking
+around and digging holes is one activity and it was never worth a mode of its
+own. **ROAM** does not wander: click anywhere in the desert and a pin goes in
+the sand and it walks itself there and stops. It will never pick its own
+destination — an animal that wanders off while you are reading a panel is an
+animal you then have to go and find.
 
-**HUNT** brings up the strike gauge. A needle sweeps, a band on it is where the
-claw is actually closing on the thing, and a much narrower core inside that band
-is where it lands on the joint. Band is damage; core is a great deal of damage,
-a stagger, and a knockback. Land them in a row and the multiplier climbs — and
-the window narrows and the sweep speeds up, because of course it does. Miss and
-the claw is out and open and you are the one standing there with your chest
-exposed for the best part of a second. Beside the gauge sit the abilities your
-genome has actually grown: **Thorn Hide**, **Bulwark**, **Strike Reflex** (the
-next swing cannot miss), **Apex Nerve**, **Lumen Organ** (everything looking at
-you flinches), **Signal Skin**.
+**HUNT** is a duel, and it has exactly three verbs.
+
+The sweeping needle is gone. It was a slot machine bolted to the side of a
+fight: you watched a gauge instead of the animal trying to bite you. Now you
+watch the animal. Everything that wants to hurt you **winds up first** — it
+plants its feet, stops moving, and takes between half a second and a second
+and a half to commit, longer the bigger it is — and the bar above your claw
+fills as it does. That fill is the whole combat interface. What you do with it
+is your business:
+
+- **STRIKE** (`Q`) swings the claw. Where you swing decides what it does: low
+  sweeps the legs and trips it, high catches the head and staggers it, and
+  anything already staggered takes more than twice as much. Land them in a row
+  and the chain climbs.
+- **GUARD** (`S`, held) puts the claw between you and it. A blocked hit costs
+  you most of its damage and some stamina instead.
+- **ROLL** (`Shift`) is the answer to a wind-up you cannot block. You are
+  untouchable for a quarter of a second in the middle of it, and then you are
+  standing somewhere else.
+
+Raise the guard **just as the blow lands** and it is a **parry**: no damage, and
+the thing that swung at you is off its feet and open. That quarter-second is
+the one piece of timing left in the fight, and it is timed against a creature
+rather than against a needle.
+
+Stamina runs all three. Rolling costs the most, guarding bleeds while it is up,
+and swinging with nothing left is a slow swing. Beside the bar sit the
+abilities your genome has actually grown: **Thorn Hide**, **Bulwark**, **Strike
+Reflex** (the next swing cannot miss), **Apex Nerve**, **Lumen Organ**
+(everything looking at you flinches), **Signal Skin**.
+
+**On a phone the claw is a joystick.** It sits in the corner where the valve
+lives and you **drag it at the thing** — direction is the swing, so dragging low
+trips and dragging high staggers, and the same two plates beside it are GUARD
+and ROLL.
+
+And it is not bloodless. A hard enough hit **takes a leg off**, and the leg goes
+with it — it flies, it lands, and it stains the sand where it lands, and the
+animal limps on the ones it has left. What dies **stays dead where it fell**:
+the body topples, it does not fade out, and it lies there until something has
+picked it over or you have walked a long way away. Everything in the desert that
+eats meat knows where it is.
 
 **SPORE** is a throw. Hold to build pressure and the arc goes further out; let
 go inside the band and the cloud lands where the arc said. Let go early and it
@@ -686,10 +725,14 @@ to send it. The last two unlock in the tree.
 
 ### Build mode
 
-There is no shop and there is no build button. **Click the animal** and the
-camera comes in on the shell, the seeds come out down the side, and you are up
-on your own back — which is where planting something on your own back ought to
-happen. **Nothing moves while you are up there.** Not you: it is your shell,
+There is no shop and there is no build button. **Click your own shell** and the
+camera comes in on it, the seeds come out down the side, and you are up on your
+own back — which is where planting something on your own back ought to happen.
+
+**Where** you touch the animal decides what happens, which is the only version
+of this that makes sense once digging exists. The shell is the garden and always
+has been. The body underneath it is the animal — so touching the legs starts it
+**digging**, right there, immediately, without a mode or a button in between. **Nothing moves while you are up there.** Not you: it is your shell,
 you are standing on it, and the legs are not available. Not the view either —
 the camera is nailed to the shell, so a drag is a drag on a plant and a pinch
 is not a way to lose the thing you were placing. The spring is shut too; you
@@ -1022,15 +1065,31 @@ and a bedroll strapped across the top, and the **maroon map tube** on his hip �
 the one saturated thing on him, and the first thing your eye lands on.
 
 **The head is the exception: it is drawn, not shaded.** A head in this game is
-about twelve pixels across, and a lit gradient over twelve pixels is not
-shading — it is noise, which is why his face never quite looked like the man on
-the sheet. So the head, and only the head, is a small piece of hand-laid pixel
-art: twelve by twelve, written out as text, in **colours sampled straight out
-of his own portrait frames**. The same pale pith helmet, the same maroon band,
-the same brass goggles pushed up on the brim, the same round blue-grey lenses
-with a dark rim, the same brown hair, the same stubble. Three variants is all
-it needs out here — eyes open, eyes shut, mouth open — because the twenty-one
-real expressions live on the portrait card, where there is room for them.
+sixteen pixels across, and a lit gradient over sixteen pixels is not shading —
+it is noise, which is why his face never quite looked like the man on the sheet.
+So the head, and only the head, is a small piece of hand-laid pixel art:
+sixteen by eighteen, written out as text, in **colours sampled straight out of
+his own portrait frames**. Three variants is all it needs out here — eyes open,
+eyes shut, mouth open — because the twenty-one real expressions live on the
+portrait card, where there is room for them.
+
+At that size a head is a **silhouette** before it is anything else, and the
+silhouette is the whole job. Reading down it: a low domed crown *narrower than
+the brim*, the maroon band at its foot, the brass goggles strapped up over it,
+and a brim that is a narrow lit top over a wide dark underside — which is the
+only way at sixteen pixels to say a brim that droops rather than a shelf nailed
+to his head. Then the fringe out from under it, the brow, the round lens set
+back beneath the brow with the pupil forward in it, **two rows of nose** past
+everything else (one row makes a spur, not a nose), the mouth tucked in under
+it, a chin, and the jaw running back into the hair.
+
+Two rules hold it together. **The hair stays behind the face** — it hangs down
+the back of his head and never creeps round over his cheek, because the moment
+it does he is a brown mass with a nose stuck on the side. And **the skull is
+nearly flat**: the height field that lights the rest of the game rounds his hat
+and catches his nose, and then gets out of the way, because a full dome across
+six pixels of cheek is a gradient, not a face, and it turns every hand-placed
+tone into mud.
 
 The head still leans where he is working, but the tilt is quantised to a couple
 of whole steps: drawn art does not survive being rotated far, because the brim
@@ -1320,8 +1379,9 @@ js/
   render/    pixel pix renderer backdrop
   systems/   garden economy wildlife encounters green digs talk pump work
              quests mining craft mind combat taming hive sea critters fx
+             fountains
   ui/        ui icons tree menu talkscreen
-  world/     terrain biomes weather landmarks
+  world/     terrain biomes weather landmarks props ocean
 ```
 
 ---

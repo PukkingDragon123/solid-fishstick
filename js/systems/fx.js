@@ -226,6 +226,24 @@ export class Fx {
   }
 
   /**
+   * GIBS. Not blood - pieces. A heavy hit takes something off, and the piece
+   * flies, tumbles, lands, and STAYS, because a fight you won should still be
+   * readable on the ground a minute later.
+   */
+  gib(x, y, dir, n, color, size = 2) {
+    for (let i = 0; i < n; i++) {
+      const a = -0.3 + (Math.random() - 0.5) * 1.5;
+      const sp = 60 + Math.random() * 170;
+      this._add({
+        k: 'gib', x, y, color,
+        vx: Math.sign(dir || 1) * Math.cos(a) * sp, vy: Math.sin(a) * sp - 70 - Math.random() * 80,
+        life: 1.1 + Math.random() * 1.2, t: 0, grav: 460,
+        r: size * (0.6 + Math.random() * 0.9), spin: (Math.random() - 0.5) * 16, rot: 0,
+      });
+    }
+  }
+
+  /**
    * Water under pressure. Not a burst in every direction like a spark - a jet
    * goes up, in a narrow cone, and then gravity has it and it comes back
    * down, which is the only reason a fountain looks like a fountain.
@@ -317,6 +335,19 @@ export class Fx {
           if (q.y >= gy && q.vy > 0) {
             // it lands, and what lands stays
             this.stain(q.x, gy, q.r * (1.4 + Math.random()), q.color);
+            q.t = q.life;
+          }
+          break;
+        }
+        case 'gib': {
+          q.vy += (q.grav || 460) * dt;
+          q.vx *= Math.pow(0.6, dt);
+          q.rot += q.spin * dt;
+          const gy2 = this.game.terrain.surfaceY(q.x);
+          if (q.y >= gy2 && q.vy > 0) {
+            // it lands and it is part of the ground now
+            this.stain(q.x, gy2, q.r * 1.6, q.color);
+            this.stain(q.x + (Math.random() - 0.5) * 4, gy2, q.r, q.color);
             q.t = q.life;
           }
           break;
@@ -520,6 +551,22 @@ export class Fx {
           ctx.translate(s.x, s.y);
           ctx.rotate(ang);
           ctx.fillRect(0, 0, len, Math.max(1, Math.round(q.r * z * 0.7)));
+          ctx.restore();
+          break;
+        }
+        case 'gib': {
+          // a piece of something, tumbling. Drawn as a lump with a dark rim
+          // so it reads as solid rather than as a spark.
+          ctx.globalAlpha = a;
+          ctx.save();
+          ctx.translate(Math.round(s.x), Math.round(s.y));
+          ctx.rotate(q.rot);
+          const w = Math.max(2, Math.round(q.r * z));
+          const h = Math.max(1, Math.round(q.r * z * 0.7));
+          ctx.fillStyle = 'rgba(16,8,8,0.8)';
+          ctx.fillRect(-w / 2 - 1, -h / 2 - 1, w + 2, h + 2);
+          ctx.fillStyle = q.color;
+          ctx.fillRect(-w / 2, -h / 2, w, h);
           ctx.restore();
           break;
         }

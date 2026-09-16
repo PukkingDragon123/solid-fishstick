@@ -116,7 +116,14 @@ export class Wildlife {
       c.orders = c.tamed ? this.orders : undefined;
       c.update(dt);
       const far = Math.abs(c.x - g.crab.x) > 620;
-      if (!c.alive && c.moodT > 4) { this.list.splice(i, 1); continue; }
+      // a body is not rubbish to be collected. It lies where it fell until
+      // it has been picked over or you have walked a long way from it.
+      if (!c.alive && (c.moodT > 300 || (c.eaten || 0) > 6
+        || Math.abs(c.x - g.crab.x) > 1100)) { this.list.splice(i, 1); continue; }
+      // the two culls below are for the LIVING: a body has already been
+      // dealt with above and must not be swept up by a distance check meant
+      // for something that walked off
+      if (!c.alive) continue;
       if (far && !c.tamed) { this.list.splice(i, 1); continue; }
       if (far && c.tamed) { c.x = g.crab.x - Math.sign(c.x - g.crab.x) * 60; }
       if (c.hostile && Math.abs(c.x - g.crab.x) > 400) { this.list.splice(i, 1); }

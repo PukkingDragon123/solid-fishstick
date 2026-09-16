@@ -271,61 +271,67 @@ export const FACE_COUNT = FACES.length;
 
 const HEAD_KEY = {
   o: '#301d1f',   // his outline, off the darkest of his own tones
-  h: '#6b4131',   // hair
-  H: '#a06a4a',   // hair, lit
+  h: '#7c4c36',   // hair
+  H: '#a8724e',   // hair, lit
   s: '#df8b69',   // skin
   S: '#e5936f',   // skin, lit
   d: '#c8765c',   // skin, shaded
-  q: '#c08063',   // the stubble along his jaw
+  q: '#b4755f',   // the stubble along his jaw
   t: '#c89574',   // the helmet
   T: '#d5a37d',   // the helmet, lit
   u: '#a4735c',   // the helmet, under the brim
   b: '#9a433d',   // the band
   g: '#946958',   // the brass of the goggles
-  e: '#56637e',   // the goggle lens on the brim
-  l: '#56637e',   // and the round lens over his eye
-  L: '#8896ad',   // the catch of light in it
-  r: '#3a2a2c',   // the rim of the glasses
-  m: '#7a3630',   // mouth
+  e: '#4f5c76',   // the goggle lens, up on the crown and in its own shade
+  l: '#6d7b96',   // the round lens over his eye, which catches the sky
+  L: '#aebbcf',   // the catch of light in it
+  r: '#4a3134',   // the rim of the glasses, and the pupil behind it
+  m: '#6d2c27',   // mouth
 };
 
-// 14 x 14, facing right. The neck joint is the middle of the bottom row.
+// 16 x 18, facing right. The neck joint is the middle of the bottom row.
 //
 // The shape is the whole job, and a head this size is a silhouette before it
-// is anything else. Reading round it from the top: a domed crown, a band, a
-// brim that projects further at the front than the back, the fringe hanging
-// out under it, the brow, the NOSE off the front edge, the mouth set back
-// under it, a chin, and then the jaw running back and up to under the ear.
-// Take any one of those away and he is a blob in a hat again.
+// is anything else. Reading round it from the top: a low domed crown NARROWER
+// than the brim, a red band at its foot, the goggles strapped up over it, a
+// brim whose tips droop a row below where it meets the crown, the fringe
+// hanging out under it, the brow, the round lens set back beneath the brow,
+// the NOSE off the front edge, the mouth tucked under it, a chin, and the
+// jaw running back into the hair. Take any one of those away and he is a
+// blob in a hat again.
+//
+// The one rule that matters: the hair stays BEHIND the face. It hangs down
+// the back of his head and it does not creep round over his cheek, because
+// the moment it does he is a brown mass with a nose stuck on the side.
 const HEAD_ART = [
-  '.....oTTTToo....',
-  '....oTTTTTggo...',
-  '...ottTTTgeeo...',
-  '...ottTTTgeeo...',
-  '..obbbbbbbbbbo..',
-  '.otttttttttttto.',
-  'otttttttttttttto',
-  'uuohhhhhhHHhoouu',
-  'oohhhhhhhhhso.oo',
-  'ohhHhhhhdsSSso..',
-  'ohhHhhhhrrrso...',
-  'ohhHhhhhrlLrso..',
-  '.ohhhhhsssssSso.',
-  'ohhhhHhhsssdoo..',
-  '.ohhhHhssssso...',
-  '.ohhhHhqqmmmso..',
-  '.ohhhhhqqqqso...',
-  '..ohhhhsssoo....',
-  '...ohhbbbdo.....',
+  '.....oTTTTToo...',
+  '....ottTTTTgeo..',
+  '....ottTTTTggo..',
+  '...obbbbbbbbbo..',
+  '.oouTTTTTTTTuoo.',
+  'ouuuuuuuuuuuuuuo',
+  '.ohhhhhhHHHssoo.',
+  '.oHhhhhhsssSSso.',
+  'oHhhhhhhsssrrro.',
+  'oHhhhhhhsdsLLlo.',
+  'oHhhhhhssdslrso.',
+  'oHhhhhhssssssSSo',
+  '.oHhhhhhsssssddo',
+  '.ohhhhhsssssdoo.',
+  '.ohhhhhsqqqqmmo.',
+  '..ohhhsqqqqqdo..',
+  '..ohhhqqqqdoo...',
+  '...ooobbbso.....',
 ];
 
-/** Shut: the lens goes dark and the lid closes under the brim. */
+/** Shut: the lid comes down and the lens goes dark behind the glass. */
 const HEAD_SHUT = {
-  11: 'ohhHhhhhrrrrso..',
+  9: 'oHhhhhhhsdsrrro.',
 };
 /** Talking: the jaw drops and the mouth is a hole rather than a line. */
 const HEAD_OPEN = {
-  16: '.ohhhhhqqmmso...',
+  14: '.ohhhhhsqqqmmmo.',
+  15: '.ohhhhsqqqqmmo..',
 };
 
 const sideHeads = new Map();
@@ -355,18 +361,23 @@ function headHeight(x, y, ch, W) {
     const d = ((x - cx) / rx) ** 2 + ((y - cy) / ry) ** 2;
     return d >= 1 ? 0 : Math.sqrt(1 - d);
   };
-  if (y <= 4) return 0.52 + dome(7.4, 3.4, 5.0, 4.6) * 0.48;   // the crown
-  if (y <= 6) {                                                 // the brim
-    const t = 1 - Math.abs(x - 7.5) / (W / 2);
-    return 0.22 + t * t * 0.22;
+  if (y <= 2) return 0.56 + dome(8.0, 2.6, 4.4, 3.8) * 0.44;    // the crown
+  if (y === 3) return 0.66;                                     // the band, proud of it
+  if (y <= 5) {                                                 // the brim: a thin plate
+    const t = 1 - Math.abs(x - 7.5) / (W / 2);                  // that falls away to its tips
+    return (y === 4 ? 0.64 : 0.46) + t * t * 0.18;
   }
-  let h = 0.34 + dome(6.6, 12.0, 7.6, 8.4) * 0.62;              // skull and hair
-  // the nose, the brow and the lips stand off the front of it
-  if (y >= 11 && y <= 12 && x >= 11) h += 0.16;
-  if (y === 9 && x >= 10) h += 0.07;
-  if (y === 15 && x >= 9) h += 0.05;
-  // and the eye socket is a hollow, not a flat patch
-  if (y >= 10 && y <= 11 && x >= 8 && x <= 11) h -= 0.10;
+  // The skull is nearly FLAT. It was a full dome, and a full dome across six
+  // pixels of cheek is a gradient, not a face - it turned every hand-placed
+  // tone into mud. The lamp is here to round the hat and to catch the nose;
+  // the face itself is painted, not lit.
+  let h = 0.62 + dome(6.8, 11.4, 7.4, 8.4) * 0.26;
+  // the brow, the nose and the lips stand off the front of it
+  if (y === 8 && x >= 11) h += 0.06;
+  if (y >= 11 && y <= 12 && x >= 12) h += 0.20;
+  if (y >= 14 && y <= 15 && x >= 11) h += 0.05;
+  // and the eye is a hollow under the brow, not a flat patch
+  if (y >= 8 && y <= 10 && x >= 10 && x <= 13) h -= 0.11;
   return h;
 }
 
@@ -430,9 +441,9 @@ function paintHeadSide(K, far, kind, opts = {}) {
         const bay = HEAD_BAYER[y & 7][x & 7];
         const step = 0.16;
         const q = Math.round((lam + (bay - 0.5) * step * 0.34) / step) * step;
-        const s = clamp01(q) - 0.58;
-        col = s > 0 ? mixHex(col, '#fff1cf', Math.min(0.34, s * 0.72))
-                    : mixHex(col, '#2a1a20', Math.min(0.40, -s * 0.62));
+        const s = clamp01(q) - 0.60;
+        col = s > 0 ? mixHex(col, '#fff1cf', Math.min(0.20, s * 0.44))
+                    : mixHex(col, '#2a1a20', Math.min(0.24, -s * 0.40));
       }
       if (far) col = mixHex(col, '#8a7a63', 0.34);
       g.fillStyle = col;
@@ -446,7 +457,7 @@ function paintHeadSide(K, far, kind, opts = {}) {
     ox: (W / 2) * px,
     oy: (H - 1) * px,
     W: W * px, H: H * px,
-    eye: { x: 2 * px, y: -7 * px },
+    eye: { x: 3 * px, y: -7 * px },
   };
 }
 

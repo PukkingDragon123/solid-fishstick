@@ -1296,9 +1296,23 @@ export class Game {
       if (play && !this.talk.on) this.morse.update(sdt, i.key('t'));
       // Q is the claw. In HUNT it is the timed strike; anywhere else it is
       // the old flat swipe, so you are never without a way to defend yourself.
-      if (play && i.justPressed('q')) {
-        if (this.ui.mode === 'hunt' && this.combat.live) this.strike();
-        else this.attack();
+      // HUNT is a duel and it has exactly three verbs. Q swings, SHIFT rolls,
+      // and holding the guard key puts the claw up - and a guard raised in
+      // the quarter second before a hit lands is a parry rather than a block,
+      // which is the whole skill of the thing.
+      if (play && this.ui.mode === 'hunt') {
+        const st = this.ui.clawVec;
+        if (i.justPressed('q')) {
+          this.strike(st ? st.x : (this.crab.facing || 1), st ? st.y : 0);
+        }
+        this.combat.setGuard(i.key('s') || !!this.ui.guardHeld);
+        if (i.justPressed('Shift') || this.ui.rollWant) {
+          this.ui.rollWant = false;
+          this.combat.roll();
+        }
+      } else {
+        this.combat.setGuard(false);
+        if (play && i.justPressed('q')) this.attack();
       }
       // The sand. Z takes it, shift-Z puts it back - held, because moving sand
       // is something you do for a while rather than something you trigger, and
@@ -1307,7 +1321,7 @@ export class Game {
       if (play && !this.ui.building) {
         const pour = (i.key('z') && i.key('Shift')) || this.ui.pourHeld;
         if (pour) this.pourSand(sdt);
-        else if (i.key('z') || this.ui.scoopHeld) this.scoopSand(sdt);
+        else if (i.key('z') || this.ui.scoopHeld || this.ui.scoopTap) this.scoopSand(sdt);
       }
       // SPORE mode: hold V to charge, let go to throw
       // the nozzle in the corner and the V key are the same muscle
@@ -1541,7 +1555,6 @@ export class Game {
       }
       this.fx.ring(c.x, c.y - c.m.rx * 0.4, '#fff4d0', 48);
     }
-    if (id === 'strike') this.combat.band = this.combat.pos;   // it cannot miss
     return true;
   }
 
@@ -2180,39 +2193,18 @@ export class Game {
    * damage, on the core it does a great deal of it and staggers the animal,
    * and off it entirely you are stood there with the claw open.
    */
-  strike() {
-    const res = this.combat.strike();
+  strike(dx = (this.crab.facing || 1), dy = 0) {
     const c = this.crab;
-    if (res.kind === 'none') { this.ui.say('Nothing close enough.', 2); return; }
-    if (res.kind === 'open') { this.audio.play('deny'); return; }
+    const res = this.combat.strike(dx, dy);
     if (res.kind === 'early') return;
-    c.clawOpen = 1;
+    if (res.kind === 'rolling') return;
+    if (res.kind === 'spent') { this.ui.say('Winded.', 1.6); this.audio.play('deny'); return; }
     this.attackT = 0.4;
-    const t = this.combat.target;
-    if (res.kind === 'miss') {
-      this.audio.play('claw');
-      this.fx.dust(c.x + (c.facing || 1) * c.m.shellW * 0.5, c.y + c.standH * 0.6, 1.2);
+    if (!res.hit) {
       this.fx.popup(c.x, c.y - c.m.rx, 'wide', '#9a8a70');
       return;
     }
-    const dmg = this.economy.stat('dmg') * res.mult;
-    if (t && t.alive) {
-      t.hurt(dmg, c.x);
-      this.gore(t, res.kind === 'crit' ? 1.6 : 0.8, c.x);
-      if (res.kind === 'crit') {
-        t.stagger = 0.9;
-        t.vx += Math.sign(t.x - c.x) * 120;
-        this.cam.shake(6);
-        this.renderer.modeHit(1.1);
-        this.fx.popup(t.x, t.y - 18, `${Math.round(dmg)}!`, '#ffd678');
-        this.audio.play('hit', { pitch: 0.7 });
-      } else {
-        this.cam.shake(2.6);
-        this.renderer.modeHit(0.5);
-        this.fx.popup(t.x, t.y - 16, `${Math.round(dmg)}`, '#f2e4c2');
-        this.audio.play('hit');
-      }
-    }
+    this.renderer.modeHit(res.kind === 'crit' ? 1.1 : 0.5);
   }
 
   /**
@@ -2578,10 +2570,16 @@ export class Game {
     if (this.state !== 'play') return;
     if (Math.abs(c.x - crab.x) > 24 + crab.m.shellW * 0.34) return;
     if ((crab.iframe || 0) > 0) return;
+    let dmg = c.def.dmg * (1 - this.economy.stat('armour'));
+    // a roll, a raised claw, or a claw raised at exactly the right moment -
+    // this is where the fight is actually decided
+    const res = this.combat.incoming(dmg, c);
+    dmg = res.dmg;
+    if (res.kind === 'dodge' || res.kind === 'parry') { crab.iframe = 0.35; return; }
     crab.iframe = 0.55;
-    const dmg = c.def.dmg * (1 - this.economy.stat('armour'));
+    if (dmg <= 0) return;
     crab.hp = Math.max(0, crab.hp - dmg);
-    this.cam.shake(4);
+    this.cam.shake(res.kind === 'block' ? 2 : 4);
     this.audio.play('hurt');
     this.fx.blood(crab.x + (c.x - crab.x) * 0.4, crab.y, 5);
     if (crab.hp <= 0) this.onDown();
