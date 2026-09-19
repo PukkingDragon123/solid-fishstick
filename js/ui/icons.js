@@ -663,8 +663,19 @@ const NODE = {
 };
 
 /** Stamp a node icon into an orb. Tiny, so it is drawn flat and hard. */
+/**
+ * Names that were asked for before they were drawn. An icon that silently
+ * draws nothing is worse than the wrong icon: the card just looks broken and
+ * nobody can tell why.
+ */
+const NODE_ALIAS = {
+  seed: 'sprout', beast: 'nest', pump: 'well', spade: 'burrow', flora: 'leaf',
+  fauna: 'nest', build: 'load', codex: 'comb', map: 'comb', close: 'bolt',
+  paw: 'leg', pick: 'hammer', water: 'drop', ore: 'weight', gear: 'comb',
+};
+
 export function drawNodeIcon(ctx, name, cx, cy, color, scale = 1) {
-  const rows = NODE[name];
+  const rows = NODE[name] || NODE[NODE_ALIAS[name]];
   if (!rows) return;
   const lines = rows.split('/');
   const w = Math.max(...lines.map((l) => l.length));

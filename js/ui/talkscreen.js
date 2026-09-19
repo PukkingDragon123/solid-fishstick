@@ -488,10 +488,9 @@ export class TalkScreen {
     }
     // his name on the bar under him
     const npY = cardY + cardH - NAME - 3;
-    Kit.px(ctx, cardX + 3, npY, cardW - 6, NAME, Kit.C.frameDim);
-    Kit.px(ctx, cardX + 3, npY, cardW - 6, 1, Kit.C.frameDeep);
+    Kit.slab(ctx, cardX + 3, npY, cardW - 6, NAME, {});
     const nm = textWidth('DR. ELIAS VESS') + 8 <= cardW ? 'DR. ELIAS VESS' : 'DR. VESS';
-    drawText(ctx, nm, cardX + cardW / 2, npY + 3, { color: Kit.C.ink, align: 'center' });
+    drawText(ctx, nm, cardX + cardW / 2, npY + 3, { color: Kit.C.gold, align: 'center' });
     const px = cardX + cardW / 2;
     const nameY = npY;
 
@@ -526,7 +525,7 @@ export class TalkScreen {
     // the icon down the left of the card, on its own margin
     if (ln.icon) {
       ctx.globalAlpha = 0.92;
-      drawNodeIcon(ctx, ln.icon, x + 15, y + h / 2, Kit.C.inkSoft, 2);
+      drawNodeIcon(ctx, ln.icon, x + 15, y + h / 2, Kit.C.gold, 2);
       ctx.globalAlpha = 1;
       // a hairline between the icon's margin and what he is saying
       Kit.px(ctx, x + 25, y + 4, 1, h - 8, Kit.C.pageDim);
@@ -536,7 +535,7 @@ export class TalkScreen {
     // makes when they are about to say something
     if (this.think > 0) {
       const n = 1 + Math.floor((0.7 - this.think) * 7) % 3;
-      drawText(ctx, '.'.repeat(Math.max(1, n)), tx, y + 10, { color: '#7a6a4c' });
+      drawText(ctx, '.'.repeat(Math.max(1, n)), tx, y + 10, { color: Kit.C.inkSoft });
       return;
     }
     // the line arrives a character at a time - he is talking, not printing
@@ -546,7 +545,7 @@ export class TalkScreen {
       if (budget <= 0) return;
       const cut = l.slice(0, budget);
       budget -= l.length;
-      drawText(ctx, cut, tx, y + 10 + i * LINE_H, { color: '#332a1c' });
+      drawText(ctx, cut, tx, y + 10 + i * LINE_H, { color: Kit.C.ink });
     });
 
     // how far through the answer you are, as pips rather than "3 / 5"
@@ -599,12 +598,15 @@ export class TalkScreen {
       if (on) Kit.button(ctx, x, by, w, h, null, { hot: true, tint: c.tint });
       else Kit.slab(ctx, x, by, w, h, { face: Kit.C.wood, lit: Kit.C.woodLit, dim: Kit.C.woodDim });
       // the number, so a keyboard answers without moving a cursor
-      Kit.px(ctx, x + 3, by + 3, h - 6, h - 6, on ? Kit.C.goldDim : Kit.C.woodDim);
-      Kit.px(ctx, x + 4, by + 4, h - 8, h - 8, on ? Kit.C.goldLit : '#553320');
+      // the number sits in a channel cut into the slab, not on a coloured
+      // block over the top of it
+      Kit.px(ctx, x + 3, by + 3, h - 6, h - 6, 'rgba(10,7,4,0.55)');
+      Kit.px(ctx, x + 3, by + 3, h - 6, 1, 'rgba(0,0,0,0.5)');
+      Kit.px(ctx, x + 3, by + h - 4, h - 6, 1, 'rgba(226,204,160,0.18)');
       drawText(ctx, `${i + 1}`, x + 2 + h / 2, by + (h - 7) / 2,
-        { color: on ? Kit.C.ink : '#d8bb8e', align: 'center' });
+        { color: on ? Kit.C.goldLit : Kit.C.inkSoft, align: 'center' });
       drawText(ctx, ellipsize(c.text, w - h - 10), x + h + 2, by + (h - 7) / 2,
-        { color: on ? Kit.C.ink : '#e8d2ac' });
+        { color: on ? '#fff3d2' : Kit.C.ink });
       this.arows.push({ i, x, y: by, w, h });
     });
     const fy = y + ch.length * (h + gap) + 2;
@@ -659,22 +661,17 @@ export class TalkScreen {
       // Brass when you are on it, wood when you are not - and leaving is
       // always rust and always the last thing on the list, so it is one
       // press from anywhere in the conversation.
-      if (on || bye) {
-        Kit.button(ctx, bx, by, cw, h, null, {
-          hot: on && !bye, on: bye, tint: bye ? (on ? '#e8825c' : '#a85536') : undefined,
-        });
-      } else {
-        Kit.slab(ctx, bx, by, cw, h, { face: Kit.C.wood, lit: Kit.C.woodLit, dim: Kit.C.woodDim });
-      }
+      Kit.button(ctx, bx, by, cw, h, null, {
+        hot: on && !bye, on: bye, tint: bye ? '#c2702e' : undefined,
+      });
       // a tick in the corner of anything he has already told you about, so a
       // long list stops being a list you have to remember your way through
       if (said && !bye) {
-        const tick = on ? Kit.C.frameDeep : Kit.C.frame;
-        Kit.px(ctx, bx + cw - 6, by + 3, 3, 1, tick);
-        Kit.px(ctx, bx + cw - 5, by + 4, 1, 1, tick);
+        Kit.px(ctx, bx + cw - 6, by + 3, 3, 1, Kit.C.goldDim);
+        Kit.px(ctx, bx + cw - 5, by + 4, 1, 1, Kit.C.goldDim);
       }
       drawText(ctx, ellipsize(tp.ask || tp.word, cw - 10), bx + cw / 2, by + (h - 7) / 2,
-        { color: (on || bye) ? Kit.C.ink : '#e8d2ac', align: 'center' });
+        { color: on ? '#fff3d2' : said ? Kit.C.inkSoft : Kit.C.ink, align: 'center' });
       rows.push({ i, x: bx, y: by, w: cw, h });
     });
     this.rows = rows;

@@ -1412,46 +1412,30 @@ what you are holding is handed over rather than swapped between two frames.
 
 ### The interface is one material
 
-Everything the game draws that is not the world comes out of **one file**, and
-it is all made of the same four things:
+Everything the game draws that is not the world comes out of **one file**. It
+went through a mint-green phase and a brass-and-parchment phase, and neither of
+them was this game: this game is a desert with stone in it, so the interface is
+made of the things you would actually find out there.
 
-- **WOOD** is structure. Every frame, every banner, every bar is a plank.
-- **PARCHMENT** is where words go. Nothing is written on anything else.
-- **BRASS** is what you press and what you own. Buttons are brass; so is the
-  bezel round anything sitting in a slot.
-- **STEEL** is hardware. Clasps, caps, chain, locks — the parts that hold the
-  wood together and are never a surface you write on.
+- **STONE** is what you press. Every button, every tab, every plate is a slab
+  knocked square out of the same rock as the mesas — real bedding running
+  across it, grit and the odd bright grain of quartz in it, a bevel lit along
+  the top and left, and a channel carved a pixel in from the edge.
+- **LEATHER** is structure. A window is a board of hide stretched on a frame,
+  and it is what a rail, a plank and a banner are made of.
+- **BRASS** is the highlight — the lit edge of the thing you are on, the rule
+  under a heading, the rivet in a corner. Nothing is *made* of brass; it is
+  what catches the light on something made of stone.
 
-Before that there were three *different* materials — leather boards in the
-conversation, riveted brass on the HUD, flat brown boxes in the panels — which
-is three answers to "what is a button" and therefore no answer at all.
+And the words are **pale on dark**, always, because the game behind this
+interface is a dark one.
 
-The pieces:
-
-- **A WINDOW is a board**: a dark wood frame with a **steel clasp bolted over
-  each corner**, parchment inside it, and a **wooden title plank with steel
-  end caps** laid across the top with a brass X beside it.
-- **A BUTTON is brass**: black outline, amber face, a highlight along the top
-  and left, a shadow along the bottom and right. It is proud of the page, and
-  when you push it **it goes down** — the highlight and the shadow swap and
-  everything on it moves a pixel, because a button that does not move when you
-  press it is a picture of a button.
-- **A SLOT is a brass bezel** with a flourish cut into each of its four corners
-  and dark wood behind whatever is in it. A slot you cannot use yet is **steel**
-  instead, because "not yet" and "empty" are different things and deserve
-  different metals.
-- Plus **planks**, **chain**, **padlocks**, segmented brass bars, steel-capped
-  gauges, banded parchment rows, tick boxes and arrows.
-
-**And the selected thing is always brass on wood.** Every menu, every answer in
-a conversation, every list of doors: the one you are on is amber and everything
-else is a plank. One gold plate among four gold plates is a shade, and a shade
-is not a selection — you could not tell what pressing Enter was going to do.
-
-Two rules hold it together. Everything lands on **whole pixels**, because half
-a pixel of bevel is a blurred edge. And every interactive thing has exactly
-three states — resting, under the pointer, and held — which is what makes a
-screen feel like it is made of switches rather than of pictures of switches.
+**A button goes down when you push it**: the bevel flips and everything on it
+moves a pixel, because a button that does not move when you press it is a
+picture of a button. **The one you are on has its carved channel filled with
+brass**, which is how a stone tablet gets to look chosen. **A slot is a
+recess** — the light falls into the *top* of it, which is the opposite of a
+slab and is the whole reason a hole reads as a hole.
 
 ### The three things this game is
 
@@ -1474,28 +1458,46 @@ to point at how you get some.
 ### On a phone
 
 The whole bottom of a phone screen is measured from one place, in two
-arrangements, because four different controls all want it and on a tall screen
-they used to land on top of each other.
+arrangements, because several controls want it and on a tall screen they used
+to land on top of each other. Upright they **stack**: the walking stick and the
+spring valve along the bottom, the action plates above them, and above that
+**the band** — one enormous stone strip that takes over for every timing bar in
+the game. The spring, the claw, the spore and every job are the same idea (a
+needle sweeping across a band you have to hit), so on touch they are one
+control, thumb-sized, in the one place a thumb already is. On its side they
+**spread**: stick in one corner, valve in the other, the band in the gap
+between the thumbs.
 
-Upright they **stack**: the walking stick and the spring valve along the
-bottom, a row of action plates above them, and above that **the band** — one
-enormous stone strip that takes over for every timing bar in the game. The
-spring, the claw, the spore and every job are the same idea (a needle sweeping
-across a band you have to hit), so on touch they are one control, thumb-sized,
-in the one place a thumb already is. On its side they **spread**: stick in one
-corner, valve in the other, the band in the gap between the thumbs where
-neither one is resting.
+**Four plates, maximum, and every one of them is a picture.**
 
-There is no letterbox. Capping the aspect gave a phone two fat black bars with
-the game floating between them, which was worse than the sky it was hiding, so
-the frame is the whole screen and the tallness is dealt with where it comes
-from: **the camera asks the interface how much room it is taking** and lifts the
-animal clear of it. Starting a job raises the shot instead of burying the hole
-under the band.
+There used to be up to seven, and they were words. Seven word-plates across a
+phone is seven plates seventeen pixels wide, which is not a control, it is a
+decoration — and a row of seven things all cut from the same stone with nothing
+but text to tell them apart is a row you have to *read* before you can press,
+every time. So:
+
+- **One contextual plate, not three.** Talking, picking and acting never happen
+  at once and they were three plates fighting over the same corner. Whichever
+  the world is offering you — **TALK**, **PICK 3**, **ACT** — that is the
+  plate.
+- **POUR sits beside DIG, never in front of it**, so picking up your first
+  grain cannot slide DIG out from under the thumb that is holding it down.
+- **MODE is gone from the row.** It is not a verb and it does not belong in a
+  row of verbs — the column down the left-hand edge is already a mode
+  switcher, and one tap on the one you want beats two taps cycling to it.
+- **HUNT clears the row completely.** A duel has three verbs, the claw is the
+  stick in the corner, so the row is the other two and nothing else. You are
+  being bitten.
+
+Each plate is the **picture first** — a spade for DIG, a shield for GUARD, a
+sprout for PLANT — with the word under it, because a word under a picture is
+read once and a word on its own is read every time. And the row never wraps to
+a second line, so the only thing that ever moves is the plate that just
+appeared.
 
 The talk screen does the same thing. On a narrow frame he moves to the top and
-the words go underneath; the grid takes as many columns as it needs before it
-gives up any height, so every word he will listen to is always on the screen.
+what you can say goes underneath; the buttons take as many columns as they need
+before they give up any height, so everything he will listen to is on screen.
 
 ### Layout
 

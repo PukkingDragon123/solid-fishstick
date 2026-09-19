@@ -26,8 +26,9 @@ const INK = '#f2e4c2';
 const DIM = 'rgba(240,226,192,0.66)';
 const FAINT = 'rgba(240,226,192,0.36)';
 const OUT = 'rgba(12,8,5,0.72)';
-/** The faint tone on a cream page, where the HUD's FAINT would vanish. */
-const PAPER_FAINT = 'rgba(74,59,44,0.62)';
+/** The faint tone inside a board. Kept as its own name because the notes
+ * page has its own rhythm and wants to be tuned on its own. */
+const PAPER_FAINT = 'rgba(240,226,192,0.36)';
 
 /** How long the controls take to hand over when you change mode. */
 const MODE_SWAP = 0.3;
@@ -758,6 +759,9 @@ export class UI {
   _den(ctx, W, H) {
     const g = this.game;
     if (g.state !== 'play' || this.buildOn) return;
+    // A phone on its side has no spare height at all, and three tiles across
+    // the top of it land on the mode bar's own readout.
+    if (this.compact(H)) return;
     const gd = g.garden;
     const builds = gd.plots.filter((p) => p.build).length;
     const grown = gd.planted.length;
@@ -832,7 +836,7 @@ export class UI {
     if (k <= 0.01) return;
     const cw = Math.min(290, W - 36);
     const lines = wrapText(`${m.got}\n\n${m.desc}`, cw - 62);
-    const ch = Math.max(62, 30 + Math.max(lines.length * LINE_H, 42) + 13);
+    const ch = Math.max(74, 13 + 30 + Math.max(lines.length * LINE_H, 42) + 13);
     const cx = Math.round((W - cw) / 2);
     const cy = Math.round(H * 0.3 - ch / 2 + (1 - k) * 14);
 
@@ -848,9 +852,9 @@ export class UI {
     const tx = page.x + 48;
     let ty = page.y + 3;
     for (const ln of lines) { drawText(ctx, ln, tx, ty, { color: K.C.ink }); ty += LINE_H; }
-    K.rule(ctx, page.x + 2, page.y + page.h - 11, page.w - 4);
+    K.rule(ctx, page.x + 2, page.y + page.h - 12, page.w - 4);
     drawText(ctx, this.touchEnabled ? 'the column, bottom left' : 'M, or the column bottom left',
-      page.x + page.w - 3, page.y + page.h - 8, { color: K.C.inkSoft, align: 'right' });
+      page.x + page.w - 3, page.y + page.h - 9, { color: K.C.inkSoft, align: 'right' });
     ctx.globalAlpha = 1;
   }
 
@@ -1026,8 +1030,8 @@ export class UI {
       });
       const o = on ? 1 : 0;
       drawModeArt(ctx, m.glyph, bx + S / 2 + o, y + S / 2 + o,
-        on ? mixHex(m.tint, '#120c08', 0.62) : K.C.ink,
-        on ? mixHex(m.tint, '#ffffff', 0.5) : 'rgba(255,255,255,0.35)');
+        on ? m.tint : hot ? '#e0c79a' : 'rgba(190,166,120,0.72)',
+        'rgba(10,7,4,0.8)');
       if (hot) {
         this.hover = { title: m.name, body: `${m.desc}   (M cycles)` };
         if (g.input.clicked) { g.input.clicked = false; this.setMode(m.id); }
@@ -2536,7 +2540,7 @@ export class UI {
       if (!e) continue;
       drawNodeIcon(ctx, e.def.icon, cxp + S / 2, cyp + S / 2 - 2, e.def.tint, 1);
       drawText(ctx, `${e.n}`, cxp + S - 3, cyp + S - 9,
-        { color: '#ffeec0', align: 'right', outline: true, outlineColor: K.C.ink });
+        { color: '#ffeec0', align: 'right', outline: true, outlineColor: OUT });
       if (hot) this.hover = { title: e.def.name, body: e.def.desc };
     }
     const packBottom = y + 13 + packRows * (S + gap);
@@ -2843,9 +2847,9 @@ export class UI {
         { color: unlock.ok ? K.C.ink : K.C.inkSoft });
       if (!unlock.ok) {
         // locked: one lock glyph and one short line, and Vess explains the rest
-        drawNodeIcon(ctx, 'link', inX + 7, cy + 20, '#8a5a18', 1);
+        drawNodeIcon(ctx, 'link', inX + 7, cy + 20, K.C.gold, 1);
         wrapText(unlock.why, inW - 20).slice(0, 2).forEach((l, i) =>
-          drawText(ctx, l, inX + 15, cy + 14 + i * LINE_H, { color: '#8a5a18' }));
+          drawText(ctx, l, inX + 15, cy + 14 + i * LINE_H, { color: K.C.gold }));
       } else {
         // what it is, as pictograms: what it costs, what it pays, how long it
         // takes and what it wants before it will pay at all
@@ -3037,7 +3041,7 @@ export class UI {
     // him to read them, which is the whole reason to keep him around.
     if (!g.vessClose) {
       const d = Math.round(Math.abs(g.npc.x - g.crab.x) / 10);
-      drawText(ctx, 'HIS NOTEBOOK IS NOT HERE', x, y + 6, { color: '#8a5a18' });
+      drawText(ctx, 'HIS NOTEBOOK IS NOT HERE', x, y + 6, { color: K.C.gold });
       wrapText(`The field notes are Dr. Vess's, and he is carrying them. Get to him - he is ${d}m ${g.npc.x > g.crab.x ? 'east' : 'west'} - and read over his shoulder.`, w - 4)
         .forEach((l, i) => drawText(ctx, l, x, y + 20 + i * LINE_H, { color: K.C.inkSoft }));
       wrapText('F calls him over. He will follow you, and ride on you once you are big enough to carry him.', w - 4)
@@ -3051,7 +3055,7 @@ export class UI {
     let total = 0;
 
     // what he has worked out about the basin itself
-    if (ry > y - 12 && ry < y + h) drawText(ctx, 'THE BASIN', x, ry, { color: '#2a6d7c' });
+    if (ry > y - 12 && ry < y + h) drawText(ctx, 'THE BASIN', x, ry, { color: '#7fd0dd' });
     ry += 11; total += 11;
     const found = g.world.found.size;
     for (const [name, body] of WORLD_NOTES) {
@@ -3064,7 +3068,7 @@ export class UI {
       ry += dh; total += dh;
     }
     ry += 4; total += 4;
-    if (ry > y - 12 && ry < y + h) drawText(ctx, 'WHAT HAPPENED', x, ry, { color: '#8a5a18' });
+    if (ry > y - 12 && ry < y + h) drawText(ctx, 'WHAT HAPPENED', x, ry, { color: K.C.gold });
     ry += 11; total += 11;
     ERAS.forEach((e, i) => {
       const open = found >= i * 2;
@@ -3080,7 +3084,7 @@ export class UI {
     for (const cl of CLADES) {
       const list = FAUNA.filter((f) => f.clade === cl.id);
       if (!list.length) continue;
-      if (ry > y - 12 && ry < y + h) drawText(ctx, cl.name.toUpperCase(), x, ry, { color: '#8a5a18' });
+      if (ry > y - 12 && ry < y + h) drawText(ctx, cl.name.toUpperCase(), x, ry, { color: K.C.gold });
       ry += 11; total += 11;
       for (const f of list) {
         const seen = g.wildlife.seen.has(f.id);
@@ -3163,7 +3167,7 @@ export class UI {
     drawText(ctx, f.sci, x, ry, { color: PAPER_FAINT }); ry += 12;
     const obs = g.research[f.id] || 0;
     const level = OBSERVE_STEPS.filter((s) => obs >= s).length;
-    drawText(ctx, `${f.clade}   ${Math.round(obs)}s`, x, ry, { color: '#8a5a18' }); ry += 12;
+    drawText(ctx, `${f.clade}   ${Math.round(obs)}s`, x, ry, { color: K.C.gold }); ry += 12;
     // what it wants, as things rather than as a sentence
     ry = this._wantRow(ctx, f, x, ry, w) + 4;
     wrapText(f.desc, w).forEach((l) => { drawText(ctx, l, x, ry, { color: K.C.inkSoft }); ry += LINE_H; });
@@ -3273,60 +3277,85 @@ export class UI {
     pxDisc(ctx, cx + dx, cy, this.stick ? 13 : 11, INK, { p, soft: p });
     ctx.globalAlpha = 1;
 
-    // The buttons. Only the live ones exist - a row of dead dashes teaches
-    // you nothing - and where they go depends on which way up the phone is.
+    // THE BUTTONS.
+    //
+    // There were up to seven of them and they were words. Seven word-plates
+    // across a phone is seven plates seventeen pixels wide, which is not a
+    // control, it is a decoration - and a row of seven things all made of the
+    // same stone with nothing but text to tell them apart is a row you have
+    // to READ before you can press, every time.
+    //
+    // So: FOUR at most, each one a PICTURE of what it does with the word
+    // underneath it, and never more than one of them new since last frame.
+    // What is on the row is what the world is actually offering you.
     const bs = this.buttonSize(W, H);
     const hint = g.actionHint();
     this.scoopHeld = false;
     this.pourHeld = false;
     this.guardHeld = false;
     const wanted = [];
-    if (g.npc && g.talk && !g.talk.on && Math.abs(g.npc.x - g.crab.x) < 64) {
-      wanted.push({ label: 'TALK', key: 'c', colour: '#e8c98a' });
-    }
-    if (g.garden.ripeCount) wanted.push({ label: `PICK ${g.garden.ripeCount}`, key: 'r', colour: '#cfe89a' });
-    if (hint) wanted.push({ label: 'ACT', key: 'e' });
 
-    // WHAT IS UNDER YOUR THUMB DEPENDS ON THE MODE, because the modes are
-    // different activities and a row that offers all of them at once offers
-    // none of them clearly.
     if (this.mode === 'hunt') {
-      // a duel has three verbs. The claw is the stick in the corner; these
-      // are the other two, and they are the ones that have to be instant.
-      wanted.push({ label: 'GUARD', key: 'zguard', colour: '#9de3ee', hold: true });
+      // A duel has three verbs and the claw is the stick in the corner, so
+      // the row is the other two. Nothing else belongs here - you are being
+      // bitten.
+      wanted.push({ icon: 'shield', label: 'GUARD', key: 'zguard',
+        colour: '#9de3ee', hold: true });
       const rollReady = g.combat && g.combat.dodgeCool <= 0 && g.combat.stam >= 25;
-      wanted.push({ label: 'ROLL', key: 'zroll', colour: '#e2b74a', dim: !rollReady });
+      wanted.push({ icon: 'skate', label: 'ROLL', key: 'zroll',
+        colour: '#e2b74a', dim: !rollReady });
     } else {
-      // The sand. BOTH plates, always - an empty claw cannot pour and the
-      // plate says so by going dim, but it stays where it is. Showing POUR
-      // only once you were carrying something meant the row re-laid itself
-      // out the instant you picked up your first grain, which slid DIG out
-      // from under the thumb that was holding it down.
-      const carrying = (g.sandHeld || 0) > 0.5;
-      wanted.push({ label: 'DIG', key: 'zdig', colour: '#e0c188', hold: true });
-      wanted.push({ label: 'POUR', key: 'zpour', colour: '#cfe89a', hold: true, dim: !carrying });
-      // and in CRAB mode you can go straight to your own back and plant
+      // ONE contextual plate, not three. Talking, picking and acting never
+      // happen at once and they were three plates fighting for the same
+      // corner; whichever the world is offering, that is the plate.
+      if (g.npc && g.talk && !g.talk.on && Math.abs(g.npc.x - g.crab.x) < 64) {
+        wanted.push({ icon: 'call', label: 'TALK', key: 'c', colour: '#e8c98a' });
+      } else if (g.garden.ripeCount) {
+        wanted.push({ icon: 'fruit', label: `PICK ${g.garden.ripeCount}`, key: 'r',
+          colour: '#cfe89a' });
+      } else if (hint) {
+        wanted.push({ icon: 'hand', label: 'ACT', key: 'e', colour: '#e2b74a' });
+      }
+      // the sand: DIG always, and POUR only beside it - never in front of it,
+      // so picking up your first grain cannot slide DIG out from under the
+      // thumb that is holding it down
+      wanted.push({ icon: 'spade', label: 'DIG', key: 'zdig',
+        colour: '#e0c188', hold: true });
+      if ((g.sandHeld || 0) > 0.5) {
+        wanted.push({ icon: 'drop', label: 'POUR', key: 'zpour',
+          colour: '#cfe89a', hold: true });
+      }
       if (this.mode === 'direct') {
-        wanted.push({ label: 'PLANT', key: 'b', colour: '#9ad86a' });
+        wanted.push({ icon: 'sprout', label: 'PLANT', key: 'b', colour: '#9ad86a' });
       }
     }
-    wanted.push({ label: 'MODE', key: 'm' });
+    // MODE is not a verb and does not belong in a row of verbs. It is the
+    // column down the left-hand edge, which is already a mode switcher, and
+    // one tap on the one you want beats two taps cycling to it.
 
-    const gap = 6;
+    const gap = 5;
     const plate = (b, bx, by, bw, bh) => {
       this.buttons.push({ x: bx, y: by, w: bw, h: bh, key: b.key });
       const hot = this._hit(bx, by, bw, bh);
       const down = hot && this.game.input.down;
       K.button(ctx, bx, by, bw, bh, null,
         { hot: hot && !b.dim, down: down && !b.dim, disabled: !!b.dim, tint: b.colour });
-      // two-high letters if they fit, one-high if the plate had to shrink
-      const big = textWidth(b.label) * 2 + 10 <= bw && bh >= 28;
       const o = down && !b.dim ? 1 : 0;
-      drawText(ctx, b.label, bx + bw / 2 + o, by + (bh - (big ? 14 : 7)) / 2 + o,
-        { color: b.dim ? '#5b6156' : K.C.ink, align: 'center', scale: big ? 2 : 1 });
+      // THE PICTURE FIRST. A word under a picture is read once; a word on its
+      // own is read every time.
+      const sc = bh >= 34 ? 2 : 1;
+      const ih = 9 * sc;
+      const tall = bh >= ih + 12;
+      ctx.globalAlpha = b.dim ? 0.4 : 1;
+      drawNodeIcon(ctx, b.icon, bx + bw / 2 + o,
+        by + (tall ? 3 + ih / 2 : bh / 2) + o, b.dim ? '#8a8072' : (b.colour || INK), sc);
+      if (tall) {
+        drawText(ctx, b.label, bx + bw / 2 + o, by + bh - 9 + o,
+          { color: b.dim ? 'rgba(240,226,192,0.34)' : INK, align: 'center' });
+      }
+      ctx.globalAlpha = 1;
       if (b.hold) {
         // a held plate reports while the thumb is down rather than firing once
-        const down = hot && this.game.input.down;
         if (b.key === 'zdig') this.scoopHeld = down;
         if (b.key === 'zpour') this.pourHeld = down;
         if (b.key === 'zguard') this.guardHeld = down;
@@ -3348,32 +3377,18 @@ export class UI {
       for (const b of wanted) { plate(b, bx, by, bs.w, bs.h); by -= bs.h + 4; }
       hintY = by - 2;
     } else {
-      // upright: one row of their own, directly above the stick, sharing the
-      // width evenly - four on a small phone are four smaller plates rather
-      // than three plates and one somewhere else
+      // Upright: ONE row, always, hard against the right-hand edge. Four
+      // plates is the most this can ever hold, so it never wraps and nothing
+      // ever moves except the plate that just appeared.
       const by = this.buttonRowY(W, H);
       const right = W - 6;
-      // Six plates across a phone is six plates seventeen pixels wide, which
-      // is not a control, it is a decoration. So above three it goes to two
-      // rows - and only the BOTTOM row has to keep clear of the walking stick,
-      // because the one above it is over the desert rather than the thumb.
-      const rows = wanted.length > 3 ? 2 : 1;
-      const perRow = Math.ceil(wanted.length / rows);
-      const rh = bs.h + 4;
-      for (let r = 0; r < rows; r++) {
-        const slice = wanted.slice(r * perRow, (r + 1) * perRow);
-        if (!slice.length) continue;
-        const bottom = r === rows - 1;
-        // the upper row still has to clear the mode chips down the left edge
-        const left = bottom ? this.stickZone.x + this.stickZone.w + 4 : 42;
-        const room = right - left;
-        const bw = Math.max(34, Math.min(bs.w,
-          Math.floor((room - gap * (slice.length - 1)) / slice.length)));
-        const ry = by - (rows - 1 - r) * rh;
-        let bx = right - slice.length * bw - (slice.length - 1) * gap;
-        for (const b of slice) { plate(b, bx, ry, bw, bs.h); bx += bw + gap; }
-      }
-      hintY = by - (rows - 1) * rh - 12;
+      const left = this.stickZone.x + this.stickZone.w + 6;
+      const room = right - left;
+      const n = Math.max(1, wanted.length);
+      const bw = Math.max(38, Math.min(bs.w, Math.floor((room - gap * (n - 1)) / n)));
+      let bx = right - n * bw - (n - 1) * gap;
+      for (const b of wanted) { plate(b, bx, by, bw, bs.h); bx += bw + gap; }
+      hintY = by - 12;
     }
     if (hint) {
       drawText(ctx, hint, W - 6, hintY,
