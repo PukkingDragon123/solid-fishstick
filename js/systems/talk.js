@@ -3,145 +3,18 @@ import { offerCards } from './quests.js';
 // CRABDEN - saying something.
 //
 // You have no voice, no hands you can write with, and a face that does not
-// move the way his mouth does. What you do have is a claw and a hard shell, and a
-// man who has spent eleven years listening to nothing.
+// move the way his mouth does. He has spent eleven years listening to
+// nothing, and he is very good at reading an animal.
 //
-// So you tap. He works out, faster than he has any right to, that the taps
-// are not random - and from then on the two of you have a language. It is a
-// terrible language. It is enough.
-
-export const CODE = {
-  '.-': 'A', '-...': 'B', '-.-.': 'C', '-..': 'D', '.': 'E', '..-.': 'F',
-  '--.': 'G', '....': 'H', '..': 'I', '.---': 'J', '-.-': 'K', '.-..': 'L',
-  '--': 'M', '-.': 'N', '---': 'O', '.--.': 'P', '--.-': 'Q', '.-.': 'R',
-  '...': 'S', '-': 'T', '..-': 'U', '...-': 'V', '.--': 'W', '-..-': 'X',
-  '-.--': 'Y', '--..': 'Z', '-----': '0', '.----': '1', '..---': '2',
-  '...--': '3', '....-': '4', '.....': '5', '-....': '6', '--...': '7',
-  '---..': '8', '----.': '9',
-};
-
-/** What he says back when a word actually lands. */
-const REPLIES = {
-  WATER: "Water. You're asking about water. There's a seep two ridges east - I'll show you.",
-  SEA: 'The sea. Yes. It was here. You were here when it was here.',
-  HELP: "Help. Right. Tell me what's wrong and I will do the digging.",
-  YES: 'Yes. Good. That is a yes. I am writing that down.',
-  NO: 'No. Fine. Noted, and I will stop asking.',
-  FOOD: 'Food. There are berries setting on your own back, you enormous idiot.',
-  NAME: 'My name is Vess. Elias Vess. You have just asked me my name.',
-  HOME: 'Home. This was home. It is going to be again, at the rate you are going.',
-  GO: "Go. Where? Point with a leg, I'll follow.",
-  STOP: 'Stopping. Stopped. I am a very good listener.',
-  VESS: 'That is my name. You just tapped my name. I need to sit down.',
-  HELLO: 'Hello. Hello. A thousand years and the first thing you say is hello.',
-  RAIN: 'Rain. Not for eleven years. But your basin is filling, so.',
-  SAND: 'Sand. Yes. Extensive notes on the sand. Ask me something harder.',
-  DIG: "Dig. Now you're talking. Where?",
-  UP: 'Up? Oh - up. You want me to climb on. Give me a moment.',
-  DOWN: 'Down. Putting me down. Fine.',
-  OK: 'Okay. Okay. We understand each other.',
-};
-
-/**
- * The tap channel. Hold the key for a long tap, release for a short one; a
- * pause ends a letter, a longer pause ends the word and he reads it back.
- */
-export class Morse {
-  constructor(game) {
-    this.game = game;
-    this.letter = '';       // dots and dashes of the letter being tapped
-    this.word = '';         // letters decoded so far
-    this.gap = 0;           // seconds since the last tap
-    this.held = 0;          // how long the key has been down
-    this.down = false;
-    this.learned = false;   // whether he has worked out it is a code
-    this.taps = 0;
-    this.show = 0;          // fades the bubble over the crab
-  }
-
-  /** Called every frame with whether the tap key is held. */
-  update(dt, held) {
-    if (held && !this.down) { this.down = true; this.held = 0; }
-    else if (held) this.held += dt;
-    else if (this.down) {
-      this.down = false;
-      this.push(this.held > 0.22 ? '-' : '.');
-    }
-
-    if (!this.down && (this.letter || this.word)) {
-      this.gap += dt;
-      if (this.letter && this.gap > 0.55) this._endLetter();
-      else if (this.word && this.gap > 1.5) this._endWord();
-    }
-    this.show = Math.max(0, this.show - dt * (this.letter || this.word ? 0 : 1.2));
-  }
-
-  push(mark) {
-    const g = this.game;
-    this.letter += mark;
-    this.gap = 0;
-    this.taps++;
-    this.show = 1;
-    g.crab.tap(mark === '-');
-    g.audio?.play('ui', { pitch: mark === '-' ? 0.7 : 1.4 });
-    if (!this.learned && this.taps >= 6) this._learn();
-  }
-
-  _endLetter() {
-    const ch = CODE[this.letter] || '?';
-    this.word += ch;
-    this.letter = '';
-    this.gap = 0;
-    if (this.word.length > 14) this._endWord();
-  }
-
-  _endWord() {
-    const word = this.word;
-    this.word = '';
-    this.letter = '';
-    this.gap = 0;
-    if (!word) return;
-    const npc = this.game.npc;
-    const near = Math.abs(npc.x - this.game.crab.x) < 140 || npc.riding;
-    if (!near) {
-      this.game.ui.say(`You tap out ${word}. Nobody is close enough to hear it.`, 3.5);
-      return;
-    }
-    if (!this.learned) this._learn();
-    const reply = REPLIES[word];
-    if (reply) {
-      npc.say(reply, 6);
-      this.game.onSaid?.(word);
-    } else if (word.includes('?')) {
-      npc.say(`That was... something. Slower. Long taps and short ones, and a gap between letters.`, 5.5);
-    } else {
-      npc.say(`"${word}". You just spelled ${word}. I have no idea what you mean by it, but you spelled it.`, 6);
-      this.game.onSaid?.(word);
-    }
-    this.game.audio?.play('discover');
-  }
-
-  /** The moment he stops hearing noise and starts hearing language. */
-  _learn() {
-    this.learned = true;
-    const npc = this.game.npc;
-    npc.say('Wait. Wait. That is not random. Long, short, long - that is code. '
-      + 'You are TAPPING AT ME. You are a person. Oh, you are a person.', 8);
-    this.game.ui.say('Dr. Vess has understood you. Hold and release to tap; pause to end a letter.', 7);
-    this.game.audio?.play('evolve');
-    this.game.cam.shake(3);
-    this.game.onLearnedCode?.();
-  }
-
-  /** What is currently on the wire, for the bubble over your own head. */
-  render() {
-    const cur = this.letter ? ` ${this.letter}` : this.down ? ' _' : '';
-    return (this.word + cur).trim();
-  }
-
-  toJSON() { return { learned: this.learned, taps: this.taps }; }
-  fromJSON(d) { if (d) { this.learned = !!d.learned; this.taps = d.taps || 0; } }
-}
+// There used to be a code here: a morse table, a key you held down with your
+// pincer, and a grid of stone tablets with the dots and dashes cut under
+// every word you were allowed to say. It was the best-looking thing in the
+// game and the worst thing in it to use - you had to already know which
+// words did anything, and the ones that did were a menu with a puzzle bolted
+// to the front of it.
+//
+// What is left is the conversation. He talks, you pick what you say back,
+// and the last thing on the list is always BYE.
 
 // ---------------------------------------------------------------------------
 // The conversation.
@@ -156,17 +29,6 @@ export class Morse {
 // You can answer two ways and they are the same answer: tap it out for real
 // on the key, or point at it. Tapping is the game; pointing is for when your
 // hands are busy. Either way it is you who said it.
-
-const REVERSE = (() => {
-  const out = {};
-  for (const [marks, ch] of Object.entries(CODE)) out[ch] = marks;
-  return out;
-})();
-
-/** A word as dots and dashes, letters separated by a space. */
-export function morseFor(word) {
-  return String(word).toUpperCase().split('').map((ch) => REVERSE[ch] || '?').join(' ');
-}
 
 /**
  * What you can say to him. `lines` is what he says back, one card at a time.
@@ -188,7 +50,7 @@ export const TOPICS = [
   },
   {
     id: 'water', word: 'WATER', group: 'work',
-    ask: 'Where does the water come from?',
+    ask: 'Where is the water?',
     lines: [
       { icon: 'drop', t: "From you. There is a spring under that shell and it has been sitting on it since before there were people." },
       { icon: 'pump', t: "The valve in the corner is the muscle. Tap it in time with the band on the gauge - in the band it pays, in the middle of the band it pays double, and a run of good ones pays much more than a run of bad ones." },
@@ -331,7 +193,7 @@ export const TOPICS = [
   },
   {
     id: 'vent', word: 'VENT', group: 'work',
-    ask: 'What are the stone caps?',
+    ask: 'The stone caps?',
     lines: [
       { icon: 'well', mood: 'squint',
         t: "You have seen one. Good. A collar of dressed block over a hole in the rock, with a plug driven into it. That is not a well. That is a lid." },
@@ -355,7 +217,8 @@ export const TOPICS = [
     // of you with a spore in your gland, and taking it is the whole of the
     // ugly thing in one tile.
     id: 'spray', word: 'SPRAY', group: 'him',
-    ask: '',
+    ask: 'SPRAY HIM',
+    tint: '#c98ade',
     when: (g) => !!g.mind?.ready && (g.economy?.parasites || 0) > 0 && !g.mind?.owned,
     lines: [
       { icon: 'jet', mood: 'gasp', t: 'He is looking at your shell. His head is level with the gland.' },
@@ -372,4 +235,3 @@ export const TOPICS = [
 ];
 
 export const TOPIC_BY_ID = Object.fromEntries(TOPICS.map((t) => [t.id, t]));
-export const TOPIC_BY_WORD = Object.fromEntries(TOPICS.map((t) => [t.word, t]));

@@ -48,9 +48,10 @@ npm run build     # -> dist/crabden.html + dist/crabden.body.html
 | start digging | click your **body** | tap your body, or hold **DIG** |
 | put a parasite on something | `X` | — |
 | put a relic in your basin | `K` | — |
-| tap out a word | hold/release `T` | hold the key on the talk screen |
 | sit down with him | `C`, or click him | tap him |
-| ask him what needs doing | tap `WORK` on the talk screen | the same |
+| say something | click it, or arrows + Enter | tap it |
+| answer him | `1` / `2`, or click | tap it |
+| ask him what needs doing | say `What needs doing?` | the same |
 | dig / pick / search | hold `E`, tap `E` on the band | hold, tap the band |
 | water a new seed | click the drop over it | tap the drop |
 | Vess: follow, get on, get off | `F` | — |
@@ -66,11 +67,10 @@ npm run build     # -> dist/crabden.html + dist/crabden.body.html
 | an ability (HUNT) | click its slot | the same |
 | the spore (SPORE) | hold `V`, release at pressure | hold the button |
 | take one of yours (HIVE) | click it, or its token | the same |
-| where to walk (ROAM) | click anywhere in the desert | the same |
 | sing back (taming) | `1`-`5` | the pitch keys |
 | the menu | it is where you start | the same |
 | lure him in | `L`, or ask him to come `CLOSER` | the same word on the board |
-| spray the spore | `V` (again to let him go) | `SPRAY` on the board while he leans in |
+| spray the spore | `V` (again to let him go) | `SPRAY HIM` while he leans in |
 | break a capped vent | `E`, at the cap | **ACT** |
 | cut a mast | `E`, at the tree | **ACT** |
 | study a wild plant | `E`, at the plant | **ACT** |
@@ -397,12 +397,12 @@ and the only other thing written there is whose desert this is.
 
 ![The front door](docs/shot-22-title.png)
 
-### One thing you can be doing, and then five
+### One thing you can be doing, and then four
 
 **You start with one mode.** The column used to open with five badges in it,
 which is five things to learn before you have done anything, and four of them
 did nothing for an hour — a claw with nothing to fight, a nerve with nothing on
-it. So the column GROWS. Each mode arrives at the moment the world first hands
+it. One of the five has since been deleted outright. So the column GROWS. Each mode arrives at the moment the world first hands
 you the thing it is for, and it arrives as a card that stops the screen, says
 what just happened and says what the mode is:
 
@@ -411,7 +411,6 @@ what just happened and says what the mode is:
 | **CRAB** | you wake up. It is the animal, and it is all you need to start |
 | **HUNT** | something hostile is actually coming at you |
 | **SPORE** | you are carrying something to put in the gland |
-| **ROAM** | your legs learn the ground — the **stride** skill |
 | **HIVE** | there are enough of them on your nerve — the **command** skill |
 
 The bottom-left corner is that column, and each badge is **a picture of the
@@ -432,10 +431,12 @@ between them.
 **CRAB** steers, and it is also where you work: the same bar carries **DIG**
 and **POUR** for the sand and **PLANT** for your own back, because walking
 around and digging holes is one activity and it was never worth a mode of its
-own. **ROAM** does not wander: click anywhere in the desert and a pin goes in
-the sand and it walks itself there and stops. It will never pick its own
-destination — an animal that wanders off while you are reading a panel is an
-animal you then have to go and find.
+own.
+
+There used to be a **ROAM** mode that walked the animal to a pin you dropped.
+It is gone. Walking is the one thing you do in every second of this game, and
+a mode that does it for you is a mode that removes the game — and one more
+badge in the corner you had to learn before you could press anything.
 
 **HUNT** is a duel, and it has exactly three verbs.
 
@@ -731,12 +732,6 @@ thing you cannot buy: they light up only while something alive on your back is
 expressing them.
 
 ![Your genome](docs/shot-04-tree.png)
-
-### Three ways to move
-
-**WALK** — you steer. **ROAM** — the crab walks itself toward whatever is over
-the next dune, and you watch. **FLEET** — click one of your own and click where
-to send it. The last two unlock in the tree.
 
 ### Build mode
 
@@ -1214,33 +1209,31 @@ you** — a conversation is a two-shot, the wide shot is for walking. The world
 goes quiet: his portrait on the left, a letterbox, and everything you could say
 laid out as a grid.
 
-**Every word has its code written underneath it**, because the code is the
-language and hiding it would be like hiding the words. You answer two ways and
-they are the same answer: **tap it out for real** on the key — the wire along
-the bottom shows every mark the instant you make it, and the moment the letters
-spell something he knows he answers without waiting for the pause — or
-**point at it**, for when your hands are busy. He does not treat you
-differently for pointing.
+**You pick what you say.** Everything you could ask him is a button with the
+question written on it, in a column beside his face, and the last one is always
+**Enough** — leaving is one press from anywhere in the conversation.
 
-**The key** is the thing you say it with. You have no mouth and one hard claw,
-so there is a stone key across the bottom of the screen and you hold it down
-with the pincer: a short press is a dot, a long one a dash, let go for a moment
-and the letter lands. The mark grows from a dot into a dash under your own claw
-while you hold it, and the letter it spells appears right there — so the code is
-something happening in your hand rather than a table you have to remember.
+There used to be a code here. Every word had morse cut underneath it and you
+said one by **holding a stone key down with your pincer** — short for a dot,
+long for a dash, let go for a moment and the letter landed. It was the best
+thing in this game to look at and the worst thing in it to use: you had to
+already know which words did anything, and the words that did were a menu with
+a puzzle bolted to the front of it. It is gone. What is left is the
+conversation it was in the way of.
 
 He answers a card at a time, each with its own icon and his face in the state
 that line puts him in, the words arriving as he says them rather than all at
-once. Pips in the corner say how much is left. And some of the answers are
-lessons — **this is the only place in the game where you are taught anything**.
-Not a tooltip and not a tutorial step: a man who has been out here eleven
-years telling you how to grow a plant, how the seam under your feet works, why
-a spore will not take in something that owes you nothing, and what the sea did.
+once. Pips in the corner say how much is left and a **NEXT** button says there
+is more. And some of the answers are lessons — **this is the only place in the
+game where you are taught anything**. Not a tooltip and not a tutorial step: a
+man who has been out here eleven years telling you how to grow a plant, how the
+seam under your feet works, why a spore will not take in something that owes
+you nothing, and what the sea did.
 
-Tap `PLANT` at him and you get the whole of it: your back is soil, drag a seed
-onto a plot, water it, leave it alone, and pick it when the bead lifts. There
-are a dozen of them, and the ones that would not make sense yet are not on the
-table yet.
+Ask him how to grow something and you get the whole of it: your back is soil,
+drag a seed onto a plot, water it, leave it alone, and pick it when the bead
+lifts. There are a dozen questions, and the ones that would not make sense yet
+are not on the list yet.
 
 ![Sitting down with him](docs/shot-27-talk.png)
 
@@ -1281,11 +1274,9 @@ You have no voice and he has no patience, and between those two facts there is
 now a conversation rather than a menu of things to make him talk.
 
 A card can **end on a question**. When it does, the answers come up underneath
-it on the same stone every word you can say is cut into, **with the code under
-each one**, because the code is the language and hiding it would be like hiding
-the words. You can pick one four ways and they are the same answer: the mouse,
-the arrows, a number key, or by **tapping the word out on the key**, which is
-the one that costs you something and is therefore the one that counts.
+it as numbered buttons and nothing dismisses them — the mouse, the arrows or a
+number key, and a click anywhere else does nothing at all, because a question
+you can click past is one the game answered for you.
 
 An answer can take a job, do something in the world, and **put words in his
 mouth** — and when it does, those words become the rest of the card stack, so
@@ -1408,21 +1399,59 @@ Changing mode does the same thing at a smaller scale: the controls that belong
 to the old mode fade down and the new ones fade up over a third of a second, so
 what you are holding is handed over rather than swapped between two frames.
 
-### The interface is made of something
+### The interface is one material
 
-The HUD is not a set of rounded rectangles. Everything it says sits on a
-**riveted brass plate** — a bevelled slab with a lit top edge, a shadow under
-it and a rivet in each corner — so the place name, the weather, the day, the
-clock, the control keycaps and the toast all read as parts of one instrument
-rather than as text floating over the sky. Gauges are **brass-bound glass**:
-end caps you could unscrew, a tick every quarter, a lit top edge on the fill, a
-shadow under it and a meniscus at the leading edge, so a level reads as a level.
+Everything the game draws that is not the world comes out of **one file**, and
+it is all made of the same thing. Before that there were three materials:
+leather boards in the conversation, riveted brass on the HUD, and flat brown
+boxes in the panels — which is three answers to "what is a button" and
+therefore no answer at all.
 
-And when Dr. Vess talks, he talks on **a page out of his own notebook**: cream
-paper with a ruled red margin, a faint rule under every line, a torn lower edge,
-his face pinned to it behind four brass tacks, and a dog-eared corner pointing
-at whoever is speaking. Tapped code gets the same card in ink-blue, because a
-signal is still something written down.
+The language, top to bottom:
+
+- **A WINDOW** is a black outline, a mint frame three pixels thick with a lit
+  top edge and a shaded bottom one, and a cream page inside it. It has a title
+  bar cut out of the frame and a real **X** in the corner.
+- **A BUTTON** is the same idea shrunk: black outline, mint face, a highlight
+  along the top and left, a shadow along the bottom and right. It is proud of
+  the page, and when you push it **it goes down** — the highlight and the
+  shadow swap and everything on it moves a pixel, because a button that does
+  not move when you press it is a picture of a button.
+- **A SLOT** is gold: a black outline, a brass bezel with a flourish cut into
+  each of its four corners, and dark wood behind whatever is sitting in it.
+  A locked slot is blue-grey instead, because "not yet" and "empty" are
+  different things and deserve different metals.
+- **A ROW** in a list bands light and dark, which is the one trick that makes
+  a long list readable without drawing a box round every line of it.
+- **A PLAQUE** is a button's face, flat, for the things the HUD says at you
+  rather than the things you press.
+
+Two rules hold it together. Everything lands on **whole pixels**, because half
+a pixel of bevel is a blurred edge. And every interactive thing has exactly
+three states — resting, under the pointer, and held — which is what makes a
+screen feel like it is made of switches rather than of pictures of switches.
+
+The same kit draws the panel, the bench, the fleet, the field notes, the pause
+screen, the build rail, the conversation, the mode column, the action bar, the
+keycaps, the tooltips and the phone controls. One material, everywhere.
+
+### The three things this game is
+
+There is a strip of three buttons under the job card, and it is the shortest
+description of the game there is:
+
+| | |
+| --- | --- |
+| **BUILT** | structures standing on your shell |
+| **GROWN** | plants in it — and it says **PICK n** when something is ripe |
+| **TAME** | animals that have decided to live on you |
+
+They are buttons, not a readout. Press BUILT or GROWN and you are up on your
+own back where both of those happen; press TAME and the camera goes to the
+nearest thing that would have you. And a pillar with nothing in it **pulses**
+and shows a dash rather than a zero, with the one thing that would fix it in
+the tooltip — because the interface's job, when you have none of something, is
+to point at how you get some.
 
 ### On a phone
 
@@ -1464,7 +1493,7 @@ js/
   systems/   garden economy wildlife encounters green digs talk pump work
              quests mining craft mind combat taming hive sea critters fx
              fountains
-  ui/        ui icons tree menu talkscreen
+  ui/        kit ui icons tree menu talkscreen
   world/     terrain biomes weather landmarks props ocean
 ```
 

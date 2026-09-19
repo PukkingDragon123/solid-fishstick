@@ -20,7 +20,6 @@ import { biomeAt } from './world/biomes.js';
 import { World } from './world/landmarks.js';
 import { Crab } from './entities/crab.js';
 import { Archaeologist, Elder, POSE } from './entities/npc.js';
-import { Morse } from './systems/talk.js';
 import { TalkScreen, TALK_RANGE } from './ui/talkscreen.js';
 import { Pump } from './systems/pump.js';
 import { Sea } from './systems/sea.js';
@@ -127,7 +126,6 @@ export class Game {
     this.encounters = new Encounters(this, this.seed);
     this.world = new World(this, this.seed);
     this.npc = new Archaeologist(this, 62);
-    this.morse = new Morse(this);
     this.talk = new TalkScreen(this);
     this.pump = new Pump(this);
     this.sea = new Sea(this);
@@ -149,7 +147,6 @@ export class Game {
     this.hive = new Hive(this);
     this.quests = new Quests(this);
     this.critters = new Critters(this, this.seed);
-    this.roamTarget = null;
     // What you have been given. You wake up able to walk and dig; everything
     // else arrives when the world first gives you a reason for it, and the
     // mode column in the corner grows as this set does.
@@ -1249,8 +1246,6 @@ export class Game {
         if (!d.alive) this.ui.release();
         else { d.driveX = move; move = 0; }
       }
-      // ROAM does not wander. It goes where you clicked, and stops there.
-      if (this.ui.mode === 'auto' && Math.abs(move) < 0.05) move = this._roamWalk(sdt);
       // the spring is not a key you hold. It is a muscle with a rhythm, and
       // every stroke either catches the chamber full or does not.
       if (play && (i.justPressed(' ') || i.justPressed('Space') || tapped)) {
@@ -1298,7 +1293,6 @@ export class Game {
       // T is the tap key: hold for a long tap, release for a short one. It
       // means one thing out in the world and another sitting in front of him,
       // and the conversation gets it while the conversation is open.
-      if (play && !this.talk.on) this.morse.update(sdt, i.key('t'));
       // Q is the claw. In HUNT it is the timed strike; anywhere else it is
       // the old flat swipe, so you are never without a way to defend yourself.
       // HUNT is a duel and it has exactly three verbs. Q swings, SHIFT rolls,
@@ -1489,22 +1483,6 @@ export class Game {
   // -- actions --------------------------------------------------------------
 
   /**
-   * ROAM: it walks to where you pointed and then it stops. It does not pick
-   * its own destinations any more - an animal that wanders off while you are
-   * reading a panel is an animal you have to go and find.
-   */
-  _roamWalk(dt) {
-    if (this.roamTarget === null || this.roamTarget === undefined) return 0;
-    const d = this.roamTarget - this.crab.x;
-    if (Math.abs(d) < 14) {
-      this.roamTarget = null;
-      this.fx.ring(this.crab.x, this.terrain.surfaceY(this.crab.x), '#9ad86a', 12);
-      return 0;
-    }
-    return clamp(d / 40, -1, 1);
-  }
-
-  /**
    * Start singing at something. It has to be willing first - which means it
    * has had what its species comes for and has stuck around long enough to
    * half trust you - and then it is a conversation, not a purchase.
@@ -1578,29 +1556,7 @@ export class Game {
     if (m === 'hunt') return { iris: '#ff8a5e', glow: 'rgba(226,86,79,0.55)' };
     if (m === 'spore') return { iris: '#e0a8f4', glow: 'rgba(201,138,222,0.55)' };
     if (m === 'hive') return { iris: '#9ff0ff', glow: 'rgba(111,216,238,0.6)' };
-    if (m === 'auto') return { iris: '#c4f09a', glow: 'rgba(154,216,106,0.45)' };
     return null;
-  }
-
-  /** Where you told it to go, standing there waiting for it. */
-  _drawRoamMark(ctx, cam) {
-    if (this.roamTarget === null || this.roamTarget === undefined) return;
-    const x = this.roamTarget;
-    const y = this.terrain.surfaceY(x);
-    const s = cam.worldToScreen(x, y);
-    const z = cam.zoom;
-    const p = (this.time * 1.4) % 1;
-    ctx.save();
-    ctx.globalAlpha = 0.55 * (1 - p) + 0.25;
-    pxRing(ctx, s.x, s.y, (5 + p * 9) * z, (2 + p * 4) * z, '#9ad86a',
-      { p: pxSize(z), thick: pxSize(z) });
-    // a pin standing in the sand
-    ctx.globalAlpha = 0.85;
-    ctx.fillStyle = '#9ad86a';
-    ctx.fillRect(Math.round(s.x), Math.round(s.y - 9 * z), Math.max(1, Math.round(z)), Math.round(9 * z));
-    ctx.fillRect(Math.round(s.x), Math.round(s.y - 10 * z), Math.round(4 * z), Math.round(3 * z));
-    ctx.restore();
-    ctx.globalAlpha = 1;
   }
 
   /** Take one of yours, or put it back down. */
@@ -2706,7 +2662,6 @@ export class Game {
     if (!this.unlocked.has('spore') && (this.economy.parasites > 0
       || this.garden.plots.some((p) => p.plant?.def?.id === 'mindcap'))) this.unlock('spore');
     // and the two that were always skills
-    if (!this.unlocked.has('auto') && this.economy.skills.has('stride')) this.unlock('auto');
     if (!this.unlocked.has('hive') && this.economy.skills.has('command')) this.unlock('hive');
   }
 
@@ -2765,7 +2720,7 @@ export class Game {
       world: this.world.toJSON(),
       research: this.research, studied: this.studied,
       mode: this.ui.mode, insc: this.readInscriptions,
-      morse: this.morse.toJSON(), green: this.green.toJSON(), pump: this.pump.toJSON(),
+      green: this.green.toJSON(), pump: this.pump.toJSON(),
       digs: this.digs.toJSON(), relics: this.relics,
       mining: this.mining.toJSON(), craft: this.craft.toJSON(), mind: this.mind.toJSON(),
       combat: this.combat.toJSON(), quests: this.quests.save(),
@@ -2794,7 +2749,6 @@ export class Game {
       this.research = d.research || {};
       this.studied = d.studied || this.studied;
       this.readInscriptions = d.insc || 0;
-      this.morse.fromJSON(d.morse);
       this.pump.fromJSON(d.pump);
       this.green.fromJSON(d.green);
       this.digs.fromJSON(d.digs);
@@ -2867,7 +2821,6 @@ export class Game {
     if (this.state === 'play') {
       this.mind.draw(ctx, cam);
       this.hive.drawAim(ctx, cam);
-      this._drawRoamMark(ctx, cam);
       // how far along you are with everything wild that is near you
       for (const q of this.wildlife.list) {
         if (cam.isVisible(q.x, q.y, 40)) q.drawTame?.(ctx, cam);
@@ -2936,13 +2889,6 @@ export class Game {
     const inside = this.ui.tree.dive > 0.4 || this.ui.drawer > 0.02
       || this.ui.paused || !!this.unlockCard;
     if (this.npc.speech && this.state === 'play' && !inside && !this.talk.on) this._drawSpeech(ui, cam, this.npc);
-    if (this.state === 'play' && !inside) {
-      const m = this.morse.render();
-      if (m) {
-        this._drawSpeech(ui, cam,
-          { x: this.crab.x, y: this.crab.y - this.crab.m.rx * 0.9, speech: m }, true);
-      }
-    }
     r.dctx.drawImage(r.uiC, 0, 0, r.vw, r.vh, 0, 0, r.vw * r.scale, r.vh * r.scale);
   }
 
@@ -3407,10 +3353,6 @@ export class Game {
       left -= l.length;
       drawText(ctx, cut, tx, y + 6 + i * LINE_H, { color: INKC });
     });
-    if (code) {
-      drawText(ctx, this.morse.learned ? 'he is listening' : 'tapping',
-        x + w / 2, y - 9, { color: 'rgba(159,232,212,0.5)', align: 'center' });
-    }
     if (shout) {
       // spikes round the card, so it reads as loud with the sound off
       ctx.strokeStyle = EDGE;
