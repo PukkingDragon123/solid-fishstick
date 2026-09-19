@@ -390,10 +390,15 @@ is nothing else to do out here and there has not been for eleven years.
 The storm behind it is real weather with the wind turned up, blowing in gusts so
 the title is never evenly lit, with lit grit blowing past over the top of it and
 the selected plate breathing where your hand is. There are two words on it:
-**START**, which carries on from your save if you have one and wakes you out of
-the sand if you do not, and **SETTINGS** — sound, touch controls, and **erase
-everything**, which asks you twice and means it. Nothing on it explains itself,
-and the only other thing written there is whose desert this is.
+**START** and **SETTINGS** — sound, touch controls, and **erase everything**,
+which asks you twice and means it.
+
+The name sits on **a board**, not on the sky: the same wood, the same steel
+corner clasps and the same brass as every other screen in this game, hung in
+the storm. And a plank under it says what START is actually going to do —
+*CONTINUE — DAY 5, ADULT*, or *A NEW ANIMAL, IN AN OLD SEA* — because one door
+labelled START whether it is waking you out of the sand or dropping you back
+where you left off is a door you cannot read until you have gone through it.
 
 ![The front door](docs/shot-22-title.png)
 
@@ -1066,6 +1071,12 @@ standing on, and can be **posed** rather than flipped through: a skeleton with
 baked parts hung off it, feet planted in world space and solved with the same
 two-bone IK the crab's legs use.
 
+**He is a tall thin man**, and he reads that way from across the basin: narrow
+through the shoulders, long in the trunk, longer again in the thigh, with limbs
+that are barely there. Eleven years of tinned food in a desert. The head is cut
+smaller to match — thirteen pixels across rather than sixteen — because the old
+one on the new body was a bobblehead.
+
 What comes off the sheet: a **wide tan bush hat** with a maroon band and brass
 goggles pushed up on it, a **cream shirt** with the sleeves already rolled, a
 leather placket and a belt with a brass buckle, **olive trousers** into heavy
@@ -1074,20 +1085,20 @@ and a bedroll strapped across the top, and the **maroon map tube** on his hip �
 the one saturated thing on him, and the first thing your eye lands on.
 
 **The head is the exception: it is drawn, not shaded.** A head in this game is
-sixteen pixels across, and a lit gradient over sixteen pixels is not shading —
+thirteen pixels across, and a lit gradient over thirteen pixels is not shading —
 it is noise, which is why his face never quite looked like the man on the sheet.
 So the head, and only the head, is a small piece of hand-laid pixel art:
-sixteen by eighteen, written out as text, in **colours sampled straight out of
-his own portrait frames**. Three variants is all it needs out here — eyes open,
+**thirteen by fifteen**, written out as text, in **colours sampled straight out
+of his own portrait frames**. Three variants is all it needs out here — eyes open,
 eyes shut, mouth open — because the twenty-one real expressions live on the
 portrait card, where there is room for them.
 
 At that size a head is a **silhouette** before it is anything else, and the
-silhouette is the whole job. Reading down it: a low domed crown *narrower than
-the brim*, the maroon band at its foot, the brass goggles strapped up over it,
-and a brim that is a narrow lit top over a wide dark underside — which is the
-only way at sixteen pixels to say a brim that droops rather than a shelf nailed
-to his head. Then the fringe out from under it, the brow, the round lens set
+silhouette is the whole job. Reading down it: a domed crown *narrower than the
+brim*, the maroon band at its foot, the brass goggles strapped up over it, and
+a brim that is a narrow lit top over a wide dark underside — which is the only
+way at this size to say a brim that droops rather than a shelf nailed to his
+head. Then the fringe out from under it, the brow, the round lens set
 back beneath the brow with the pupil forward in it, **two rows of nose** past
 everything else (one row makes a spur, not a nose), the mouth tucked in under
 it, a chin, and the jaw running back into the hair.
@@ -1402,38 +1413,45 @@ what you are holding is handed over rather than swapped between two frames.
 ### The interface is one material
 
 Everything the game draws that is not the world comes out of **one file**, and
-it is all made of the same thing. Before that there were three materials:
-leather boards in the conversation, riveted brass on the HUD, and flat brown
-boxes in the panels — which is three answers to "what is a button" and
-therefore no answer at all.
+it is all made of the same four things:
 
-The language, top to bottom:
+- **WOOD** is structure. Every frame, every banner, every bar is a plank.
+- **PARCHMENT** is where words go. Nothing is written on anything else.
+- **BRASS** is what you press and what you own. Buttons are brass; so is the
+  bezel round anything sitting in a slot.
+- **STEEL** is hardware. Clasps, caps, chain, locks — the parts that hold the
+  wood together and are never a surface you write on.
 
-- **A WINDOW** is a black outline, a mint frame three pixels thick with a lit
-  top edge and a shaded bottom one, and a cream page inside it. It has a title
-  bar cut out of the frame and a real **X** in the corner.
-- **A BUTTON** is the same idea shrunk: black outline, mint face, a highlight
-  along the top and left, a shadow along the bottom and right. It is proud of
-  the page, and when you push it **it goes down** — the highlight and the
-  shadow swap and everything on it moves a pixel, because a button that does
-  not move when you press it is a picture of a button.
-- **A SLOT** is gold: a black outline, a brass bezel with a flourish cut into
-  each of its four corners, and dark wood behind whatever is sitting in it.
-  A locked slot is blue-grey instead, because "not yet" and "empty" are
-  different things and deserve different metals.
-- **A ROW** in a list bands light and dark, which is the one trick that makes
-  a long list readable without drawing a box round every line of it.
-- **A PLAQUE** is a button's face, flat, for the things the HUD says at you
-  rather than the things you press.
+Before that there were three *different* materials — leather boards in the
+conversation, riveted brass on the HUD, flat brown boxes in the panels — which
+is three answers to "what is a button" and therefore no answer at all.
+
+The pieces:
+
+- **A WINDOW is a board**: a dark wood frame with a **steel clasp bolted over
+  each corner**, parchment inside it, and a **wooden title plank with steel
+  end caps** laid across the top with a brass X beside it.
+- **A BUTTON is brass**: black outline, amber face, a highlight along the top
+  and left, a shadow along the bottom and right. It is proud of the page, and
+  when you push it **it goes down** — the highlight and the shadow swap and
+  everything on it moves a pixel, because a button that does not move when you
+  press it is a picture of a button.
+- **A SLOT is a brass bezel** with a flourish cut into each of its four corners
+  and dark wood behind whatever is in it. A slot you cannot use yet is **steel**
+  instead, because "not yet" and "empty" are different things and deserve
+  different metals.
+- Plus **planks**, **chain**, **padlocks**, segmented brass bars, steel-capped
+  gauges, banded parchment rows, tick boxes and arrows.
+
+**And the selected thing is always brass on wood.** Every menu, every answer in
+a conversation, every list of doors: the one you are on is amber and everything
+else is a plank. One gold plate among four gold plates is a shade, and a shade
+is not a selection — you could not tell what pressing Enter was going to do.
 
 Two rules hold it together. Everything lands on **whole pixels**, because half
 a pixel of bevel is a blurred edge. And every interactive thing has exactly
 three states — resting, under the pointer, and held — which is what makes a
 screen feel like it is made of switches rather than of pictures of switches.
-
-The same kit draws the panel, the bench, the fleet, the field notes, the pause
-screen, the build rail, the conversation, the mode column, the action bar, the
-keycaps, the tooltips and the phone controls. One material, everywhere.
 
 ### The three things this game is
 

@@ -1405,6 +1405,22 @@ body {
     } catch {
     }
   }
+  function saveInfo() {
+    try {
+      const raw = localStorage.getItem(KEY);
+      if (!raw) return null;
+      const p = JSON.parse(raw);
+      const d = p.data || {};
+      return {
+        at: p.at,
+        day: d.day ?? d.weather?.day ?? 0,
+        stage: d.stage || "hatchling",
+        planted: d.garden?.plots?.filter?.((q) => q && q.plant)?.length ?? 0
+      };
+    } catch {
+      return null;
+    }
+  }
   function writeSettings(s) {
     try {
       localStorage.setItem(SETTINGS_KEY, JSON.stringify(s));
@@ -7086,8 +7102,8 @@ body {
       if (y < deck || y > keel) return null;
       const t = (y - deck) / Math.max(1, keel - deck);
       const dz = Math.sqrt(clamp01(1 - Math.pow(1 - t, 2)));
-      const plank = Math.sin((y - deck) * 1.05);
-      return { h: 3 + dz * 7 + plank * 0.9, tint: -0.06 + dz * 0.16 + plank * 0.1 };
+      const plank2 = Math.sin((y - deck) * 1.05);
+      return { h: 3 + dz * 7 + plank2 * 0.9, tint: -0.06 + dz * 0.16 + plank2 * 0.1 };
     }, { mat: "wood" });
     const ribs = 5 + Math.floor(r() * 5);
     for (let i = 0; i < ribs; i++) {
@@ -9751,19 +9767,19 @@ body {
     };
   }
   function paintTorso(K, far, kind) {
-    const W = 8.6 * K, H = 13.4 * K;
+    const W = 6.9 * K, H = 15.6 * K;
     const pad = Math.ceil(7 * K) + 5;
     const p = new Painter(Math.ceil(W * 2) + pad, Math.ceil(H) + pad * 2);
     const cx = p.w * 0.5, hipY = p.h - pad;
     const topY = hipY - H;
     const elder = kind === "elder";
     const PROF = [
-      [0, 0.4],
-      [0.09, 0.54],
-      [0.3, 0.5],
-      [0.55, 0.43],
-      [0.78, 0.45],
-      [1, 0.5]
+      [0, 0.38],
+      [0.09, 0.5],
+      [0.32, 0.44],
+      [0.58, 0.38],
+      [0.8, 0.4],
+      [1, 0.44]
     ];
     const half = (v) => {
       for (let i = 1; i < PROF.length; i++) {
@@ -9991,31 +10007,28 @@ body {
     // mouth
   };
   var HEAD_ART = [
-    ".....oTTTTToo...",
-    "....ottTTTTgeo..",
-    "....ottTTTTggo..",
-    "...obbbbbbbbbo..",
-    ".oouTTTTTTTTuoo.",
-    "ouuuuuuuuuuuuuuo",
-    ".ohhhhhhHHHssoo.",
-    ".oHhhhhhsssSSso.",
-    "oHhhhhhhsssrrro.",
-    "oHhhhhhhsdsLLlo.",
-    "oHhhhhhssdslrso.",
-    "oHhhhhhssssssSSo",
-    ".oHhhhhhsssssddo",
-    ".ohhhhhsssssdoo.",
-    ".ohhhhhsqqqqmmo.",
-    "..ohhhsqqqqqdo..",
-    "..ohhhqqqqdoo...",
-    "...ooobbbso....."
+    "....oTTTTo...",
+    "...otTTTgeo..",
+    "..obbbbbbbbo.",
+    ".ouTTTTTTTTuo",
+    "ouuuuuuuuuuuo",
+    ".ohhhhHHHSoo.",
+    "oHhhhhssrrro.",
+    "oHhhhhsdLlro.",
+    "oHhhhhssssso.",
+    "ohhhhhssssSso",
+    "ohHhhhssssdso",
+    ".ohhhhssmmoo.",
+    ".ohhhsqqqso..",
+    "..ohhqqqso...",
+    "...oobbso...."
   ];
   var HEAD_SHUT = {
-    9: "oHhhhhhhsdsrrro."
+    7: "oHhhhhsdrrro."
   };
   var HEAD_OPEN = {
-    14: ".ohhhhhsqqqmmmo.",
-    15: ".ohhhhsqqqqmmo.."
+    11: ".ohhhhsmmmoo.",
+    12: ".ohhhsqmmso.."
   };
   var HEAD_BAYER = [
     [0, 32, 8, 40, 2, 34, 10, 42],
@@ -10033,17 +10046,17 @@ body {
       const d = ((x - cx) / rx) ** 2 + ((y - cy) / ry) ** 2;
       return d >= 1 ? 0 : Math.sqrt(1 - d);
     };
-    if (y <= 2) return 0.56 + dome(8, 2.6, 4.4, 3.8) * 0.44;
-    if (y === 3) return 0.66;
-    if (y <= 5) {
-      const t = 1 - Math.abs(x - 7.5) / (W / 2);
-      return (y === 4 ? 0.64 : 0.46) + t * t * 0.18;
+    if (y <= 1) return 0.56 + dome(6.5, 1.6, 3.6, 3) * 0.44;
+    if (y === 2) return 0.66;
+    if (y <= 4) {
+      const t = 1 - Math.abs(x - 6) / (W / 2);
+      return (y === 3 ? 0.64 : 0.46) + t * t * 0.18;
     }
-    let h = 0.62 + dome(6.8, 11.4, 7.4, 8.4) * 0.26;
-    if (y === 8 && x >= 11) h += 0.06;
-    if (y >= 11 && y <= 12 && x >= 12) h += 0.2;
-    if (y >= 14 && y <= 15 && x >= 11) h += 0.05;
-    if (y >= 8 && y <= 10 && x >= 10 && x <= 13) h -= 0.11;
+    let h = 0.62 + dome(5.4, 9.4, 6, 6.8) * 0.26;
+    if (y === 6 && x >= 9) h += 0.06;
+    if (y >= 9 && y <= 10 && x >= 10) h += 0.2;
+    if (y >= 11 && y <= 12 && x >= 8) h += 0.05;
+    if (y >= 6 && y <= 7 && x >= 8 && x <= 10) h -= 0.11;
     return h;
   }
   function paintHeadSide(K, far, kind, opts = {}) {
@@ -10102,14 +10115,14 @@ body {
         g.fillRect(x * px, y * px, px, px);
       }
     }
-    if (opts.noHat) g.clearRect(0, 0, W * px, 7 * px);
+    if (opts.noHat) g.clearRect(0, 0, W * px, 5 * px);
     return {
       cv,
       ox: W / 2 * px,
       oy: (H - 1) * px,
       W: W * px,
       H: H * px,
-      eye: { x: 3 * px, y: -7 * px }
+      eye: { x: 3 * px, y: -6 * px }
     };
   }
   function paintBone(len, r0, r1, mat, K, far, kind, opts = {}) {
@@ -10641,22 +10654,22 @@ body {
       props: paintProps(K, kind),
       arm: {
         near: {
-          upper: bone(7, 1.85, 1.55, "shirt", false, { bow: -0.45 * K, shade: -0.16 }),
-          lower: bone(6.6, 1.45, 1.15, "skin", false, { bow: 0.3 * K, hand: true, sleeve: true, grip: 0.55 })
+          upper: bone(7.9, 1.45, 1.2, "shirt", false, { bow: -0.45 * K, shade: -0.16 }),
+          lower: bone(7.5, 1.12, 0.92, "skin", false, { bow: 0.3 * K, hand: true, sleeve: true, grip: 0.55 })
         },
         far: {
-          upper: bone(7, 1.85, 1.55, "shirt", true, { bow: -0.45 * K, shade: -0.16 }),
-          lower: bone(6.6, 1.45, 1.15, "skin", true, { bow: 0.3 * K, hand: true, sleeve: true, grip: 0.55 })
+          upper: bone(7.9, 1.45, 1.2, "shirt", true, { bow: -0.45 * K, shade: -0.16 }),
+          lower: bone(7.5, 1.12, 0.92, "skin", true, { bow: 0.3 * K, hand: true, sleeve: true, grip: 0.55 })
         }
       },
       leg: {
         near: {
-          upper: bone(9.7, 2.5, 2, "trouser", false, { bow: 0.45 * K }),
-          lower: bone(8.6, 2, 1.5, "trouser", false, { bow: -0.4 * K, knee: true })
+          upper: bone(11.6, 1.95, 1.6, "trouser", false, { bow: 0.45 * K }),
+          lower: bone(10.4, 1.6, 1.2, "trouser", false, { bow: -0.4 * K, knee: true })
         },
         far: {
-          upper: bone(9.7, 2.5, 2, "trouser", true, { bow: 0.45 * K }),
-          lower: bone(8.6, 2, 1.5, "trouser", true, { bow: -0.4 * K, knee: true })
+          upper: bone(11.6, 1.95, 1.6, "trouser", true, { bow: 0.45 * K }),
+          lower: bone(10.4, 1.6, 1.2, "trouser", true, { bow: -0.4 * K, knee: true })
         }
       }
     };
@@ -11683,35 +11696,43 @@ body {
 
   // js/ui/kit.js
   var C = {
-    ink: "#241c15",
+    ink: "#2a1a0f",
     // every outline, and text on anything light
-    inkSoft: "#4a3b2c",
-    shadow: "rgba(20,14,9,0.35)",
-    frame: "#7fc79a",
-    // the mint the frames and buttons are made of
-    frameLit: "#b4e9c6",
-    frameDim: "#4e9270",
-    frameDeep: "#2f6b4e",
-    page: "#f2e2bc",
-    // the cream inside a window
-    pageAlt: "#e4cf9f",
-    // every other row
-    pageDim: "#cdb47f",
-    gold: "#e0b845",
-    // the brass a slot is bezelled in
-    goldLit: "#f8e493",
-    goldDim: "#9c7822",
-    wood: "#7d5128",
-    // and the wood behind what is in it
-    woodDim: "#54321a",
-    slot: "#8398b0",
-    // the blue-grey of an empty inventory square
-    slotDim: "#5c6f88",
-    good: "#8ad46a",
-    warn: "#e0a63c",
-    bad: "#d9644f",
-    cool: "#6fc6dd",
-    gem: "#8f7fd8"
+    inkSoft: "#5d4227",
+    shadow: "rgba(20,12,5,0.4)",
+    frame: "#e6bb43",
+    // BRASS: buttons, frames, anything you press
+    frameLit: "#ffe490",
+    frameDim: "#a87c1c",
+    frameDeep: "#523209",
+    page: "#dcb98c",
+    // PARCHMENT: the only thing words go on
+    pageAlt: "#c9a373",
+    pageDim: "#a2805a",
+    gold: "#e6bb43",
+    // the bezel a thing sits in
+    goldLit: "#ffe490",
+    goldDim: "#a87c1c",
+    wood: "#6b4526",
+    // WOOD: structure, frames, planks, bars
+    woodLit: "#8d6036",
+    woodDim: "#43290f",
+    steel: "#5f93ad",
+    // STEEL: clasps, caps, chain, locks, empty slots
+    steelLit: "#9ccadd",
+    steelDim: "#35637a",
+    rust: "#c2702e",
+    // the second button, for the thing you do less
+    rustLit: "#e79c5a",
+    rustDim: "#87451a",
+    slot: "#5f93ad",
+    // an empty square is steel, not brass
+    slotDim: "#35637a",
+    good: "#8ec45a",
+    warn: "#e6a63c",
+    bad: "#d05a44",
+    cool: "#63b8d6",
+    gem: "#9d7fd8"
   };
   var R = (ctx, x, y, w, h, c) => {
     if (w <= 0 || h <= 0) return;
@@ -11738,6 +11759,53 @@ body {
     R(ctx, x + 1, down ? y + 1 : y + h - 2, w - 2, 1, down ? lit : dim);
     R(ctx, down ? x + 1 : x + w - 2, y + 1, 1, h - 2, down ? lit : dim);
   }
+  function grain(ctx, x, y, w, h, seed = 0) {
+    if (w < 8 || h < 4) return;
+    ctx.globalAlpha *= 0.34;
+    for (let i = 0; i < 3; i++) {
+      const gy = y + 1 + (seed * 7 + i * 5) % Math.max(1, h - 2);
+      const gx = x + 1 + (seed * 11 + i * 13) % Math.max(1, w - 6);
+      R(ctx, gx, gy, Math.min(w - 2 - (gx - x), 4 + i * 3), 1, C.woodDim);
+    }
+    ctx.globalAlpha /= 0.34;
+  }
+  function clasp(ctx, x, y, s, sx, sy) {
+    const ax = sx > 0 ? x : x - s + 1;
+    const ay = sy > 0 ? y : y - s + 1;
+    R(ctx, ax, ay, s, s, C.ink);
+    R(ctx, ax + (sx > 0 ? 1 : 0), ay + (sy > 0 ? 1 : 0), s - 1, 3, C.steel);
+    R(ctx, ax + (sx > 0 ? 1 : 0), ay + (sy > 0 ? 1 : 0), 3, s - 1, C.steel);
+    R(ctx, ax + (sx > 0 ? 1 : 0), ay + (sy > 0 ? 1 : 0), s - 1, 1, C.steelLit);
+    R(ctx, ax + (sx > 0 ? 1 : 0), ay + (sy > 0 ? 1 : 0), 1, s - 1, C.steelLit);
+    R(ctx, ax + (sx > 0 ? 2 : s - 4), ay + (sy > 0 ? 2 : s - 4), 2, 2, C.steelDim);
+  }
+  function plank(ctx, x, y, w, h, opts = {}) {
+    x = Math.round(x);
+    y = Math.round(y);
+    w = Math.round(w);
+    h = Math.round(h);
+    if (w < 10 || h < 5) return;
+    slab(ctx, x, y, w, h, { face: C.wood, lit: C.woodLit, dim: C.woodDim });
+    grain(ctx, x + 1, y + 1, w - 2, h - 2, opts.seed || 1);
+    const cw = Math.min(5, Math.floor(w / 5));
+    for (const cx of [x, x + w - cw]) {
+      R(ctx, cx, y - 1, cw, h + 2, C.ink);
+      R(ctx, cx + (cx === x ? 1 : 0), y, cw - 1, h, C.steel);
+      R(ctx, cx + (cx === x ? 1 : 0), y, cw - 1, 1, C.steelLit);
+      R(ctx, cx + (cx === x ? 1 : 0), y + h - 1, cw - 1, 1, C.steelDim);
+      R(ctx, cx + (cx === x ? 2 : 1), y + Math.floor(h / 2) - 1, 2, 2, C.steelDim);
+    }
+    if (opts.label) {
+      drawText(
+        ctx,
+        ellipsize(opts.label, w - cw * 2 - 6),
+        x + w / 2,
+        y + (h - 7) / 2,
+        { color: opts.color || C.frameLit, align: "center" }
+      );
+    }
+    return { x: x + cw + 2, w: w - cw * 2 - 4 };
+  }
   function windowFrame(ctx, x, y, w, h, opts = {}) {
     x = Math.round(x);
     y = Math.round(y);
@@ -11747,32 +11815,36 @@ body {
     const bar = T ? opts.barH || 13 : 0;
     const F = opts.thick || 3;
     ctx.globalAlpha *= 0.55;
-    R(ctx, x + 2, y + h, w - 2, 2, "#0a0705");
-    R(ctx, x + w, y + 2, 2, h - 2, "#0a0705");
+    R(ctx, x + 3, y + h, w - 3, 3, "#0a0705");
+    R(ctx, x + w, y + 3, 3, h - 3, "#0a0705");
     ctx.globalAlpha /= 0.55;
-    slab(ctx, x, y, w, h, { face: C.frame, lit: C.frameLit, dim: C.frameDim });
+    slab(ctx, x, y, w, h, { face: C.wood, lit: C.woodLit, dim: C.woodDim });
+    grain(ctx, x + 1, y + 1, w - 2, h - 2, 3);
     const px = x + F + 1, py = y + F + 1 + bar;
     const pw = w - (F + 1) * 2, ph = h - (F + 1) * 2 - bar;
-    R(ctx, px - 1, py - 1, pw + 2, ph + 2, C.frameDeep);
+    R(ctx, px - 1, py - 1, pw + 2, ph + 2, C.ink);
     R(ctx, px, py, pw, ph, opts.page || C.page);
+    ctx.globalAlpha *= 0.5;
+    R(ctx, px, py, pw, 1, "#f0d2a4");
+    R(ctx, px, py + ph - 1, pw, 1, C.pageDim);
+    ctx.globalAlpha /= 0.5;
+    const cs = Math.min(9, Math.max(6, Math.floor(Math.min(w, h) / 12)));
+    clasp(ctx, x + 1, y + 1, cs, 1, 1);
+    clasp(ctx, x + w - 2, y + 1, cs, -1, 1);
+    clasp(ctx, x + 1, y + h - 2, cs, 1, -1);
+    clasp(ctx, x + w - 2, y + h - 2, cs, -1, -1);
     let close = null;
     if (T) {
-      const bx = x + F + 1, by = y + F, bw = w - (F + 1) * 2;
-      R(ctx, bx, by, bw, bar - 1, C.frameDim);
-      R(ctx, bx, by, bw, 1, C.frameDeep);
-      drawText(
-        ctx,
-        ellipsize(String(opts.title), bw - 22),
-        x + w / 2,
-        by + (bar - 8) / 2,
-        { color: C.ink, align: "center" }
-      );
       const s = bar - 2;
-      const cx = x + w - F - 1 - s, cy = by + 1;
+      const cx = x + w - F - 3 - s, cy = y + F;
+      const inset = Math.max(0, cs - F - 1);
+      const px0 = x + F + 2 + inset;
+      const bw = x + w - F - 4 - s - px0;
+      plank(ctx, px0, y + F - 1, bw, bar, { label: String(opts.title), seed: 5 });
       slab(ctx, cx, cy, s, s, {
-        face: opts.closeHot ? "#f0a894" : C.frame,
-        lit: opts.closeHot ? "#ffd3c4" : C.frameLit,
-        dim: opts.closeHot ? "#b05c48" : C.frameDim,
+        face: opts.closeHot ? "#e8825c" : C.frame,
+        lit: opts.closeHot ? "#ffb694" : C.frameLit,
+        dim: opts.closeHot ? "#96431e" : C.frameDim,
         down: !!opts.closeDown
       });
       const o = opts.closeDown ? 1 : 0;
@@ -11789,39 +11861,32 @@ body {
     const off = !!opts.disabled;
     let face = C.frame, lit = C.frameLit, dim = C.frameDim;
     if (off) {
-      face = "#9aa093";
-      lit = "#bcc0b4";
-      dim = "#6b7166";
+      face = "#8a7a63";
+      lit = "#a8977d";
+      dim = "#5d5041";
     } else if (on) {
-      face = opts.tint || "#f0d98a";
-      lit = "#fff0bd";
-      dim = "#b08f34";
+      face = opts.tint || C.rust;
+      lit = C.rustLit;
+      dim = C.rustDim;
     } else if (hot) {
-      face = "#9fdcb4";
-      lit = "#c8f2d6";
-      dim = "#5fa77c";
+      face = "#f6d06a";
+      lit = "#fff0b4";
+      dim = "#bb8c22";
     }
     slab(ctx, x, y, w, h, { face, lit, dim, down: down || on && opts.sticky });
     const o = down || on && opts.sticky ? 1 : 0;
-    let tx = Math.round(x + w / 2) + o;
+    const tx = Math.round(x + w / 2) + o;
     const ty = Math.round(y + (h - 7) / 2) + o;
+    const col = off ? "#4a4034" : on ? "#2a1408" : C.ink;
     if (opts.icon) {
       const iw = 11;
       const lw = label ? textWidth(label) : 0;
       const ix = Math.round(x + (w - (iw + (lw ? lw + 3 : 0))) / 2) + o;
       opts.icon(ctx, ix + 5, Math.round(y + h / 2) + o);
-      if (label) drawText(ctx, label, ix + iw + 3, ty, { color: off ? "#5b6156" : C.ink });
+      if (label) drawText(ctx, label, ix + iw + 3, ty, { color: col });
       return;
     }
-    if (label) {
-      drawText(
-        ctx,
-        ellipsize(label, w - 8),
-        tx,
-        ty,
-        { color: off ? "#5b6156" : C.ink, align: "center" }
-      );
-    }
+    if (label) drawText(ctx, ellipsize(label, w - 8), tx, ty, { color: col, align: "center" });
   }
   function corners(ctx, x, y, w, h, c) {
     const put = (dx, dy) => R(ctx, x + dx, y + dy, 1, 1, c);
@@ -11841,15 +11906,16 @@ body {
     h = Math.round(h);
     const empty = !!opts.empty;
     const hot = !!opts.hot, on = !!opts.on;
-    const rim = empty ? hot ? "#9db0c6" : C.slot : on ? C.goldLit : hot ? "#f0cf6a" : C.gold;
-    const rimDim = empty ? C.slotDim : C.goldDim;
-    const back = opts.back || (empty ? "#3d4a5c" : C.wood);
-    const backDim = empty ? "#2b3543" : C.woodDim;
+    const rim = empty ? hot ? "#5f93ad" : "#476f85" : on ? C.goldLit : hot ? "#f2ce6a" : C.gold;
+    const rimDim = empty ? "#2c5062" : C.goldDim;
+    const back = opts.back || (empty ? "#20353f" : C.wood);
+    const backDim = empty ? "#16252c" : C.woodDim;
     R(ctx, x + 1, y, w - 2, 1, C.ink);
     R(ctx, x + 1, y + h - 1, w - 2, 1, C.ink);
     R(ctx, x, y + 1, 1, h - 2, C.ink);
     R(ctx, x + w - 1, y + 1, 1, h - 2, C.ink);
     R(ctx, x + 1, y + 1, w - 2, h - 2, rim);
+    R(ctx, x + 1, y + 1, w - 2, 1, empty ? "#6d9fb8" : C.goldLit);
     R(ctx, x + 1, y + h - 2, w - 2, 1, rimDim);
     R(ctx, x + w - 2, y + 1, 1, h - 2, rimDim);
     R(ctx, x + 2, y + 2, w - 4, h - 4, C.ink);
@@ -11870,7 +11936,7 @@ body {
     w = Math.round(w);
     h = Math.round(h);
     R(ctx, x, y, w, h, C.ink);
-    R(ctx, x + 1, y + 1, w - 2, h - 2, "#4b4236");
+    R(ctx, x + 1, y + 1, w - 2, h - 2, C.woodDim);
     const fw = Math.round((w - 2) * clamp01(f));
     if (fw > 0) {
       R(ctx, x + 1, y + 1, fw, h - 2, col);
@@ -11879,12 +11945,18 @@ body {
       R(ctx, x + 1, y + h - 2, fw, 1, C.ink);
       ctx.globalAlpha /= 0.4;
     }
+    if (w >= 10) {
+      R(ctx, x, y, 2, h, C.steel);
+      R(ctx, x + w - 2, y, 2, h, C.steel);
+      R(ctx, x, y, 2, 1, C.steelLit);
+      R(ctx, x + w - 2, y, 2, 1, C.steelLit);
+    }
   }
   function check(ctx, x, y, s, on, hot) {
     slab(ctx, x, y, s, s, {
       face: on ? C.good : C.page,
-      lit: on ? "#c8f2b0" : "#fff6da",
-      dim: on ? "#4e8a36" : C.pageDim,
+      lit: on ? "#c2e89a" : "#f0d2a4",
+      dim: on ? "#4f8030" : C.pageDim,
       down: on
     });
     if (hot) {
@@ -11897,16 +11969,16 @@ body {
   }
   function row(ctx, x, y, w, h, i, opts = {}) {
     const on = !!opts.on, hot = !!opts.hot;
-    R(ctx, x, y, w, h, on ? "#f6d98c" : hot ? "#fbeccb" : i & 1 ? C.pageAlt : C.page);
+    R(ctx, x, y, w, h, on ? "#f0c464" : hot ? "#e9caa0" : i & 1 ? C.pageAlt : C.page);
     if (on) {
-      R(ctx, x, y, 2, h, C.warn);
-      R(ctx, x, y, w, 1, "#fff3c9");
+      R(ctx, x, y, 2, h, C.rust);
+      R(ctx, x, y, w, 1, "#ffe49c");
       R(ctx, x, y + h - 1, w, 1, C.pageDim);
     }
   }
   function rule(ctx, x, y, w) {
     R(ctx, x, y, w, 1, C.pageDim);
-    R(ctx, x, y + 1, w, 1, "#fff3c9");
+    R(ctx, x, y + 1, w, 1, "#f0d2a4");
   }
   function heading(ctx, x, y, w, text) {
     drawText(ctx, text, x, y, { color: C.inkSoft });
@@ -11921,10 +11993,21 @@ body {
     R(ctx, x + 1, y + h - 1, w - 2, 1, C.ink);
     R(ctx, x, y + 1, 1, h - 2, C.ink);
     R(ctx, x + w - 1, y + 1, 1, h - 2, C.ink);
-    R(ctx, x + 1, y + 1, w - 2, h - 2, opts.face || "#3b3226");
-    R(ctx, x + 1, y + 1, w - 2, 1, opts.lit || "#5d5140");
-    R(ctx, x + 1, y + h - 2, w - 2, 1, opts.dim || "#241e16");
+    R(ctx, x + 1, y + 1, w - 2, h - 2, opts.face || C.wood);
+    R(ctx, x + 1, y + 1, w - 2, 1, opts.lit || C.woodLit);
+    R(ctx, x + 1, y + h - 2, w - 2, 1, opts.dim || C.woodDim);
+    grain(ctx, x + 1, y + 1, w - 2, h - 2, w + h & 7);
     if (opts.tint) R(ctx, x + 1, y + 1, 2, h - 2, opts.tint);
+  }
+  function lock(ctx, x, y, s = 9) {
+    const b = Math.round(s * 0.6);
+    R(ctx, x + 2, y, s - 4, 2, C.steelDim);
+    R(ctx, x + 2, y + 1, 1, s - b, C.steelDim);
+    R(ctx, x + s - 3, y + 1, 1, s - b, C.steelDim);
+    R(ctx, x, y + s - b, s, b, C.ink);
+    R(ctx, x + 1, y + s - b, s - 2, b - 1, C.gold);
+    R(ctx, x + 1, y + s - b, s - 2, 1, C.goldLit);
+    R(ctx, x + Math.floor(s / 2) - 1, y + s - b + 2, 2, 2, C.ink);
   }
 
   // js/systems/quests.js
@@ -12794,16 +12877,7 @@ body {
       const cardX = Math.round(narrow ? W / 2 - cardW / 2 : clamp(W * 0.055, 6, W - cardW - 8));
       const floorY = H - lb - 6;
       const cardY = Math.round(narrow ? lb + 4 : clamp(H * 0.5 - cardH * 0.55, lb + 6, Math.max(lb + 6, floorY - cardH)));
-      slab(
-        ctx,
-        cardX,
-        cardY,
-        cardW,
-        cardH,
-        { face: C.frame, lit: C.frameLit, dim: C.frameDim }
-      );
-      R(ctx, cardX + PAD - 1, cardY + PAD - 1, pw + 2, ph + 2, C.ink);
-      R(ctx, cardX + PAD, cardY + PAD, pw, ph, "#2b2219");
+      slot(ctx, cardX, cardY, cardW, cardH, { back: "#2b2219" });
       if (port) {
         const br = Math.sin(this.t * 1.4) * 0.6 + (saying ? Math.sin(this.t * 17) * 0.45 : 0) - this.lean * this.lean * 3;
         ctx.save();
@@ -12813,7 +12887,7 @@ body {
         ctx.drawImage(port.cv, cardX + PAD, Math.round(cardY + PAD + br));
         ctx.restore();
       }
-      const npY = cardY + cardH - NAME - 2;
+      const npY = cardY + cardH - NAME - 3;
       R(ctx, cardX + 3, npY, cardW - 6, NAME, C.frameDim);
       R(ctx, cardX + 3, npY, cardW - 6, 1, C.frameDeep);
       const nm = textWidth("DR. ELIAS VESS") + 8 <= cardW ? "DR. ELIAS VESS" : "DR. VESS";
@@ -12850,7 +12924,7 @@ body {
       R(ctx, x, y, w, h, C.page);
       if (ln.icon) {
         ctx.globalAlpha = 0.92;
-        drawNodeIcon(ctx, ln.icon, x + 15, y + h / 2, "#7a5a2a", 2);
+        drawNodeIcon(ctx, ln.icon, x + 15, y + h / 2, C.inkSoft, 2);
         ctx.globalAlpha = 1;
         R(ctx, x + 25, y + 4, 1, h - 8, C.pageDim);
       }
@@ -12913,16 +12987,23 @@ body {
       ch.forEach((c, i) => {
         const by = y + i * (h + gap);
         const on = this.apick === i;
-        button(ctx, x, by, w, h, null, { hot: on, tint: c.tint });
-        R(ctx, x + 3, by + 3, h - 6, h - 6, on ? C.goldLit : C.frameDim);
-        R(ctx, x + 4, by + 4, h - 8, h - 8, on ? C.gold : "rgba(0,0,0,0.12)");
-        drawText(ctx, `${i + 1}`, x + 2 + h / 2, by + (h - 7) / 2, { color: C.ink, align: "center" });
+        if (on) button(ctx, x, by, w, h, null, { hot: true, tint: c.tint });
+        else slab(ctx, x, by, w, h, { face: C.wood, lit: C.woodLit, dim: C.woodDim });
+        R(ctx, x + 3, by + 3, h - 6, h - 6, on ? C.goldDim : C.woodDim);
+        R(ctx, x + 4, by + 4, h - 8, h - 8, on ? C.goldLit : "#553320");
+        drawText(
+          ctx,
+          `${i + 1}`,
+          x + 2 + h / 2,
+          by + (h - 7) / 2,
+          { color: on ? C.ink : "#d8bb8e", align: "center" }
+        );
         drawText(
           ctx,
           ellipsize(c.text, w - h - 10),
           x + h + 2,
           by + (h - 7) / 2,
-          { color: C.ink }
+          { color: on ? C.ink : "#e8d2ac" }
         );
         this.arows.push({ i, x, y: by, w, h });
       });
@@ -12976,22 +13057,26 @@ body {
         const on = i === this.pick;
         const said = this.said.has(tp.id);
         const bye = tp.id === "bye";
-        button(ctx, bx, by, cw, h, null, {
-          hot: on && !bye,
-          on: bye,
-          sticky: false,
-          tint: on ? "#f0b49c" : "#e29a80"
-        });
+        if (on || bye) {
+          button(ctx, bx, by, cw, h, null, {
+            hot: on && !bye,
+            on: bye,
+            tint: bye ? on ? "#e8825c" : "#a85536" : void 0
+          });
+        } else {
+          slab(ctx, bx, by, cw, h, { face: C.wood, lit: C.woodLit, dim: C.woodDim });
+        }
         if (said && !bye) {
-          R(ctx, bx + cw - 6, by + 3, 3, 1, C.frameDeep);
-          R(ctx, bx + cw - 5, by + 4, 1, 1, C.frameDeep);
+          const tick = on ? C.frameDeep : C.frame;
+          R(ctx, bx + cw - 6, by + 3, 3, 1, tick);
+          R(ctx, bx + cw - 5, by + 4, 1, 1, tick);
         }
         drawText(
           ctx,
           ellipsize(tp.ask || tp.word, cw - 10),
           bx + cw / 2,
           by + (h - 7) / 2,
-          { color: C.ink, align: "center" }
+          { color: on || bye ? C.ink : "#e8d2ac", align: "center" }
         );
         rows.push({ i, x: bx, y: by, w: cw, h });
       });
@@ -16780,6 +16865,7 @@ body {
     { id: "start", name: "START" },
     { id: "settings", name: "SETTINGS" }
   ];
+  var ROW = 22;
   var CREDIT = "PUKKINGDRAGON";
   var Menu = class {
     constructor(game2) {
@@ -16816,6 +16902,10 @@ body {
     }
     get hasSave() {
       return !!readSave();
+    }
+    /** What is in the save, for the line under START. */
+    get saveInfo() {
+      return saveInfo?.() || null;
     }
     // -- his evening ----------------------------------------------------------
     _beer(dt) {
@@ -17088,69 +17178,84 @@ body {
         ctx.fillRect(Math.round(xx), Math.round(yy), e.r, e.r);
       }
       ctx.globalAlpha = 1;
-      const ty = Math.round(H * 0.17 + Math.sin(this.t * 0.9) * 1.5);
+      const narrow = W < 420;
+      const scale = narrow ? 3 : 4;
       const title = "CRABDEN";
-      const scale = W < 420 ? 3 : 4;
       const tw = textWidth(title, scale);
-      ctx.globalAlpha = 0.1 + this.gust * 0.13;
-      ctx.fillStyle = "#e2b74a";
-      ctx.fillRect(Math.round(W / 2 - tw / 2) - 8, ty - 5, tw + 16, scale * 8 + 11);
+      const bw = Math.min(W - 24, tw + 44);
+      const bh = scale * 8 + 20;
+      const bx = Math.round(W / 2 - bw / 2);
+      const by = Math.round(H * 0.11 + Math.sin(this.t * 0.9) * 1.5);
+      for (let r = 5; r >= 1; r--) {
+        ctx.globalAlpha = (0.035 + this.gust * 0.04) * (r / 5);
+        ctx.fillStyle = C.frame;
+        const p2 = r * 4;
+        ctx.fillRect(bx - p2, by - p2 * 0.6, bw + p2 * 2, bh + p2 * 1.2);
+      }
       ctx.globalAlpha = 1;
-      drawText(ctx, title, W / 2 + 2, ty + 2, { color: "rgba(10,6,4,0.7)", align: "center", scale });
-      drawText(ctx, title, W / 2, ty, { color: "#f2e4c2", align: "center", scale });
-      ctx.globalAlpha = 0.45 + this.gust * 0.55;
-      ctx.fillStyle = "#e2b74a";
-      ctx.fillRect(Math.round(W / 2 - tw / 2), ty + scale * 8 + 3, tw, 1);
+      slab(ctx, bx, by, bw, bh, { face: C.wood, lit: C.woodLit, dim: C.woodDim });
+      const cs = 8;
+      clasp(ctx, bx + 1, by + 1, cs, 1, 1);
+      clasp(ctx, bx + bw - 2, by + 1, cs, -1, 1);
+      clasp(ctx, bx + 1, by + bh - 2, cs, 1, -1);
+      clasp(ctx, bx + bw - 2, by + bh - 2, cs, -1, -1);
+      const ty = by + 8;
+      drawText(ctx, title, W / 2 + 1, ty + 1, { color: "#20120a", align: "center", scale });
+      drawText(ctx, title, W / 2, ty, { color: C.frameLit, align: "center", scale });
+      ctx.globalAlpha = 0.5 + this.gust * 0.5;
+      R(ctx, Math.round(W / 2 - tw / 2), ty + scale * 8 + 2, tw, 1, C.frame);
       ctx.globalAlpha = 1;
       const items = this._items();
-      const mx = Math.round(W * 0.08);
-      const my = Math.round(H * 0.58);
+      const mx = Math.round(W * 0.07);
+      const mw = Math.max(128, Math.min(Math.round(W * 0.38), 176));
+      const my = Math.round(H - 30 - items.length * (ROW + 4));
       const rows = [];
-      items.forEach((it, i) => {
-        const y = my + i * 24;
-        const on = i === this.pick;
-        const w = Math.max(132, textWidth(it.name) + 52);
-        rows.push({ i, id: it.id, x: mx - 4, y: y - 5, w, h: 21 });
-        const b = 0.5 + 0.5 * Math.sin(this.t * 3.1);
-        const push = on ? Math.round(1 + b * 3) : 0;
-        if (on) {
-          ctx.globalAlpha = 0.1 + b * 0.14;
-          ctx.fillStyle = "#e2b74a";
-          ctx.fillRect(mx - 8 + push, y - 9, w + 8, 29);
-          ctx.globalAlpha = 1;
-        }
-        drawPlate(ctx, mx - 4 + push, y - 5, w, 21, {
-          edge: on ? "#e2b74a" : "rgba(120,96,58,0.4)",
-          top: on ? "rgba(64,50,30,0.96)" : void 0,
-          rivets: false
+      if (this.page !== "main") {
+        plank(ctx, mx, my - ROW - 2, mw, 14, {
+          label: this.page === "wipe" ? "ERASE EVERYTHING?" : "SETTINGS",
+          seed: 4
         });
+      }
+      items.forEach((it, i) => {
+        const y = my + i * (ROW + 4);
+        const on = i === this.pick;
+        rows.push({ i, id: it.id, x: mx, y, w: mw, h: ROW });
+        const b = 0.5 + 0.5 * Math.sin(this.t * 3.1);
+        const push = on ? Math.round(1 + b * 2) : 0;
+        const danger = it.id === "yes" || it.id === "wipe";
         if (on) {
-          ctx.fillStyle = "#e2b74a";
-          ctx.fillRect(mx - 4 + push, y - 5, 2, 21);
+          button(ctx, mx + push, y, mw, ROW, null, {
+            hot: !danger,
+            on: danger,
+            tint: danger ? "#d05a44" : void 0
+          });
+        } else {
+          slab(ctx, mx, y, mw, ROW, { face: C.wood, lit: C.woodLit, dim: C.woodDim });
         }
-        drawText(ctx, it.name, mx + 11 + push, y, { color: on ? "#f7ecd0" : "#b49c70" });
+        const col2 = on ? C.ink : "#d8bb8e";
+        drawText(ctx, it.name, mx + push + 10, y + (ROW - 7) / 2, { color: col2 });
         if (it.sub) {
           drawText(
             ctx,
             it.sub,
-            mx + push + w - 9,
-            y,
-            { color: on ? "#e2b74a" : "rgba(150,128,92,0.7)", align: "right" }
+            mx + push + mw - 9,
+            y + (ROW - 7) / 2,
+            { color: on ? "#3a2408" : "rgba(216,187,142,0.7)", align: "right" }
           );
         }
       });
       this._rows = rows;
+      if (this.page === "main") {
+        const save = this.saveInfo;
+        const line = save ? `CONTINUE - DAY ${save.day + 1}, ${save.stage.toUpperCase()}` : "A NEW ANIMAL, IN AN OLD SEA";
+        plank(ctx, mx, my - 18, mw, 14, { label: line, seed: 9 });
+      }
       if (this.page === "wipe") {
-        drawText(
-          ctx,
-          "Everything. The map, the notes, the animals, the garden.",
-          mx - 4,
-          my - 18,
-          { color: "#e2564f" }
-        );
+        const warn = "The garden, the notes, the animals. All of it.";
+        drawText(ctx, warn, mx, my - ROW - 14, { color: "#f0a08c" });
       }
       ctx.globalAlpha = 0.55 + this.gust * 0.35;
-      drawText(ctx, CREDIT, W / 2, H - 13, { color: "#e2b74a", align: "center" });
+      drawText(ctx, CREDIT, W / 2, H - 13, { color: C.frame, align: "center" });
       ctx.globalAlpha = 1;
       if (this.fade > 4e-3) {
         ctx.globalAlpha = clamp01(this.fade);
@@ -26726,8 +26831,9 @@ Coming back.` };
       }
       const railW = pw < 340 ? 44 : 60;
       const cellH = Math.min(46, Math.floor((page.h - 4) / 3) - 2);
-      R(ctx, page.x, page.y, railW, page.h, C.pageAlt);
-      R(ctx, page.x + railW, page.y, 1, page.h, C.pageDim);
+      R(ctx, page.x, page.y, railW, page.h, C.wood);
+      R(ctx, page.x + railW, page.y, 1, page.h, C.woodDim);
+      R(ctx, page.x + railW - 1, page.y, 1, page.h, C.woodLit);
       TABS.forEach((t, n) => {
         const ty = page.y + 3 + n * (cellH + 3);
         const on = this.tab === t.id;
@@ -26763,9 +26869,7 @@ Coming back.` };
       });
       const bx = page.x + railW + 6;
       const bw = page.x + page.w - 5 - bx;
-      drawText(ctx, ellipsize(tab.sub, bw), bx, page.y + 4, { color: C.inkSoft });
-      rule(ctx, bx, page.y + 13, bw);
-      const by0 = page.y + 18, bh = page.y + page.h - 4 - by0;
+      const by0 = page.y + 4, bh = page.y + page.h - 4 - by0;
       ctx.save();
       ctx.beginPath();
       ctx.rect(bx, by0, bw, bh);
@@ -26843,7 +26947,6 @@ Coming back.` };
         const on = this.pick === r.id;
         const hot2 = this._hit(lx, Math.max(top, ry), lw, rowH);
         row(ctx, lx, ry, lw, rowH, n, { on, hot: hot2 });
-        ctx.globalAlpha = why2 ? 0.55 : 1;
         drawNodeIcon(ctx, out2.icon, lx + 9, ry + rowH / 2, out2.tint, 1);
         drawText(
           ctx,
@@ -26852,8 +26955,8 @@ Coming back.` };
           ry + (rowH - 7) / 2,
           { color: why2 ? C.inkSoft : C.ink }
         );
-        ctx.globalAlpha = 1;
         if (!why2) check(ctx, lx + lw - 12, ry + (rowH - 9) / 2, 9, true, false);
+        else if (!craft.stationUp(r.at)) lock(ctx, lx + lw - 12, ry + (rowH - 9) / 2, 9);
         if (hot2 && this.game.input.clicked) {
           this.game.input.clicked = false;
           this.pick = r.id;
@@ -26862,8 +26965,9 @@ Coming back.` };
       });
       ctx.restore();
       const dy = y + h - detH;
+      R(ctx, x, dy - 2, w, 2, C.wood);
+      R(ctx, x, dy - 2, w, 1, C.woodLit);
       R(ctx, x, dy, w, detH, C.pageAlt);
-      rule(ctx, x, dy, w);
       const sel = list.find((e) => e.r.id === this.pick);
       if (craft.job) {
         const out2 = ITEM_BY_ID[craft.job.r.out[0]];

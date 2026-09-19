@@ -18,12 +18,16 @@
 import { clamp, clamp01, lerp, damp, TAU } from '../lib/math.js';
 import { drawText, textWidth, LINE_H } from '../lib/font.js';
 import { drawPlate, drawGauge } from './icons.js';
+import * as K from './kit.js';
 import * as Save from '../core/save.js';
 
 const ITEMS = [
   { id: 'start', name: 'START' },
   { id: 'settings', name: 'SETTINGS' },
 ];
+
+/** How tall a menu plate is, which four other things need to know. */
+const ROW = 22;
 
 const CREDIT = 'PUKKINGDRAGON';
 
@@ -61,6 +65,9 @@ export class Menu {
   close() { this.on = false; this.page = 'main'; this._rows = []; }
 
   get hasSave() { return !!Save.readSave(); }
+
+  /** What is in the save, for the line under START. */
+  get saveInfo() { return Save.saveInfo?.() || null; }
 
   // -- his evening ----------------------------------------------------------
 
@@ -310,68 +317,107 @@ export class Menu {
     }
     ctx.globalAlpha = 1;
 
-    // ---- the title -------------------------------------------------------
-    const ty = Math.round(H * 0.17 + Math.sin(this.t * 0.9) * 1.5);
+    // ---- THE TITLE, ON A BOARD -------------------------------------------
+    // It used to be two words floating on the sky with a wash behind them,
+    // which is a title card rather than a front door. It is a board now: the
+    // same wood, clasps and brass every other screen in this game is made
+    // of, hung in the storm.
+    const narrow = W < 420;
+    const scale = narrow ? 3 : 4;
     const title = 'CRABDEN';
-    const scale = W < 420 ? 3 : 4;
     const tw = textWidth(title, scale);
-    // a warm bloom behind the letters that comes and goes with the gusts
-    ctx.globalAlpha = 0.10 + this.gust * 0.13;
-    ctx.fillStyle = '#e2b74a';
-    ctx.fillRect(Math.round(W / 2 - tw / 2) - 8, ty - 5, tw + 16, scale * 8 + 11);
-    ctx.globalAlpha = 1;
-    // a shadow behind it, offset with the wind
-    drawText(ctx, title, W / 2 + 2, ty + 2, { color: 'rgba(10,6,4,0.7)', align: 'center', scale });
-    drawText(ctx, title, W / 2, ty, { color: '#f2e4c2', align: 'center', scale });
-    ctx.globalAlpha = 0.45 + this.gust * 0.55;
-    ctx.fillStyle = '#e2b74a';
-    ctx.fillRect(Math.round(W / 2 - tw / 2), ty + scale * 8 + 3, tw, 1);
+    const bw = Math.min(W - 24, tw + 44);
+    const bh = scale * 8 + 20;
+    const bx = Math.round(W / 2 - bw / 2);
+    const by = Math.round(H * 0.11 + Math.sin(this.t * 0.9) * 1.5);
+
+    // a warm bloom behind the board, thrown as a stack of shrinking rings
+    // rather than a rectangle - a hard-edged lighter box round the title was
+    // the most obviously wrong thing on the whole screen
+    for (let r = 5; r >= 1; r--) {
+      ctx.globalAlpha = (0.035 + this.gust * 0.04) * (r / 5);
+      ctx.fillStyle = K.C.frame;
+      const p2 = r * 4;
+      ctx.fillRect(bx - p2, by - p2 * 0.6, bw + p2 * 2, bh + p2 * 1.2);
+    }
     ctx.globalAlpha = 1;
 
-    // ---- the menu itself, down the left, out of the animal's way ---------
+    K.slab(ctx, bx, by, bw, bh, { face: K.C.wood, lit: K.C.woodLit, dim: K.C.woodDim });
+    const cs = 8;
+    K.clasp(ctx, bx + 1, by + 1, cs, 1, 1);
+    K.clasp(ctx, bx + bw - 2, by + 1, cs, -1, 1);
+    K.clasp(ctx, bx + 1, by + bh - 2, cs, 1, -1);
+    K.clasp(ctx, bx + bw - 2, by + bh - 2, cs, -1, -1);
+    // the name, burnt into the board
+    const ty = by + 8;
+    drawText(ctx, title, W / 2 + 1, ty + 1, { color: '#20120a', align: 'center', scale });
+    drawText(ctx, title, W / 2, ty, { color: K.C.frameLit, align: 'center', scale });
+    // and a brass rule under it that catches the wind
+    ctx.globalAlpha = 0.5 + this.gust * 0.5;
+    K.px(ctx, Math.round(W / 2 - tw / 2), ty + scale * 8 + 2, tw, 1, K.C.frame);
+    ctx.globalAlpha = 1;
+
+    // ---- the doors, down the left, out of the animal's way ---------------
     const items = this._items();
-    const mx = Math.round(W * 0.08);
-    const my = Math.round(H * 0.58);
+    const mx = Math.round(W * 0.07);
+    const mw = Math.max(128, Math.min(Math.round(W * 0.38), 176));
+    const my = Math.round(H - 30 - items.length * (ROW + 4));
     const rows = [];
-    items.forEach((it, i) => {
-      const y = my + i * 24;
-      const on = i === this.pick;
-      const w = Math.max(132, textWidth(it.name) + 52);
-      rows.push({ i, id: it.id, x: mx - 4, y: y - 5, w, h: 21 });
-      // the selected plate leans out toward you a little, and breathes
-      const b = 0.5 + 0.5 * Math.sin(this.t * 3.1);
-      const push = on ? Math.round(1 + b * 3) : 0;
-      if (on) {
-        ctx.globalAlpha = 0.10 + b * 0.14;
-        ctx.fillStyle = '#e2b74a';
-        ctx.fillRect(mx - 8 + push, y - 9, w + 8, 29);
-        ctx.globalAlpha = 1;
-      }
-      drawPlate(ctx, mx - 4 + push, y - 5, w, 21, {
-        edge: on ? '#e2b74a' : 'rgba(120,96,58,0.4)',
-        top: on ? 'rgba(64,50,30,0.96)' : undefined,
-        rivets: false,
+
+    // a heading plank over them, which is what says what these doors are for
+    if (this.page !== 'main') {
+      K.plank(ctx, mx, my - ROW - 2, mw, 14, {
+        label: this.page === 'wipe' ? 'ERASE EVERYTHING?' : 'SETTINGS', seed: 4,
       });
+    }
+
+    items.forEach((it, i) => {
+      const y = my + i * (ROW + 4);
+      const on = i === this.pick;
+      rows.push({ i, id: it.id, x: mx, y, w: mw, h: ROW });
+      // the one under the pointer leans out toward you and breathes
+      const b = 0.5 + 0.5 * Math.sin(this.t * 3.1);
+      const push = on ? Math.round(1 + b * 2) : 0;
+      // The one you are on is BRASS. The rest are wood. Every button being
+      // the same gold meant the selection was a shade, and a shade is not a
+      // selection - you could not tell what pressing Enter would do.
+      const danger = it.id === 'yes' || it.id === 'wipe';
       if (on) {
-        ctx.fillStyle = '#e2b74a';
-        ctx.fillRect(mx - 4 + push, y - 5, 2, 21);
+        K.button(ctx, mx + push, y, mw, ROW, null, {
+          hot: !danger, on: danger, tint: danger ? '#d05a44' : undefined,
+        });
+      } else {
+        K.slab(ctx, mx, y, mw, ROW, { face: K.C.wood, lit: K.C.woodLit, dim: K.C.woodDim });
       }
-      drawText(ctx, it.name, mx + 11 + push, y, { color: on ? '#f7ecd0' : '#b49c70' });
+      const col = on ? K.C.ink : '#d8bb8e';
+      drawText(ctx, it.name, mx + push + 10, y + (ROW - 7) / 2, { color: col });
       if (it.sub) {
-        drawText(ctx, it.sub, mx + push + w - 9, y,
-          { color: on ? '#e2b74a' : 'rgba(150,128,92,0.7)', align: 'right' });
+        drawText(ctx, it.sub, mx + push + mw - 9, y + (ROW - 7) / 2,
+          { color: on ? '#3a2408' : 'rgba(216,187,142,0.7)', align: 'right' });
       }
     });
     this._rows = rows;
 
+    // ---- and what START is actually going to do --------------------------
+    // The old screen had one door labelled START whether it was going to
+    // wake you out of the sand or drop you back where you left off, and you
+    // could not tell which until it had already happened.
+    if (this.page === 'main') {
+      const save = this.saveInfo;
+      const line = save
+        ? `CONTINUE - DAY ${save.day + 1}, ${save.stage.toUpperCase()}`
+        : 'A NEW ANIMAL, IN AN OLD SEA';
+      K.plank(ctx, mx, my - 18, mw, 14, { label: line, seed: 9 });
+    }
+
     if (this.page === 'wipe') {
-      drawText(ctx, 'Everything. The map, the notes, the animals, the garden.',
-        mx - 4, my - 18, { color: '#e2564f' });
+      const warn = 'The garden, the notes, the animals. All of it.';
+      drawText(ctx, warn, mx, my - ROW - 14, { color: '#f0a08c' });
     }
 
     // ---- whose desert this is --------------------------------------------
     ctx.globalAlpha = 0.55 + this.gust * 0.35;
-    drawText(ctx, CREDIT, W / 2, H - 13, { color: '#e2b74a', align: 'center' });
+    drawText(ctx, CREDIT, W / 2, H - 13, { color: K.C.frame, align: 'center' });
     ctx.globalAlpha = 1;
 
     // ---- the fade up from black on the very first frame ------------------

@@ -33,12 +33,23 @@ export function clearSave() {
   try { localStorage.removeItem(KEY); } catch { /* ignore */ }
 }
 
+/**
+ * Enough about the save to say on the front door what START is about to do.
+ * The day and the stage are the two things that make "continue" mean
+ * something rather than being a word you press and find out.
+ */
 export function saveInfo() {
   try {
     const raw = localStorage.getItem(KEY);
     if (!raw) return null;
     const p = JSON.parse(raw);
-    return { at: p.at, day: p.data?.weather?.day ?? 1 };
+    const d = p.data || {};
+    return {
+      at: p.at,
+      day: d.day ?? d.weather?.day ?? 0,
+      stage: d.stage || 'hatchling',
+      planted: d.garden?.plots?.filter?.((q) => q && q.plant)?.length ?? 0,
+    };
   } catch { return null; }
 }
 

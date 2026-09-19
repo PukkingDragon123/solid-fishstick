@@ -106,11 +106,13 @@ function bake(p, ox, oy, far, kind, extra = {}) {
  * even when he is a hundred pixels away.
  */
 function paintTorso(K, far, kind) {
-  // He used to be two heads tall, which is a doll. A person is four or five,
-  // and most of the extra is in the trunk and the thigh - so the torso is a
-  // quarter longer and no wider, the legs are a third longer, and the head is
-  // painted smaller. Nothing about the drawing changed; the numbers did.
-  const W = 8.6 * K, H = 13.4 * K;
+  // He is a tall thin man who has been living on tinned food in a desert for
+  // eleven years, and he should read that way from across the basin: narrow
+  // through the shoulders, long in the trunk, longer in the thigh. The trunk
+  // is a sixth longer than it was and a fifth NARROWER, which is the change
+  // that does the work - a figure reads as thin off its silhouette, and the
+  // silhouette is mostly this box.
+  const W = 6.9 * K, H = 15.6 * K;
   const pad = Math.ceil(7 * K) + 5;
   const p = new Painter(Math.ceil(W * 2.0) + pad, Math.ceil(H) + pad * 2);
   const cx = p.w * 0.5, hipY = p.h - pad;
@@ -119,8 +121,10 @@ function paintTorso(K, far, kind) {
 
   // The profile off the sheet: narrow shoulders that slope, a short waist,
   // and hips only slightly wider. A young person carrying too much.
-  const PROF = [[0.00, 0.40], [0.09, 0.54], [0.30, 0.50], [0.55, 0.43],
-    [0.78, 0.45], [1.00, 0.50]];
+  // Narrow shoulders that slope, almost no waist, and hips barely wider than
+  // the waist. There is nothing on this man.
+  const PROF = [[0.00, 0.38], [0.09, 0.50], [0.32, 0.44], [0.58, 0.38],
+    [0.80, 0.40], [1.00, 0.44]];
   const half = (v) => {
     for (let i = 1; i < PROF.length; i++) {
       if (v <= PROF[i][0]) {
@@ -304,34 +308,31 @@ const HEAD_KEY = {
 // the back of his head and it does not creep round over his cheek, because
 // the moment it does he is a brown mass with a nose stuck on the side.
 const HEAD_ART = [
-  '.....oTTTTToo...',
-  '....ottTTTTgeo..',
-  '....ottTTTTggo..',
-  '...obbbbbbbbbo..',
-  '.oouTTTTTTTTuoo.',
-  'ouuuuuuuuuuuuuuo',
-  '.ohhhhhhHHHssoo.',
-  '.oHhhhhhsssSSso.',
-  'oHhhhhhhsssrrro.',
-  'oHhhhhhhsdsLLlo.',
-  'oHhhhhhssdslrso.',
-  'oHhhhhhssssssSSo',
-  '.oHhhhhhsssssddo',
-  '.ohhhhhsssssdoo.',
-  '.ohhhhhsqqqqmmo.',
-  '..ohhhsqqqqqdo..',
-  '..ohhhqqqqdoo...',
-  '...ooobbbso.....',
+  '....oTTTTo...',
+  '...otTTTgeo..',
+  '..obbbbbbbbo.',
+  '.ouTTTTTTTTuo',
+  'ouuuuuuuuuuuo',
+  '.ohhhhHHHSoo.',
+  'oHhhhhssrrro.',
+  'oHhhhhsdLlro.',
+  'oHhhhhssssso.',
+  'ohhhhhssssSso',
+  'ohHhhhssssdso',
+  '.ohhhhssmmoo.',
+  '.ohhhsqqqso..',
+  '..ohhqqqso...',
+  '...oobbso....',
 ];
 
 /** Shut: the lid comes down and the lens goes dark behind the glass. */
 const HEAD_SHUT = {
-  9: 'oHhhhhhhsdsrrro.',
+  7: 'oHhhhhsdrrro.',
 };
 /** Talking: the jaw drops and the mouth is a hole rather than a line. */
 const HEAD_OPEN = {
-  14: '.ohhhhhsqqqmmmo.',
-  15: '.ohhhhsqqqqmmo..',
+  11: '.ohhhhsmmmoo.',
+  12: '.ohhhsqmmso..',
 };
 
 const sideHeads = new Map();
@@ -361,23 +362,21 @@ function headHeight(x, y, ch, W) {
     const d = ((x - cx) / rx) ** 2 + ((y - cy) / ry) ** 2;
     return d >= 1 ? 0 : Math.sqrt(1 - d);
   };
-  if (y <= 2) return 0.56 + dome(8.0, 2.6, 4.4, 3.8) * 0.44;    // the crown
-  if (y === 3) return 0.66;                                     // the band, proud of it
-  if (y <= 5) {                                                 // the brim: a thin plate
-    const t = 1 - Math.abs(x - 7.5) / (W / 2);                  // that falls away to its tips
-    return (y === 4 ? 0.64 : 0.46) + t * t * 0.18;
+  if (y <= 1) return 0.56 + dome(6.5, 1.6, 3.6, 3.0) * 0.44;    // the crown
+  if (y === 2) return 0.66;                                     // the band
+  if (y <= 4) {                                                 // the brim
+    const t = 1 - Math.abs(x - 6) / (W / 2);
+    return (y === 3 ? 0.64 : 0.46) + t * t * 0.18;
   }
-  // The skull is nearly FLAT. It was a full dome, and a full dome across six
-  // pixels of cheek is a gradient, not a face - it turned every hand-placed
-  // tone into mud. The lamp is here to round the hat and to catch the nose;
-  // the face itself is painted, not lit.
-  let h = 0.62 + dome(6.8, 11.4, 7.4, 8.4) * 0.26;
+  // The skull is nearly FLAT. The lamp is here to round the hat and to catch
+  // the nose; the face itself is painted, not lit.
+  let h = 0.62 + dome(5.4, 9.4, 6.0, 6.8) * 0.26;
   // the brow, the nose and the lips stand off the front of it
-  if (y === 8 && x >= 11) h += 0.06;
-  if (y >= 11 && y <= 12 && x >= 12) h += 0.20;
-  if (y >= 14 && y <= 15 && x >= 11) h += 0.05;
+  if (y === 6 && x >= 9) h += 0.06;
+  if (y >= 9 && y <= 10 && x >= 10) h += 0.20;
+  if (y >= 11 && y <= 12 && x >= 8) h += 0.05;
   // and the eye is a hollow under the brow, not a flat patch
-  if (y >= 8 && y <= 10 && x >= 10 && x <= 13) h -= 0.11;
+  if (y >= 6 && y <= 7 && x >= 8 && x <= 10) h -= 0.11;
   return h;
 }
 
@@ -451,13 +450,13 @@ function paintHeadSide(K, far, kind, opts = {}) {
     }
   }
   // the hat can come off, and when it does the brim goes with it
-  if (opts.noHat) g.clearRect(0, 0, W * px, 7 * px);
+  if (opts.noHat) g.clearRect(0, 0, W * px, 5 * px);
   return {
     cv,
     ox: (W / 2) * px,
     oy: (H - 1) * px,
     W: W * px, H: H * px,
-    eye: { x: 3 * px, y: -7 * px },
+    eye: { x: 3 * px, y: -6 * px },
   };
 }
 
@@ -994,22 +993,22 @@ export function buildPerson(kind = 'vess', K = 1) {
     props: paintProps(K, kind),
     arm: {
       near: {
-        upper: bone(7.0, 1.85, 1.55, 'shirt', false, { bow: -0.45 * K, shade: -0.16 }),
-        lower: bone(6.6, 1.45, 1.15, 'skin', false, { bow: 0.30 * K, hand: true, sleeve: true, grip: 0.55 }),
+        upper: bone(7.9, 1.45, 1.20, 'shirt', false, { bow: -0.45 * K, shade: -0.16 }),
+        lower: bone(7.5, 1.12, 0.92, 'skin', false, { bow: 0.30 * K, hand: true, sleeve: true, grip: 0.55 }),
       },
       far: {
-        upper: bone(7.0, 1.85, 1.55, 'shirt', true, { bow: -0.45 * K, shade: -0.16 }),
-        lower: bone(6.6, 1.45, 1.15, 'skin', true, { bow: 0.30 * K, hand: true, sleeve: true, grip: 0.55 }),
+        upper: bone(7.9, 1.45, 1.20, 'shirt', true, { bow: -0.45 * K, shade: -0.16 }),
+        lower: bone(7.5, 1.12, 0.92, 'skin', true, { bow: 0.30 * K, hand: true, sleeve: true, grip: 0.55 }),
       },
     },
     leg: {
       near: {
-        upper: bone(9.7, 2.5, 2.0, 'trouser', false, { bow: 0.45 * K }),
-        lower: bone(8.6, 2.0, 1.5, 'trouser', false, { bow: -0.4 * K, knee: true }),
+        upper: bone(11.6, 1.95, 1.60, 'trouser', false, { bow: 0.45 * K }),
+        lower: bone(10.4, 1.60, 1.20, 'trouser', false, { bow: -0.4 * K, knee: true }),
       },
       far: {
-        upper: bone(9.7, 2.5, 2.0, 'trouser', true, { bow: 0.45 * K }),
-        lower: bone(8.6, 2.0, 1.5, 'trouser', true, { bow: -0.4 * K, knee: true }),
+        upper: bone(11.6, 1.95, 1.60, 'trouser', true, { bow: 0.45 * K }),
+        lower: bone(10.4, 1.60, 1.20, 'trouser', true, { bow: -0.4 * K, knee: true }),
       },
     },
   };

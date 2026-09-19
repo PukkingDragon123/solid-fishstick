@@ -2462,8 +2462,12 @@ export class UI {
     // button - it was never anything else - so it is drawn as one.
     const railW = pw < 340 ? 44 : 60;
     const cellH = Math.min(46, Math.floor((page.h - 4) / 3) - 2);
-    K.px(ctx, page.x, page.y, railW, page.h, K.C.pageAlt);
-    K.px(ctx, page.x + railW, page.y, 1, page.h, K.C.pageDim);
+    // the rail is WOOD - it is part of the board, not part of the page, and
+    // a column of brass tabs floating on parchment read as three loose
+    // buttons somebody had left there
+    K.px(ctx, page.x, page.y, railW, page.h, K.C.wood);
+    K.px(ctx, page.x + railW, page.y, 1, page.h, K.C.woodDim);
+    K.px(ctx, page.x + railW - 1, page.y, 1, page.h, K.C.woodLit);
     TABS.forEach((t, n) => {
       const ty = page.y + 3 + n * (cellH + 3);
       const on = this.tab === t.id;
@@ -2484,11 +2488,12 @@ export class UI {
     });
 
     // ---- the body --------------------------------------------------------
+    // No subtitle. The banner says BENCH and the two headings under it say
+    // HIS PACK and HE CAN MAKE; a third line of prose over the top of those
+    // was the single messiest thing on this screen.
     const bx = page.x + railW + 6;
     const bw = page.x + page.w - 5 - bx;
-    drawText(ctx, ellipsize(tab.sub, bw), bx, page.y + 4, { color: K.C.inkSoft });
-    K.rule(ctx, bx, page.y + 13, bw);
-    const by0 = page.y + 18, bh = page.y + page.h - 4 - by0;
+    const by0 = page.y + 4, bh = page.y + page.h - 4 - by0;
     ctx.save();
     ctx.beginPath(); ctx.rect(bx, by0, bw, bh); ctx.clip();
     if (this.tab === 'craft') this._craftTab(ctx, bx, by0, bw, bh);
@@ -2565,13 +2570,17 @@ export class UI {
       const on = this.pick === r.id;
       const hot = this._hit(lx, Math.max(top, ry), lw, rowH);
       K.row(ctx, lx, ry, lw, rowH, n, { on, hot });
-      ctx.globalAlpha = why ? 0.55 : 1;
+      // a row you cannot make yet is not a GHOST - it is a row with a lock on
+      // it. Fading them out made two thirds of this list unreadable and told
+      // you nothing about why.
       drawNodeIcon(ctx, out.icon, lx + 9, ry + rowH / 2, out.tint, 1);
       drawText(ctx, ellipsize(`${out.name}${r.out[1] > 1 ? ` x${r.out[1]}` : ''}`, lw - 34),
         lx + 18, ry + (rowH - 7) / 2, { color: why ? K.C.inkSoft : K.C.ink });
-      ctx.globalAlpha = 1;
-      // a tick when everything for it is already in the pack
+      // A tick when he could make it right now. A LOCK only when the thing
+      // stopping him is a bench he has not got - a lock on every row you are
+      // merely short of copper for is a wall of locks that says nothing.
       if (!why) K.check(ctx, lx + lw - 12, ry + (rowH - 9) / 2, 9, true, false);
+      else if (!craft.stationUp(r.at)) K.lock(ctx, lx + lw - 12, ry + (rowH - 9) / 2, 9);
       if (hot && this.game.input.clicked) {
         this.game.input.clicked = false;
         this.pick = r.id;
@@ -2581,9 +2590,13 @@ export class UI {
     ctx.restore();
 
     // ---- the detail strip, nailed to the bottom --------------------------
+    // the strip is its own board, laid on the bottom of the page - a wooden
+    // lip above it so it reads as a separate thing rather than as the list
+    // having changed colour
     const dy = y + h - detH;
+    K.px(ctx, x, dy - 2, w, 2, K.C.wood);
+    K.px(ctx, x, dy - 2, w, 1, K.C.woodLit);
     K.px(ctx, x, dy, w, detH, K.C.pageAlt);
-    K.rule(ctx, x, dy, w);
     const sel = list.find((e) => e.r.id === this.pick);
 
     if (craft.job) {

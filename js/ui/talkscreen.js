@@ -468,10 +468,10 @@ export class TalkScreen {
     // He sits in the same frame everything else in this game sits in, with
     // his name on the bar across the top of it, because a portrait in its own
     // private material is a portrait that has wandered in from another game.
-    Kit.slab(ctx, cardX, cardY, cardW, cardH,
-      { face: Kit.C.frame, lit: Kit.C.frameLit, dim: Kit.C.frameDim });
-    Kit.px(ctx, cardX + PAD - 1, cardY + PAD - 1, pw + 2, ph + 2, Kit.C.ink);
-    Kit.px(ctx, cardX + PAD, cardY + PAD, pw, ph, '#2b2219');
+    // the same brass bezel with a flourish in each corner that everything
+    // else you own sits in - because he is, by the end of this, something
+    // you own
+    Kit.slot(ctx, cardX, cardY, cardW, cardH, { back: '#2b2219' });
     if (port) {
       // a breath, so he is not a still image while he is talking, and a clip
       // so the breath never pushes his hat out through the frame
@@ -487,7 +487,7 @@ export class TalkScreen {
       ctx.restore();
     }
     // his name on the bar under him
-    const npY = cardY + cardH - NAME - 2;
+    const npY = cardY + cardH - NAME - 3;
     Kit.px(ctx, cardX + 3, npY, cardW - 6, NAME, Kit.C.frameDim);
     Kit.px(ctx, cardX + 3, npY, cardW - 6, 1, Kit.C.frameDeep);
     const nm = textWidth('DR. ELIAS VESS') + 8 <= cardW ? 'DR. ELIAS VESS' : 'DR. VESS';
@@ -526,7 +526,7 @@ export class TalkScreen {
     // the icon down the left of the card, on its own margin
     if (ln.icon) {
       ctx.globalAlpha = 0.92;
-      drawNodeIcon(ctx, ln.icon, x + 15, y + h / 2, '#7a5a2a', 2);
+      drawNodeIcon(ctx, ln.icon, x + 15, y + h / 2, Kit.C.inkSoft, 2);
       ctx.globalAlpha = 1;
       // a hairline between the icon's margin and what he is saying
       Kit.px(ctx, x + 25, y + 4, 1, h - 8, Kit.C.pageDim);
@@ -593,14 +593,18 @@ export class TalkScreen {
     const gap = 3;
     ch.forEach((c, i) => {
       const by = y + i * (h + gap);
+      // Brass when you are on it, wood when you are not. Two gold plates
+      // with one shade between them is not a choice you can see.
       const on = this.apick === i;
-      Kit.button(ctx, x, by, w, h, null, { hot: on, tint: c.tint });
+      if (on) Kit.button(ctx, x, by, w, h, null, { hot: true, tint: c.tint });
+      else Kit.slab(ctx, x, by, w, h, { face: Kit.C.wood, lit: Kit.C.woodLit, dim: Kit.C.woodDim });
       // the number, so a keyboard answers without moving a cursor
-      Kit.px(ctx, x + 3, by + 3, h - 6, h - 6, on ? Kit.C.goldLit : Kit.C.frameDim);
-      Kit.px(ctx, x + 4, by + 4, h - 8, h - 8, on ? Kit.C.gold : 'rgba(0,0,0,0.12)');
-      drawText(ctx, `${i + 1}`, x + 2 + h / 2, by + (h - 7) / 2, { color: Kit.C.ink, align: 'center' });
+      Kit.px(ctx, x + 3, by + 3, h - 6, h - 6, on ? Kit.C.goldDim : Kit.C.woodDim);
+      Kit.px(ctx, x + 4, by + 4, h - 8, h - 8, on ? Kit.C.goldLit : '#553320');
+      drawText(ctx, `${i + 1}`, x + 2 + h / 2, by + (h - 7) / 2,
+        { color: on ? Kit.C.ink : '#d8bb8e', align: 'center' });
       drawText(ctx, ellipsize(c.text, w - h - 10), x + h + 2, by + (h - 7) / 2,
-        { color: Kit.C.ink });
+        { color: on ? Kit.C.ink : '#e8d2ac' });
       this.arows.push({ i, x, y: by, w, h });
     });
     const fy = y + ch.length * (h + gap) + 2;
@@ -652,19 +656,25 @@ export class TalkScreen {
       const on = i === this.pick;
       const said = this.said.has(tp.id);
       const bye = tp.id === 'bye';
-      // leaving is always the same colour and always the last thing on the
-      // list, so it is one press from anywhere in the conversation
-      Kit.button(ctx, bx, by, cw, h, null, {
-        hot: on && !bye, on: bye, sticky: false, tint: on ? '#f0b49c' : '#e29a80',
-      });
+      // Brass when you are on it, wood when you are not - and leaving is
+      // always rust and always the last thing on the list, so it is one
+      // press from anywhere in the conversation.
+      if (on || bye) {
+        Kit.button(ctx, bx, by, cw, h, null, {
+          hot: on && !bye, on: bye, tint: bye ? (on ? '#e8825c' : '#a85536') : undefined,
+        });
+      } else {
+        Kit.slab(ctx, bx, by, cw, h, { face: Kit.C.wood, lit: Kit.C.woodLit, dim: Kit.C.woodDim });
+      }
       // a tick in the corner of anything he has already told you about, so a
       // long list stops being a list you have to remember your way through
       if (said && !bye) {
-        Kit.px(ctx, bx + cw - 6, by + 3, 3, 1, Kit.C.frameDeep);
-        Kit.px(ctx, bx + cw - 5, by + 4, 1, 1, Kit.C.frameDeep);
+        const tick = on ? Kit.C.frameDeep : Kit.C.frame;
+        Kit.px(ctx, bx + cw - 6, by + 3, 3, 1, tick);
+        Kit.px(ctx, bx + cw - 5, by + 4, 1, 1, tick);
       }
       drawText(ctx, ellipsize(tp.ask || tp.word, cw - 10), bx + cw / 2, by + (h - 7) / 2,
-        { color: Kit.C.ink, align: 'center' });
+        { color: (on || bye) ? Kit.C.ink : '#e8d2ac', align: 'center' });
       rows.push({ i, x: bx, y: by, w: cw, h });
     });
     this.rows = rows;
