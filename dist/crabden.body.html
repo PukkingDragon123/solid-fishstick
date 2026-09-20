@@ -12627,10 +12627,7 @@ body {
       const g = this.game;
       if (c.take) {
         const job = QUEST_BY_ID[c.take];
-        if (job && g.quests.take(job)) {
-          g.ui?.say(`TAKEN: ${job.name}`, 3.4);
-          g.quests.tookT = 2.6;
-        }
+        if (job) g.quests.take(job);
       }
       c.then?.(g);
       this.arows = [];
@@ -19882,25 +19879,10 @@ body {
         return;
       }
       if (this.tamed) {
-        const orders = this.game.wildlife.orders;
-        if (orders === "ride") {
-          if (ad < 40 && !this.onShell) this.boardShell(crab);
-          else this.moveTo = crab.x + (this.shellU - 0.5) * 20;
-        } else if (orders === "guard") {
-          const foe = this.game.nearestHostile?.(crab.x, 190);
-          if (foe) {
-            this.moveTo = foe.x - Math.sign(foe.x - this.x) * 14;
-            this.mood = MOOD.HUNT;
-            return;
-          }
-          this.moveTo = crab.x + (crab.facing || 1) * (crab.m.shellW * 0.62 + 18);
-          this.mood = MOOD.FOLLOW;
-        } else {
-          this.mood = MOOD.FOLLOW;
-          const slot2 = this.uid % 5;
-          const back = crab.m.shellW * 0.62 + 14 + slot2 * 22;
-          this.moveTo = crab.x - (crab.facing || 1) * back;
-        }
+        this.mood = MOOD.FOLLOW;
+        const slot2 = this.uid % 5;
+        const back = crab.m.shellW * 0.62 + 14 + slot2 * 22;
+        this.moveTo = crab.x - (crab.facing || 1) * back;
         return;
       }
       if (crab && ad < 130 && this.game.garden) {
@@ -21498,7 +21480,6 @@ body {
       this.spawnT = 3;
       this.ambushT = 100;
       this.seen = /* @__PURE__ */ new Set();
-      this.orders = "follow";
     }
     get fleet() {
       return this.list.filter((c) => c.tamed && c.alive);
@@ -21594,7 +21575,6 @@ body {
       }
       for (let i = this.list.length - 1; i >= 0; i--) {
         const c = this.list[i];
-        c.orders = c.tamed ? this.orders : void 0;
         c.update(dt);
         const far = Math.abs(c.x - g.crab.x) > 620;
         if (!c.alive && (c.moodT > 300 || (c.eaten || 0) > 6 || Math.abs(c.x - g.crab.x) > 1100)) {
@@ -21674,12 +21654,6 @@ body {
       }
       return best;
     }
-    setOrders(o) {
-      this.orders = o;
-      for (const c of this.fleet) {
-        if (o !== "ride" && c.onShell) c.leaveShell();
-      }
-    }
     draw(ctx, cam, layer) {
       for (const c of this.list) {
         if (!cam.isVisible(c.x, c.y, 60)) continue;
@@ -21691,14 +21665,12 @@ body {
     toJSON() {
       return {
         seen: [...this.seen],
-        orders: this.orders,
         fleet: this.fleet.map((c) => ({ id: c.def.id, shellU: c.shellU }))
       };
     }
     fromJSON(d) {
       if (!d) return;
       this.seen = new Set(d.seen || []);
-      this.orders = d.orders || "follow";
       for (const f of d.fleet || []) {
         const c = this.spawn(f.id, this.game.crab.x + (Math.random() - 0.5) * 60);
         if (c) {
@@ -21875,7 +21847,7 @@ body {
         }
       }
       this.active = best;
-      if (best) this.hint = `${best.verb} ${best.name}`;
+      if (best) this.hint = String(best.verb).toUpperCase();
       if (g.economy.stat("warn") > 0) {
         const dir = g.crab.facing || 1;
         for (const p of this.near(cx + dir * 150, 130)) {
@@ -24329,7 +24301,7 @@ body {
       name: "CRAB",
       glyph: "crab",
       tint: "#e2b74a",
-      desc: "You steer, you dig, you plant. Everything an animal does with its own body."
+      desc: "Walk. Dig. Touch your own shell to plant."
     },
     {
       id: "hunt",
@@ -24337,8 +24309,8 @@ body {
       glyph: "claw",
       tint: "#e2564f",
       need: "hunt",
-      desc: "Three verbs and nothing else. Drag the claw to swing, hold to guard, roll to get out.",
-      got: "Something came at you, and the claw came up on its own."
+      desc: "Swing. Guard. Roll.",
+      got: "Something came at you."
     },
     {
       id: "spore",
@@ -24346,8 +24318,8 @@ body {
       glyph: "jet",
       tint: "#c98ade",
       need: "spore",
-      desc: "Hold to charge, release at pressure. A spore only takes in something willing.",
-      got: "The gland under your shell has filled. You can throw what is in it."
+      desc: "Hold to charge. Release at pressure.",
+      got: "The gland under your shell has filled."
     },
     {
       id: "hive",
@@ -24356,8 +24328,8 @@ body {
       tint: "#6fd8ee",
       need: "hive",
       skill: "command",
-      desc: "Everything on your nerve, and the nerve itself. Click one and you are it.",
-      got: "There are enough of them on your nerve now to hold them all at once."
+      desc: "Click one of yours and you are it.",
+      got: "There are enough of them on your nerve to hold at once."
     }
   ];
   var UI = class {
@@ -24389,7 +24361,6 @@ body {
       this.modeT = 0;
       this.valveHeld = false;
       this.valveTapped = false;
-      this.selected = null;
       this.t = 0;
       this.bloomShown = 0;
       this.codexPick = null;
@@ -24484,9 +24455,8 @@ body {
       this.game.hive?.hold(false);
       if (id !== "hive") this.game.hive && (this.game.hive.pick = null);
       this.mode = id;
-      this.selected = null;
       this.modeT = MODE_SWAP;
-      this.say(`${m.name}: ${m.desc}`, 4);
+      this.say(m.name, 1.6);
       this.game.audio?.play("ui");
     }
     // -- frame ----------------------------------------------------------------
@@ -24575,8 +24545,7 @@ body {
       if (this.placing) this._updatePlacing();
       this._updateDrag(dt);
       if (!this.drawerOpen && !this.paused) {
-        if (this.mode === "creature") this._updateCommand();
-        else if (this.mode === "hive") this._updateHive();
+        if (this.mode === "hive") this._updateHive();
       }
       const b = this.game.economy.nutrients;
       this.bloomShown = damp(this.bloomShown, b, 0.05, dt);
@@ -24663,7 +24632,7 @@ body {
         g.cam.free = false;
         g.cam.freeT = 0;
         g.cam.followEntity(g.crab);
-        this.say("You climb onto your own back. Nothing moves until you get down.", 4);
+        this.say("On your own back.", 4);
         g.audio?.play("uiBig");
       } else {
         if (this.savedZoom) g.cam.targetZoom = this.savedZoom;
@@ -24815,30 +24784,6 @@ body {
       if (best) {
         g.input.clicked = false;
         g.takeHive(best);
-        return;
-      }
-      if (g.hive.pick && g.hive.pick !== g.npc) {
-        g.input.clicked = false;
-        g.hive.pick.commanded = { x: w.x };
-        g.fx.spark(w.x, g.terrain.surfaceY(w.x), "#6fd8ee", 8, 22);
-      }
-    }
-    _updateCommand() {
-      const g = this.game;
-      if (!g.input.clicked) return;
-      const w = g.cam.screenToWorld(g.input.sx, g.input.sy);
-      const hit = g.wildlife.nearest(w.x, w.y, 26, (c) => c.tamed && c.alive);
-      if (hit) {
-        g.input.clicked = false;
-        this.selected = this.selected === hit ? null : hit;
-        this.say(this.selected ? `${hit.name}: where?` : "Stood down.");
-        g.audio?.play("ui");
-      } else if (this.selected) {
-        g.input.clicked = false;
-        this.selected.commanded = { x: w.x };
-        g.fx.spark(w.x, g.terrain.surfaceY(w.x), "#ffe9a8", 8, 22);
-        this.say(`${this.selected.name} on its way.`);
-        this.selected = null;
       }
     }
     // -- drawing --------------------------------------------------------------
@@ -24867,7 +24812,6 @@ body {
       if (this.game.work?.live && !this.touchEnabled) this._workBar(ctx, W, H);
       this._thumbBand(ctx, W, H);
       this._questNote(ctx, W, H);
-      this._den(ctx, W, H);
       if (this.toast) this._toast(ctx, W, H);
       if (this.game.taming?.live) this._songCard(ctx, W, H);
       if (this.drag) this._drawCarried(ctx, W, H);
@@ -24997,40 +24941,38 @@ body {
         this._questCall(ctx, W, H);
         return;
       }
-      this._noteBottom = (this.build > 5e-3 ? 6 : 56) + 34;
       const took = !done && q.tookT > 0;
       const prog = done ? null : q.progress;
       const label = done ? `${job.name}  ${job.gain}` : job.name;
-      const line = done ? "done" : job.note;
-      const w = Math.min(W - 16, Math.max(
-        132,
-        Math.max(textWidth(label), textWidth(line)) + 26
-      ));
-      const h = prog ? 34 : 28;
+      const w = Math.min(W - 16, Math.max(104, textWidth(label) + 26));
+      const h = prog ? 23 : 15;
       const x = 6, y = this.build > 5e-3 ? 6 : 56;
       const beat = done ? clamp01(q.doneT / 4) : took ? clamp01(q.tookT / 2.8) : 0;
-      const pop = 1 + easeOutCubic(clamp01(beat * 1.6)) * 0.06;
+      const pop = 1 + easeOutCubic(clamp01(beat * 1.6)) * 0.08;
       ctx.save();
       ctx.translate(x, y);
       ctx.scale(pop, pop);
       ctx.translate(-x, -y);
       const tint = done ? C.good : took ? C.warn : "#c8a05a";
       plaque(ctx, x, y, w, h, { tint });
-      drawNodeIcon(ctx, done ? "sun" : "hand", x + 8, y + 11, tint, 1);
-      drawText(ctx, done ? "DONE" : took ? "NEW JOB" : "JOB", x + 17, y + 4, { color: tint });
+      drawNodeIcon(ctx, done ? "sun" : "hand", x + 9, y + 7, tint, 1);
       drawText(
         ctx,
-        ellipsize(label, w - 26 - textWidth(done ? "DONE" : "JOB")),
-        x + w - 5,
+        ellipsize(label, w - 24),
+        x + 17,
         y + 4,
-        { color: "#f0e2c0", align: "right" }
+        { color: done ? "#d6f0b8" : "#f0e2c0" }
       );
-      drawText(ctx, ellipsize(line, w - 22), x + 17, y + 14, { color: "rgba(240,226,192,0.66)" });
       if (prog) {
-        const cnt = `${prog.have}/${prog.need}`;
-        const pw = w - 30 - textWidth(cnt);
-        gauge(ctx, x + 17, y + 24, pw, 5, clamp01(prog.have / prog.need), C.good);
-        drawText(ctx, cnt, x + w - 5, y + 23, { color: "rgba(240,226,192,0.66)", align: "right" });
+        gauge(
+          ctx,
+          x + 4,
+          y + h - 8,
+          w - 8,
+          5,
+          clamp01(prog.have / prog.need),
+          done ? C.good : C.warn
+        );
       }
       ctx.restore();
     }
@@ -25045,21 +24987,17 @@ body {
     _questCall(ctx, W, H) {
       const g = this.game;
       const q = g.quests;
-      this._noteBottom = (this.build > 5e-3 ? 6 : 56) + 24;
-      if (!q.next() || g.state !== "play" || g.npc?.hidden) {
-        this._noteBottom = 56;
-        return;
-      }
+      if (!q.next() || g.state !== "play" || g.npc?.hidden) return;
       const d = Math.abs(g.npc.x - g.crab.x);
       const near = d < 90;
       const x = 6, y = this.build > 5e-3 ? 6 : 56;
-      const label = near ? "HE HAS WORK - TALK TO HIM" : "DR. VESS HAS WORK FOR YOU";
-      const w = Math.min(W - 16, textWidth(label) + 38);
-      const h = 20;
+      const label = "WORK";
+      const w = near ? textWidth(label) + 24 : textWidth(label) + 42;
+      const h = 15;
       const pulse = 0.5 + 0.5 * Math.sin(this.t * 3);
       ctx.save();
       plaque(ctx, x, y, w, h, { tint: mixHex("#8a6a28", C.warn, pulse) });
-      drawNodeIcon(ctx, "call", x + 8, y + h / 2, C.warn, 1);
+      drawNodeIcon(ctx, "call", x + 9, y + h / 2, C.warn, 1);
       drawText(ctx, label, x + 17, y + (h - 7) / 2, { color: "#f0e2c0" });
       if (!near) {
         const east = g.npc.x > g.crab.x;
@@ -25070,111 +25008,13 @@ body {
         }
         drawText(
           ctx,
-          `${Math.round(d / 10)}m`,
-          x + w - 14,
+          `${Math.round(d / 10)}`,
+          x + w - 13,
           y + (h - 7) / 2,
           { color: "rgba(240,226,192,0.6)", align: "right" }
         );
       }
       ctx.restore();
-    }
-    /**
-     * THE DEN.
-     *
-     * Three numbers, always on: what is BUILT on your back, what is GROWING in
-     * it, and what has come to LIVE on you. They are the three things this game
-     * is, and until they were on the screen the game was a walk in a desert with
-     * some menus attached to it.
-     *
-     * Each one is a button. Press BUILT or GROWN and you are up on your own
-     * back where both of those happen; press TAME and the camera goes to the
-     * nearest thing that would have you. And when one of them is at zero it
-     * says the one thing that would fix that rather than saying "0".
-     */
-    _den(ctx, W, H) {
-      const g = this.game;
-      if (g.state !== "play" || this.buildOn) return;
-      if (this.compact(H)) return;
-      const gd = g.garden;
-      const builds = gd.plots.filter((p) => p.build).length;
-      const grown = gd.planted.length;
-      const ripe = gd.ripeCount || 0;
-      const tame = g.wildlife.fleet.length;
-      const near = g.wildlife.list.find((c) => c.alive && !c.tamed && !c.hostile && Math.abs(c.x - g.crab.x) < 190) || null;
-      const cols = [
-        {
-          icon: "nest",
-          n: builds,
-          name: "BUILT",
-          tint: C.warn,
-          empty: "build one",
-          body: "Structures on your shell. A kiln, a bench, a well - everything you make and everything that makes something is up there.",
-          run: () => this.toggleBuild("build")
-        },
-        {
-          icon: "sprout",
-          n: grown,
-          name: ripe ? `PICK ${ripe}` : "GROWN",
-          tint: C.good,
-          empty: "plant one",
-          body: "Plants in your shell. They drink out of your basin and they pay in nutrients.",
-          run: () => {
-            if (ripe) g.harvestAll();
-            else this.toggleBuild("flora");
-          }
-        },
-        {
-          icon: "call",
-          n: tame,
-          name: "TAME",
-          tint: C.cool,
-          empty: near ? "one is close" : "grow first",
-          body: "Animals that have decided to live on you. They come when there is something on your back worth coming for.",
-          run: () => {
-            if (near) {
-              g.cam.free = false;
-              g.cam.followEntity(near, false);
-              this.say(`${near.name}. Feed it and give it water.`, 3.2);
-            }
-          }
-        }
-      ];
-      const cw = 52, ch = 21, gap = 2;
-      const x0 = 6;
-      const y0 = Math.max(56, this._noteBottom || 56) + 3;
-      if (y0 + ch > H - 40) return;
-      cols.forEach((c, i) => {
-        const x = x0 + i * (cw + gap);
-        const hot = this._hit(x, y0, cw, ch);
-        const zero = c.n === 0;
-        const pulse = zero ? 0.5 + 0.5 * Math.sin(this.t * 2.6 + i) : 0;
-        button(ctx, x, y0, cw, ch, null, {
-          hot,
-          down: hot && g.input.down,
-          on: !zero && c.n > 0 && i === 1 && ripe > 0,
-          tint: zero ? mixHex(C.frame, c.tint, pulse * 0.5) : void 0
-        });
-        const o = hot && g.input.down ? 1 : 0;
-        drawNodeIcon(ctx, c.icon, x + 8 + o, y0 + 7 + o, C.ink, 1);
-        drawText(ctx, zero ? "-" : `${c.n}`, x + 16 + o, y0 + 3 + o, { color: C.ink });
-        drawText(
-          ctx,
-          ellipsize(c.name, cw - 4),
-          x + cw / 2 + o,
-          y0 + ch - 9 + o,
-          { color: zero ? "rgba(36,28,21,0.62)" : C.ink, align: "center" }
-        );
-        if (hot) {
-          this.hover = { title: c.name, body: zero ? `${c.body}
-
-You have none: ${c.empty}.` : c.body };
-          if (g.input.clicked) {
-            g.input.clicked = false;
-            g.audio?.play("ui");
-            c.run();
-          }
-        }
-      });
     }
     /**
      * A mode arriving.
@@ -25192,11 +25032,9 @@ You have none: ${c.empty}.` : c.body };
       const m = u.m;
       const k = u.t < 0.34 ? easeOutCubic(u.t / 0.34) : u.t > 3.5 ? 1 - easeOutCubic(clamp01((u.t - 3.5) / 0.5)) : 1;
       if (k <= 0.01) return;
-      const cw = Math.min(290, W - 36);
-      const lines = wrapText(`${m.got}
-
-${m.desc}`, cw - 62);
-      const ch = Math.max(74, 13 + 30 + Math.max(lines.length * LINE_H, 42) + 13);
+      const cw = Math.min(250, W - 36);
+      const lines = wrapText(m.desc, cw - 62);
+      const ch = Math.max(66, 13 + 10 + Math.max(lines.length * LINE_H, 40) + 6);
       const cx = Math.round((W - cw) / 2);
       const cy = Math.round(H * 0.3 - ch / 2 + (1 - k) * 14);
       ctx.globalAlpha = k * 0.62;
@@ -25215,19 +25053,11 @@ ${m.desc}`, cw - 62);
         2
       );
       const tx = page.x + 48;
-      let ty = page.y + 3;
+      let ty = page.y + Math.round((40 - lines.length * LINE_H) / 2) + 2;
       for (const ln of lines) {
         drawText(ctx, ln, tx, ty, { color: C.ink });
         ty += LINE_H;
       }
-      rule(ctx, page.x + 2, page.y + page.h - 12, page.w - 4);
-      drawText(
-        ctx,
-        this.touchEnabled ? "the column, bottom left" : "M, or the column bottom left",
-        page.x + page.w - 3,
-        page.y + page.h - 9,
-        { color: C.inkSoft, align: "right" }
-      );
       ctx.globalAlpha = 1;
     }
     /**
@@ -26025,7 +25855,7 @@ Coming back.` };
         for (let i = 0; i < Math.min(9, fleet.length); i++) {
           const c = fleet[i];
           const cx = W - 8 - (i + 1) * 8, cy = oy + 32;
-          ctx.fillStyle = c === this.selected ? "#ffe9a8" : c.onShell ? "rgba(140,196,104,0.95)" : "rgba(226,183,74,0.9)";
+          ctx.fillStyle = c.onShell ? "rgba(140,196,104,0.95)" : "rgba(226,183,74,0.9)";
           ctx.fillRect(cx, cy, 6, 6);
           ctx.strokeStyle = OUT2;
           ctx.strokeRect(cx - 0.5, cy - 0.5, 7, 7);
@@ -26102,18 +25932,15 @@ Coming back.` };
       if (this.touchEnabled) return;
       const hint = g.actionHint();
       if (hint && !this.touchEnabled) {
-        drawText(ctx, hint, W / 2, H - 30, { color: INK, align: "center", outline: true, outlineColor: OUT2 });
-      }
-      if (!this.touchEnabled) this._keys(ctx, W, H);
-      if (this.selected) {
         drawText(
           ctx,
-          `${this.selected.name} - where?`,
+          `E   ${hint}`,
           W / 2,
-          H - 42,
-          { color: "#ffe9a8", align: "center", outline: true, outlineColor: OUT2 }
+          H - 30,
+          { color: INK, align: "center", outline: true, outlineColor: OUT2 }
         );
       }
+      if (!this.touchEnabled) this._keys(ctx, W, H);
     }
     /**
      * The controls, as keycaps rather than a sentence. Five of them, centred,
@@ -26132,34 +25959,34 @@ Coming back.` };
       const near = this._hit(0, H - 16, W, 16);
       const a = near ? 1 : clamp01(1.3 - Math.max(0, age - 100) / 90);
       if (a < 0.04) return;
+      const wa = near ? 1 : clamp01(1.2 - Math.max(0, age - 30) / 30);
       const capW = caps.map(([k]) => Math.max(11, textWidth(k) + 6));
-      const wordW = caps.map(([, t]) => textWidth(t));
-      const gap = 4, pad = 11;
-      const total = capW.reduce((t, w, i) => t + w + gap + wordW[i], 0) + pad * (caps.length - 1);
+      const wordW = caps.map(([, t], i) => wa > 0.04 ? textWidth(t) : 0);
+      const gap = 4, pad = wa > 0.04 ? 11 : 6;
+      const total = capW.reduce((t, w, i) => t + w + (wordW[i] ? gap + wordW[i] : 0), 0) + pad * (caps.length - 1);
       let x = Math.round(W / 2 - total / 2);
       const y = H - 14;
       ctx.save();
       ctx.globalAlpha = Math.min(1, a);
       caps.forEach(([k, word], i) => {
         const w = capW[i];
-        slab(
-          ctx,
-          x,
-          y,
-          w,
-          11,
-          { face: C.frame, lit: C.frameLit, dim: C.frameDim }
-        );
+        slab(ctx, x, y, w, 11, {});
         drawText(ctx, k, x + w / 2, y + 2, { color: C.ink, align: "center" });
-        x += w + gap;
-        drawText(
-          ctx,
-          word,
-          x,
-          y + 2,
-          { color: "rgba(196,172,128,0.92)", outline: true, outlineColor: OUT2 }
-        );
-        x += wordW[i] + pad;
+        x += w;
+        if (wordW[i]) {
+          x += gap;
+          ctx.globalAlpha = Math.min(1, a) * wa;
+          drawText(
+            ctx,
+            word,
+            x,
+            y + 2,
+            { color: "rgba(196,172,128,0.92)", outline: true, outlineColor: OUT2 }
+          );
+          ctx.globalAlpha = Math.min(1, a);
+          x += wordW[i];
+        }
+        x += pad;
       });
       ctx.restore();
     }
@@ -26945,7 +26772,7 @@ Coming back.` };
       const packBottom = y + 13 + packRows * (S + gap);
       let noteLines = [];
       if (!bag.length) {
-        noteLines = wrapText(wide ? "Empty. Put him on a seam and let him swing a pick at it." : "Empty. Put him on a seam.", packW - 2);
+        noteLines = wrapText("Empty.", packW - 2);
         noteLines.forEach((l, n) => drawText(ctx, l, x, packBottom + 2 + n * LINE_H, { color: C.inkSoft }));
       }
       const lx = wide ? x + packW + 7 : x;
@@ -27081,46 +26908,24 @@ Coming back.` };
       const all = fleet.concat(held.filter((c) => !fleet.includes(c)));
       if (!all.length) {
         const cy = y + h / 2;
-        slot(ctx, x + w / 2 - 17, cy - 48, 34, 34);
-        drawNodeIcon(ctx, "nest", x + w / 2, cy - 31, "#9ad86a", 2);
+        slot(ctx, x + w / 2 - 17, cy - 30, 34, 34);
+        drawNodeIcon(ctx, "nest", x + w / 2, cy - 13, "#9ad86a", 2);
         drawText(
           ctx,
-          "NOTHING LIVES ON YOU YET",
+          "GROW SOMETHING AND THEY COME",
           x + w / 2,
-          cy - 8,
-          { color: C.ink, align: "center" }
-        );
-        wrapText("Things move in when there is a reason to. Grow something on your back, keep water in the basin, and the desert comes to you - then win one over with fruit and water and it stays.", Math.min(290, w - 16)).forEach((l, n) => drawText(
-          ctx,
-          l,
-          x + w / 2,
-          cy + 6 + n * LINE_H,
+          cy + 12,
           { color: C.inkSoft, align: "center" }
-        ));
+        );
         return;
       }
-      const OR = [["follow", "FOLLOW"], ["ride", "RIDE"], ["stay", "HOLD"]];
-      const obh = this.touchEnabled ? 18 : 15;
-      const obw = Math.min(54, Math.floor((w - 6) / 3));
-      OR.forEach(([id, name], n) => {
-        const ox = x + n * (obw + 3);
-        const on = g.wildlife.orders === id;
-        const hot = this._hit(ox, y, obw, obh);
-        button(ctx, ox, y, obw, obh, name, { on, hot, sticky: true });
-        if (hot && g.input.clicked) {
-          g.input.clicked = false;
-          g.wildlife.setOrders(id);
-          this.say(`Everything on you: ${name.toLowerCase()}.`, 2.4);
-          g.audio?.play("ui");
-        }
-      });
-      const top = y + obh + 5;
+      const top = y;
       const cols = w > 300 ? 2 : 1;
       const gap = 5;
       const cw = Math.floor((w - gap * (cols - 1)) / cols);
       const ch = 50;
       const rows = Math.ceil(all.length / cols);
-      this.scroll = clamp(this.scroll, 0, Math.max(0, rows * (ch + gap) - (h - obh - 5)));
+      this.scroll = clamp(this.scroll, 0, Math.max(0, rows * (ch + gap) - h));
       all.forEach((c, n) => {
         const cxp = x + n % cols * (cw + gap);
         const cyp = top + Math.floor(n / cols) * (ch + gap) - this.scroll;
@@ -27157,27 +26962,24 @@ Coming back.` };
         const where = puppet ? "ridden" : c.onShell ? "aboard" : `${Math.round(Math.abs(c.x - g.crab.x) / 10)}m ${c.x > g.crab.x ? "east" : "west"}`;
         drawText(ctx, where, tx, cyp + 17, { color: C.inkSoft });
         const bh = this.touchEnabled ? 17 : 14;
-        const bw = Math.min(46, Math.floor((tw2 - 4) / 2));
+        const bw = Math.min(56, tw2);
         const byb = cyp + ch - bh - 5;
-        [
-          [on ? "LET GO" : "DRIVE", () => {
-            if (on) this.release();
-            else this.drive(c);
-          }],
-          ["CALL", () => {
-            c.commanded = { x: g.crab.x + (g.crab.facing || 1) * 18 };
-            this.say(`${c.name} on its way.`, 2.4);
-          }]
-        ].forEach(([name, run], m) => {
-          const bxb = tx + m * (bw + 4);
-          const hot = this._hit(bxb, byb, bw, bh);
-          button(ctx, bxb, byb, bw, bh, name, { hot, down: hot && g.input.down });
-          if (hot && g.input.clicked) {
-            g.input.clicked = false;
-            run();
-            g.audio?.play("ui");
-          }
-        });
+        const hot = this._hit(tx, byb, bw, bh);
+        button(
+          ctx,
+          tx,
+          byb,
+          bw,
+          bh,
+          on ? "LET GO" : "DRIVE",
+          { hot, down: hot && g.input.down }
+        );
+        if (hot && g.input.clicked) {
+          g.input.clicked = false;
+          if (on) this.release();
+          else this.drive(c);
+          g.audio?.play("ui");
+        }
         if (this._hit(cxp, cyp, cw, ch - bh - 8)) {
           this.hover = { title: c.name, body: c.def.desc };
         }
@@ -27241,7 +27043,7 @@ Coming back.` };
       );
       drawText(
         ctx,
-        `${gd.load.toFixed(1)}/${gd.capacity.toFixed(0)} carried`,
+        `${gd.load.toFixed(1)}/${gd.capacity.toFixed(0)}`,
         inX,
         ry + 8,
         { color: C.inkSoft }
@@ -27265,7 +27067,7 @@ Coming back.` };
       R(ctx, inX - 2, cy - 2, inW + 4, 50, C.pageAlt);
       rule(ctx, inX - 2, cy - 2, inW + 4);
       if (!def3) {
-        wrapText("Pick something. Then pick a bed on your own shell.", inW - 4).forEach((l, i) => drawText(ctx, l, inX + 2, cy + 3 + i * LINE_H, { color: C.inkSoft }));
+        drawText(ctx, "Pick one.", inX + 2, cy + 3, { color: C.inkSoft });
       } else {
         const isB = this.buildTab === "build";
         const unlock = isB ? { ok: true } : g.unlockOf(def3);
@@ -27480,15 +27282,24 @@ Coming back.` };
       const g = this.game;
       if (!g.vessClose) {
         const d = Math.round(Math.abs(g.npc.x - g.crab.x) / 10);
-        drawText(ctx, "HIS NOTEBOOK IS NOT HERE", x, y + 6, { color: C.gold });
-        wrapText(`The field notes are Dr. Vess's, and he is carrying them. Get to him - he is ${d}m ${g.npc.x > g.crab.x ? "east" : "west"} - and read over his shoulder.`, w - 4).forEach((l, i) => drawText(ctx, l, x, y + 20 + i * LINE_H, { color: C.inkSoft }));
-        wrapText("F calls him over. He will follow you, and ride on you once you are big enough to carry him.", w - 4).forEach((l, i) => drawText(ctx, l, x, y + 62 + i * LINE_H, { color: PAPER_FAINT }));
+        drawText(
+          ctx,
+          "HE HAS THE NOTES",
+          x + w / 2,
+          y + h / 2 - 12,
+          { color: C.gold, align: "center" }
+        );
+        drawText(
+          ctx,
+          `${d}m ${g.npc.x > g.crab.x ? "east" : "west"}   -   F calls him`,
+          x + w / 2,
+          y + h / 2 + 2,
+          { color: C.inkSoft, align: "center" }
+        );
         return;
       }
       if (this.codexPick) return this._codexEntry(ctx, x, y, w, h);
-      drawText(ctx, "VESS'S FIELD NOTES", x, y, { color: C.inkSoft });
-      drawText(ctx, "watch a thing for long enough and he writes it down", x, y + 9, { color: PAPER_FAINT });
-      let ry = y + 22 - this.scroll;
+      let ry = y + 4 - this.scroll;
       let total = 0;
       if (ry > y - 12 && ry < y + h) drawText(ctx, "THE BASIN", x, ry, { color: "#7fd0dd" });
       ry += 11;
@@ -27800,9 +27611,6 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
             hold: true
           });
         }
-        if (this.mode === "direct") {
-          wanted.push({ icon: "sprout", label: "PLANT", key: "b", colour: "#9ad86a" });
-        }
       }
       const gap = 5;
       const plate = (b, bx, by, bw, bh) => {
@@ -27876,7 +27684,7 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
         }
         hintY = by - 12;
       }
-      if (hint) {
+      if (hint && !wanted.some((b) => b.label === hint)) {
         drawText(
           ctx,
           hint,
@@ -29458,24 +29266,26 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
       this.pumpStroke();
     }
     /** What E does right now, and what the prompt says. */
+    /**
+     * What the thing in front of you is, in ONE OR TWO WORDS.
+     *
+     * These used to be sentences - "Sing with the Dune Skink", "Study the
+     * saltgrass", "C: talk to Dr. Vess" - a line of prose across the bottom of
+     * the screen every time you walked past anything. The button beside it
+     * already says ACT. This only has to say what.
+     */
     actionHint() {
       if (this.state !== "play") return null;
       const c = this.crab;
-      const foe = this.wildlife.nearest(c.x, c.y, 44, (q) => q.hostile);
-      if (foe) return `Strike ${foe.def.name}`;
+      if (this.wildlife.nearest(c.x, c.y, 44, (q) => q.hostile)) return "STRIKE";
       const wildOne = this.wildlife.nearest(c.x, c.y, 46, (q) => !q.hostile && !q.tamed);
-      if (wildOne) {
-        const why = this.taming.why(wildOne);
-        return why ? `${wildOne.def.name}: ${why}` : `Sing with ${wildOne.def.name}`;
-      }
-      const vent = this.fountains.reachable(c.x);
-      if (vent) return "Break the cap";
-      const mast = this.world.mastAt(c.x + (c.facing || 1) * 16);
-      if (mast) return "Cut the mast";
+      if (wildOne) return this.taming.why(wildOne) ? null : "SING";
+      if (this.fountains.reachable(c.x)) return "BREAK";
+      if (this.world.mastAt(c.x + (c.facing || 1) * 16)) return "CUT";
       const wild = this.world.wildPlantAt(c.x + (c.facing || 1) * 12, 22);
-      if (wild && FLORA_BY_ID[wild.id]) return `Study the ${FLORA_BY_ID[wild.id].name}`;
+      if (wild && FLORA_BY_ID[wild.id]) return "STUDY";
       if (this.encounters.hint) return this.encounters.hint;
-      if (Math.abs(this.npc.x - c.x) < TALK_RANGE) return "C: talk to Dr. Vess";
+      if (Math.abs(this.npc.x - c.x) < TALK_RANGE) return "TALK";
       return null;
     }
     /** Pick the ripest thing on your back, if anything is ready. */
@@ -29529,7 +29339,7 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
       this.economy.nutrients += res.amount;
       if (res.parasite) {
         this.economy.parasites += res.parasite;
-        if (!quiet) this.ui.say("A parasite. Put it on something and see through its eyes. (X)", 6);
+        if (!quiet) this.ui.say("A parasite. X puts it on something.", 6);
       }
       const w = this.garden.plotWorld(plot);
       this.fx.popup(
@@ -29539,7 +29349,7 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
         res.parasite ? "#d79ae8" : "#cfe89a"
       );
       if (res.seed) this.fx.popup(w.x, w.y - 18, `+${res.seed} seed`, "#e0c188");
-      if (res.spent && !quiet) this.ui.say("That was its one crop. The bed is yours again.", 3.5);
+      if (res.spent && !quiet) this.ui.say("One crop only. The bed is free.", 3.5);
       this.fx.spark(w.x, w.y - 3, res.parasite ? "#c98ade" : "#e2f0a8", 14, 44);
       this.audio.play("pickup", { pitch: 0.9 + Math.random() * 0.3 });
       this.cam.shake(1.2);
@@ -29748,7 +29558,7 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
     infest() {
       const c = this.crab;
       if (this.economy.parasites <= 0) {
-        this.ui.say("You have no parasites. Grow a mindcap and pick it.");
+        this.ui.say("No parasites. Grow a mindcap.");
         return false;
       }
       const target = this.wildlife.nearest(c.x, c.y, 90, (q) => q.alive && !q.puppet && !q.tamed);
@@ -29766,7 +29576,7 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
       this.fx.popup(target.x, target.y - 16, "taken", "#d79ae8");
       this.audio.play("evolve");
       this.cam.shake(3);
-      this.ui.say(`${target.def.name} is yours. Open FLEET and drive it.`, 5);
+      this.ui.say(`${target.def.name} is yours.`, 5);
       this.npc.say("You just put one of your own children inside a lizard. I am writing that down and then I am going to think about it for a long time.", 7);
       this.economy.markDirty();
       return true;
@@ -29775,11 +29585,11 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
     incubateBest() {
       const have = Object.entries(this.relics || {}).filter(([, n]) => n > 0);
       if (!have.length) {
-        this.ui.say("Nothing in your pack. Dig something up first.");
+        this.ui.say("Pack is empty.");
         return;
       }
       if (this.garden.pond < 0.25) {
-        this.ui.say("Your basin is dry. Nothing will develop in it.");
+        this.ui.say("Basin is dry.");
         return;
       }
       const [id] = have.sort((a, b) => (RELIC_BY_ID[b[0]]?.incubate || 0) - (RELIC_BY_ID[a[0]]?.incubate || 0))[0];
@@ -29806,7 +29616,7 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
         made.trust = 1;
         made.hatched = true;
         this.wildlife.fleet.push(made);
-        this.ui.say(`${made.def.name}. Out of the ${relic.kind}. It is alive.`, 7);
+        this.ui.say(`${made.def.name}. Alive.`, 7);
         this.npc.say("It hatched. A thousand years in a rock and it hatched. I am going to need a bigger notebook.", 8);
         this.economy.markDirty();
       }
@@ -29839,7 +29649,7 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
             this.audio.play("discover");
             const u = def3.unlock?.study;
             if (u !== void 0 && before < u && before + 1 >= u) {
-              this.ui.say(`${def3.name}: you know this one now. +${seed} seed.`, 4.5);
+              this.ui.say(`${def3.name}  +${seed} seed`, 4.5);
               this.npc?.say(`${def3.name}. Write that down - we can grow that.`, 4.5, 4);
             } else {
               this.ui.say(`${def3.name}: +${seed} seed.`, 3);
@@ -29980,7 +29790,7 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
           } else {
             this.npc.say(res.relic.desc, 7);
           }
-          this.ui.say(`${res.relic.name}. Put it in your basin (K) and keep the water up.`, 6);
+          this.ui.say(`${res.relic.name}. K puts it in the basin.`, 6);
         }
       });
     }
@@ -30200,7 +30010,7 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
             if (w === this.npc) {
               this.npc.say(r.clean ? "In, and in properly. Now water it, or all of that was me digging a hole." : "In. Not my finest hole. Water it.", 6);
             } else {
-              this.ui.say("In. Now water it - nothing happens until you do.", 5);
+              this.ui.say("In. Water it.", 5);
             }
             this.teach(4);
           }
@@ -30405,7 +30215,7 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
     onDown() {
       if (this.state === "dead") return;
       this.state = "dead";
-      this.ui.say("You pull in and stop. The desert takes what it takes.", 8);
+      this.ui.say("You pull in and stop.", 8);
     }
     onCreatureDown(c) {
       if (!c.hostile) return;

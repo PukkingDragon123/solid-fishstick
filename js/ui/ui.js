@@ -57,16 +57,16 @@ const BUILD_TABS = [
  */
 export const MODES = [
   { id: 'direct', name: 'CRAB', glyph: 'crab', tint: '#e2b74a',
-    desc: 'You steer, you dig, you plant. Everything an animal does with its own body.' },
+    desc: 'Walk. Dig. Touch your own shell to plant.' },
   { id: 'hunt', name: 'HUNT', glyph: 'claw', tint: '#e2564f', need: 'hunt',
-    desc: 'Three verbs and nothing else. Drag the claw to swing, hold to guard, roll to get out.',
-    got: 'Something came at you, and the claw came up on its own.' },
+    desc: 'Swing. Guard. Roll.',
+    got: 'Something came at you.' },
   { id: 'spore', name: 'SPORE', glyph: 'jet', tint: '#c98ade', need: 'spore',
-    desc: 'Hold to charge, release at pressure. A spore only takes in something willing.',
-    got: 'The gland under your shell has filled. You can throw what is in it.' },
+    desc: 'Hold to charge. Release at pressure.',
+    got: 'The gland under your shell has filled.' },
   { id: 'hive', name: 'HIVE', glyph: 'link', tint: '#6fd8ee', need: 'hive', skill: 'command',
-    desc: 'Everything on your nerve, and the nerve itself. Click one and you are it.',
-    got: 'There are enough of them on your nerve now to hold them all at once.' },
+    desc: 'Click one of yours and you are it.',
+    got: 'There are enough of them on your nerve to hold at once.' },
 ];
 
 export class UI {
@@ -98,7 +98,6 @@ export class UI {
     this.modeT = 0;
     this.valveHeld = false;
     this.valveTapped = false;
-    this.selected = null;        // a commanded creature
     this.t = 0;
     this.bloomShown = 0;
     this.codexPick = null;
@@ -191,12 +190,11 @@ export class UI {
     this.game.hive?.hold(false);
     if (id !== 'hive') this.game.hive && (this.game.hive.pick = null);
     this.mode = id;
-    this.selected = null;
     // A mode change swapped one set of controls for another between two
     // frames, which reads as a glitch rather than as putting something down
     // and picking something else up. So the bar goes out and comes back.
     this.modeT = MODE_SWAP;
-    this.say(`${m.name}: ${m.desc}`, 4);
+    this.say(m.name, 1.6);
     this.game.audio?.play('ui');
   }
 
@@ -279,8 +277,7 @@ export class UI {
     this._updateDrag(dt);
     // fleet mode: click a creature, then click the ground to send it
     if (!this.drawerOpen && !this.paused) {
-      if (this.mode === 'creature') this._updateCommand();
-      else if (this.mode === 'hive') this._updateHive();
+      if (this.mode === 'hive') this._updateHive();
     }
 
     const b = this.game.economy.nutrients;
@@ -352,7 +349,7 @@ export class UI {
       g.cam.free = false;
       g.cam.freeT = 0;
       g.cam.followEntity(g.crab);
-      this.say('You climb onto your own back. Nothing moves until you get down.', 4);
+      this.say('On your own back.', 4);
       g.audio?.play('uiBig');
     } else {
       if (this.savedZoom) g.cam.targetZoom = this.savedZoom;
@@ -490,31 +487,10 @@ export class UI {
       const d = Math.hypot(q.x - w.x, (q.y - 8) - w.y);
       if (d < bd) { bd = d; best = q; }
     }
-    if (best) { g.input.clicked = false; g.takeHive(best); return; }
-    if (g.hive.pick && g.hive.pick !== g.npc) {
-      g.input.clicked = false;
-      g.hive.pick.commanded = { x: w.x };
-      g.fx.spark(w.x, g.terrain.surfaceY(w.x), '#6fd8ee', 8, 22);
-    }
-  }
-
-  _updateCommand() {
-    const g = this.game;
-    if (!g.input.clicked) return;
-    const w = g.cam.screenToWorld(g.input.sx, g.input.sy);
-    const hit = g.wildlife.nearest(w.x, w.y, 26, (c) => c.tamed && c.alive);
-    if (hit) {
-      g.input.clicked = false;
-      this.selected = this.selected === hit ? null : hit;
-      this.say(this.selected ? `${hit.name}: where?` : 'Stood down.');
-      g.audio?.play('ui');
-    } else if (this.selected) {
-      g.input.clicked = false;
-      this.selected.commanded = { x: w.x };
-      g.fx.spark(w.x, g.terrain.surfaceY(w.x), '#ffe9a8', 8, 22);
-      this.say(`${this.selected.name} on its way.`);
-      this.selected = null;
-    }
+    // Click one and you ARE it. Clicking the sand used to send it walking to
+    // a pin instead, which is a second way of moving that is not the way you
+    // move anything else in this game.
+    if (best) { g.input.clicked = false; g.takeHive(best); }
   }
 
   // -- drawing --------------------------------------------------------------
@@ -553,7 +529,6 @@ export class UI {
     if (this.game.work?.live && !this.touchEnabled) this._workBar(ctx, W, H);
     this._thumbBand(ctx, W, H);
     this._questNote(ctx, W, H);
-    this._den(ctx, W, H);
     if (this.toast) this._toast(ctx, W, H);
     if (this.game.taming?.live) this._songCard(ctx, W, H);
     if (this.drag) this._drawCarried(ctx, W, H);
@@ -670,19 +645,19 @@ export class UI {
     // Nothing on, and there IS something on: say so, and say where he is.
     // A job you never heard about is a job that does not exist.
     if (!job) { this._questCall(ctx, W, H); return; }
-    this._noteBottom = (this.build > 0.005 ? 6 : 56) + 34;
 
     const took = !done && q.tookT > 0;
     const prog = done ? null : q.progress;
+    // ONE LINE and a bar. It used to carry a word for the kind of thing it
+    // was, the name of the job, a sentence describing the job and a count -
+    // four pieces of text for one fact. The name IS the description.
     const label = done ? `${job.name}  ${job.gain}` : job.name;
-    const line = done ? 'done' : job.note;
-    const w = Math.min(W - 16, Math.max(132,
-      Math.max(textWidth(label), textWidth(line)) + 26));
-    const h = prog ? 34 : 28;
+    const w = Math.min(W - 16, Math.max(104, textWidth(label) + 26));
+    const h = prog ? 23 : 15;
     const x = 6, y = this.build > 0.005 ? 6 : 56;
     // landing and finishing both get a beat where the card is bigger and lit
     const beat = done ? clamp01(q.doneT / 4) : took ? clamp01(q.tookT / 2.8) : 0;
-    const pop = 1 + easeOutCubic(clamp01(beat * 1.6)) * 0.06;
+    const pop = 1 + easeOutCubic(clamp01(beat * 1.6)) * 0.08;
 
     ctx.save();
     ctx.translate(x, y);
@@ -690,17 +665,12 @@ export class UI {
     ctx.translate(-x, -y);
     const tint = done ? K.C.good : took ? K.C.warn : '#c8a05a';
     K.plaque(ctx, x, y, w, h, { tint });
-    drawNodeIcon(ctx, done ? 'sun' : 'hand', x + 8, y + 11, tint, 1);
-    drawText(ctx, done ? 'DONE' : took ? 'NEW JOB' : 'JOB', x + 17, y + 4, { color: tint });
-    drawText(ctx, ellipsize(label, w - 26 - textWidth(done ? 'DONE' : 'JOB')),
-      x + w - 5, y + 4, { color: '#f0e2c0', align: 'right' });
-    drawText(ctx, ellipsize(line, w - 22), x + 17, y + 14, { color: 'rgba(240,226,192,0.66)' });
-    // and how far through it you are, when it is a thing that can be counted
+    drawNodeIcon(ctx, done ? 'sun' : 'hand', x + 9, y + 7, tint, 1);
+    drawText(ctx, ellipsize(label, w - 24), x + 17, y + 4,
+      { color: done ? '#d6f0b8' : '#f0e2c0' });
     if (prog) {
-      const cnt = `${prog.have}/${prog.need}`;
-      const pw = w - 30 - textWidth(cnt);
-      K.gauge(ctx, x + 17, y + 24, pw, 5, clamp01(prog.have / prog.need), K.C.good);
-      drawText(ctx, cnt, x + w - 5, y + 23, { color: 'rgba(240,226,192,0.66)', align: 'right' });
+      K.gauge(ctx, x + 4, y + h - 8, w - 8, 5,
+        clamp01(prog.have / prog.need), done ? K.C.good : K.C.warn);
     }
     ctx.restore();
   }
@@ -716,18 +686,19 @@ export class UI {
   _questCall(ctx, W, H) {
     const g = this.game;
     const q = g.quests;
-    this._noteBottom = (this.build > 0.005 ? 6 : 56) + 24;
-    if (!q.next() || g.state !== 'play' || g.npc?.hidden) { this._noteBottom = 56; return; }
+    if (!q.next() || g.state !== 'play' || g.npc?.hidden) return;
     const d = Math.abs(g.npc.x - g.crab.x);
+    // Two words and an arrow. It used to be a whole sentence, and a sentence
+    // that is always on the screen stops being read on the second day.
     const near = d < 90;
     const x = 6, y = this.build > 0.005 ? 6 : 56;
-    const label = near ? 'HE HAS WORK - TALK TO HIM' : 'DR. VESS HAS WORK FOR YOU';
-    const w = Math.min(W - 16, textWidth(label) + 38);
-    const h = 20;
+    const label = 'WORK';
+    const w = near ? textWidth(label) + 24 : textWidth(label) + 42;
+    const h = 15;
     const pulse = 0.5 + 0.5 * Math.sin(this.t * 3);
     ctx.save();
     K.plaque(ctx, x, y, w, h, { tint: mixHex('#8a6a28', K.C.warn, pulse) });
-    drawNodeIcon(ctx, 'call', x + 8, y + h / 2, K.C.warn, 1);
+    drawNodeIcon(ctx, 'call', x + 9, y + h / 2, K.C.warn, 1);
     drawText(ctx, label, x + 17, y + (h - 7) / 2, { color: '#f0e2c0' });
     // which way, and how far
     if (!near) {
@@ -737,83 +708,10 @@ export class UI {
         const ax = Math.round(x + w - 9 + (east ? k : -k));
         ctx.fillRect(ax, Math.round(y + h / 2 - k), 1, 1 + k * 2);
       }
-      drawText(ctx, `${Math.round(d / 10)}m`, x + w - 14, y + (h - 7) / 2,
+      drawText(ctx, `${Math.round(d / 10)}`, x + w - 13, y + (h - 7) / 2,
         { color: 'rgba(240,226,192,0.6)', align: 'right' });
     }
     ctx.restore();
-  }
-
-  /**
-   * THE DEN.
-   *
-   * Three numbers, always on: what is BUILT on your back, what is GROWING in
-   * it, and what has come to LIVE on you. They are the three things this game
-   * is, and until they were on the screen the game was a walk in a desert with
-   * some menus attached to it.
-   *
-   * Each one is a button. Press BUILT or GROWN and you are up on your own
-   * back where both of those happen; press TAME and the camera goes to the
-   * nearest thing that would have you. And when one of them is at zero it
-   * says the one thing that would fix that rather than saying "0".
-   */
-  _den(ctx, W, H) {
-    const g = this.game;
-    if (g.state !== 'play' || this.buildOn) return;
-    // A phone on its side has no spare height at all, and three tiles across
-    // the top of it land on the mode bar's own readout.
-    if (this.compact(H)) return;
-    const gd = g.garden;
-    const builds = gd.plots.filter((p) => p.build).length;
-    const grown = gd.planted.length;
-    const ripe = gd.ripeCount || 0;
-    const tame = g.wildlife.fleet.length;
-    // the nearest wild thing that would actually have you, which is the one
-    // worth pointing the camera at
-    const near = g.wildlife.list.find((c) => c.alive && !c.tamed && !c.hostile
-      && Math.abs(c.x - g.crab.x) < 190) || null;
-
-    const cols = [
-      { icon: 'nest', n: builds, name: 'BUILT', tint: K.C.warn,
-        empty: 'build one', body: 'Structures on your shell. A kiln, a bench, a well - everything you make and everything that makes something is up there.',
-        run: () => this.toggleBuild('build') },
-      { icon: 'sprout', n: grown, name: ripe ? `PICK ${ripe}` : 'GROWN', tint: K.C.good,
-        empty: 'plant one', body: 'Plants in your shell. They drink out of your basin and they pay in nutrients.',
-        run: () => { if (ripe) g.harvestAll(); else this.toggleBuild('flora'); } },
-      { icon: 'call', n: tame, name: 'TAME', tint: K.C.cool,
-        empty: near ? 'one is close' : 'grow first',
-        body: 'Animals that have decided to live on you. They come when there is something on your back worth coming for.',
-        run: () => { if (near) { g.cam.free = false; g.cam.followEntity(near, false); this.say(`${near.name}. Feed it and give it water.`, 3.2); } } },
-    ];
-
-    const cw = 52, ch = 21, gap = 2;
-    const x0 = 6;
-    const y0 = Math.max(56, this._noteBottom || 56) + 3;
-    if (y0 + ch > H - 40) return;
-    cols.forEach((c, i) => {
-      const x = x0 + i * (cw + gap);
-      const hot = this._hit(x, y0, cw, ch);
-      const zero = c.n === 0;
-      // a pillar with nothing in it PULSES, because that is the one the game
-      // wants you to go and do something about
-      const pulse = zero ? 0.5 + 0.5 * Math.sin(this.t * 2.6 + i) : 0;
-      K.button(ctx, x, y0, cw, ch, null, {
-        hot, down: hot && g.input.down,
-        on: !zero && c.n > 0 && i === 1 && ripe > 0,
-        tint: zero ? mixHex(K.C.frame, c.tint, pulse * 0.5) : undefined,
-      });
-      const o = hot && g.input.down ? 1 : 0;
-      // the picture and the count on top, the name underneath. The thing to
-      // DO about an empty one is in the tooltip, because a tile that says
-      // "build one" is a tile with no room left to say how many you have.
-      drawNodeIcon(ctx, c.icon, x + 8 + o, y0 + 7 + o, K.C.ink, 1);
-      drawText(ctx, zero ? '-' : `${c.n}`, x + 16 + o, y0 + 3 + o, { color: K.C.ink });
-      drawText(ctx, ellipsize(c.name, cw - 4), x + cw / 2 + o, y0 + ch - 9 + o,
-        { color: zero ? 'rgba(36,28,21,0.62)' : K.C.ink, align: 'center' });
-      if (hot) {
-        this.hover = { title: c.name, body: zero ? `${c.body}\n\nYou have none: ${c.empty}.` : c.body };
-        if (g.input.clicked) { g.input.clicked = false; g.audio?.play('ui'); c.run(); }
-      }
-    });
   }
 
   /**
@@ -834,9 +732,12 @@ export class UI {
     const k = u.t < 0.34 ? easeOutCubic(u.t / 0.34)
       : u.t > 3.5 ? 1 - easeOutCubic(clamp01((u.t - 3.5) / 0.5)) : 1;
     if (k <= 0.01) return;
-    const cw = Math.min(290, W - 36);
-    const lines = wrapText(`${m.got}\n\n${m.desc}`, cw - 62);
-    const ch = Math.max(74, 13 + 30 + Math.max(lines.length * LINE_H, 42) + 13);
+    // What it is, in one line. It used to be two paragraphs - the thing that
+    // happened AND a description of the mode AND a line about where to find
+    // it - which is a wall of text over a game you were in the middle of.
+    const cw = Math.min(250, W - 36);
+    const lines = wrapText(m.desc, cw - 62);
+    const ch = Math.max(66, 13 + 10 + Math.max(lines.length * LINE_H, 40) + 6);
     const cx = Math.round((W - cw) / 2);
     const cy = Math.round(H * 0.3 - ch / 2 + (1 - k) * 14);
 
@@ -850,11 +751,8 @@ export class UI {
     drawModeArt(ctx, m.glyph, page.x + 22, page.y + 22,
       m.tint, mixHex(m.tint, '#120c08', 0.55), 2);
     const tx = page.x + 48;
-    let ty = page.y + 3;
+    let ty = page.y + Math.round((40 - lines.length * LINE_H) / 2) + 2;
     for (const ln of lines) { drawText(ctx, ln, tx, ty, { color: K.C.ink }); ty += LINE_H; }
-    K.rule(ctx, page.x + 2, page.y + page.h - 12, page.w - 4);
-    drawText(ctx, this.touchEnabled ? 'the column, bottom left' : 'M, or the column bottom left',
-      page.x + page.w - 3, page.y + page.h - 9, { color: K.C.inkSoft, align: 'right' });
     ctx.globalAlpha = 1;
   }
 
@@ -1620,8 +1518,7 @@ export class UI {
       for (let i = 0; i < Math.min(9, fleet.length); i++) {
         const c = fleet[i];
         const cx = W - 8 - (i + 1) * 8, cy = oy + 32;
-        ctx.fillStyle = c === this.selected ? '#ffe9a8'
-          : c.onShell ? 'rgba(140,196,104,0.95)' : 'rgba(226,183,74,0.9)';
+        ctx.fillStyle = c.onShell ? 'rgba(140,196,104,0.95)' : 'rgba(226,183,74,0.9)';
         ctx.fillRect(cx, cy, 6, 6);
         ctx.strokeStyle = OUT;
         ctx.strokeRect(cx - 0.5, cy - 0.5, 7, 7);
@@ -1699,13 +1596,10 @@ export class UI {
 
     const hint = g.actionHint();
     if (hint && !this.touchEnabled) {
-      drawText(ctx, hint, W / 2, H - 30, { color: INK, align: 'center', outline: true, outlineColor: OUT });
+      drawText(ctx, `E   ${hint}`, W / 2, H - 30,
+        { color: INK, align: 'center', outline: true, outlineColor: OUT });
     }
     if (!this.touchEnabled) this._keys(ctx, W, H);
-    if (this.selected) {
-      drawText(ctx, `${this.selected.name} - where?`, W / 2, H - 42,
-        { color: '#ffe9a8', align: 'center', outline: true, outlineColor: OUT });
-    }
   }
 
   /**
@@ -1714,31 +1608,43 @@ export class UI {
    * been playing a while, because by then you know.
    */
   _keys(ctx, W, H) {
+    // Five keycaps, and no words at all after the first minute.
+    //
+    // It used to read "A D walk  SPC spring  R pick  E dig  M mode" - five
+    // labels across the bottom of the screen for five things you learn in
+    // thirty seconds. Now the words fade out on their own and the keys stay,
+    // because a row of keys is a reminder and a row of sentences is a manual.
     const caps = [['A D', 'walk'], ['SPC', 'spring'], ['R', 'pick'],
       ['E', 'dig'], ['M', 'mode']];
-    // it fades out over the first few minutes; hovering the row brings it back
     const age = this.game.playT || 0;
     const near = this._hit(0, H - 16, W, 16);
     const a = near ? 1 : clamp01(1.3 - Math.max(0, age - 100) / 90);
     if (a < 0.04) return;
+    // the words go first, and much sooner than the keys
+    const wa = near ? 1 : clamp01(1.2 - Math.max(0, age - 30) / 30);
     const capW = caps.map(([k]) => Math.max(11, textWidth(k) + 6));
-    const wordW = caps.map(([, t]) => textWidth(t));
-    const gap = 4, pad = 11;
-    const total = capW.reduce((t, w, i) => t + w + gap + wordW[i], 0) + pad * (caps.length - 1);
+    const wordW = caps.map(([, t], i) => (wa > 0.04 ? textWidth(t) : 0));
+    const gap = 4, pad = wa > 0.04 ? 11 : 6;
+    const total = capW.reduce((t, w, i) => t + w + (wordW[i] ? gap + wordW[i] : 0), 0)
+      + pad * (caps.length - 1);
     let x = Math.round(W / 2 - total / 2);
     const y = H - 14;
     ctx.save();
     ctx.globalAlpha = Math.min(1, a);
     caps.forEach(([k, word], i) => {
       const w = capW[i];
-      // a key cap, in the same mint as every other button in the game
-      K.slab(ctx, x, y, w, 11,
-        { face: K.C.frame, lit: K.C.frameLit, dim: K.C.frameDim });
+      K.slab(ctx, x, y, w, 11, {});
       drawText(ctx, k, x + w / 2, y + 2, { color: K.C.ink, align: 'center' });
-      x += w + gap;
-      drawText(ctx, word, x, y + 2,
-        { color: 'rgba(196,172,128,0.92)', outline: true, outlineColor: OUT });
-      x += wordW[i] + pad;
+      x += w;
+      if (wordW[i]) {
+        x += gap;
+        ctx.globalAlpha = Math.min(1, a) * wa;
+        drawText(ctx, word, x, y + 2,
+          { color: 'rgba(196,172,128,0.92)', outline: true, outlineColor: OUT });
+        ctx.globalAlpha = Math.min(1, a);
+        x += wordW[i];
+      }
+      x += pad;
     });
     ctx.restore();
   }
@@ -2546,9 +2452,7 @@ export class UI {
     const packBottom = y + 13 + packRows * (S + gap);
     let noteLines = [];
     if (!bag.length) {
-      noteLines = wrapText(wide
-        ? 'Empty. Put him on a seam and let him swing a pick at it.'
-        : 'Empty. Put him on a seam.', packW - 2);
+      noteLines = wrapText('Empty.', packW - 2);
       noteLines.forEach((l, n) =>
         drawText(ctx, l, x, packBottom + 2 + n * LINE_H, { color: K.C.inkSoft }));
     }
@@ -2676,42 +2580,21 @@ export class UI {
 
     if (!all.length) {
       const cy = y + h / 2;
-      K.slot(ctx, x + w / 2 - 17, cy - 48, 34, 34);
-      drawNodeIcon(ctx, 'nest', x + w / 2, cy - 31, '#9ad86a', 2);
-      drawText(ctx, 'NOTHING LIVES ON YOU YET', x + w / 2, cy - 8,
-        { color: K.C.ink, align: 'center' });
-      wrapText('Things move in when there is a reason to. Grow something on your'
-        + ' back, keep water in the basin, and the desert comes to you - then'
-        + ' win one over with fruit and water and it stays.', Math.min(290, w - 16))
-        .forEach((l, n) => drawText(ctx, l, x + w / 2, cy + 6 + n * LINE_H,
-          { color: K.C.inkSoft, align: 'center' }));
+      // An empty list gets a picture and ONE line. It had four.
+      K.slot(ctx, x + w / 2 - 17, cy - 30, 34, 34);
+      drawNodeIcon(ctx, 'nest', x + w / 2, cy - 13, '#9ad86a', 2);
+      drawText(ctx, 'GROW SOMETHING AND THEY COME', x + w / 2, cy + 12,
+        { color: K.C.inkSoft, align: 'center' });
       return;
     }
 
-    // the standing order, across the top
-    const OR = [['follow', 'FOLLOW'], ['ride', 'RIDE'], ['stay', 'HOLD']];
-    const obh = this.touchEnabled ? 18 : 15;
-    const obw = Math.min(54, Math.floor((w - 6) / 3));
-    OR.forEach(([id, name], n) => {
-      const ox = x + n * (obw + 3);
-      const on = g.wildlife.orders === id;
-      const hot = this._hit(ox, y, obw, obh);
-      K.button(ctx, ox, y, obw, obh, name, { on, hot, sticky: true });
-      if (hot && g.input.clicked) {
-        g.input.clicked = false;
-        g.wildlife.setOrders(id);
-        this.say(`Everything on you: ${name.toLowerCase()}.`, 2.4);
-        g.audio?.play('ui');
-      }
-    });
-
-    const top = y + obh + 5;
+    const top = y;
     const cols = w > 300 ? 2 : 1;
     const gap = 5;
     const cw = Math.floor((w - gap * (cols - 1)) / cols);
     const ch = 50;
     const rows = Math.ceil(all.length / cols);
-    this.scroll = clamp(this.scroll, 0, Math.max(0, rows * (ch + gap) - (h - obh - 5)));
+    this.scroll = clamp(this.scroll, 0, Math.max(0, rows * (ch + gap) - h));
 
     all.forEach((c, n) => {
       const cxp = x + (n % cols) * (cw + gap);
@@ -2749,19 +2632,19 @@ export class UI {
         : `${Math.round(Math.abs(c.x - g.crab.x) / 10)}m ${c.x > g.crab.x ? 'east' : 'west'}`;
       drawText(ctx, where, tx, cyp + 17, { color: K.C.inkSoft });
 
+      // ONE verb. There was a second - CALL, which walked the animal to you -
+      // and an animal that already follows you has nowhere to be called from.
       const bh = this.touchEnabled ? 17 : 14;
-      const bw = Math.min(46, Math.floor((tw2 - 4) / 2));
+      const bw = Math.min(56, tw2);
       const byb = cyp + ch - bh - 5;
-      [[on ? 'LET GO' : 'DRIVE', () => { if (on) this.release(); else this.drive(c); }],
-       ['CALL', () => {
-         c.commanded = { x: g.crab.x + (g.crab.facing || 1) * 18 };
-         this.say(`${c.name} on its way.`, 2.4);
-       }]].forEach(([name, run], m) => {
-        const bxb = tx + m * (bw + 4);
-        const hot = this._hit(bxb, byb, bw, bh);
-        K.button(ctx, bxb, byb, bw, bh, name, { hot, down: hot && g.input.down });
-        if (hot && g.input.clicked) { g.input.clicked = false; run(); g.audio?.play('ui'); }
-      });
+      const hot = this._hit(tx, byb, bw, bh);
+      K.button(ctx, tx, byb, bw, bh, on ? 'LET GO' : 'DRIVE',
+        { hot, down: hot && g.input.down });
+      if (hot && g.input.clicked) {
+        g.input.clicked = false;
+        if (on) this.release(); else this.drive(c);
+        g.audio?.play('ui');
+      }
 
       if (this._hit(cxp, cyp, cw, ch - bh - 8)) {
         this.hover = { title: c.name, body: c.def.desc };
@@ -2814,7 +2697,7 @@ export class UI {
     const gd = g.garden;
     K.gauge(ctx, inX, ry, inW, 6, gd.load / Math.max(1, gd.capacity),
       gd.overload > 0 ? K.C.bad : K.C.good);
-    drawText(ctx, `${gd.load.toFixed(1)}/${gd.capacity.toFixed(0)} carried`,
+    drawText(ctx, `${gd.load.toFixed(1)}/${gd.capacity.toFixed(0)}`,
       inX, ry + 8, { color: K.C.inkSoft });
     ry += 19;
 
@@ -2837,8 +2720,7 @@ export class UI {
     K.px(ctx, inX - 2, cy - 2, inW + 4, 50, K.C.pageAlt);
     K.rule(ctx, inX - 2, cy - 2, inW + 4);
     if (!def) {
-      wrapText('Pick something. Then pick a bed on your own shell.', inW - 4)
-        .forEach((l, i) => drawText(ctx, l, inX + 2, cy + 3 + i * LINE_H, { color: K.C.inkSoft }));
+      drawText(ctx, 'Pick one.', inX + 2, cy + 3, { color: K.C.inkSoft });
     } else {
       const isB = this.buildTab === 'build';
       const unlock = isB ? { ok: true } : g.unlockOf(def);
@@ -3041,17 +2923,15 @@ export class UI {
     // him to read them, which is the whole reason to keep him around.
     if (!g.vessClose) {
       const d = Math.round(Math.abs(g.npc.x - g.crab.x) / 10);
-      drawText(ctx, 'HIS NOTEBOOK IS NOT HERE', x, y + 6, { color: K.C.gold });
-      wrapText(`The field notes are Dr. Vess's, and he is carrying them. Get to him - he is ${d}m ${g.npc.x > g.crab.x ? 'east' : 'west'} - and read over his shoulder.`, w - 4)
-        .forEach((l, i) => drawText(ctx, l, x, y + 20 + i * LINE_H, { color: K.C.inkSoft }));
-      wrapText('F calls him over. He will follow you, and ride on you once you are big enough to carry him.', w - 4)
-        .forEach((l, i) => drawText(ctx, l, x, y + 62 + i * LINE_H, { color: PAPER_FAINT }));
+      // He is carrying them. That is the whole of it.
+      drawText(ctx, 'HE HAS THE NOTES', x + w / 2, y + h / 2 - 12,
+        { color: K.C.gold, align: 'center' });
+      drawText(ctx, `${d}m ${g.npc.x > g.crab.x ? 'east' : 'west'}   -   F calls him`,
+        x + w / 2, y + h / 2 + 2, { color: K.C.inkSoft, align: 'center' });
       return;
     }
     if (this.codexPick) return this._codexEntry(ctx, x, y, w, h);
-    drawText(ctx, "VESS'S FIELD NOTES", x, y, { color: K.C.inkSoft });
-    drawText(ctx, 'watch a thing for long enough and he writes it down', x, y + 9, { color: PAPER_FAINT });
-    let ry = y + 22 - this.scroll;
+    let ry = y + 4 - this.scroll;
     let total = 0;
 
     // what he has worked out about the basin itself
@@ -3318,15 +3198,16 @@ export class UI {
       }
       // the sand: DIG always, and POUR only beside it - never in front of it,
       // so picking up your first grain cannot slide DIG out from under the
-      // thumb that is holding it down
+      // thumb that is holding it down.
+      //
+      // There is no PLANT plate and no BUILT/GROWN/TAME strip. Everything you
+      // do to your own back happens ON your own back: you touch the animal
+      // and you are up there. One door, and it is the animal.
       wanted.push({ icon: 'spade', label: 'DIG', key: 'zdig',
         colour: '#e0c188', hold: true });
       if ((g.sandHeld || 0) > 0.5) {
         wanted.push({ icon: 'drop', label: 'POUR', key: 'zpour',
           colour: '#cfe89a', hold: true });
-      }
-      if (this.mode === 'direct') {
-        wanted.push({ icon: 'sprout', label: 'PLANT', key: 'b', colour: '#9ad86a' });
       }
     }
     // MODE is not a verb and does not belong in a row of verbs. It is the
@@ -3390,7 +3271,9 @@ export class UI {
       for (const b of wanted) { plate(b, bx, by, bw, bs.h); bx += bw + gap; }
       hintY = by - 12;
     }
-    if (hint) {
+    // ...and the hint is only worth printing when no plate already says it.
+    // "TALK" over a plate labelled TALK is the same word twice.
+    if (hint && !wanted.some((b) => b.label === hint)) {
       drawText(ctx, hint, W - 6, hintY,
         { color: INK, align: 'right', outline: true, outlineColor: OUT });
     }

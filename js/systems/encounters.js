@@ -89,7 +89,8 @@ export class Encounters {
       if (d < bd) { bd = d; best = p; }
     }
     this.active = best;
-    if (best) this.hint = `${best.verb} ${best.name}`;
+    // one word: the button beside it already says ACT
+    if (best) this.hint = String(best.verb).toUpperCase();
 
     // a scout in the fleet calls out what is ahead
     if (g.economy.stat('warn') > 0) {

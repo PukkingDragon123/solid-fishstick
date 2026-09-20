@@ -328,21 +328,15 @@ export class Creature {
     }
 
     if (this.tamed) {
-      const orders = this.game.wildlife.orders;
-      if (orders === 'ride') {
-        if (ad < 40 && !this.onShell) this.boardShell(crab);
-        else this.moveTo = crab.x + (this.shellU - 0.5) * 20;
-      } else if (orders === 'guard') {
-        const foe = this.game.nearestHostile?.(crab.x, 190);
-        if (foe) { this.moveTo = foe.x - Math.sign(foe.x - this.x) * 14; this.mood = MOOD.HUNT; return; }
-        this.moveTo = crab.x + (crab.facing || 1) * (crab.m.shellW * 0.62 + 18);
-        this.mood = MOOD.FOLLOW;
-      } else {
-        this.mood = MOOD.FOLLOW;
-        const slot = this.uid % 5;
-        const back = crab.m.shellW * 0.62 + 14 + slot * 22;
-        this.moveTo = crab.x - (crab.facing || 1) * back;
-      }
+      // Everything that lives on you FOLLOWS you. There used to be a row of
+      // standing orders - follow, ride, hold - which is three buttons and a
+      // menu for a decision nobody ever wanted to make twice, and two of the
+      // three answers were "walk somewhere I am not". An animal that has
+      // decided to live on you goes where you go.
+      this.mood = MOOD.FOLLOW;
+      const slot = this.uid % 5;
+      const back = crab.m.shellW * 0.62 + 14 + slot * 22;
+      this.moveTo = crab.x - (crab.facing || 1) * back;
       return;
     }
 

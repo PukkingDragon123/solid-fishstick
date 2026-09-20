@@ -181,10 +181,9 @@ export class TalkScreen {
     const g = this.game;
     if (c.take) {
       const job = QUEST_BY_ID[c.take];
-      if (job && g.quests.take(job)) {
-        g.ui?.say(`TAKEN: ${job.name}`, 3.4);
-        g.quests.tookT = 2.6;
-      }
+      // the card in the corner already flashes NEW and says the name; a
+      // toast saying the same thing is the same sentence twice
+      if (job) g.quests.take(job);
     }
     c.then?.(g);
     this.arows = [];

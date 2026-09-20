@@ -75,7 +75,7 @@ npm run build     # -> dist/crabden.html + dist/crabden.body.html
 | cut a mast | `E`, at the tree | **ACT** |
 | study a wild plant | `E`, at the plant | **ACT** |
 | scoop sand / pour it | hold `Z` / hold `Shift`+`Z` | hold **DIG** / hold **POUR** |
-| plant a seed | click the shell, then the seed | **PLANT** |
+| plant a seed | click your shell, then the seed | tap your shell |
 | skip a cutscene | `Space` or `Escape` | the **SKIP** plate, top right |
 | his pick, once he is yours | `E` | — |
 | his bench | `B` | **SHOP**, then BENCH |
@@ -1394,9 +1394,11 @@ never be off the bottom of a list. One button, and when it cannot be pressed it
 says why on its own face.
 
 **The fleet** is cards: the animal's own portrait in a lit window, its name,
-where it has got to, and two labelled verbs — **DRIVE** and **CALL** — instead
-of one row that drove on the first click and stopped on the second. The
-standing order for all of them sits across the top. And when nothing lives on
+where it has got to, and **one** labelled verb — **DRIVE**. There were three
+standing orders across the top (follow, ride, hold) and a CALL button, which is
+four controls for a decision nobody wanted to make twice, and three of the four
+answers were "walk somewhere I am not". **Everything that lives on you follows
+you.** An animal that already follows you has nowhere to be called from. And when nothing lives on
 you yet it says so in the middle of the screen and then says what to do about
 it, because an empty list with one grey line in the corner reads as a screen
 that is broken rather than a screen that is empty.
@@ -1437,23 +1439,39 @@ brass**, which is how a stone tablet gets to look chosen. **A slot is a
 recess** — the light falls into the *top* of it, which is the opposite of a
 slab and is the whole reason a hole reads as a hole.
 
-### The three things this game is
+### One door, and it is the animal
 
-There is a strip of three buttons under the job card, and it is the shortest
-description of the game there is:
+Everything you do to your own back happens **on** your own back. There is no
+build menu, no plant button and no readout of what you have got: you **touch
+the animal**, and you are up there with the beds, the seeds, the structures and
+the water.
 
-| | |
-| --- | --- |
-| **BUILT** | structures standing on your shell |
-| **GROWN** | plants in it — and it says **PICK n** when something is ripe |
-| **TAME** | animals that have decided to live on you |
+There used to be a strip of three tiles across the top saying BUILT, GROWN and
+TAME, and a PLANT plate on the phone. They were a menu about the thing rather
+than the thing, and a screen that tells you how many plants you have is a
+screen you read instead of looking at your own shell, where the plants are.
 
-They are buttons, not a readout. Press BUILT or GROWN and you are up on your
-own back where both of those happen; press TAME and the camera goes to the
-nearest thing that would have you. And a pillar with nothing in it **pulses**
-and shows a dash rather than a zero, with the one thing that would fix it in
-the tooltip — because the interface's job, when you have none of something, is
-to point at how you get some.
+### Almost nothing is written down
+
+Every line the interface says got cut to the shortest thing that still works,
+because a game that explains itself in sentences is a game you read instead of
+play.
+
+- **The thing in front of you is one word.** It said *Sing with the Dune
+  Skink*, *Study the saltgrass*, *C: talk to Dr. Vess*. It says **SING**,
+  **STUDY**, **TALK** — and on a phone it says nothing at all, because the
+  plate under your thumb already has the word on it.
+- **The job is one line and a bar.** It used to carry a category, a name, a
+  sentence describing the job and a count: four pieces of text for one fact.
+  The name *is* the description.
+- **A mode arriving is one line.** It was two paragraphs — what just happened,
+  what the mode is, and where to find it — over a game you were in the middle
+  of.
+- **Changing mode says the mode's name and stops.** It used to read the whole
+  description out at you every time you pressed M.
+- **The keycaps lose their words after thirty seconds** and keep the keys,
+  because a row of keys is a reminder and a row of sentences is a manual.
+- **Empty screens get a picture and one line**, where they used to get four.
 
 ### On a phone
 

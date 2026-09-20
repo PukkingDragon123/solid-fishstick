@@ -19,7 +19,6 @@ export class Wildlife {
     this.spawnT = 3;
     this.ambushT = 100;
     this.seen = new Set();
-    this.orders = 'follow';
   }
 
   get fleet() { return this.list.filter((c) => c.tamed && c.alive); }
@@ -113,7 +112,6 @@ export class Wildlife {
 
     for (let i = this.list.length - 1; i >= 0; i--) {
       const c = this.list[i];
-      c.orders = c.tamed ? this.orders : undefined;
       c.update(dt);
       const far = Math.abs(c.x - g.crab.x) > 620;
       // a body is not rubbish to be collected. It lies where it fell until
@@ -188,13 +186,6 @@ export class Wildlife {
     return best;
   }
 
-  setOrders(o) {
-    this.orders = o;
-    for (const c of this.fleet) {
-      if (o !== 'ride' && c.onShell) c.leaveShell();
-    }
-  }
-
   draw(ctx, cam, layer) {
     for (const c of this.list) {
       if (!cam.isVisible(c.x, c.y, 60)) continue;
@@ -206,7 +197,7 @@ export class Wildlife {
 
   toJSON() {
     return {
-      seen: [...this.seen], orders: this.orders,
+      seen: [...this.seen],
       fleet: this.fleet.map((c) => ({ id: c.def.id, shellU: c.shellU })),
     };
   }
@@ -214,7 +205,6 @@ export class Wildlife {
   fromJSON(d) {
     if (!d) return;
     this.seen = new Set(d.seen || []);
-    this.orders = d.orders || 'follow';
     for (const f of d.fleet || []) {
       const c = this.spawn(f.id, this.game.crab.x + (Math.random() - 0.5) * 60);
       if (c) { c.tamed = true; c.trust = 1; c.shellU = f.shellU ?? 0.5; }

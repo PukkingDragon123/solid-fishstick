@@ -1646,24 +1646,26 @@ export class Game {
   pump() { this.pumpStroke(); }
 
   /** What E does right now, and what the prompt says. */
+  /**
+   * What the thing in front of you is, in ONE OR TWO WORDS.
+   *
+   * These used to be sentences - "Sing with the Dune Skink", "Study the
+   * saltgrass", "C: talk to Dr. Vess" - a line of prose across the bottom of
+   * the screen every time you walked past anything. The button beside it
+   * already says ACT. This only has to say what.
+   */
   actionHint() {
     if (this.state !== 'play') return null;
     const c = this.crab;
-    const foe = this.wildlife.nearest(c.x, c.y, 44, (q) => q.hostile);
-    if (foe) return `Strike ${foe.def.name}`;
+    if (this.wildlife.nearest(c.x, c.y, 44, (q) => q.hostile)) return 'STRIKE';
     const wildOne = this.wildlife.nearest(c.x, c.y, 46, (q) => !q.hostile && !q.tamed);
-    if (wildOne) {
-      const why = this.taming.why(wildOne);
-      return why ? `${wildOne.def.name}: ${why}` : `Sing with ${wildOne.def.name}`;
-    }
-    const vent = this.fountains.reachable(c.x);
-    if (vent) return 'Break the cap';
-    const mast = this.world.mastAt(c.x + (c.facing || 1) * 16);
-    if (mast) return 'Cut the mast';
+    if (wildOne) return this.taming.why(wildOne) ? null : 'SING';
+    if (this.fountains.reachable(c.x)) return 'BREAK';
+    if (this.world.mastAt(c.x + (c.facing || 1) * 16)) return 'CUT';
     const wild = this.world.wildPlantAt(c.x + (c.facing || 1) * 12, 22);
-    if (wild && FLORA_BY_ID[wild.id]) return `Study the ${FLORA_BY_ID[wild.id].name}`;
+    if (wild && FLORA_BY_ID[wild.id]) return 'STUDY';
     if (this.encounters.hint) return this.encounters.hint;
-    if (Math.abs(this.npc.x - c.x) < TALK_RANGE) return 'C: talk to Dr. Vess';
+    if (Math.abs(this.npc.x - c.x) < TALK_RANGE) return 'TALK';
     return null;
   }
 
@@ -1718,7 +1720,7 @@ export class Game {
     this.economy.nutrients += res.amount;
     if (res.parasite) {
       this.economy.parasites += res.parasite;
-      if (!quiet) this.ui.say('A parasite. Put it on something and see through its eyes. (X)', 6);
+      if (!quiet) this.ui.say('A parasite. X puts it on something.', 6);
     }
     const w = this.garden.plotWorld(plot);
     this.fx.popup(w.x, w.y - 8, res.parasite ? `+${res.parasite} parasite` : `+${res.amount}`,
@@ -1726,7 +1728,7 @@ export class Game {
     // seed saved off your own crop, which is how an annual pays for the next
     // one without you ever going near a shop
     if (res.seed) this.fx.popup(w.x, w.y - 18, `+${res.seed} seed`, '#e0c188');
-    if (res.spent && !quiet) this.ui.say('That was its one crop. The bed is yours again.', 3.5);
+    if (res.spent && !quiet) this.ui.say('One crop only. The bed is free.', 3.5);
     this.fx.spark(w.x, w.y - 3, res.parasite ? '#c98ade' : '#e2f0a8', 14, 44);
     this.audio.play('pickup', { pitch: 0.9 + Math.random() * 0.3 });
     this.cam.shake(1.2);
@@ -1922,7 +1924,7 @@ export class Game {
   infest() {
     const c = this.crab;
     if (this.economy.parasites <= 0) {
-      this.ui.say('You have no parasites. Grow a mindcap and pick it.');
+      this.ui.say('No parasites. Grow a mindcap.');
       return false;
     }
     const target = this.wildlife.nearest(c.x, c.y, 90, (q) => q.alive && !q.puppet && !q.tamed);
@@ -1937,7 +1939,7 @@ export class Game {
     this.fx.popup(target.x, target.y - 16, 'taken', '#d79ae8');
     this.audio.play('evolve');
     this.cam.shake(3);
-    this.ui.say(`${target.def.name} is yours. Open FLEET and drive it.`, 5);
+    this.ui.say(`${target.def.name} is yours.`, 5);
     this.npc.say('You just put one of your own children inside a lizard. '
       + 'I am writing that down and then I am going to think about it for a long time.', 7);
     this.economy.markDirty();
@@ -1947,8 +1949,8 @@ export class Game {
   /** Put the best thing in your pack into the water on your back. */
   incubateBest() {
     const have = Object.entries(this.relics || {}).filter(([, n]) => n > 0);
-    if (!have.length) { this.ui.say('Nothing in your pack. Dig something up first.'); return; }
-    if (this.garden.pond < 0.25) { this.ui.say('Your basin is dry. Nothing will develop in it.'); return; }
+    if (!have.length) { this.ui.say('Pack is empty.'); return; }
+    if (this.garden.pond < 0.25) { this.ui.say('Basin is dry.'); return; }
     const [id] = have.sort((a, b) =>
       (RELIC_BY_ID[b[0]]?.incubate || 0) - (RELIC_BY_ID[a[0]]?.incubate || 0))[0];
     const res = this.digs.incubate(id);
@@ -1973,7 +1975,7 @@ export class Game {
       made.trust = 1;
       made.hatched = true;
       this.wildlife.fleet.push(made);
-      this.ui.say(`${made.def.name}. Out of the ${relic.kind}. It is alive.`, 7);
+      this.ui.say(`${made.def.name}. Alive.`, 7);
       this.npc.say('It hatched. A thousand years in a rock and it hatched. '
         + 'I am going to need a bigger notebook.', 8);
       this.economy.markDirty();
@@ -2010,7 +2012,7 @@ export class Game {
           this.audio.play('discover');
           const u = def.unlock?.study;
           if (u !== undefined && before < u && before + 1 >= u) {
-            this.ui.say(`${def.name}: you know this one now. +${seed} seed.`, 4.5);
+            this.ui.say(`${def.name}  +${seed} seed`, 4.5);
             this.npc?.say(`${def.name}. Write that down - we can grow that.`, 4.5, 4);
           } else {
             this.ui.say(`${def.name}: +${seed} seed.`, 3);
@@ -2126,7 +2128,7 @@ export class Game {
         } else {
           this.npc.say(res.relic.desc, 7);
         }
-        this.ui.say(`${res.relic.name}. Put it in your basin (K) and keep the water up.`, 6);
+        this.ui.say(`${res.relic.name}. K puts it in the basin.`, 6);
       },
     });
   }
@@ -2349,7 +2351,7 @@ export class Game {
               ? 'In, and in properly. Now water it, or all of that was me digging a hole.'
               : 'In. Not my finest hole. Water it.', 6);
           } else {
-            this.ui.say('In. Now water it - nothing happens until you do.', 5);
+            this.ui.say('In. Water it.', 5);
           }
           this.teach(4);
         },
@@ -2554,7 +2556,7 @@ export class Game {
   onDown() {
     if (this.state === 'dead') return;
     this.state = 'dead';
-    this.ui.say('You pull in and stop. The desert takes what it takes.', 8);
+    this.ui.say('You pull in and stop.', 8);
   }
 
   onCreatureDown(c) {
