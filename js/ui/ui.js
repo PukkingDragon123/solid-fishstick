@@ -648,15 +648,16 @@ export class UI {
 
     const took = !done && q.tookT > 0;
     const prog = done ? null : q.progress;
-    // ONE LINE and a bar. It used to carry a word for the kind of thing it
-    // was, the name of the job, a sentence describing the job and a count -
-    // four pieces of text for one fact. The name IS the description.
+    // ONE LINE, a bar, and the two numbers that say how far through it you
+    // are - because "a bar that is a third full" and "one of three" are not
+    // the same fact, and the second one is the one you can act on.
     const label = done ? `${job.name}  ${job.gain}` : job.name;
-    const w = Math.min(W - 16, Math.max(104, textWidth(label) + 26));
+    const count = prog && prog.need > 1 ? `${prog.have}/${prog.need}` : '';
+    const w = Math.min(W - 16, Math.max(104, textWidth(label) + 26 + textWidth(count)));
     const h = prog ? 23 : 15;
     const x = 6, y = this.build > 0.005 ? 6 : 56;
     // landing and finishing both get a beat where the card is bigger and lit
-    const beat = done ? clamp01(q.doneT / 4) : took ? clamp01(q.tookT / 2.8) : 0;
+    const beat = done ? clamp01(q.doneT / 4) : took ? clamp01(q.tookT / 6) : 0;
     const pop = 1 + easeOutCubic(clamp01(beat * 1.6)) * 0.08;
 
     ctx.save();
@@ -666,11 +667,31 @@ export class UI {
     const tint = done ? K.C.good : took ? K.C.warn : '#c8a05a';
     K.plaque(ctx, x, y, w, h, { tint });
     drawNodeIcon(ctx, done ? 'sun' : 'hand', x + 9, y + 7, tint, 1);
-    drawText(ctx, ellipsize(label, w - 24), x + 17, y + 4,
+    drawText(ctx, ellipsize(label, w - 24 - textWidth(count)), x + 17, y + 4,
       { color: done ? '#d6f0b8' : '#f0e2c0' });
+    if (count) {
+      drawText(ctx, count, x + w - 5, y + 4,
+        { color: 'rgba(240,226,192,0.66)', align: 'right' });
+    }
     if (prog) {
       K.gauge(ctx, x + 4, y + h - 8, w - 8, 5,
         clamp01(prog.have / prog.need), done ? K.C.good : K.C.warn);
+    }
+    ctx.restore();
+
+    // And for as long as it is new, WHAT TO PRESS. A job you have agreed to
+    // and cannot start is worse than no job, and the one sentence that fixes
+    // that belongs on the screen for six seconds and then never again.
+    if (took && job.how) {
+      const a = clamp01(q.tookT / 1.2);
+      const hw = Math.min(W - 16, 210);
+      const hl = wrapText(job.how, hw - 12);
+      const hh = hl.length * LINE_H + 8;
+      ctx.globalAlpha = a;
+      K.slab(ctx, x, y + h + 3, hw, hh, {});
+      hl.forEach((l, i) => drawText(ctx, l, x + 6, y + h + 7 + i * LINE_H,
+        { color: K.C.ink }));
+      ctx.globalAlpha = 1;
     }
     ctx.restore();
   }

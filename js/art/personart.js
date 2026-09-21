@@ -21,8 +21,15 @@ import { Painter, makeCanvas } from '../render/pixel.js';
 import { withMaterials } from '../lib/palette.js';
 import { clamp01, lerp, mixHex, TAU } from '../lib/math.js';
 
-const LIGHT = { lightX: -0.58, lightY: -0.66, lightZ: 0.42, ambient: 0.42, dither: 0.62 };
-const FAR = { ...LIGHT, ambient: 0.28 };
+// FLAT. The people used to be lit the way the ground is - an eight-stop ramp
+// with a dither crawling between the steps - and at the size a person is on
+// this screen that is not shading, it is noise with a man inside it. The
+// reference sheet of pixel people is flat: one colour for a shirt, one darker
+// one down the side it is turned away from, and a thin dark line round the
+// whole thing. So the lamp still decides WHICH of the two tones a pixel gets,
+// and there are only ever two, and nothing dithers between them.
+const LIGHT = { lightX: -0.58, lightY: -0.66, lightZ: 0.42, ambient: 0.42, dither: 0 };
+const FAR = { ...LIGHT, ambient: 0.30 };
 
 /**
  * The sheet's own colour bar, turned into ramps. Cream shirt, olive-khaki
@@ -79,8 +86,27 @@ const ELDER = {
     diffuse: 0.76, rim: 0.32, ao: 0.12, normalScale: 0.58, outline: '#200907' },
 };
 
-const MATS = withMaterials(BASE);
-const MATS_ELDER = withMaterials({ ...BASE, ...ELDER });
+/**
+ * Two tones out of eight.
+ *
+ * A four-stop ramp of [shade, shade, base, base] means the painter's own
+ * quantiser can only ever land on one of two colours, and it lands on the
+ * light one where the sun is actually on the surface. The gloss, the rim
+ * light and the cavity darkening all come off, because none of them exist in
+ * flat art - they were what made a pair of trousers look like a polished
+ * sausage.
+ */
+function flat(m, shade = 3, base = 5) {
+  const r = m.ramp;
+  return { ...m,
+    ramp: [r[shade], r[shade], r[base], r[base]],
+    diffuse: 0.72, rim: 0, spec: 0, ao: 0.04, translucent: 0 };
+}
+const flatten = (set) => Object.fromEntries(
+  Object.entries(set).map(([k, v]) => [k, flat(v)]));
+
+const MATS = withMaterials(flatten(BASE));
+const MATS_ELDER = withMaterials(flatten({ ...BASE, ...ELDER }));
 const matsFor = (kind) => (kind === 'elder' ? MATS_ELDER : MATS);
 
 // ---------------------------------------------------------------------------
@@ -274,24 +300,25 @@ export const FACE_COUNT = FACES.length;
 // live on the portrait card where there is room for them.
 
 const HEAD_KEY = {
-  o: '#301d1f',   // his outline, off the darkest of his own tones
-  h: '#7c4c36',   // hair
-  H: '#a8724e',   // hair, lit
-  s: '#df8b69',   // skin
-  S: '#e5936f',   // skin, lit
-  d: '#c8765c',   // skin, shaded
-  q: '#b4755f',   // the stubble along his jaw
-  t: '#c89574',   // the helmet
-  T: '#d5a37d',   // the helmet, lit
-  u: '#a4735c',   // the helmet, under the brim
+  o: '#2b1a18',   // the one dark line that goes round everything
+  h: '#6f4430',   // hair
+  H: '#8a5840',   // hair, the lit side of it
+  s: '#e3a57c',   // skin
+  S: '#f0b891',   // skin, lit
+  d: '#c07f5c',   // skin, turned away - and his brow
+  q: '#bd8467',   // the stubble along his jaw
+  t: '#c49a6f',   // the helmet
+  T: '#d9b184',   // the helmet, lit
+  u: '#a07a53',   // the helmet, under the brim
   b: '#9a433d',   // the band
-  g: '#946958',   // the brass of the goggles
-  e: '#4f5c76',   // the goggle lens, up on the crown and in its own shade
-  l: '#6d7b96',   // the round lens over his eye, which catches the sky
-  L: '#aebbcf',   // the catch of light in it
-  r: '#4a3134',   // the rim of the glasses, and the pupil behind it
-  m: '#6d2c27',   // mouth
+  g: '#c8974a',   // the brass of the goggles, pushed up on the band
+  e: '#4f5c76',   // their lenses, up on the crown
+  l: '#6d7b96',   // (kept: a lens over the eye, if he ever pulls them down)
+  L: '#aebbcf',
+  r: '#3a2320',   // the eye
+  m: '#8a3c33',   // mouth
 };
+
 
 // 16 x 18, facing right. The neck joint is the middle of the bottom row.
 //
@@ -308,77 +335,34 @@ const HEAD_KEY = {
 // the back of his head and it does not creep round over his cheek, because
 // the moment it does he is a brown mass with a nose stuck on the side.
 const HEAD_ART = [
-  '....oTTTTo...',
-  '...otTTTgeo..',
-  '..obbbbbbbbo.',
-  '.ouTTTTTTTTuo',
-  'ouuuuuuuuuuuo',
-  '.ohhhhHHHSoo.',
-  'oHhhhhssrrro.',
-  'oHhhhhsdLlro.',
-  'oHhhhhssssso.',
-  'ohhhhhssssSso',
-  'ohHhhhssssdso',
-  '.ohhhhssmmoo.',
-  '.ohhhsqqqso..',
-  '..ohhqqqso...',
-  '...oobbso....',
+  '...ooooooo...',
+  '..oTTTTTTTo..',
+  '..oTTTTTTTTo.',
+  '..obbbbbggo..',
+  '.ouuuuuuuuuuo',
+  'ohhhhhsssso..',
+  'ohhhhhssrrso.',
+  'ohhhhhssrrso.',
+  'ohhhhhsssssso',
+  'ohhhhhsssssso',
+  'ohhhhhssssdo.',
+  '.ohhhhssmmso.',
+  '.ohhhhqqqso..',
+  '..ohhqqqo....',
+  '....oosso....',
 ];
 
-/** Shut: the lid comes down and the lens goes dark behind the glass. */
+/** Shut: the two rows of eye become one dark line, which is a closed lid. */
 const HEAD_SHUT = {
-  7: 'oHhhhhsdrrro.',
+  6: 'ohhhhhssssso.',
 };
 /** Talking: the jaw drops and the mouth is a hole rather than a line. */
 const HEAD_OPEN = {
-  11: '.ohhhhsmmmoo.',
-  12: '.ohhhsqmmso..',
+  11: '.ohhhhsmmmso.',
+  12: '.ohhhhqmmso..',
 };
 
 const sideHeads = new Map();
-
-// 8x8 ordered dither, the same one the painter uses, so the head breaks up
-// along the same grid as everything else in the game.
-const HEAD_BAYER = [
-  [0, 32, 8, 40, 2, 34, 10, 42], [48, 16, 56, 24, 50, 18, 58, 26],
-  [12, 44, 4, 36, 14, 46, 6, 38], [60, 28, 52, 20, 62, 30, 54, 22],
-  [3, 35, 11, 43, 1, 33, 9, 41], [51, 19, 59, 27, 49, 17, 57, 25],
-  [15, 47, 7, 39, 13, 45, 5, 37], [63, 31, 55, 23, 61, 29, 53, 21],
-].map((r) => r.map((v) => (v + 0.5) / 64));
-
-/**
- * The height of the head at one art cell.
- *
- * The rest of the game's art is a height field that gets lit, and a flat
- * sprite dropped into the middle of it reads as a sticker. So the drawn art
- * gets a height field of its own: the crown is a dome, the brim is a thin
- * plate that falls away at its edges, the skull and the hair are a bigger
- * dome behind it, and the nose stands off the front of the face. Light it
- * with the painter's own lamp and it belongs to the same world.
- */
-function headHeight(x, y, ch, W) {
-  if (ch === 'o') return 0;
-  const dome = (cx, cy, rx, ry) => {
-    const d = ((x - cx) / rx) ** 2 + ((y - cy) / ry) ** 2;
-    return d >= 1 ? 0 : Math.sqrt(1 - d);
-  };
-  if (y <= 1) return 0.56 + dome(6.5, 1.6, 3.6, 3.0) * 0.44;    // the crown
-  if (y === 2) return 0.66;                                     // the band
-  if (y <= 4) {                                                 // the brim
-    const t = 1 - Math.abs(x - 6) / (W / 2);
-    return (y === 3 ? 0.64 : 0.46) + t * t * 0.18;
-  }
-  // The skull is nearly FLAT. The lamp is here to round the hat and to catch
-  // the nose; the face itself is painted, not lit.
-  let h = 0.62 + dome(5.4, 9.4, 6.0, 6.8) * 0.26;
-  // the brow, the nose and the lips stand off the front of it
-  if (y === 6 && x >= 9) h += 0.06;
-  if (y >= 9 && y <= 10 && x >= 10) h += 0.20;
-  if (y >= 11 && y <= 12 && x >= 8) h += 0.05;
-  // and the eye is a hollow under the brow, not a flat patch
-  if (y >= 6 && y <= 7 && x >= 8 && x <= 10) h -= 0.11;
-  return h;
-}
 
 function paintHeadSide(K, far, kind, opts = {}) {
   // Drawn slightly UNDER the body's own pixel now. It was a third larger,
@@ -403,15 +387,6 @@ function paintHeadSide(K, far, kind, opts = {}) {
   g.imageSmoothingEnabled = false;
   const elder = kind === 'elder';
 
-  // the height field first, so the lighting can read slopes off it
-  const hgt = new Float32Array(W * H);
-  for (let y = 0; y < H; y++) {
-    for (let x = 0; x < W; x++) {
-      const ch = rows[y][x];
-      hgt[y * W + x] = (ch === '.' || ch === 'o') ? 0 : headHeight(x, y, ch, W);
-    }
-  }
-  const at = (x, y) => (x < 0 || y < 0 || x >= W || y >= H) ? 0 : hgt[y * W + x];
 
   for (let y = 0; y < H; y++) {
     for (let x = 0; x < W; x++) {
@@ -429,21 +404,10 @@ function paintHeadSide(K, far, kind, opts = {}) {
       if (opts.spore && (ch === 'l' || ch === 'L' || ch === 'e')) {
         col = ch === 'L' ? '#d8b4ff' : '#a86cd8';
       }
-      if (ch !== 'o') {
-        // the painter's lamp: over his left shoulder and well above him
-        const dx = (at(x + 1, y) - at(x - 1, y)) * 1.7;
-        const dy = (at(x, y + 1) - at(x, y - 1)) * 1.7;
-        const nl = Math.hypot(dx, dy, 1) || 1;
-        let lam = (-dx * -0.55 + -dy * -0.72 + 0.42) / (nl * 0.99);
-        lam = clamp01(lam * 0.86 + at(x, y) * 0.30);
-        // quantised through the same dither, so it bands like the rest
-        const bay = HEAD_BAYER[y & 7][x & 7];
-        const step = 0.16;
-        const q = Math.round((lam + (bay - 0.5) * step * 0.34) / step) * step;
-        const s = clamp01(q) - 0.60;
-        col = s > 0 ? mixHex(col, '#fff1cf', Math.min(0.20, s * 0.44))
-                    : mixHex(col, '#2a1a20', Math.min(0.24, -s * 0.40));
-      }
+      // and NOTHING is done to it. The colour in the key is the colour on the
+      // screen. A head is thirteen pixels across; a gradient over thirteen
+      // pixels is not form, it is dirt, and every tone this face needs is
+      // already cut into the art.
       if (far) col = mixHex(col, '#8a7a63', 0.34);
       g.fillStyle = col;
       g.fillRect(x * px, y * px, px, px);

@@ -4770,19 +4770,21 @@ body {
     fruit: "...1.../..11.../.11111./111.111/11...11/11...11/.11.11./..111../.......",
     tree: "..111../.11111./1111111/.11111./..111../...1.../...1.../..111../.......",
     // brood
-    call: "..1..../.11..11/.11.1.1/.111..1/.111..1/.11.1.1/.11..11/..1..../.......",
+    call: "...1.../..11.../.111.1./1111..1/1111.1./1111..1/.111.1./..11.../...1...",
     hand: ".1.1.1./1111111/1111111/1111111/1111111/.111111/..1111./...11../.......",
-    nest: "......./1111111/11...11/1.111.1/1.....1/.11111./..111../......./.......",
+    nest: "......./..3.3../.33.33./1111111/1222221/1222221/.12221./..111../.......",
     point: "...11../...11../11.11../1.111../1.1111./.11111./..1111./...111./.......",
     egg: "...11../..1111./.111111/1111111/1111111/.111111/..1111./...11../.......",
-    link: ".11..../1..1.11/1..111./.11...1/11...11/1.111../.11..1./.....11/.......",
+    link: "......./.11.11./1..1..1/1..1..1/1..1..1/1..1..1/.11.11./......./.......",
     // pincer
     claw: "11...11/.11.11./..111../.11111./11...11/1.....1/11...11/.11.11./..111..",
-    saw: "1.1.1.1/11111.1/.11111./..111../.11111./11111.1/1.1.1.1/......./.......",
+    saw: "......./......./1111111/1222221/1222221/1111111/1.1.1.1/.1.1.1./.......",
     spade: "...1.../...1.../..111../.11111./1111111/1111111/.11111./..111../.......",
     bolt: "....11./...11../..11.../.11111./..111../.11..../11...../1....../.......",
     comb: "1111111/1111111/1.1.1.1/1.1.1.1/1.1.1.1/1.1.1.1/1.1.1.1/......./.......",
     hammer: ".111111/.111111/...11../...11../...11../...11../...11../..1111./.......",
+    // leaving: an X, because every other shape means something else here
+    close: "11...11/111.111/.11111./..111../..111../.11111./111.111/11...11/.......",
     // legs
     leg: "11...../.11..../..11.../..11.../...11../...111./....111/...1111/.......",
     shield: "1111111/1111111/1111111/.11111./.11111./..111../..111../...1.../.......",
@@ -4791,13 +4793,13 @@ body {
     skate: "..11.../.1111../11111../1111111/.111111/..11111/1111111/......./.......",
     crown: "1.....1/11...11/11.1.11/1111111/1111111/.11111./.11111./1111111/.......",
     // conditions a plant will only ripen under
-    sun: "1..1..1/.1.1.1./..111../11111.1/..111../.1.1.1./1..1..1/......./.......",
-    dusk: "...1.../..111../.11111./1111111/......./1111111/......./......./.......",
+    sun: "...3.../.3...3./..111../.11111./3.111.3/.11111./..111../.3...3./...3...",
+    dusk: "......./...3.../..111../.11111./.11111./1111111/......./2222222/.......",
     shade: "..111../.11111./1111111/......./..1.1../..1.1../..1.1../.11111./.......",
     weight: "..111../.11111./..1.1../.11111./1111111/1111111/.11111./......./.......",
     clock: "..111../.1...1./1..1..1/1..11.1/1....11/.1...1./..111../......./.......",
     // the modes: an animal standing, an animal walking
-    crab: ".11111./1111111/1.1.1.1/1111111/.11111./1.1.1.1/1.1.1.1/......./.......",
+    crab: "1.....1/.1...1./.11111./1211121/1222221/1211121/.11111./.1.1.1./1.....1",
     crabwalk: ".11111./1111111/1.1.1.1/1111111/.11111./1..1..1/11...11/......./......."
   };
   var NODE_ALIAS = {
@@ -4810,24 +4812,41 @@ body {
     build: "load",
     codex: "comb",
     map: "comb",
-    close: "bolt",
+    exit: "close",
     paw: "leg",
     pick: "hammer",
     water: "drop",
     ore: "weight",
     gear: "comb"
   };
-  function drawNodeIcon(ctx, name, cx, cy, color, scale = 1) {
+  function drawNodeIcon(ctx, name, cx, cy, color, scale = 1, opts = {}) {
     const rows = NODE[name] || NODE[NODE_ALIAS[name]];
     if (!rows) return;
     const lines = rows.split("/");
     const w = Math.max(...lines.map((l) => l.length));
+    const hgt = lines.length;
     const s = Math.max(1, Math.round(scale));
-    const x0 = Math.round(cx - w * s / 2), y0 = Math.round(cy - lines.length * s / 2);
-    ctx.fillStyle = color;
-    for (let y = 0; y < lines.length; y++) {
+    const x0 = Math.round(cx - w * s / 2), y0 = Math.round(cy - hgt * s / 2);
+    const at = (x, y) => x < 0 || y < 0 || x >= w || y >= hgt ? "." : lines[y][x] || ".";
+    const on = (x, y) => at(x, y) !== ".";
+    if (opts.flat !== true) {
+      ctx.fillStyle = opts.outline || "rgba(12,8,5,0.82)";
+      for (let y = -1; y <= hgt; y++) {
+        for (let x = -1; x <= w; x++) {
+          if (on(x, y)) continue;
+          if (!on(x - 1, y) && !on(x + 1, y) && !on(x, y - 1) && !on(x, y + 1)) continue;
+          ctx.fillRect(x0 + x * s, y0 + y * s, s, s);
+        }
+      }
+    }
+    const shade = mixHex(color, "#120c06", 0.42);
+    const bright = mixHex(color, "#fff6dc", 0.46);
+    for (let y = 0; y < hgt; y++) {
       for (let x = 0; x < lines[y].length; x++) {
-        if (lines[y][x] === "1") ctx.fillRect(x0 + x * s, y0 + y * s, s, s);
+        const c = lines[y][x];
+        if (c === ".") continue;
+        ctx.fillStyle = c === "2" ? shade : c === "3" ? bright : opts.flat ? color : !on(x, y - 1) ? bright : on(x, y + 1) ? color : shade;
+        ctx.fillRect(x0 + x * s, y0 + y * s, s, s);
       }
     }
   }
@@ -9676,8 +9695,8 @@ body {
   };
 
   // js/art/personart.js
-  var LIGHT5 = { lightX: -0.58, lightY: -0.66, lightZ: 0.42, ambient: 0.42, dither: 0.62 };
-  var FAR = { ...LIGHT5, ambient: 0.28 };
+  var LIGHT5 = { lightX: -0.58, lightY: -0.66, lightZ: 0.42, ambient: 0.42, dither: 0 };
+  var FAR = { ...LIGHT5, ambient: 0.3 };
   var BASE = {
     skin: {
       ramp: ["#5e3627", "#7a4733", "#985c42", "#b47353", "#cd8e69", "#e0a982", "#eec39d", "#f7dcbc"],
@@ -9833,8 +9852,23 @@ body {
       outline: "#200907"
     }
   };
-  var MATS = withMaterials(BASE);
-  var MATS_ELDER = withMaterials({ ...BASE, ...ELDER });
+  function flat(m, shade = 3, base = 5) {
+    const r = m.ramp;
+    return {
+      ...m,
+      ramp: [r[shade], r[shade], r[base], r[base]],
+      diffuse: 0.72,
+      rim: 0,
+      spec: 0,
+      ao: 0.04,
+      translucent: 0
+    };
+  }
+  var flatten = (set) => Object.fromEntries(
+    Object.entries(set).map(([k, v]) => [k, flat(v)])
+  );
+  var MATS = withMaterials(flatten(BASE));
+  var MATS_ELDER = withMaterials(flatten({ ...BASE, ...ELDER }));
   var matsFor = (kind) => kind === "elder" ? MATS_ELDER : MATS;
   function bake2(p, ox, oy, far, kind, extra = {}) {
     return {
@@ -10053,94 +10087,64 @@ body {
   ];
   var FACE_COUNT = FACES.length;
   var HEAD_KEY = {
-    o: "#301d1f",
-    // his outline, off the darkest of his own tones
-    h: "#7c4c36",
+    o: "#2b1a18",
+    // the one dark line that goes round everything
+    h: "#6f4430",
     // hair
-    H: "#a8724e",
-    // hair, lit
-    s: "#df8b69",
+    H: "#8a5840",
+    // hair, the lit side of it
+    s: "#e3a57c",
     // skin
-    S: "#e5936f",
+    S: "#f0b891",
     // skin, lit
-    d: "#c8765c",
-    // skin, shaded
-    q: "#b4755f",
+    d: "#c07f5c",
+    // skin, turned away - and his brow
+    q: "#bd8467",
     // the stubble along his jaw
-    t: "#c89574",
+    t: "#c49a6f",
     // the helmet
-    T: "#d5a37d",
+    T: "#d9b184",
     // the helmet, lit
-    u: "#a4735c",
+    u: "#a07a53",
     // the helmet, under the brim
     b: "#9a433d",
     // the band
-    g: "#946958",
-    // the brass of the goggles
+    g: "#c8974a",
+    // the brass of the goggles, pushed up on the band
     e: "#4f5c76",
-    // the goggle lens, up on the crown and in its own shade
+    // their lenses, up on the crown
     l: "#6d7b96",
-    // the round lens over his eye, which catches the sky
+    // (kept: a lens over the eye, if he ever pulls them down)
     L: "#aebbcf",
-    // the catch of light in it
-    r: "#4a3134",
-    // the rim of the glasses, and the pupil behind it
-    m: "#6d2c27"
+    r: "#3a2320",
+    // the eye
+    m: "#8a3c33"
     // mouth
   };
   var HEAD_ART = [
-    "....oTTTTo...",
-    "...otTTTgeo..",
-    "..obbbbbbbbo.",
-    ".ouTTTTTTTTuo",
-    "ouuuuuuuuuuuo",
-    ".ohhhhHHHSoo.",
-    "oHhhhhssrrro.",
-    "oHhhhhsdLlro.",
-    "oHhhhhssssso.",
-    "ohhhhhssssSso",
-    "ohHhhhssssdso",
-    ".ohhhhssmmoo.",
-    ".ohhhsqqqso..",
-    "..ohhqqqso...",
-    "...oobbso...."
+    "...ooooooo...",
+    "..oTTTTTTTo..",
+    "..oTTTTTTTTo.",
+    "..obbbbbggo..",
+    ".ouuuuuuuuuuo",
+    "ohhhhhsssso..",
+    "ohhhhhssrrso.",
+    "ohhhhhssrrso.",
+    "ohhhhhsssssso",
+    "ohhhhhsssssso",
+    "ohhhhhssssdo.",
+    ".ohhhhssmmso.",
+    ".ohhhhqqqso..",
+    "..ohhqqqo....",
+    "....oosso...."
   ];
   var HEAD_SHUT = {
-    7: "oHhhhhsdrrro."
+    6: "ohhhhhssssso."
   };
   var HEAD_OPEN = {
-    11: ".ohhhhsmmmoo.",
-    12: ".ohhhsqmmso.."
+    11: ".ohhhhsmmmso.",
+    12: ".ohhhhqmmso.."
   };
-  var HEAD_BAYER = [
-    [0, 32, 8, 40, 2, 34, 10, 42],
-    [48, 16, 56, 24, 50, 18, 58, 26],
-    [12, 44, 4, 36, 14, 46, 6, 38],
-    [60, 28, 52, 20, 62, 30, 54, 22],
-    [3, 35, 11, 43, 1, 33, 9, 41],
-    [51, 19, 59, 27, 49, 17, 57, 25],
-    [15, 47, 7, 39, 13, 45, 5, 37],
-    [63, 31, 55, 23, 61, 29, 53, 21]
-  ].map((r) => r.map((v) => (v + 0.5) / 64));
-  function headHeight(x, y, ch, W) {
-    if (ch === "o") return 0;
-    const dome = (cx, cy, rx, ry) => {
-      const d = ((x - cx) / rx) ** 2 + ((y - cy) / ry) ** 2;
-      return d >= 1 ? 0 : Math.sqrt(1 - d);
-    };
-    if (y <= 1) return 0.56 + dome(6.5, 1.6, 3.6, 3) * 0.44;
-    if (y === 2) return 0.66;
-    if (y <= 4) {
-      const t = 1 - Math.abs(x - 6) / (W / 2);
-      return (y === 3 ? 0.64 : 0.46) + t * t * 0.18;
-    }
-    let h = 0.62 + dome(5.4, 9.4, 6, 6.8) * 0.26;
-    if (y === 6 && x >= 9) h += 0.06;
-    if (y >= 9 && y <= 10 && x >= 10) h += 0.2;
-    if (y >= 11 && y <= 12 && x >= 8) h += 0.05;
-    if (y >= 6 && y <= 7 && x >= 8 && x <= 10) h -= 0.11;
-    return h;
-  }
   function paintHeadSide(K, far, kind, opts = {}) {
     const px = Math.max(1, Math.round(K * 0.92));
     const rows = HEAD_ART.slice();
@@ -10154,14 +10158,6 @@ body {
     const g = cv.getContext("2d");
     g.imageSmoothingEnabled = false;
     const elder = kind === "elder";
-    const hgt = new Float32Array(W * H);
-    for (let y = 0; y < H; y++) {
-      for (let x = 0; x < W; x++) {
-        const ch = rows[y][x];
-        hgt[y * W + x] = ch === "." || ch === "o" ? 0 : headHeight(x, y, ch, W);
-      }
-    }
-    const at = (x, y) => x < 0 || y < 0 || x >= W || y >= H ? 0 : hgt[y * W + x];
     for (let y = 0; y < H; y++) {
       for (let x = 0; x < W; x++) {
         const ch = rows[y][x];
@@ -10179,18 +10175,6 @@ body {
         }
         if (opts.spore && (ch === "l" || ch === "L" || ch === "e")) {
           col = ch === "L" ? "#d8b4ff" : "#a86cd8";
-        }
-        if (ch !== "o") {
-          const dx = (at(x + 1, y) - at(x - 1, y)) * 1.7;
-          const dy = (at(x, y + 1) - at(x, y - 1)) * 1.7;
-          const nl = Math.hypot(dx, dy, 1) || 1;
-          let lam = (-dx * -0.55 + -dy * -0.72 + 0.42) / (nl * 0.99);
-          lam = clamp01(lam * 0.86 + at(x, y) * 0.3);
-          const bay = HEAD_BAYER[y & 7][x & 7];
-          const step = 0.16;
-          const q = Math.round((lam + (bay - 0.5) * step * 0.34) / step) * step;
-          const s = clamp01(q) - 0.6;
-          col = s > 0 ? mixHex(col, "#fff1cf", Math.min(0.2, s * 0.44)) : mixHex(col, "#2a1a20", Math.min(0.24, -s * 0.4));
         }
         if (far) col = mixHex(col, "#8a7a63", 0.34);
         g.fillStyle = col;
@@ -11444,7 +11428,7 @@ body {
       const P = POSES[this.pose] || POSES.idle;
       const dir = this.faceT >= 0 ? 1 : -1;
       const t = Math.abs(this.faceT);
-      const flat = TURN_MIN + (1 - TURN_MIN) * (t * t * (3 - 2 * t));
+      const flat2 = TURN_MIN + (1 - TURN_MIN) * (t * t * (3 - 2 * t));
       const sa = this.game.weather ? this.game.weather.shadowAlpha : 0.35;
       if (sa > 0.02) {
         const s0 = cam.worldToScreen(this.x, this.y);
@@ -11474,8 +11458,8 @@ body {
       ctx.save();
       ctx.translate(Math.round(s.x * 2) / 2, Math.round(s.y * 2) / 2);
       ctx.scale(z, z);
-      ctx.scale(dir * flat, 1);
-      if (flat < 0.995) ctx.translate(0, -(1 - flat) * 2.2 * rig.K);
+      ctx.scale(dir * flat2, 1);
+      if (flat2 < 0.995) ctx.translate(0, -(1 - flat2) * 2.2 * rig.K);
       if (Math.abs(this.squash) > 5e-3) {
         ctx.scale(1 - this.squash * 0.5, 1 + this.squash);
       }
@@ -11507,7 +11491,7 @@ body {
       const T = rig.torso.near;
       ctx.drawImage(T.cv, -T.ox, -T.oy);
       ctx.restore();
-      this._head(ctx, neck, lean, breath, flat);
+      this._head(ctx, neck, lean, breath, flat2);
       this._leg(ctx, rig.leg.near, this.feet[0], hipWorldY, dir, 1);
       if (P.hold) {
         const art3 = rig.props[P.hold];
@@ -11579,7 +11563,7 @@ body {
       ctx.drawImage(bt.cv, -bt.ox, -bt.oy);
       ctx.restore();
     }
-    _head(ctx, neck, lean, breath, flat) {
+    _head(ctx, neck, lean, breath, flat2) {
       const rig = this.rig;
       const P = POSES[this.pose] || POSES.idle;
       const want = lean * 0.4 + this.b.look * 0.22 + (this.speech ? Math.sin(this.t * 5.5) * 0.035 : 0) + (P.work ? Math.sin(this.animT * 4) * 0.05 : 0);
@@ -11947,19 +11931,38 @@ body {
     h = Math.round(h);
     const empty = !!opts.empty;
     const hot = !!opts.hot, on = !!opts.on;
-    R(ctx, x, y, w, h, empty ? C.slot : on ? "rgba(104,80,48,0.95)" : hot ? "rgba(80,62,38,0.95)" : "rgba(44,34,22,0.92)");
-    if (opts.back) R(ctx, x + 1, y + 1, w - 2, h - 2, opts.back);
-    R(ctx, x, y, w, 1, "rgba(0,0,0,0.42)");
-    R(ctx, x, y, 1, h, "rgba(0,0,0,0.42)");
-    R(ctx, x, y + h - 1, w, 1, "rgba(226,204,160,0.16)");
-    R(ctx, x + w - 1, y, 1, h, "rgba(226,204,160,0.16)");
-    if (on) {
-      R(ctx, x, y, w, 1, C.goldLit);
-      R(ctx, x, y, 1, h, C.goldLit);
-      R(ctx, x, y + h - 1, w, 1, C.gold);
-      R(ctx, x + w - 1, y, 1, h, C.gold);
-    } else if (!empty && hot) {
-      R(ctx, x, y + h - 1, w, 1, "rgba(226,183,74,0.5)");
+    R(ctx, x, y, w, h, OUT);
+    const lit = on ? C.goldLit : hot ? "#f0d89a" : empty ? "rgba(141,111,40,0.7)" : C.gold;
+    const dim = on ? C.gold : hot ? C.gold : empty ? "rgba(90,70,32,0.7)" : C.goldDim;
+    R(ctx, x + 1, y + 1, w - 2, h - 2, dim);
+    R(ctx, x + 1, y + 1, w - 2, 1, lit);
+    R(ctx, x + 1, y + 1, 1, h - 2, lit);
+    const b = w >= 16 && h >= 16 ? 3 : 2;
+    const ix = x + b, iy = y + b, iw = w - b * 2, ih = h - b * 2;
+    if (iw < 2 || ih < 2) return;
+    R(ctx, ix, iy, iw, ih, OUT);
+    R(
+      ctx,
+      ix + 1,
+      iy + 1,
+      iw - 2,
+      ih - 2,
+      opts.back || (empty ? "#241a10" : hot ? "#43301c" : C.wood)
+    );
+    R(ctx, ix + 1, iy + 1, iw - 2, 1, "rgba(0,0,0,0.5)");
+    R(ctx, ix + 1, iy + 1, 1, ih - 2, "rgba(0,0,0,0.38)");
+    R(ctx, ix + 1, iy + ih - 2, iw - 2, 1, "rgba(198,162,106,0.16)");
+    if (w >= 13 && h >= 13) {
+      const f = on || hot ? C.goldLit : C.gold;
+      const cor = (cx, cy, sx, sy) => {
+        R(ctx, cx, cy, 2, 1, f);
+        R(ctx, cx, cy + sy, 1, 1, f);
+        R(ctx, cx + sx * 2, cy, 1, 1, f);
+      };
+      cor(x + 1, y + 1, 1, 1);
+      cor(x + w - 3, y + 1, -1, 1);
+      cor(x + 1, y + h - 2, 1, -1);
+      cor(x + w - 3, y + h - 2, -1, -1);
     }
   }
   function gauge(ctx, x, y, w, h, f, col = C.good) {
@@ -12044,6 +12047,7 @@ body {
       name: "FILL THE SHELL",
       ask: "Stand on the spring and hold the valve until that shell is full. All of it. I want to see the top of the water.",
       note: "Fill your shell to the brim",
+      how: "Stand anywhere and work the valve in the corner until the gauge tops out.",
       done: (g) => g.economy.water >= g.economy.stat("waterMax") - 1,
       count: (g) => ({ have: Math.floor(g.economy.water), need: Math.floor(g.economy.stat("waterMax")) }),
       say: "Full. Eleven years I have been drinking out of a canteen and you are walking around with a lake.",
@@ -12057,6 +12061,7 @@ body {
       name: "SOMETHING ALIVE",
       ask: "Your back is soil. I want one living thing standing in it by tonight - I do not care what.",
       note: "Get one plant growing on your shell",
+      how: "Click yourself to open your back. Drag a seed onto a plot, then pour water on it.",
       done: (g) => g.garden.plots.some((p) => p.plant),
       count: (g) => ({ have: g.garden.plots.filter((p) => p.plant).length ? 1 : 0, need: 1 }),
       say: "There. That is the first thing to grow on that shell since the sea left. Do not let it die.",
@@ -12070,6 +12075,7 @@ body {
       name: "A CLEAN BONE",
       ask: "Find a dig and take what is in it out without breaking it. Steady strokes. A cracked vertebra tells me nothing.",
       note: "Dig up a fossil without damaging it",
+      how: "Walk until the sand shows a dig, then hit DIG and keep your stroke steady.",
       done: (g) => (g.quests.flags.cleanDig || 0) > 0,
       count: (g) => ({ have: Math.min(1, g.quests.flags.cleanDig || 0), need: 1 }),
       say: "Not a mark on it. You have better hands than I do and you do not have hands.",
@@ -12083,6 +12089,7 @@ body {
       name: "BRING IT BACK",
       ask: "Pick a patch of dead ground and pour water on it until something comes up on its own. Three things. Then I will believe it.",
       note: "Water dead sand until three things grow",
+      how: "Carry a full shell out onto dead ground and hit POUR. Keep pouring on the same patch.",
       done: (g) => g.green.plants.size >= 3,
       count: (g) => ({ have: Math.min(3, g.green.plants.size), need: 3 }),
       say: "Three. Out of ground I surveyed and wrote off. I am going to have to write a letter about this.",
@@ -12096,6 +12103,7 @@ body {
       name: "OPEN A SEAM",
       ask: "There is metal in this basin. Find a seam, get it open, and put what is in it in my pack.",
       note: "Take ore out of a seam",
+      how: "Dig straight down until you hit rock, then swing at the ore showing in it.",
       done: (g) => g.craft && g.craft.list().length > 0,
       count: (g) => ({ have: Math.min(1, g.craft?.list().length || 0), need: 1 }),
       say: "Copper. In a basin that is supposed to be nothing but sandstone. Nothing out here is what the survey says it is.",
@@ -12121,7 +12129,7 @@ body {
             go: [{
               icon: "sun",
               mood: "grin",
-              t: "Good. It is written down, which in my experience is the only reason anything ever gets done."
+              t: `Good. ${job.how} It is written down, which in my experience is the only reason anything ever gets done.`
             }]
           },
           {
@@ -12160,7 +12168,7 @@ body {
     take(job) {
       if (!job || this.done.has(job.id)) return false;
       this.active = job;
-      this.tookT = 2.8;
+      this.tookT = 6;
       this.game.audio?.play("discover");
       return true;
     }
@@ -12214,17 +12222,15 @@ body {
   };
 
   // js/systems/talk.js
-  var TOPICS = [
+  var LESSONS = [
     {
       id: "plant",
-      word: "PLANT",
-      group: "work",
       ask: "How do I grow something?",
+      want: (g) => g.garden?.plots?.some((p) => p.plant) ? 1 : 9,
       lines: [
         { icon: "seed", t: "Right. Listen, because this is the only thing out here that matters. Your back is soil. Actual soil - there is a basin in that shell with a thousand years of silt in it." },
-        { icon: "hand", t: "Open your back - the shell button, or B. You will see the plots. Drag a seed out of the tray and drop it on one. It will not take if the plot is already full." },
-        { icon: "drop", t: "Then water it. A seed that is dry does nothing for ever. Work the valve until the basin has water in it, then pour - the ring round the seed fills as it drinks." },
-        { icon: "sun", t: "Then leave it alone. It wants time, and some of them want particular things - shade, salt, standing water. The chips on the seed tell you which, and they fill in as you have them." },
+        { icon: "hand", t: "Click yourself. That opens your own back, and you will see the plots. Drag a seed out of the tray onto one. It will not take if the plot is already full." },
+        { icon: "drop", t: "Then water it. A seed that is dry does nothing for ever. Work the valve until the shell has water in it, then pour - the ring round the seed fills as it drinks." },
         { icon: "fruit", t: "When it is ripe it goes gold and the bead lifts. R picks everything that is ready. That is the whole of it. Go and grow something." }
       ],
       then: (g) => {
@@ -12233,88 +12239,95 @@ body {
     },
     {
       id: "water",
-      word: "WATER",
-      group: "work",
       ask: "Where is the water?",
+      want: (g) => g.economy?.water > 4 ? 1 : 8,
       lines: [
         { icon: "drop", t: "From you. There is a spring under that shell and it has been sitting on it since before there were people." },
-        { icon: "pump", t: "The valve in the corner is the muscle. Tap it in time with the band on the gauge - in the band it pays, in the middle of the band it pays double, and a run of good ones pays much more than a run of bad ones." },
-        { icon: "well", t: "Fill the basin and everything on your back drinks out of it. Let it run dry and everything on your back dies. That is the whole economy of this place." }
+        { icon: "pump", t: "The valve in the corner is the muscle. Tap it in time with the band on the gauge - in the band it pays, dead centre it pays double, and a run of good ones pays far more than a run of bad ones." },
+        { icon: "well", t: "Fill the shell and everything on your back drinks out of it. Let it run dry and everything on your back dies. That is the whole economy of this place." }
       ]
     },
     {
       id: "dig",
-      word: "DIG",
-      group: "work",
       ask: "What is under the sand?",
+      want: () => 6,
       lines: [
         { icon: "spade", t: "Everything. This was a sea floor. What you are walking on is eleven thousand years of things that drowned." },
-        { icon: "claw", t: "You need a claw that can find them - the genome has one. Then stand on a site and press E. The shallow ones show; the deep ones do not until your claw is better." },
+        { icon: "claw", t: "Stand on a site and press E, or hit DIG with your thumb. The shallow ones show; the deep ones do not until your claw is better." },
         { icon: "egg", t: "Bone, shell, amber. Amber is the good one - there are things asleep in amber that have been asleep since the water went, and some of them wake up." }
       ]
     },
     {
       id: "mine",
-      word: "MINE",
-      group: "work",
       ask: "How do I get the ore out?",
+      want: (g) => g.craft?.list()?.length ? 1 : 5,
       lines: [
-        { icon: "burrow", t: "Dig straight down. The hole follows you - press and hold and it goes deeper, and the sides slump back if you leave it, so finish what you start." },
-        { icon: "bolt", t: "When you reach a seam the ore shows in the rock. Swing at it. Grit first - grit is everywhere - then copper, and then the ladder opens up: a copper pick reaches amber and iron." },
+        { icon: "burrow", t: "Dig straight down. The hole follows you - hold it and it goes deeper, and the sides slump back if you leave it, so finish what you start." },
+        { icon: "bolt", t: "When you reach a seam the ore shows in the rock. Swing at it. Grit first - grit is everywhere - then copper, and then the ladder opens up." },
         { icon: "hammer", t: "You cannot swing at iron with a trowel. If the seam will not chip, it is telling you to go and make a better tool, not to swing harder." }
       ]
     },
     {
       id: "craft",
-      word: "CRAFT",
-      group: "work",
       ask: "What can you make?",
+      want: (g) => g.craft?.list()?.length ? 6 : 3,
       lines: [
-        { icon: "hammer", t: "With a bench and a bag of the right rubbish? A great deal. B, then BENCH. It is my bag, so I will be doing the actual work." },
-        { icon: "load", t: "Recipes light up when you have what they need. What you have is on the left; what it makes is on the right. Start it and it takes a moment - it is not magic, it is me with a file." },
-        { icon: "link", t: "Build the bench onto your own back and I can work while you walk. Which I would enjoy, if you are asking." }
+        { icon: "hammer", t: "With a bench and a bag of the right rubbish? A great deal. Click yourself, then BENCH. It is my bag, so I will be doing the actual work." },
+        { icon: "load", t: "Recipes light up when you have what they need. What you have is on the left; what it makes is on the right. Start it and it takes a moment - it is not magic, it is me with a file." }
       ]
     },
     {
       id: "tame",
-      word: "TAME",
-      group: "life",
       ask: "How do I make one of them stay?",
+      want: (g) => g.wildlife?.tamed?.length ? 1 : 4,
       lines: [
         { icon: "fruit", t: "You do not make it. You put out the one thing its kind crosses a desert for and you wait. Berries for the birds, standing water for the reptiles, a flower for the insects, shade for the small warm ones." },
         { icon: "call", t: "It eats, it sticks to you, and then the hard part. It sings you a phrase and you sing it back. Four of them, longer each time. Fumble one and you lose ground, not the animal." },
-        { icon: "nest", t: "Get most of them right and it is yours. It walks with you and it works - some of them dig, some of them find water, some of them just keep the smaller things off you." }
+        { icon: "nest", t: "Get most of them right and it is yours. It walks with you and it works - some of them dig, some find water, some just keep the smaller things off you." }
+      ]
+    },
+    {
+      id: "vent",
+      ask: "What are the stone caps?",
+      want: () => 5,
+      lines: [
+        {
+          icon: "well",
+          mood: "squint",
+          t: "A collar of dressed block over a hole in the rock, with a plug driven into it. That is not a well. That is a lid."
+        },
+        {
+          icon: "drop",
+          mood: "talk",
+          t: "The water never went anywhere. It went DOWN. The people here found the vents and capped them, because a spring you can turn on is worth more than a spring that runs, and then they died and the lids stayed shut."
+        },
+        {
+          icon: "claw",
+          mood: "grin",
+          t: "So break one. Stand at it and swing - five good hits and the plug goes. What comes out does not stop."
+        },
+        {
+          icon: "shield",
+          mood: "frown",
+          t: "One thing. Something always moves in on top of them, and it does not like new arrivals. Deal with the animal first."
+        }
       ]
     },
     {
       id: "spore",
-      word: "SPORE",
-      group: "life",
       ask: "What is the spore?",
+      when: (g) => (g.economy?.parasites || 0) > 0 || g.mind?.stage !== "free",
+      want: () => 7,
       lines: [
         { icon: "seed", t: "A mindcap fruits it. It is a parasite, and I want to be very clear that I am not comfortable with any of this." },
         { icon: "jet", t: "Hold the nozzle, let the pressure build, let go inside the band. Too short and it falls in the sand. Too long and it goes off in you, and you will not enjoy that." },
-        { icon: "link", t: "And it only takes in something willing - hurt, or fed, or half trusting you already. A healthy animal that owes you nothing will simply shrug it off." },
-        { icon: "close", t: "Including me. You have already done it to me once. I remember all of it." }
-      ],
-      when: (g) => (g.economy?.parasites || 0) > 0 || g.mind?.stage !== "free"
-    },
-    {
-      id: "sea",
-      word: "SEA",
-      group: "world",
-      ask: "There was a sea here.",
-      lines: [
-        { icon: "well", t: "There was. Right here, over our heads, for about nine thousand years." },
-        { icon: "sun", t: "Then it went. Not dramatically - it just stopped being replaced. Took four centuries. Nobody alive noticed it happening." },
-        { icon: "map", t: "You were here when it was here. I have spent eleven years proving that to people who stopped answering, and here you are, walking about." }
+        { icon: "link", t: "And it only takes in something willing - hurt, or fed, or half trusting you already. A healthy animal that owes you nothing will simply shrug it off." }
       ]
     },
     {
       id: "green",
-      word: "GREEN",
-      group: "world",
       ask: "Is any of this working?",
+      want: (g) => (g.green?.plants?.size || 0) > 0 ? 4 : 2,
       lines: [
         { icon: "leaf", t: "Look behind you. Where you have walked with things growing on your back, the ground is coming back. Not much. Some." },
         { icon: "tree", t: "Seeds fall off you. Water gets spilled. Something eats and leaves something behind. That is all a desert ever needed - it did not want to be a desert." },
@@ -12322,10 +12335,19 @@ body {
       ]
     },
     {
+      id: "sea",
+      ask: "There was a sea here.",
+      want: () => 2,
+      lines: [
+        { icon: "well", t: "There was. Right here, over our heads, for about nine thousand years." },
+        { icon: "sun", t: "Then it went. Not dramatically - it just stopped being replaced. Took four centuries. Nobody alive noticed it happening." },
+        { icon: "crab", t: "You were here when it was here. I have spent eleven years proving that to people who stopped answering, and here you are, walking about." }
+      ]
+    },
+    {
       id: "name",
-      word: "NAME",
-      group: "him",
       ask: "Who are you?",
+      want: () => 3,
       lines: [
         { icon: "hand", t: "Elias Vess. Doctor, if the funding body is listening, which it is not." },
         { icon: "clock", t: "Eleven years on a sea that dried up before there was anyone to see it. Three papers. One reviewer. He said the timeline was implausible." },
@@ -12334,46 +12356,66 @@ body {
     },
     {
       id: "me",
-      word: "ME",
-      group: "him",
       ask: "What am I?",
+      want: () => 3,
       lines: [
         { icon: "crab", t: "You are an Oasis Crab, which is a thing I named last Tuesday, and you are the only one." },
         { icon: "egg", t: "You went under when the water did. Something in you decided to wait it out rather than die, and then it waited a thousand years, and then it stopped waiting." },
         { icon: "clock", t: "I do not know why now. I have theories. None of them are any good." }
       ]
-    },
+    }
+  ];
+  var LESSON_BY_ID = Object.fromEntries(LESSONS.map((l) => [l.id, l]));
+  function nextLesson(g) {
+    const heard = g.talk?.heard;
+    let best = null, bestW = -1;
+    for (const l of LESSONS) {
+      if (l.when && !l.when(g)) continue;
+      let w = 0;
+      try {
+        w = l.want ? l.want(g) : 1;
+      } catch {
+        w = 1;
+      }
+      if (heard?.has(l.id)) w = w * 0.01 - LESSONS.indexOf(l) * 1e-4;
+      if (w > bestW) {
+        bestW = w;
+        best = l;
+      }
+    }
+    return best;
+  }
+  var TOPICS = [
     {
-      // The one topic whose answer is not written down anywhere: it is whatever
-      // he wants doing next. Ask and he tells you; when he has finished telling
-      // you, you are doing it.
+      // The job. Not a list of jobs, not a board: THE job, the one you are on,
+      // read back to you with how far through it you are and which button it
+      // wants - or, when you are on nothing, the next one, offered.
       id: "work",
       word: "WORK",
-      group: "him",
-      ask: "What needs doing?",
+      group: "work",
+      ask: (g) => {
+        const q = g.quests;
+        if (q?.active) return "About the job.";
+        return q?.next() ? "What needs doing?" : "Anything else?";
+      },
       build: (g) => {
         const q = g.quests;
         if (q.active) {
+          const a = q.active;
+          const c = q.progress;
+          const far = c && c.need > 1 ? ` You are at ${c.have} of ${c.need}.` : "";
           return [
+            { icon: "hand", mood: "talk", t: `${a.name}. ${a.note}.${far}` },
             {
-              icon: "hand",
-              mood: "squint",
-              t: `You are in the middle of something. ${q.active.ask}`
-            },
-            {
-              icon: "clock",
-              mood: "flat",
-              t: "Go and do that, and then come back and ask me again.",
+              icon: "point",
+              mood: "peer",
+              t: a.how,
               choices: [
-                { word: "YES", text: "I'm on it." },
+                { word: "ON IT", text: "I'm on it.", tint: "#9ad86a" },
                 {
-                  word: "DROP",
-                  text: "Give me a different one.",
-                  go: [{
-                    icon: "close",
-                    mood: "glare",
-                    t: "No. You asked, I answered, and I am not running a menu. Finish it."
-                  }]
+                  word: "AGAIN",
+                  text: "Say the whole thing again.",
+                  go: [{ icon: "clock", mood: "flat", t: a.ask }]
                 }
               ]
             }
@@ -12395,6 +12437,25 @@ body {
           ];
         }
         return offerCards(next);
+      }
+    },
+    {
+      // The manual, behind one door. He picks the page.
+      id: "ask",
+      word: "ASK",
+      group: "him",
+      ask: (g) => nextLesson(g)?.ask || "Tell me something.",
+      build: (g) => {
+        const l = nextLesson(g);
+        if (!l) return [{ icon: "dusk", mood: "dull", t: "I have told you everything I know. Twice." }];
+        return l.lines;
+      },
+      then: (g) => {
+        const l = g.talk?._asked;
+        if (l) {
+          g.talk.heard.add(l.id);
+          l.then?.(g);
+        }
       }
     },
     {
@@ -12421,43 +12482,6 @@ body {
       then: (g) => {
         g.mind?.leanIn();
       }
-    },
-    {
-      id: "vent",
-      word: "VENT",
-      group: "work",
-      ask: "The stone caps?",
-      lines: [
-        {
-          icon: "well",
-          mood: "squint",
-          t: "You have seen one. Good. A collar of dressed block over a hole in the rock, with a plug driven into it. That is not a well. That is a lid."
-        },
-        {
-          icon: "drop",
-          mood: "talk",
-          t: "The water never went anywhere. It went DOWN. The people here found the vents and capped them, because a spring you can turn on is worth more than a spring that runs, and then they died and the lids stayed shut."
-        },
-        {
-          icon: "claw",
-          mood: "grin",
-          t: "So break one. Stand at it and swing - five good hits and the plug goes. What comes out does not stop, and everything within four hundred metres that has been waiting a thousand years comes up at once."
-        },
-        {
-          icon: "shield",
-          mood: "frown",
-          t: "One thing. Something always moves in on top of them. It has been walking the same ground since before I got here and it does not like new arrivals. Deal with the animal first - it will not let you turn your back on it."
-        }
-      ]
-    },
-    {
-      id: "help",
-      word: "HELP",
-      group: "him",
-      ask: "Help me.",
-      lines: [
-        { icon: "hand", t: "Always. Say where and I will do the digging - I have the hands and you have the reach." }
-      ]
     },
     {
       // Not a thing you say. It only appears once he is actually down in front
@@ -12524,6 +12548,8 @@ body {
       this.arows = [];
       this.apick = 0;
       this.said = /* @__PURE__ */ new Set();
+      this.heard = /* @__PURE__ */ new Set();
+      this._asked = null;
       this.topic = null;
       this.line = 0;
       this.type = 0;
@@ -12590,6 +12616,7 @@ body {
     // -- saying something -----------------------------------------------------
     /** Say a topic. */
     ask(tp, tapped = false) {
+      this._asked = tp.id === "ask" ? nextLesson(this.game) : null;
       this.topic = tp.build ? { ...tp, lines: tp.build(this.game) } : tp;
       this.line = 0;
       this._begin();
@@ -12875,8 +12902,8 @@ body {
       const narrow = W < 360;
       let K;
       if (narrow) {
-        const rows = this.topic ? 3 : Math.ceil(this.list().length / 2);
-        const need = rows * 34 + 22;
+        const rows = this.topic ? 3 : this.list().length;
+        const need = rows * 34 + 18;
         K = Math.min(3, Math.floor((W - 24) / 66) || 1);
         const limit = H - lb - 6;
         while (K > 1 && lb + 4 + 21 * K + 64 * K * 0.62 + need > limit) K--;
@@ -13041,63 +13068,78 @@ body {
         { color: "rgba(240,226,192,0.4)", align: "right" }
       );
     }
+    /** What a door says right now - two of them change with the world. */
+    _label(tp) {
+      const a = tp.ask;
+      return (typeof a === "function" ? a(this.game) : a) || tp.word;
+    }
+    /** The picture on the door. */
+    _icon(tp) {
+      if (tp.id === "bye") return "close";
+      if (tp.id === "work") return this.game.quests?.active ? "clock" : "call";
+      if (tp.id === "spray") return "jet";
+      if (tp.id === "closer") return "hand";
+      return nextLesson(this.game)?.lines?.[0]?.icon || "comb";
+    }
     /**
      * WHAT YOU CAN SAY.
      *
-     * There used to be a grid of stone tablets here with morse cut under every
-     * word, and you said one by tapping its code out on a key. It was the best
-     * thing in the game to look at and the worst thing in it to use: you had to
-     * already know which words did anything, and the ones that did anything
-     * were a menu with a puzzle bolted to the front of it.
+     * There used to be seventeen of these, in a grid, and reading all of them
+     * to find the one that did anything was the whole experience of talking to
+     * him. Now there are three doors and they are full-width plates you could
+     * hit with a thumb in a moving car:
      *
-     * So it is buttons. You press what you want to say, he says it back, and
-     * the last one is always BYE - which is the only word left over from the
-     * old system, because leaving is the one thing you should always be able
-     * to do in one press.
+     *   THE JOB - the thing you are doing, read back with how far through it is
+     *   ASK HIM - one question, and he chooses which one you most need answered
+     *   BYE     - always last, always rust, always one press
+     *
+     * The two gated story doors join them when they are live, which is at most
+     * five, once, near the end.
      */
     _say(ctx, x, y, w, H) {
       const list = this.list();
       const touch = !!this.game.ui?.touchEnabled;
       const floor = H - Math.round(H * 0.055) - 6;
-      const room = Math.max(40, floor - y - 14);
-      const maxH = touch ? 22 : 18;
-      let cols = w > 320 ? 3 : w > 190 ? 2 : 1;
-      let h = maxH;
-      for (; ; ) {
-        const rows2 = Math.ceil(list.length / cols);
-        h = Math.min(maxH, Math.floor(room / rows2) - 3);
-        if (h >= 15 || cols >= 4) break;
-        cols++;
-      }
-      h = Math.max(13, Math.min(maxH, h));
-      const gap = 3;
-      const cw = Math.floor((w - (cols - 1) * gap) / cols);
-      drawText(ctx, "SAY", x, y - 10, { color: "rgba(240,226,192,0.5)" });
+      const room = Math.max(40, floor - y - 4);
+      const gap = 4;
+      const h = Math.max(16, Math.min(
+        touch ? 30 : 26,
+        Math.floor((room - (list.length - 1) * gap) / list.length)
+      ));
+      const ih = h >= 24 ? 2 : 1;
       const rows = [];
       list.forEach((tp, i) => {
-        const bx = x + i % cols * (cw + gap);
-        const by = y + Math.floor(i / cols) * (h + gap);
-        if (by + h > floor) return;
+        const by = y + i * (h + gap);
+        if (by + h > floor + 2) return;
         const on = i === this.pick;
-        const said = this.said.has(tp.id);
         const bye = tp.id === "bye";
-        button(ctx, bx, by, cw, h, null, {
-          hot: on && !bye,
-          on: bye,
-          tint: bye ? "#c2702e" : void 0
-        });
+        const spray = tp.id === "spray";
+        const tint = bye ? "#c2702e" : spray ? "#c98ade" : void 0;
+        button(ctx, x, by, w, h, null, { hot: on && !bye, on: bye, tint });
+        const press = on && !bye ? 1 : 0;
+        const mx = x + 3 + h / 2;
+        R(ctx, x + h + 1, by + 3, 1, h - 6, "rgba(10,7,4,0.4)");
+        drawNodeIcon(
+          ctx,
+          this._icon(tp),
+          mx,
+          by + h / 2 + press,
+          on ? C.goldLit : bye ? "#e79c5a" : C.ink,
+          ih
+        );
+        const said = tp.id === "ask" ? this.heard.has(nextLesson(this.game)?.id) : this.said.has(tp.id);
         if (said && !bye) {
-          R(ctx, bx + cw - 6, by + 3, 3, 1, C.goldDim);
-          R(ctx, bx + cw - 5, by + 4, 1, 1, C.goldDim);
+          R(ctx, x + w - 7, by + 4 + press, 3, 1, C.goldDim);
+          R(ctx, x + w - 6, by + 5 + press, 1, 1, C.goldDim);
         }
         drawText(
           ctx,
-          ellipsize(tp.ask || tp.word, cw - 10),
-          bx + cw / 2,
-          by + (h - 7) / 2,
-          { color: on ? "#fff3d2" : said ? C.inkSoft : C.ink, align: "center" }
+          ellipsize(this._label(tp), w - h - 16),
+          x + h + 7,
+          by + (h - 7) / 2 + press,
+          { color: on ? "#fff3d2" : said ? C.inkSoft : C.ink }
         );
-        rows.push({ i, x: bx, y: by, w: cw, h });
+        rows.push({ i, x, y: by, w, h });
       });
       this.rows = rows;
     }
@@ -24944,10 +24986,11 @@ body {
       const took = !done && q.tookT > 0;
       const prog = done ? null : q.progress;
       const label = done ? `${job.name}  ${job.gain}` : job.name;
-      const w = Math.min(W - 16, Math.max(104, textWidth(label) + 26));
+      const count = prog && prog.need > 1 ? `${prog.have}/${prog.need}` : "";
+      const w = Math.min(W - 16, Math.max(104, textWidth(label) + 26 + textWidth(count)));
       const h = prog ? 23 : 15;
       const x = 6, y = this.build > 5e-3 ? 6 : 56;
-      const beat = done ? clamp01(q.doneT / 4) : took ? clamp01(q.tookT / 2.8) : 0;
+      const beat = done ? clamp01(q.doneT / 4) : took ? clamp01(q.tookT / 6) : 0;
       const pop = 1 + easeOutCubic(clamp01(beat * 1.6)) * 0.08;
       ctx.save();
       ctx.translate(x, y);
@@ -24958,11 +25001,20 @@ body {
       drawNodeIcon(ctx, done ? "sun" : "hand", x + 9, y + 7, tint, 1);
       drawText(
         ctx,
-        ellipsize(label, w - 24),
+        ellipsize(label, w - 24 - textWidth(count)),
         x + 17,
         y + 4,
         { color: done ? "#d6f0b8" : "#f0e2c0" }
       );
+      if (count) {
+        drawText(
+          ctx,
+          count,
+          x + w - 5,
+          y + 4,
+          { color: "rgba(240,226,192,0.66)", align: "right" }
+        );
+      }
       if (prog) {
         gauge(
           ctx,
@@ -24973,6 +25025,23 @@ body {
           clamp01(prog.have / prog.need),
           done ? C.good : C.warn
         );
+      }
+      ctx.restore();
+      if (took && job.how) {
+        const a = clamp01(q.tookT / 1.2);
+        const hw = Math.min(W - 16, 210);
+        const hl = wrapText(job.how, hw - 12);
+        const hh = hl.length * LINE_H + 8;
+        ctx.globalAlpha = a;
+        slab(ctx, x, y + h + 3, hw, hh, {});
+        hl.forEach((l, i) => drawText(
+          ctx,
+          l,
+          x + 6,
+          y + h + 7 + i * LINE_H,
+          { color: C.ink }
+        ));
+        ctx.globalAlpha = 1;
       }
       ctx.restore();
     }

@@ -8,114 +8,118 @@ import { offerCards } from './quests.js';
 //
 // There used to be a code here: a morse table, a key you held down with your
 // pincer, and a grid of stone tablets with the dots and dashes cut under
-// every word you were allowed to say. It was the best-looking thing in the
-// game and the worst thing in it to use - you had to already know which
-// words did anything, and the ones that did were a menu with a puzzle bolted
-// to the front of it.
+// every word you were allowed to say. Then there was a grid of SEVENTEEN
+// BUTTONS, which was worse - a wall of questions you had to read all of to
+// find the one that did anything, and fifteen of them were a manual.
 //
-// What is left is the conversation. He talks, you pick what you say back,
-// and the last thing on the list is always BYE.
+// So there are THREE THINGS you can say, and they are the three things
+// anybody says to a man who is giving them work:
+//
+//   THE JOB    - what am I doing, how far through am I, what do I press
+//   ASK HIM    - tell me the one thing I most need to know right now
+//   BYE        - I am going
+//
+// The manual did not go anywhere. It is behind ASK HIM, and he picks which
+// page of it you get, because he is standing right there and he can see what
+// you have and have not worked out. A button that says "How do I grow
+// something?" when you cannot yet grow anything is worth fifteen buttons
+// that say everything.
 
 // ---------------------------------------------------------------------------
-// The conversation.
+// the manual
 //
-// Tapping a word at him and getting a sentence back was a good trick, but it
-// was a trick: you had to already know which words did anything. So there is
-// a conversation now. You sit down in front of him, he has a face and a
-// voice, and the things you can say are laid out with their code written
-// under them - because the code is the language, and hiding it would be like
-// hiding the words.
+// Each of these is one thing he knows, and the only place in the game where
+// you are actually taught anything: not a tooltip, not a tutorial step, but a
+// man who has been out here eleven years telling you how to grow a plant.
 //
-// You can answer two ways and they are the same answer: tap it out for real
-// on the key, or point at it. Tapping is the game; pointing is for when your
-// hands are busy. Either way it is you who said it.
+// `want` is how badly he wants to tell you this one NOW. Highest wins, and
+// anything he has already told you drops to nearly nothing - so the one
+// button in front of you is always the next useful sentence and never the
+// same sentence twice.
 
-/**
- * What you can say to him. `lines` is what he says back, one card at a time.
- * `when` gates a topic on the world - there is no point asking him how to
- * mine before you have a claw that could. `then` runs once the topic is done.
- */
-export const TOPICS = [
+export const LESSONS = [
   {
-    id: 'plant', word: 'PLANT', group: 'work',
-    ask: 'How do I grow something?',
+    id: 'plant', ask: 'How do I grow something?',
+    want: (g) => (g.garden?.plots?.some((p) => p.plant) ? 1 : 9),
     lines: [
       { icon: 'seed', t: "Right. Listen, because this is the only thing out here that matters. Your back is soil. Actual soil - there is a basin in that shell with a thousand years of silt in it." },
-      { icon: 'hand', t: "Open your back - the shell button, or B. You will see the plots. Drag a seed out of the tray and drop it on one. It will not take if the plot is already full." },
-      { icon: 'drop', t: "Then water it. A seed that is dry does nothing for ever. Work the valve until the basin has water in it, then pour - the ring round the seed fills as it drinks." },
-      { icon: 'sun', t: "Then leave it alone. It wants time, and some of them want particular things - shade, salt, standing water. The chips on the seed tell you which, and they fill in as you have them." },
+      { icon: 'hand', t: "Click yourself. That opens your own back, and you will see the plots. Drag a seed out of the tray onto one. It will not take if the plot is already full." },
+      { icon: 'drop', t: "Then water it. A seed that is dry does nothing for ever. Work the valve until the shell has water in it, then pour - the ring round the seed fills as it drinks." },
       { icon: 'fruit', t: "When it is ripe it goes gold and the bead lifts. R picks everything that is ready. That is the whole of it. Go and grow something." },
     ],
     then: (g) => { g.taughtPlant = true; },
   },
   {
-    id: 'water', word: 'WATER', group: 'work',
-    ask: 'Where is the water?',
+    id: 'water', ask: 'Where is the water?',
+    want: (g) => (g.economy?.water > 4 ? 1 : 8),
     lines: [
       { icon: 'drop', t: "From you. There is a spring under that shell and it has been sitting on it since before there were people." },
-      { icon: 'pump', t: "The valve in the corner is the muscle. Tap it in time with the band on the gauge - in the band it pays, in the middle of the band it pays double, and a run of good ones pays much more than a run of bad ones." },
-      { icon: 'well', t: "Fill the basin and everything on your back drinks out of it. Let it run dry and everything on your back dies. That is the whole economy of this place." },
+      { icon: 'pump', t: "The valve in the corner is the muscle. Tap it in time with the band on the gauge - in the band it pays, dead centre it pays double, and a run of good ones pays far more than a run of bad ones." },
+      { icon: 'well', t: "Fill the shell and everything on your back drinks out of it. Let it run dry and everything on your back dies. That is the whole economy of this place." },
     ],
   },
   {
-    id: 'dig', word: 'DIG', group: 'work',
-    ask: 'What is under the sand?',
+    id: 'dig', ask: 'What is under the sand?',
+    want: () => 6,
     lines: [
       { icon: 'spade', t: "Everything. This was a sea floor. What you are walking on is eleven thousand years of things that drowned." },
-      { icon: 'claw', t: "You need a claw that can find them - the genome has one. Then stand on a site and press E. The shallow ones show; the deep ones do not until your claw is better." },
+      { icon: 'claw', t: "Stand on a site and press E, or hit DIG with your thumb. The shallow ones show; the deep ones do not until your claw is better." },
       { icon: 'egg', t: "Bone, shell, amber. Amber is the good one - there are things asleep in amber that have been asleep since the water went, and some of them wake up." },
     ],
   },
   {
-    id: 'mine', word: 'MINE', group: 'work',
-    ask: 'How do I get the ore out?',
+    id: 'mine', ask: 'How do I get the ore out?',
+    want: (g) => (g.craft?.list()?.length ? 1 : 5),
     lines: [
-      { icon: 'burrow', t: "Dig straight down. The hole follows you - press and hold and it goes deeper, and the sides slump back if you leave it, so finish what you start." },
-      { icon: 'bolt', t: "When you reach a seam the ore shows in the rock. Swing at it. Grit first - grit is everywhere - then copper, and then the ladder opens up: a copper pick reaches amber and iron." },
+      { icon: 'burrow', t: "Dig straight down. The hole follows you - hold it and it goes deeper, and the sides slump back if you leave it, so finish what you start." },
+      { icon: 'bolt', t: "When you reach a seam the ore shows in the rock. Swing at it. Grit first - grit is everywhere - then copper, and then the ladder opens up." },
       { icon: 'hammer', t: "You cannot swing at iron with a trowel. If the seam will not chip, it is telling you to go and make a better tool, not to swing harder." },
     ],
   },
   {
-    id: 'craft', word: 'CRAFT', group: 'work',
-    ask: 'What can you make?',
+    id: 'craft', ask: 'What can you make?',
+    want: (g) => (g.craft?.list()?.length ? 6 : 3),
     lines: [
-      { icon: 'hammer', t: "With a bench and a bag of the right rubbish? A great deal. B, then BENCH. It is my bag, so I will be doing the actual work." },
+      { icon: 'hammer', t: "With a bench and a bag of the right rubbish? A great deal. Click yourself, then BENCH. It is my bag, so I will be doing the actual work." },
       { icon: 'load', t: "Recipes light up when you have what they need. What you have is on the left; what it makes is on the right. Start it and it takes a moment - it is not magic, it is me with a file." },
-      { icon: 'link', t: "Build the bench onto your own back and I can work while you walk. Which I would enjoy, if you are asking." },
     ],
   },
   {
-    id: 'tame', word: 'TAME', group: 'life',
-    ask: 'How do I make one of them stay?',
+    id: 'tame', ask: 'How do I make one of them stay?',
+    want: (g) => (g.wildlife?.tamed?.length ? 1 : 4),
     lines: [
       { icon: 'fruit', t: "You do not make it. You put out the one thing its kind crosses a desert for and you wait. Berries for the birds, standing water for the reptiles, a flower for the insects, shade for the small warm ones." },
       { icon: 'call', t: "It eats, it sticks to you, and then the hard part. It sings you a phrase and you sing it back. Four of them, longer each time. Fumble one and you lose ground, not the animal." },
-      { icon: 'nest', t: "Get most of them right and it is yours. It walks with you and it works - some of them dig, some of them find water, some of them just keep the smaller things off you." },
+      { icon: 'nest', t: "Get most of them right and it is yours. It walks with you and it works - some of them dig, some find water, some just keep the smaller things off you." },
     ],
   },
   {
-    id: 'spore', word: 'SPORE', group: 'life',
-    ask: 'What is the spore?',
+    id: 'vent', ask: 'What are the stone caps?',
+    want: () => 5,
+    lines: [
+      { icon: 'well', mood: 'squint',
+        t: "A collar of dressed block over a hole in the rock, with a plug driven into it. That is not a well. That is a lid." },
+      { icon: 'drop', mood: 'talk',
+        t: "The water never went anywhere. It went DOWN. The people here found the vents and capped them, because a spring you can turn on is worth more than a spring that runs, and then they died and the lids stayed shut." },
+      { icon: 'claw', mood: 'grin',
+        t: "So break one. Stand at it and swing - five good hits and the plug goes. What comes out does not stop." },
+      { icon: 'shield', mood: 'frown',
+        t: "One thing. Something always moves in on top of them, and it does not like new arrivals. Deal with the animal first." },
+    ],
+  },
+  {
+    id: 'spore', ask: 'What is the spore?',
+    when: (g) => (g.economy?.parasites || 0) > 0 || g.mind?.stage !== 'free',
+    want: () => 7,
     lines: [
       { icon: 'seed', t: "A mindcap fruits it. It is a parasite, and I want to be very clear that I am not comfortable with any of this." },
       { icon: 'jet', t: "Hold the nozzle, let the pressure build, let go inside the band. Too short and it falls in the sand. Too long and it goes off in you, and you will not enjoy that." },
       { icon: 'link', t: "And it only takes in something willing - hurt, or fed, or half trusting you already. A healthy animal that owes you nothing will simply shrug it off." },
-      { icon: 'close', t: "Including me. You have already done it to me once. I remember all of it." },
-    ],
-    when: (g) => (g.economy?.parasites || 0) > 0 || g.mind?.stage !== 'free',
-  },
-  {
-    id: 'sea', word: 'SEA', group: 'world',
-    ask: 'There was a sea here.',
-    lines: [
-      { icon: 'well', t: "There was. Right here, over our heads, for about nine thousand years." },
-      { icon: 'sun', t: "Then it went. Not dramatically - it just stopped being replaced. Took four centuries. Nobody alive noticed it happening." },
-      { icon: 'map', t: "You were here when it was here. I have spent eleven years proving that to people who stopped answering, and here you are, walking about." },
     ],
   },
   {
-    id: 'green', word: 'GREEN', group: 'world',
-    ask: 'Is any of this working?',
+    id: 'green', ask: 'Is any of this working?',
+    want: (g) => ((g.green?.plants?.size || 0) > 0 ? 4 : 2),
     lines: [
       { icon: 'leaf', t: "Look behind you. Where you have walked with things growing on your back, the ground is coming back. Not much. Some." },
       { icon: 'tree', t: "Seeds fall off you. Water gets spilled. Something eats and leaves something behind. That is all a desert ever needed - it did not want to be a desert." },
@@ -123,8 +127,15 @@ export const TOPICS = [
     ],
   },
   {
-    id: 'name', word: 'NAME', group: 'him',
-    ask: 'Who are you?',
+    id: 'sea', ask: 'There was a sea here.', want: () => 2,
+    lines: [
+      { icon: 'well', t: "There was. Right here, over our heads, for about nine thousand years." },
+      { icon: 'sun', t: "Then it went. Not dramatically - it just stopped being replaced. Took four centuries. Nobody alive noticed it happening." },
+      { icon: 'crab', t: "You were here when it was here. I have spent eleven years proving that to people who stopped answering, and here you are, walking about." },
+    ],
+  },
+  {
+    id: 'name', ask: 'Who are you?', want: () => 3,
     lines: [
       { icon: 'hand', t: "Elias Vess. Doctor, if the funding body is listening, which it is not." },
       { icon: 'clock', t: "Eleven years on a sea that dried up before there was anyone to see it. Three papers. One reviewer. He said the timeline was implausible." },
@@ -132,33 +143,70 @@ export const TOPICS = [
     ],
   },
   {
-    id: 'me', word: 'ME', group: 'him',
-    ask: 'What am I?',
+    id: 'me', ask: 'What am I?', want: () => 3,
     lines: [
       { icon: 'crab', t: "You are an Oasis Crab, which is a thing I named last Tuesday, and you are the only one." },
       { icon: 'egg', t: "You went under when the water did. Something in you decided to wait it out rather than die, and then it waited a thousand years, and then it stopped waiting." },
       { icon: 'clock', t: "I do not know why now. I have theories. None of them are any good." },
     ],
   },
+];
+
+export const LESSON_BY_ID = Object.fromEntries(LESSONS.map((l) => [l.id, l]));
+
+/**
+ * The one thing he most wants to tell you.
+ *
+ * He can see you. He knows whether there is anything growing on your back and
+ * whether that shell has water in it, so the single ASK HIM button is always
+ * pointed at the gap - and once he has said a thing he does not open with it
+ * again, he just keeps it on the shelf in case you come back for it.
+ */
+export function nextLesson(g) {
+  const heard = g.talk?.heard;
+  let best = null, bestW = -1;
+  for (const l of LESSONS) {
+    if (l.when && !l.when(g)) continue;
+    let w = 0;
+    try { w = l.want ? l.want(g) : 1; } catch { w = 1; }
+    // told you once is told you: it drops behind everything he has not said
+    if (heard?.has(l.id)) w = w * 0.01 - LESSONS.indexOf(l) * 0.0001;
+    if (w > bestW) { bestW = w; best = l; }
+  }
+  return best;
+}
+
+/**
+ * What you can say to him.
+ *
+ * `ask` is what the button says, and it is a function on the two that change
+ * with the world - so the door into the manual is labelled with the actual
+ * question you are about to ask rather than the word MANUAL.
+ */
+export const TOPICS = [
   {
-    // The one topic whose answer is not written down anywhere: it is whatever
-    // he wants doing next. Ask and he tells you; when he has finished telling
-    // you, you are doing it.
-    id: 'work', word: 'WORK', group: 'him',
-    ask: 'What needs doing?',
+    // The job. Not a list of jobs, not a board: THE job, the one you are on,
+    // read back to you with how far through it you are and which button it
+    // wants - or, when you are on nothing, the next one, offered.
+    id: 'work', word: 'WORK', group: 'work',
+    ask: (g) => {
+      const q = g.quests;
+      if (q?.active) return 'About the job.';
+      return q?.next() ? 'What needs doing?' : 'Anything else?';
+    },
     build: (g) => {
       const q = g.quests;
       if (q.active) {
+        const a = q.active;
+        const c = q.progress;
+        const far = c && c.need > 1 ? ` You are at ${c.have} of ${c.need}.` : '';
         return [
-          { icon: 'hand', mood: 'squint',
-            t: `You are in the middle of something. ${q.active.ask}` },
-          { icon: 'clock', mood: 'flat',
-            t: 'Go and do that, and then come back and ask me again.',
+          { icon: 'hand', mood: 'talk', t: `${a.name}. ${a.note}.${far}` },
+          { icon: 'point', mood: 'peer', t: a.how,
             choices: [
-              { word: 'YES', text: "I'm on it." },
-              { word: 'DROP', text: 'Give me a different one.',
-                go: [{ icon: 'close', mood: 'glare',
-                  t: 'No. You asked, I answered, and I am not running a menu. Finish it.' }] },
+              { word: 'ON IT', text: "I'm on it.", tint: '#9ad86a' },
+              { word: 'AGAIN', text: 'Say the whole thing again.',
+                go: [{ icon: 'clock', mood: 'flat', t: a.ask }] },
             ] },
         ];
       }
@@ -171,9 +219,23 @@ export const TOPICS = [
             t: 'Go and grow something for yourself. That is the job now.' },
         ];
       }
-      // The offer, which is the same two cards he uses when he brings work
-      // up himself - because it is the same conversation.
+      // the same two cards he uses when he brings work up himself, because it
+      // is the same conversation
       return offerCards(next);
+    },
+  },
+  {
+    // The manual, behind one door. He picks the page.
+    id: 'ask', word: 'ASK', group: 'him',
+    ask: (g) => nextLesson(g)?.ask || 'Tell me something.',
+    build: (g) => {
+      const l = nextLesson(g);
+      if (!l) return [{ icon: 'dusk', mood: 'dull', t: 'I have told you everything I know. Twice.' }];
+      return l.lines;
+    },
+    then: (g) => {
+      const l = g.talk?._asked;
+      if (l) { g.talk.heard.add(l.id); l.then?.(g); }
     },
   },
   {
@@ -190,27 +252,6 @@ export const TOPICS = [
         t: "There. Down at your level. What is it - is there something on the shell? Hold still, let me look." },
     ],
     then: (g) => { g.mind?.leanIn(); },
-  },
-  {
-    id: 'vent', word: 'VENT', group: 'work',
-    ask: 'The stone caps?',
-    lines: [
-      { icon: 'well', mood: 'squint',
-        t: "You have seen one. Good. A collar of dressed block over a hole in the rock, with a plug driven into it. That is not a well. That is a lid." },
-      { icon: 'drop', mood: 'talk',
-        t: "The water never went anywhere. It went DOWN. The people here found the vents and capped them, because a spring you can turn on is worth more than a spring that runs, and then they died and the lids stayed shut." },
-      { icon: 'claw', mood: 'grin',
-        t: "So break one. Stand at it and swing - five good hits and the plug goes. What comes out does not stop, and everything within four hundred metres that has been waiting a thousand years comes up at once." },
-      { icon: 'shield', mood: 'frown',
-        t: "One thing. Something always moves in on top of them. It has been walking the same ground since before I got here and it does not like new arrivals. Deal with the animal first - it will not let you turn your back on it." },
-    ],
-  },
-  {
-    id: 'help', word: 'HELP', group: 'him',
-    ask: 'Help me.',
-    lines: [
-      { icon: 'hand', t: "Always. Say where and I will do the digging - I have the hands and you have the reach." },
-    ],
   },
   {
     // Not a thing you say. It only appears once he is actually down in front

@@ -19,7 +19,7 @@ import { drawText, textWidth, wrapText, ellipsize, LINE_H } from '../lib/font.js
 import { drawNodeIcon } from './icons.js';
 import * as Kit from './kit.js';
 import { facePortrait } from '../art/faces.js';
-import { TOPICS } from '../systems/talk.js';
+import { TOPICS, nextLesson } from '../systems/talk.js';
 import { QUEST_BY_ID, offerCards } from '../systems/quests.js';
 
 const INK = '#f2e4c2';
@@ -56,6 +56,8 @@ export class TalkScreen {
     this.arows = [];         // and the answer plates, when he asks you one
     this.apick = 0;
     this.said = new Set();   // which topics you have been through
+    this.heard = new Set();  // and which pages of the manual he has read you
+    this._asked = null;      // the page he is reading you right now
 
     // what he is in the middle of answering
     this.topic = null;
@@ -144,6 +146,7 @@ export class TalkScreen {
   ask(tp, tapped = false) {
     // most answers are written down; one of them is whatever he wants doing
     // next, which is only knowable at the moment you ask
+    this._asked = tp.id === 'ask' ? nextLesson(this.game) : null;
     this.topic = tp.build ? { ...tp, lines: tp.build(this.game) } : tp;
     this.line = 0;
     this._begin();
@@ -431,8 +434,8 @@ export class TalkScreen {
     // over a bigger face and a card of one sentence does not.
     let K;
     if (narrow) {
-      const rows = this.topic ? 3 : Math.ceil(this.list().length / 2);
-      const need = rows * 34 + 22;
+      const rows = this.topic ? 3 : this.list().length;
+      const need = rows * 34 + 18;
       K = Math.min(3, Math.floor((W - 24) / 66) || 1);
       const limit = H - lb - 6;
       while (K > 1 && lb + 4 + 21 * K + 64 * K * 0.62 + need > limit) K--;
@@ -614,64 +617,73 @@ export class TalkScreen {
       { color: 'rgba(240,226,192,0.4)', align: 'right' });
   }
 
+  /** What a door says right now - two of them change with the world. */
+  _label(tp) {
+    const a = tp.ask;
+    return (typeof a === 'function' ? a(this.game) : a) || tp.word;
+  }
+
+  /** The picture on the door. */
+  _icon(tp) {
+    if (tp.id === 'bye') return 'close';
+    if (tp.id === 'work') return this.game.quests?.active ? 'clock' : 'call';
+    if (tp.id === 'spray') return 'jet';
+    if (tp.id === 'closer') return 'hand';
+    return nextLesson(this.game)?.lines?.[0]?.icon || 'comb';
+  }
+
   /**
    * WHAT YOU CAN SAY.
    *
-   * There used to be a grid of stone tablets here with morse cut under every
-   * word, and you said one by tapping its code out on a key. It was the best
-   * thing in the game to look at and the worst thing in it to use: you had to
-   * already know which words did anything, and the ones that did anything
-   * were a menu with a puzzle bolted to the front of it.
+   * There used to be seventeen of these, in a grid, and reading all of them
+   * to find the one that did anything was the whole experience of talking to
+   * him. Now there are three doors and they are full-width plates you could
+   * hit with a thumb in a moving car:
    *
-   * So it is buttons. You press what you want to say, he says it back, and
-   * the last one is always BYE - which is the only word left over from the
-   * old system, because leaving is the one thing you should always be able
-   * to do in one press.
+   *   THE JOB - the thing you are doing, read back with how far through it is
+   *   ASK HIM - one question, and he chooses which one you most need answered
+   *   BYE     - always last, always rust, always one press
+   *
+   * The two gated story doors join them when they are live, which is at most
+   * five, once, near the end.
    */
   _say(ctx, x, y, w, H) {
     const list = this.list();
     const touch = !!this.game.ui?.touchEnabled;
     const floor = H - Math.round(H * 0.055) - 6;
-    const room = Math.max(40, floor - y - 14);
-    // as many columns as it takes to get every word on the screen, and only
-    // then start shaving the height off them
-    const maxH = touch ? 22 : 18;
-    let cols = w > 320 ? 3 : w > 190 ? 2 : 1;
-    let h = maxH;
-    for (;;) {
-      const rows = Math.ceil(list.length / cols);
-      h = Math.min(maxH, Math.floor(room / rows) - 3);
-      if (h >= 15 || cols >= 4) break;
-      cols++;
-    }
-    h = Math.max(13, Math.min(maxH, h));
-    const gap = 3;
-    const cw = Math.floor((w - (cols - 1) * gap) / cols);
-
-    drawText(ctx, 'SAY', x, y - 10, { color: 'rgba(240,226,192,0.5)' });
+    const room = Math.max(40, floor - y - 4);
+    const gap = 4;
+    // three big plates, and they get as tall as the room allows
+    const h = Math.max(16, Math.min(touch ? 30 : 26,
+      Math.floor((room - (list.length - 1) * gap) / list.length)));
+    const ih = h >= 24 ? 2 : 1;
     const rows = [];
     list.forEach((tp, i) => {
-      const bx = x + (i % cols) * (cw + gap);
-      const by = y + Math.floor(i / cols) * (h + gap);
-      if (by + h > floor) return;
+      const by = y + i * (h + gap);
+      if (by + h > floor + 2) return;
       const on = i === this.pick;
-      const said = this.said.has(tp.id);
       const bye = tp.id === 'bye';
-      // Brass when you are on it, wood when you are not - and leaving is
-      // always rust and always the last thing on the list, so it is one
-      // press from anywhere in the conversation.
-      Kit.button(ctx, bx, by, cw, h, null, {
-        hot: on && !bye, on: bye, tint: bye ? '#c2702e' : undefined,
-      });
-      // a tick in the corner of anything he has already told you about, so a
-      // long list stops being a list you have to remember your way through
+      const spray = tp.id === 'spray';
+      const tint = bye ? '#c2702e' : spray ? '#c98ade' : undefined;
+      Kit.button(ctx, x, by, w, h, null, { hot: on && !bye, on: bye, tint });
+      const press = on && !bye ? 1 : 0;
+      // the picture first, in its own carved margin, so the door reads before
+      // the sentence on it does
+      const mx = x + 3 + h / 2;
+      Kit.px(ctx, x + h + 1, by + 3, 1, h - 6, 'rgba(10,7,4,0.4)');
+      drawNodeIcon(ctx, this._icon(tp), mx, by + h / 2 + press,
+        on ? Kit.C.goldLit : bye ? '#e79c5a' : Kit.C.ink, ih);
+      // a tick on the manual once he has read you the page it is pointing at
+      const said = tp.id === 'ask' ? this.heard.has(nextLesson(this.game)?.id)
+        : this.said.has(tp.id);
       if (said && !bye) {
-        Kit.px(ctx, bx + cw - 6, by + 3, 3, 1, Kit.C.goldDim);
-        Kit.px(ctx, bx + cw - 5, by + 4, 1, 1, Kit.C.goldDim);
+        Kit.px(ctx, x + w - 7, by + 4 + press, 3, 1, Kit.C.goldDim);
+        Kit.px(ctx, x + w - 6, by + 5 + press, 1, 1, Kit.C.goldDim);
       }
-      drawText(ctx, ellipsize(tp.ask || tp.word, cw - 10), bx + cw / 2, by + (h - 7) / 2,
-        { color: on ? '#fff3d2' : said ? Kit.C.inkSoft : Kit.C.ink, align: 'center' });
-      rows.push({ i, x: bx, y: by, w: cw, h });
+      drawText(ctx, ellipsize(this._label(tp), w - h - 16), x + h + 7,
+        by + (h - 7) / 2 + press,
+        { color: on ? '#fff3d2' : said ? Kit.C.inkSoft : Kit.C.ink });
+      rows.push({ i, x, y: by, w, h });
     });
     this.rows = rows;
   }

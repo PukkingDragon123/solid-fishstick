@@ -18,6 +18,7 @@ const JOBS = [
     name: 'FILL THE SHELL',
     ask: 'Stand on the spring and hold the valve until that shell is full. All of it. I want to see the top of the water.',
     note: 'Fill your shell to the brim',
+    how: 'Stand anywhere and work the valve in the corner until the gauge tops out.',
     done: (g) => g.economy.water >= g.economy.stat('waterMax') - 1,
     count: (g) => ({ have: Math.floor(g.economy.water), need: Math.floor(g.economy.stat('waterMax')) }),
     say: 'Full. Eleven years I have been drinking out of a canteen and you are walking around with a lake.',
@@ -29,6 +30,7 @@ const JOBS = [
     name: 'SOMETHING ALIVE',
     ask: 'Your back is soil. I want one living thing standing in it by tonight - I do not care what.',
     note: 'Get one plant growing on your shell',
+    how: 'Click yourself to open your back. Drag a seed onto a plot, then pour water on it.',
     done: (g) => g.garden.plots.some((p) => p.plant),
     count: (g) => ({ have: g.garden.plots.filter((p) => p.plant).length ? 1 : 0, need: 1 }),
     say: 'There. That is the first thing to grow on that shell since the sea left. Do not let it die.',
@@ -40,6 +42,7 @@ const JOBS = [
     name: 'A CLEAN BONE',
     ask: 'Find a dig and take what is in it out without breaking it. Steady strokes. A cracked vertebra tells me nothing.',
     note: 'Dig up a fossil without damaging it',
+    how: 'Walk until the sand shows a dig, then hit DIG and keep your stroke steady.',
     done: (g) => (g.quests.flags.cleanDig || 0) > 0,
     count: (g) => ({ have: Math.min(1, g.quests.flags.cleanDig || 0), need: 1 }),
     say: 'Not a mark on it. You have better hands than I do and you do not have hands.',
@@ -51,6 +54,7 @@ const JOBS = [
     name: 'BRING IT BACK',
     ask: 'Pick a patch of dead ground and pour water on it until something comes up on its own. Three things. Then I will believe it.',
     note: 'Water dead sand until three things grow',
+    how: 'Carry a full shell out onto dead ground and hit POUR. Keep pouring on the same patch.',
     done: (g) => g.green.plants.size >= 3,
     count: (g) => ({ have: Math.min(3, g.green.plants.size), need: 3 }),
     say: 'Three. Out of ground I surveyed and wrote off. I am going to have to write a letter about this.',
@@ -62,6 +66,7 @@ const JOBS = [
     name: 'OPEN A SEAM',
     ask: 'There is metal in this basin. Find a seam, get it open, and put what is in it in my pack.',
     note: 'Take ore out of a seam',
+    how: 'Dig straight down until you hit rock, then swing at the ore showing in it.',
     done: (g) => g.craft && g.craft.list().length > 0,
     count: (g) => ({ have: Math.min(1, g.craft?.list().length || 0), need: 1 }),
     say: 'Copper. In a basin that is supposed to be nothing but sandstone. Nothing out here is what the survey says it is.',
@@ -86,7 +91,7 @@ export function offerCards(job) {
       choices: [
         { word: 'YES', text: "I'll do it.", tint: '#9ad86a', take: job.id,
           go: [{ icon: 'sun', mood: 'grin',
-            t: 'Good. It is written down, which in my experience is the only reason anything ever gets done.' }] },
+            t: `Good. ${job.how} It is written down, which in my experience is the only reason anything ever gets done.` }] },
         { word: 'NO', text: 'Not now.',
           go: [{ icon: 'dusk', mood: 'dull',
             t: 'Fine. It will still need doing when you change your mind. Everything out here does.' }] },
@@ -120,7 +125,7 @@ export class Quests {
   take(job) {
     if (!job || this.done.has(job.id)) return false;
     this.active = job;
-    this.tookT = 2.8;
+    this.tookT = 6;
     this.game.audio?.play('discover');
     return true;
   }

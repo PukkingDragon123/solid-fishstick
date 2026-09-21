@@ -247,31 +247,51 @@ export function steelButton(ctx, x, y, s, opts = {}) {
 }
 
 /**
- * A slot: a recess cut in the board.
+ * A SLOT.
  *
- * The light falls into the top of it, which is the opposite of a slab and is
- * the whole reason a hole reads as a hole. A locked one is darker and has no
- * brass in it at all.
+ * The reference is a row of inventory squares off an old brass instrument
+ * case: a raised gold bezel with a little flourish turned into each corner,
+ * and inside it a panel of dark wood with the light falling into the top of
+ * it. So that is what one is. Three layers and no more: the dark line round
+ * the outside, the brass bezel, and the sunk wooden field the thing sits in.
+ *
+ * The flourishes are the whole trick. Four pixels in each corner, turned the
+ * right way round, and a plain square becomes a fitting somebody made.
  */
 export function slot(ctx, x, y, w, h = w, opts = {}) {
   x = Math.round(x); y = Math.round(y); w = Math.round(w); h = Math.round(h);
   const empty = !!opts.empty;
   const hot = !!opts.hot, on = !!opts.on;
-  R(ctx, x, y, w, h, empty ? C.slot
-    : on ? 'rgba(104,80,48,0.95)' : hot ? 'rgba(80,62,38,0.95)' : 'rgba(44,34,22,0.92)');
-  if (opts.back) R(ctx, x + 1, y + 1, w - 2, h - 2, opts.back);
-  // sunk, not raised: dark along the top and left, lit along the bottom right
-  R(ctx, x, y, w, 1, 'rgba(0,0,0,0.42)');
-  R(ctx, x, y, 1, h, 'rgba(0,0,0,0.42)');
-  R(ctx, x, y + h - 1, w, 1, 'rgba(226,204,160,0.16)');
-  R(ctx, x + w - 1, y, 1, h, 'rgba(226,204,160,0.16)');
-  if (on) {
-    R(ctx, x, y, w, 1, C.goldLit);
-    R(ctx, x, y, 1, h, C.goldLit);
-    R(ctx, x, y + h - 1, w, 1, C.gold);
-    R(ctx, x + w - 1, y, 1, h, C.gold);
-  } else if (!empty && hot) {
-    R(ctx, x, y + h - 1, w, 1, 'rgba(226,183,74,0.5)');
+  // the dark line round everything
+  R(ctx, x, y, w, h, OUT);
+  // the bezel: brass, lit along the top and left, dulled along the bottom
+  const lit = on ? C.goldLit : hot ? '#f0d89a' : empty ? 'rgba(141,111,40,0.7)' : C.gold;
+  const dim = on ? C.gold : hot ? C.gold : empty ? 'rgba(90,70,32,0.7)' : C.goldDim;
+  R(ctx, x + 1, y + 1, w - 2, h - 2, dim);
+  R(ctx, x + 1, y + 1, w - 2, 1, lit);
+  R(ctx, x + 1, y + 1, 1, h - 2, lit);
+  // the field, sunk into it
+  const b = w >= 16 && h >= 16 ? 3 : 2;
+  const ix = x + b, iy = y + b, iw = w - b * 2, ih = h - b * 2;
+  if (iw < 2 || ih < 2) return;
+  R(ctx, ix, iy, iw, ih, OUT);
+  R(ctx, ix + 1, iy + 1, iw - 2, ih - 2,
+    opts.back || (empty ? '#241a10' : hot ? '#43301c' : C.wood));
+  R(ctx, ix + 1, iy + 1, iw - 2, 1, 'rgba(0,0,0,0.5)');
+  R(ctx, ix + 1, iy + 1, 1, ih - 2, 'rgba(0,0,0,0.38)');
+  R(ctx, ix + 1, iy + ih - 2, iw - 2, 1, 'rgba(198,162,106,0.16)');
+  // and the flourish turned into each corner
+  if (w >= 13 && h >= 13) {
+    const f = on || hot ? C.goldLit : C.gold;
+    const cor = (cx, cy, sx, sy) => {
+      R(ctx, cx, cy, 2, 1, f);
+      R(ctx, cx, cy + sy, 1, 1, f);
+      R(ctx, cx + sx * 2, cy, 1, 1, f);
+    };
+    cor(x + 1, y + 1, 1, 1);
+    cor(x + w - 3, y + 1, -1, 1);
+    cor(x + 1, y + h - 2, 1, -1);
+    cor(x + w - 3, y + h - 2, -1, -1);
   }
 }
 

@@ -1105,11 +1105,27 @@ it, a chin, and the jaw running back into the hair.
 
 Two rules hold it together. **The hair stays behind the face** — it hangs down
 the back of his head and never creeps round over his cheek, because the moment
-it does he is a brown mass with a nose stuck on the side. And **the skull is
-nearly flat**: the height field that lights the rest of the game rounds his hat
-and catches his nose, and then gets out of the way, because a full dome across
-six pixels of cheek is a gradient, not a face, and it turns every hand-placed
-tone into mud.
+it does he is a brown mass with a nose stuck on the side. And **nothing is done
+to the colours at all**: what is written in the key is what lands on the
+screen. The head used to be lit by the same lamp as the ground, and a gradient
+across thirteen pixels is not form, it is dirt — it turned every hand-placed
+tone into mud. The only shading on this face is the shading that was cut into
+it by hand.
+
+### Flat
+
+That goes for the rest of him too. **The people are flat now**, in the key of a
+sheet of small pixel characters: one colour for a shirt, one darker one down
+the side it is turned away from, and a thin dark line round the whole thing.
+
+The rig did not change to do it. Every part is still a height field posed on a
+skeleton — it is the *ramps* that changed. Each material's eight stops collapse
+to two, repeated, so the painter's own quantiser can only ever land on one of
+two colours and lands on the light one where the sun is actually on the
+surface. The dither comes off, and so do the gloss, the rim light and the
+cavity darkening, because none of those exist in flat art: they were what made
+a pair of trousers look like a polished sausage. Two lines of code, and a man
+who was lit like a rock becomes a man who was drawn.
 
 The head still leans where he is working, but the tilt is quantised to a couple
 of whole steps: drawn art does not survive being rotated far, because the brim
@@ -1220,31 +1236,41 @@ you** — a conversation is a two-shot, the wide shot is for walking. The world
 goes quiet: his portrait on the left, a letterbox, and everything you could say
 laid out as a grid.
 
-**You pick what you say.** Everything you could ask him is a button with the
-question written on it, in a column beside his face, and the last one is always
-**Enough** — leaving is one press from anywhere in the conversation.
+**There are three things you can say.** Not seventeen. The grid of questions
+that used to be here was a wall you had to read all of to find the one that did
+anything, and fifteen of them were a manual with a face on it. What is there
+now is three full-width plates you could hit with a thumb in a moving car, each
+with a picture on it:
 
-There used to be a code here. Every word had morse cut underneath it and you
-said one by **holding a stone key down with your pincer** — short for a dot,
-long for a dash, let go for a moment and the letter landed. It was the best
-thing in this game to look at and the worst thing in it to use: you had to
-already know which words did anything, and the words that did were a menu with
-a puzzle bolted to the front of it. It is gone. What is left is the
-conversation it was in the way of.
+| | |
+| --- | --- |
+| **the job** | what am I doing, how far through am I, and what do I press |
+| **ask him** | one question — and *he* decides which one you most need answered |
+| **Enough** | always last, always rust, always one press |
+
+There used to be a code here before that. Every word had morse cut underneath
+it and you said one by **holding a stone key down with your pincer** — short
+for a dot, long for a dash, let go for a moment and the letter landed. It was
+the best thing in this game to look at and the worst thing in it to use. It is
+gone, and so is the wall that replaced it.
+
+The manual did not go anywhere; it went behind one door. **He picks the page.**
+He is standing a foot from you and he can see whether there is anything growing
+on your back and whether that shell has any water in it, so the button is
+labelled with the actual question you are about to ask — *How do I grow
+something?* when you cannot yet grow anything, *Where is the water?* when the
+shell is dry, *What are the stone caps?* once you have walked past one. Told
+you once is told you: a page he has read you drops behind every page he has
+not, and the door points somewhere else.
 
 He answers a card at a time, each with its own icon and his face in the state
 that line puts him in, the words arriving as he says them rather than all at
 once. Pips in the corner say how much is left and a **NEXT** button says there
-is more. And some of the answers are lessons — **this is the only place in the
-game where you are taught anything**. Not a tooltip and not a tutorial step: a
-man who has been out here eleven years telling you how to grow a plant, how the
-seam under your feet works, why a spore will not take in something that owes
-you nothing, and what the sea did.
-
-Ask him how to grow something and you get the whole of it: your back is soil,
-drag a seed onto a plot, water it, leave it alone, and pick it when the bead
-lifts. There are a dozen questions, and the ones that would not make sense yet
-are not on the list yet.
+is more. And this is still **the only place in the game where you are taught
+anything** — not a tooltip and not a tutorial step, but a man who has been out
+here eleven years telling you how to grow a plant, how the seam under your feet
+works, why a spore will not take in something that owes you nothing, and what
+the sea did.
 
 ![Sitting down with him](docs/shot-27-talk.png)
 
@@ -1274,10 +1300,21 @@ dismisses them — you cannot click past a question, because a question you can
 click past is one the game answered for you. Say no and the job is still there
 when you change your mind.
 
+The moment you say yes he tells you **what to press** — *click yourself to open
+your back, drag a seed onto a plot, then pour water on it* — and that same
+sentence sits under the corner card for six seconds and then never again. A job
+you have agreed to and cannot start is worse than no job at all.
+
 While it is open the job sits on a scrap of his notebook in the corner with
-**a bar under it**, counting the thing it is actually counting — litres in the
-shell, plants up out of dead ground — and it goes green when it is done. The
-check runs on the world you already have. There is still nothing to turn in.
+**a bar under it and the two numbers on the end of it** — 60/200, 1/3 — because
+a bar that is a third full and *one of three* are not the same fact, and the
+second one is the one you can act on. It goes green when it is done. The check
+runs on the world you already have. There is still nothing to turn in.
+
+And you can always ask again. **About the job** reads it back to you: the name,
+what it wants, where you have got to, and which button does it — with *say the
+whole thing again* underneath, for when you want the sentence he said the first
+time rather than the summary.
 
 ### You answer him
 
@@ -1435,9 +1472,26 @@ interface is a dark one.
 **A button goes down when you push it**: the bevel flips and everything on it
 moves a pixel, because a button that does not move when you press it is a
 picture of a button. **The one you are on has its carved channel filled with
-brass**, which is how a stone tablet gets to look chosen. **A slot is a
-recess** — the light falls into the *top* of it, which is the opposite of a
-slab and is the whole reason a hole reads as a hole.
+brass**, which is how a stone tablet gets to look chosen.
+
+**A slot is a fitting somebody made.** The reference is a row of inventory
+squares off an old brass instrument case: a raised gold bezel with a little
+flourish turned into each corner, and inside it a panel of dark wood with the
+light falling into the top of it. Three layers and no more — the dark line
+round the outside, the brass, and the sunk wooden field the thing sits in. The
+flourishes are the whole trick: four pixels in each corner, turned the right
+way round, and a plain square stops being a square.
+
+**And the icons are painted, not stencilled.** They used to be one-bit grids
+filled in a single flat colour, which reads on a dark plate, vanishes on a
+light one, and never looks like a thing somebody made. What makes a lantern or
+a key read at eight pixels is not detail: it is a dark line round it and a lit
+edge along the top. So every icon gets both, off the same one-bit grid it
+always had — a dark halo on the empty cells that touch it, the body in its own
+colour, and a pale edge wherever there is nothing above. The ones that were
+unreadable got re-cut as well: the sun has rays standing off a disc instead of
+being an asterisk, the chain is two links hooked through each other, the saw
+has teeth, and the nest has two eggs in a woven bowl.
 
 ### One door, and it is the animal
 

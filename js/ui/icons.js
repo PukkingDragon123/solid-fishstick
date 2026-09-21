@@ -8,7 +8,7 @@
 import { Painter, makeCanvas, hash2i } from '../render/pixel.js';
 import { buildCreature } from '../art/faunaart.js';
 import { MATERIALS } from '../lib/palette.js';
-import { clamp, clamp01, lerp, TAU } from '../lib/math.js';
+import { clamp, clamp01, lerp, mixHex, TAU } from '../lib/math.js';
 import { pxDisc, pxGlow } from '../render/pix.js';
 
 const LIGHT = { lightX: -0.55, lightY: -0.68, lightZ: 0.42, ambient: 0.42, dither: 0.6 };
@@ -631,19 +631,21 @@ const NODE = {
   fruit:  '...1.../..11.../.11111./111.111/11...11/11...11/.11.11./..111../.......',
   tree:   '..111../.11111./1111111/.11111./..111../...1.../...1.../..111../.......',
   // brood
-  call:   '..1..../.11..11/.11.1.1/.111..1/.111..1/.11.1.1/.11..11/..1..../.......',
+  call:   '...1.../..11.../.111.1./1111..1/1111.1./1111..1/.111.1./..11.../...1...',
   hand:   '.1.1.1./1111111/1111111/1111111/1111111/.111111/..1111./...11../.......',
-  nest:   '......./1111111/11...11/1.111.1/1.....1/.11111./..111../......./.......',
+  nest:   '......./..3.3../.33.33./1111111/1222221/1222221/.12221./..111../.......',
   point:  '...11../...11../11.11../1.111../1.1111./.11111./..1111./...111./.......',
   egg:    '...11../..1111./.111111/1111111/1111111/.111111/..1111./...11../.......',
-  link:   '.11..../1..1.11/1..111./.11...1/11...11/1.111../.11..1./.....11/.......',
+  link:   '......./.11.11./1..1..1/1..1..1/1..1..1/1..1..1/.11.11./......./.......',
   // pincer
   claw:   '11...11/.11.11./..111../.11111./11...11/1.....1/11...11/.11.11./..111..',
-  saw:    '1.1.1.1/11111.1/.11111./..111../.11111./11111.1/1.1.1.1/......./.......',
+  saw:    '......./......./1111111/1222221/1222221/1111111/1.1.1.1/.1.1.1./.......',
   spade:  '...1.../...1.../..111../.11111./1111111/1111111/.11111./..111../.......',
   bolt:   '....11./...11../..11.../.11111./..111../.11..../11...../1....../.......',
   comb:   '1111111/1111111/1.1.1.1/1.1.1.1/1.1.1.1/1.1.1.1/1.1.1.1/......./.......',
   hammer: '.111111/.111111/...11../...11../...11../...11../...11../..1111./.......',
+  // leaving: an X, because every other shape means something else here
+  close:  '11...11/111.111/.11111./..111../..111../.11111./111.111/11...11/.......',
   // legs
   leg:    '11...../.11..../..11.../..11.../...11../...111./....111/...1111/.......',
   shield: '1111111/1111111/1111111/.11111./.11111./..111../..111../...1.../.......',
@@ -652,13 +654,13 @@ const NODE = {
   skate:  '..11.../.1111../11111../1111111/.111111/..11111/1111111/......./.......',
   crown:  '1.....1/11...11/11.1.11/1111111/1111111/.11111./.11111./1111111/.......',
   // conditions a plant will only ripen under
-  sun:    '1..1..1/.1.1.1./..111../11111.1/..111../.1.1.1./1..1..1/......./.......',
-  dusk:   '...1.../..111../.11111./1111111/......./1111111/......./......./.......',
+  sun:    '...3.../.3...3./..111../.11111./3.111.3/.11111./..111../.3...3./...3...',
+  dusk:   '......./...3.../..111../.11111./.11111./1111111/......./2222222/.......',
   shade:  '..111../.11111./1111111/......./..1.1../..1.1../..1.1../.11111./.......',
   weight: '..111../.11111./..1.1../.11111./1111111/1111111/.11111./......./.......',
   clock:  '..111../.1...1./1..1..1/1..11.1/1....11/.1...1./..111../......./.......',
   // the modes: an animal standing, an animal walking
-  crab:   '.11111./1111111/1.1.1.1/1111111/.11111./1.1.1.1/1.1.1.1/......./.......',
+  crab:   '1.....1/.1...1./.11111./1211121/1222221/1211121/.11111./.1.1.1./1.....1',
   crabwalk: '.11111./1111111/1.1.1.1/1111111/.11111./1..1..1/11...11/......./.......',
 };
 
@@ -670,21 +672,60 @@ const NODE = {
  */
 const NODE_ALIAS = {
   seed: 'sprout', beast: 'nest', pump: 'well', spade: 'burrow', flora: 'leaf',
-  fauna: 'nest', build: 'load', codex: 'comb', map: 'comb', close: 'bolt',
+  fauna: 'nest', build: 'load', codex: 'comb', map: 'comb', exit: 'close',
   paw: 'leg', pick: 'hammer', water: 'drop', ore: 'weight', gear: 'comb',
 };
 
-export function drawNodeIcon(ctx, name, cx, cy, color, scale = 1) {
+/**
+ * ONE ICON.
+ *
+ * These used to be stencils: a one-bit grid filled in a single flat colour,
+ * which reads on a dark plate and vanishes on a light one and never looks
+ * like a thing somebody made. The reference is a case of brass-bezelled
+ * slots with PAINTED objects in them - a lantern, a key, a telescope - and
+ * what makes those read at eight pixels is not detail, it is that each one
+ * has a dark line round it and a lit edge along the top.
+ *
+ * So every icon gets both, off the same one-bit grid it always had: a dark
+ * halo on the empty cells that touch it, the body in its own colour, and a
+ * pale edge wherever there is nothing above. A `2` in the grid is a shaded
+ * cell and a `3` is a bright one, for the few that are worth cutting twice.
+ */
+export function drawNodeIcon(ctx, name, cx, cy, color, scale = 1, opts = {}) {
   const rows = NODE[name] || NODE[NODE_ALIAS[name]];
   if (!rows) return;
   const lines = rows.split('/');
   const w = Math.max(...lines.map((l) => l.length));
+  const hgt = lines.length;
   const s = Math.max(1, Math.round(scale));
-  const x0 = Math.round(cx - (w * s) / 2), y0 = Math.round(cy - (lines.length * s) / 2);
-  ctx.fillStyle = color;
-  for (let y = 0; y < lines.length; y++) {
+  const x0 = Math.round(cx - (w * s) / 2), y0 = Math.round(cy - (hgt * s) / 2);
+  const at = (x, y) => (x < 0 || y < 0 || x >= w || y >= hgt) ? '.'
+    : (lines[y][x] || '.');
+  const on = (x, y) => at(x, y) !== '.';
+
+  // the dark line round the outside, drawn on the empty cells that touch it
+  if (opts.flat !== true) {
+    ctx.fillStyle = opts.outline || 'rgba(12,8,5,0.82)';
+    for (let y = -1; y <= hgt; y++) {
+      for (let x = -1; x <= w; x++) {
+        if (on(x, y)) continue;
+        if (!on(x - 1, y) && !on(x + 1, y) && !on(x, y - 1) && !on(x, y + 1)) continue;
+        ctx.fillRect(x0 + x * s, y0 + y * s, s, s);
+      }
+    }
+  }
+
+  const shade = mixHex(color, '#120c06', 0.42);
+  const bright = mixHex(color, '#fff6dc', 0.46);
+  for (let y = 0; y < hgt; y++) {
     for (let x = 0; x < lines[y].length; x++) {
-      if (lines[y][x] === '1') ctx.fillRect(x0 + x * s, y0 + y * s, s, s);
+      const c = lines[y][x];
+      if (c === '.') continue;
+      // lit along the top, shaded where something sits over it
+      ctx.fillStyle = c === '2' ? shade : c === '3' ? bright
+        : opts.flat ? color
+        : !on(x, y - 1) ? bright : on(x, y + 1) ? color : shade;
+      ctx.fillRect(x0 + x * s, y0 + y * s, s, s);
     }
   }
 }
