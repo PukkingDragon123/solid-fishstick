@@ -34,6 +34,9 @@ import { Taming } from './systems/taming.js';
 import { Hive } from './systems/hive.js';
 import { Quests } from './systems/quests.js';
 import { Critters } from './systems/critters.js';
+import { Fishing } from './systems/fishing.js';
+import { VentPuzzle } from './ui/ventpuzzle.js';
+import { Ending } from './systems/ending.js';
 import { Menu } from './ui/menu.js';
 import { ITEM_BY_ID } from './data/craft.js';
 import { Fx } from './systems/fx.js';
@@ -147,6 +150,9 @@ export class Game {
     this.hive = new Hive(this);
     this.quests = new Quests(this);
     this.critters = new Critters(this, this.seed);
+    this.fishing = new Fishing(this);
+    this.puzzle = new VentPuzzle(this);
+    this.ending = new Ending(this);
     // What you have been given. You wake up able to walk and dig; everything
     // else arrives when the world first gives you a reason for it, and the
     // mode column in the corner grows as this set does.
@@ -1198,7 +1204,9 @@ export class Game {
     // Sitting down with him stops everything else. The world keeps breathing
     // behind the conversation, but nothing you press reaches the animal.
     this.talk.update(dt);
-    if (this.talk.on) {
+    this.puzzle.update(dt);
+    this.ending.update(dt);
+    if (this.talk.on || this.puzzle.on || this.ending.on) {
       this.npc.update(dt);
       this.crab.update(dt, { move: 0 });
       this.fx.update(dt, this.weather);
@@ -1386,6 +1394,7 @@ export class Game {
     this.taming.update(sdt);
     this.hive.update(sdt, this.ui.mode === 'hive');
     this.critters.update(sdt, this.weather);
+    this.fishing.update(sdt);
     // the claw only comes up against something that is actually in reach
     if (this.ui.mode === 'hunt' && this.state === 'play') {
       const foe = this.wildlife.nearest(this.crab.x, this.crab.y, 150,
@@ -1654,6 +1663,12 @@ export class Game {
    * the screen every time you walked past anything. The button beside it
    * already says ACT. This only has to say what.
    */
+  /** The last job is done: bring the sea back. */
+  startEnding() {
+    if (this.ending.on) return;
+    this.ending.start();
+  }
+
   actionHint() {
     if (this.state !== 'play') return null;
     const c = this.crab;
@@ -1661,6 +1676,7 @@ export class Game {
     const wildOne = this.wildlife.nearest(c.x, c.y, 46, (q) => !q.hostile && !q.tamed);
     if (wildOne) return this.taming.why(wildOne) ? null : 'SING';
     if (this.fountains.reachable(c.x)) return 'BREAK';
+    if (this.fishing.catchable()) return 'CATCH';
     if (this.world.mastAt(c.x + (c.facing || 1) * 16)) return 'CUT';
     const wild = this.world.wildPlantAt(c.x + (c.facing || 1) * 12, 22);
     if (wild && FLORA_BY_ID[wild.id]) return 'STUDY';
@@ -1990,6 +2006,8 @@ export class Game {
   act() {
     const c = this.crab;
     if (this.work.live) { this.work.strike(); return; }
+    // a fish in reach comes before anything on the ground: it will not wait
+    if (!this.fountains.reachable(c.x) && this.fishing.tryCatch()) return;
 
     // something in the ground right under you comes first: it is the only
     // thing here you can lose by walking past
@@ -2050,6 +2068,7 @@ export class Game {
     const vent = this.fountains.reachable(c.x);
     if (vent) {
       const res = this.fountains.strike(vent);
+      if (res.puzzle) { this.puzzle.open(vent, res.level); return; }
       if (!res.ok) { this.ui.say(res.why, 3); this.audio.play('deny'); }
       else {
         this.crab.clawOpen = 1;
@@ -2727,6 +2746,7 @@ export class Game {
       mining: this.mining.toJSON(), craft: this.craft.toJSON(), mind: this.mind.toJSON(),
       combat: this.combat.toJSON(), quests: this.quests.save(),
       fountains: this.fountains.save(), unlocked: [...this.unlocked],
+      fishing: this.fishing.save(),
     });
   }
 
@@ -2761,6 +2781,7 @@ export class Game {
       this.quests.load(d.quests);
       this.relics = d.relics || {};
       this.fountains.load(d.fountains);
+      this.fishing.load(d.fishing);
       this.unlocked = new Set(d.unlocked || []);
       if (d.mode && this.ui.modeUnlocked(d.mode)) this.ui.mode = d.mode;
       else this.ui.mode = 'direct';
@@ -2795,6 +2816,7 @@ export class Game {
     this.world.drawProps(ctx, cam);
     this.terrain.draw(ctx, cam);
     this.world.drawWater(ctx, cam);
+    if (this.state === 'play') this.fishing.draw(ctx, cam);
     this.terrain.drawSand(ctx, cam);
     this.green.drawGround(ctx, cam, this.terrain);
     this.world.drawProps2(ctx, cam, 'far');
@@ -2836,6 +2858,7 @@ export class Game {
     this.world.drawProps2(ctx, cam, 'near');
     this.world.weeds.draw(ctx, cam);
     if (this.state === 'play') this.shallows.draw(ctx, cam, r.vw, r.vh);
+    this.ending.drawWorld(ctx, cam, r.vw, r.vh);
     this._drawGreenPlants(ctx, cam);
     this._drawDigs(ctx, cam);
     if (this.seaShowing) { this.sea.drawReef(ctx, cam, false); this.sea.drawSwimmers(ctx, cam); }
@@ -2880,9 +2903,11 @@ export class Game {
     else if (this.state === 'prologue') this._drawPrologue(ui, r);
     if (this.state === 'title') { /* the menu is its own chrome */ }
     else if (this.state !== 'play' && this.state !== 'dead') this._drawCine(ui, r);
-    else if (!this.talk.on) this.ui.draw(ui, r);
+    else if (!this.talk.on && !this.puzzle.on && !this.ending.on) this.ui.draw(ui, r);
     this._drawSkip(ui, r);
     if (this.talk.fade > 0.01) this.talk.draw(ui, r.vw, r.vh);
+    if (this.puzzle.fade > 0.01) this.puzzle.draw(ui, r.vw, r.vh);
+    this.ending.drawUI(ui, r.vw, r.vh);
     this.fx.drawText(ui, cam, (c, t, x, y, o) => drawText(c, t, x, y, o));
     if (this.state === 'dead') this._drawDead(ui, r);
     // Anything that belongs to the WORLD stops at the edge of a screen. A
@@ -2890,7 +2915,8 @@ export class Game {
     // the panels read as an overlay somebody forgot to finish.
     const inside = this.ui.tree.dive > 0.4 || this.ui.drawer > 0.02
       || this.ui.paused || !!this.unlockCard;
-    if (this.npc.speech && this.state === 'play' && !inside && !this.talk.on) this._drawSpeech(ui, cam, this.npc);
+    if (this.npc.speech && this.state === 'play' && !inside && !this.talk.on && !this.puzzle.on
+      && !(this.ending.on && this.ending.t > 3) && !this.quests.chapterCard) this._drawSpeech(ui, cam, this.npc);
     r.dctx.drawImage(r.uiC, 0, 0, r.vw, r.vh, 0, 0, r.vw * r.scale, r.vh * r.scale);
   }
 
@@ -2903,12 +2929,12 @@ export class Game {
    * job waiting there is a mark over his hat: his own notebook, bobbing.
    */
   _workMark(ctx, cam) {
-    if (this.state !== 'play' || this.npc.hidden || this.talk.on) return;
+    if (this.state !== 'play' || this.npc.hidden || this.talk.on || this.coverShot) return;
     const q = this.quests;
     if (!q || q.active || !q.next()) return;
     if (!cam.isVisible(this.npc.x, this.npc.y, 60)) return;
     // clear of his hat, and small - it is a badge, not a billboard
-    const s = cam.worldToScreen(this.npc.x, this.npc.y - 46);
+    const s = cam.worldToScreen(this.npc.x, this.npc.y - 60);
     const p = Math.min(2, pxSize(cam.zoom));
     const bob = Math.sin(this.time * 3.2) * p;
     const x = Math.round(s.x), y = Math.round(s.y + bob);

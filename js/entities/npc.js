@@ -15,6 +15,7 @@ import { ITEM_BY_ID } from '../data/craft.js';
 import { pxEllipse, pxSize } from '../render/pix.js';
 import { ik2 } from './crab.js';
 import { buildPerson, portrait } from '../art/personart.js';
+import { PixelFigure, FIGURE_SOCKETS, hatSprite } from '../art/pixelperson.js';
 import { facePortrait, faceFor } from '../art/faces.js';
 
 export const POSE = {
@@ -557,7 +558,7 @@ export class Person {
     if (this.hatOff) {
       const h = this.hatOff;
       const hs = cam.worldToScreen(h.x, h.y);
-      const art = rig.hat;
+      const art = this.hatArt || (this.hatArt = hatSprite(this.kind));
       ctx.save();
       ctx.translate(Math.round(hs.x), Math.round(hs.y));
       ctx.scale(z, z);
@@ -573,70 +574,91 @@ export class Person {
     const hipWorldY = this.y - rig.standH + drop + bob - this.jz;
     const s = cam.worldToScreen(this.x, hipWorldY);
 
+    // ---- the skeleton, solved in body space -----------------------------
+    // Nothing below is drawn here: this only works out where every joint is,
+    // and PixelFigure lays whole pixels between them. See pixelperson.js for
+    // why nothing about him is rotated any more.
+    const lean = this.b.lean;
+    const rot = (x, y, a) => ({ x: x * Math.cos(a) - y * Math.sin(a), y: x * Math.sin(a) + y * Math.cos(a) });
+    const SO = FIGURE_SOCKETS;
+    const shoulder = rot(SO.shoulder.x, SO.shoulder.y, lean);
+    const neck = rot(SO.neck.x, SO.neck.y, lean);
+    const bag = rot(SO.bag.x, SO.bag.y, lean);
+    const sway = Math.abs(this.vx) > 6 ? Math.sin(this.step * TAU * 2 + 0.9) * 0.7 : 0;
+    bag.y += sway;
+    const chest = rot(SO.chest.x, SO.chest.y, lean);
+    const spec = {
+      lean, breath,
+      neck, bag, chest,
+      armN: this._armJoints(shoulder, this.b.armN0, this.b.armN1, lean, 1),
+      armF: this._armJoints({ x: shoulder.x - 1.2, y: shoulder.y }, this.b.armF0, this.b.armF1, lean, -1),
+      legN: this._legJoints(this.feet[0], hipWorldY, dir, 1),
+      legF: this._legJoints(this.feet[1], hipWorldY, dir, -1),
+      tool: P.tool, hold: P.hold,
+      face: this._faceState(),
+      spore: (this.game.mind ? this.game.mind.blue : 0) > 0.35,
+      nod: P.work && Math.sin(this.animT * 4.0) > 0.55 ? 1 : 0,
+    };
+    this.fig = this.fig || new PixelFigure(this.kind);
+    const cv = this.fig.render(spec);
+
     ctx.save();
-    ctx.translate(Math.round(s.x * 2) / 2, Math.round(s.y * 2) / 2);
+    ctx.translate(Math.round(s.x), Math.round(s.y));
     ctx.scale(z, z);
     // turning is a squash, not a mirror: he pivots on the spot
     ctx.scale(dir * flat, 1);
-    // and he rises onto the ball of his foot as he comes through the turn
     if (flat < 0.995) ctx.translate(0, -(1 - flat) * 2.2 * rig.K);
-    // and a jump squashes on the way out and stretches at the top
-    if (Math.abs(this.squash) > 0.005) {
-      ctx.scale(1 - this.squash * 0.5, 1 + this.squash);
-    }
-
-    const lean = this.b.lean;
-    const sh = rig.sockets.shoulder, nk = rig.sockets.neck;
-    const rot = (x, y, a) => ({ x: x * Math.cos(a) - y * Math.sin(a), y: x * Math.sin(a) + y * Math.cos(a) });
-    const shoulder = rot(sh.x, sh.y, lean);
-    const neck = rot(nk.x, nk.y, lean);
-
-    // ---- far leg, far arm, then body, then near leg and arm ---------------
-    this._leg(ctx, rig.leg.far, this.feet[1], hipWorldY, dir, -1);
-    // the pack is slung behind him, under everything, and lags a beat behind
-    // the body it is strapped to - which is most of what sells the weight
-    const bg = rot(rig.sockets.bag.x, rig.sockets.bag.y, lean);
-    const sway = Math.abs(this.vx) > 6 ? Math.sin(this.step * TAU * 2 + 0.9) * 0.7 * rig.K : 0;
-    ctx.save();
-    ctx.translate(bg.x, bg.y + breath + sway);
-    ctx.rotate(lean * 0.8);
-    ctx.drawImage(rig.pack.cv, -rig.pack.ox, -rig.pack.oy);
+    if (Math.abs(this.squash) > 0.005) ctx.scale(1 - this.squash * 0.5, 1 + this.squash);
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(cv, -this.fig.ox, -this.fig.oy);
     ctx.restore();
-    // and the map tube hangs off the far hip, angled
-    if (rig.tube) {
-      const tb = rot(rig.sockets.tube.x, rig.sockets.tube.y, lean);
-      ctx.save();
-      ctx.translate(tb.x, tb.y + breath);
-      ctx.rotate(lean + 1.02);
-      ctx.drawImage(rig.tube.cv, -rig.tube.ox, -rig.tube.oy);
-      ctx.restore();
-    }
-    this._arm(ctx, rig.arm.far, shoulder, this.b.armF0, this.b.armF1, lean, -1, null);
+  }
 
-    ctx.save();
-    ctx.rotate(lean);
-    ctx.translate(0, breath);
-    const T = rig.torso.near;
-    ctx.drawImage(T.cv, -T.ox, -T.oy);
-    ctx.restore();
+  /** Where the shoulder, elbow and hand of one arm are, in body space. */
+  _armJoints(sh, a0, a1, lean, side) {
+    const swing = (POSES[this.pose] || POSES.idle).swing || 0;
+    // An arm opposes the leg on its own side, so it is driven off the same
+    // phase the feet are - the near foot is furthest forward at step 0, which
+    // is exactly when the near arm should be furthest back.
+    const sw = swing * Math.cos((this.step + (side > 0 ? 0 : 0.5)) * TAU) * 0.40;
+    const A = a0 + lean + sw;
+    // the elbow flexes the forearm FORWARD, off the shoulder angle
+    const B = A - a1 - Math.abs(sw) * 0.22;
+    const LU = 7.3 * this.rig.K, LL = 6.9 * this.rig.K;
+    const el = { x: sh.x + Math.cos(A) * LU, y: sh.y + Math.sin(A) * LU };
+    const ha = { x: el.x + Math.cos(B) * LL, y: el.y + Math.sin(B) * LL };
+    return { sh, el, ha };
+  }
 
-    this._head(ctx, neck, lean, breath, flat);
-    this._leg(ctx, rig.leg.near, this.feet[0], hipWorldY, dir, 1);
-    // whatever he is holding in the other hand sits against the chest
-    if (P.hold) {
-      const art = rig.props[P.hold];
-      if (art) {
-        const h = rot(rig.sockets.shoulder.x + 3.8 * rig.K, rig.sockets.shoulder.y + 6.0 * rig.K, lean);
-        ctx.save();
-        ctx.translate(h.x, h.y + breath);
-        ctx.rotate(-0.34);
-        ctx.drawImage(art.cv, -art.ox, -art.oy);
-        ctx.restore();
-      }
-    }
-    this._arm(ctx, rig.arm.near, shoulder, this.b.armN0, this.b.armN1, lean, 1, P.tool);
+  /** Hip, knee and ankle of one leg, solved to where its foot is. */
+  _legJoints(foot, hipWorldY, dir, side) {
+    const rig = this.rig;
+    const hx = side > 0 ? 0.8 : -1.0;
+    const hy = -1;
+    const fx = (foot.x - this.x) * dir + hx * 0.2;
+    const fy = (foot.y - hipWorldY);
+    const l1 = rig.leg.near.upper.len, l2 = rig.leg.near.lower.len;
+    const sol = ik2(hx, hy, fx - 0.6 * rig.K, fy - 1.8 * rig.K, l1, l2, 1);
+    return {
+      hip: { x: hx, y: hy },
+      knee: { x: sol.kx, y: sol.ky },
+      ankle: { x: sol.kx + Math.cos(sol.a2) * l2, y: sol.ky + Math.sin(sol.a2) * l2 },
+      air: foot.air || 0,
+    };
+  }
 
-    ctx.restore();
+  /** Which of his faces this frame: blinking, talking, frowning. */
+  _faceState() {
+    const m = this.face | 0;
+    const saying = !!this.speech && (this.speechAge || 0) * 34 < (this.speech.length + 4);
+    const jaw = saying && Math.floor(this.t * 8.5) % 2 === 1;
+    const blink = (this.t % 4.3) < 0.13;
+    return {
+      shut: blink || m === 7,
+      open: jaw || m === 2 || m === 3 || m === 8 || m === 9,
+      brow: m === 4 || m === 12 || m === 10,
+      bare: !!this.hatOff,
+    };
   }
 
   /** One arm, plus whatever is in the hand at the end of it. */

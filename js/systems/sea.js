@@ -17,7 +17,9 @@
 import { clamp, clamp01, lerp, damp, smoothstep, TAU, mulberry32, hashStr } from '../lib/math.js';
 import { pxRing } from '../render/pix.js';
 import { drawText, textWidth } from '../lib/font.js';
-import { reefArt, fishArt, jellyArt, whaleArt, sharkArt, REEF_KINDS, FLOOR_KINDS, FISH_KINDS } from '../art/seaart.js';
+import { reefArt, jellyArt, whaleArt, sharkArt, REEF_KINDS, FLOOR_KINDS } from '../art/seaart.js';
+import { fishFrame, FISH_FRAMES } from '../art/fishart.js';
+import { seaSpecies } from './fishing.js';
 
 const CELL = 90;               // one cell of reef, in world units
 const DEPTH = 150;             // how far the surface is above the seabed
@@ -142,8 +144,10 @@ export class Sea {
   }
 
   _spawnFish(x) {
-    const kind = FISH_KINDS[Math.floor(Math.random() * FISH_KINDS.length)];
     const g = this.game.terrain.surfaceY(x);
+    // what lives here depends on how far down here is: shoals near the top,
+    // the big slow things on the bottom of the deep water
+    const kind = seaSpecies(this.flat !== null ? g - this.level(x) : 80);
     // in a standing sea a fish lives between the bed and the surface, and
     // the surface is a level rather than a fixed distance up
     const top = this.flat !== null ? this.level(x) + 8 : g - DEPTH + 20;
@@ -430,20 +434,13 @@ export class Sea {
       if (f.y < ceil) continue;
       const s = cam.worldToScreen(f.x, f.y);
       if (s.x < -40 || s.x > this.game.renderer.vw + 40) continue;
-      const art = fishArt(f.kind, Math.max(0.4, f.s));
-      const beat = Math.sin(f.ph * 2.4) * 0.5;
+      // a swim frame, not a rotated tail: the whole spine flexes in the art
+      const art = fishFrame(f.kind, Math.floor(f.ph * 1.6) % FISH_FRAMES, 1);
       ctx.save();
       ctx.globalAlpha = wet;
       ctx.translate(Math.round(s.x), Math.round(s.y));
-      ctx.scale(z * f.dir, z);
-      ctx.rotate(Math.sin(f.ph * 0.7) * 0.12);
-      // the tail beats about the peduncle, the body just leans into the turn
-      ctx.save();
-      ctx.translate(art.joint.x, art.joint.y);
-      ctx.rotate(beat * 0.5);
-      ctx.drawImage(art.tail.cv, -art.tail.ox, -art.tail.oy);
-      ctx.restore();
-      ctx.drawImage(art.body.cv, -art.body.ox, -art.body.oy);
+      ctx.scale(z * f.dir * Math.min(1.1, f.s + 0.25), z * Math.min(1.1, f.s + 0.25));
+      ctx.drawImage(art.cv, -art.ox, -art.oy);
       ctx.restore();
     }
     for (const j of this.jellies) {

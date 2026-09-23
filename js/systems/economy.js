@@ -76,6 +76,11 @@ export class Economy {
       // a mature plant is not just a yield number; it changes what you are
       if (plot.plant && plot.plant.stage >= 3) apply(plot.plant.def.boon);
     }
+    // and the base as a whole: past a certain number of things on your back
+    // it stops being a pile of structures and starts being somewhere, and
+    // somewhere pays - water held, growth, and a shell that bears more
+    const rank = baseRank(this.game.garden);
+    if (rank.i > 0) apply({ yield: 1 + rank.i * 0.08, waterMax: rank.i * 25, plots: rank.i * 0.5 });
     // companions contribute their working abilities
     for (const c of this.game.wildlife.fleet) {
       switch (c.def.role) {
@@ -242,4 +247,29 @@ export class Economy {
     this.evolutions = new Set(d.evolutions || []);
     this.markDirty();
   }
+}
+
+
+/**
+ * What your back has become.
+ *
+ * Counted off the structures on it, and the number of DIFFERENT ones - a
+ * shell with five cisterns on it is a water tank, not a town.
+ */
+export const BASE_RANKS = [
+  { name: 'BARE SHELL', need: 0, kinds: 0 },
+  { name: 'CAMP', need: 1, kinds: 1 },
+  { name: 'OUTPOST', need: 3, kinds: 2 },
+  { name: 'SETTLEMENT', need: 5, kinds: 4 },
+  { name: 'TOWN ON A CRAB', need: 7, kinds: 6 },
+];
+export function baseRank(garden) {
+  const built = garden.plots.filter((p) => p.build);
+  const kinds = new Set(built.map((p) => p.build.id)).size;
+  let i = 0;
+  for (let k = 0; k < BASE_RANKS.length; k++) {
+    if (built.length >= BASE_RANKS[k].need && kinds >= BASE_RANKS[k].kinds) i = k;
+  }
+  const next = BASE_RANKS[i + 1] || null;
+  return { i, name: BASE_RANKS[i].name, built: built.length, kinds, next };
 }

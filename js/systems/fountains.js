@@ -138,7 +138,7 @@ export class Fountains {
 
   _st(v) {
     let s = this.state.get(v.id);
-    if (!s) { s = { hp: CAP_HP, broken: false, flood: 0, dead: false }; this.state.set(v.id, s); }
+    if (!s) { s = { hp: CAP_HP, broken: false, flood: 0, dead: false, solved: false }; this.state.set(v.id, s); }
     return s;
   }
 
@@ -163,6 +163,9 @@ export class Fountains {
     if (guard && guard.alive) {
       return { ok: false, why: 'Not with that thing behind you.' };
     }
+    // and it will not move until the lock under the collar lets the water
+    // through to the back of it
+    if (!s.solved) return { ok: false, puzzle: true, level: this.solvedCount };
     s.hp -= 1;
     const y = g.terrain.surfaceY(v.x) - v.size * 0.6;
     g.cam.shake(3.5);
@@ -190,6 +193,17 @@ export class Fountains {
     g.ui?.say('The cap is off. It is coming up.', 4.5);
     g.quests?.flag?.('fountain');
   }
+
+  /** The lock is open: the plug will take a hit now. */
+  unlock(v) {
+    const s = this._st(v);
+    s.solved = true;
+    this.game.npc?.say('That is it - hear it? The water is right behind the plug. Hit it.', 4.5, 3);
+    this.game.ui?.say('The lock is open. Break the plug.', 3.5);
+  }
+
+  get solvedCount() { let n = 0; for (const s of this.state.values()) if (s.solved) n++; return n; }
+  get brokenCount() { let n = 0; for (const s of this.state.values()) if (s.broken) n++; return n; }
 
   update(dt) {
     this.t += dt;
@@ -344,7 +358,7 @@ export class Fountains {
   save() {
     const out = {};
     for (const [k, s] of this.state) {
-      if (s.broken || s.dead || s.hp < CAP_HP) out[k] = [s.hp, s.broken ? 1 : 0, s.dead ? 1 : 0];
+      if (s.broken || s.dead || s.solved || s.hp < CAP_HP) out[k] = [s.hp, s.broken ? 1 : 0, s.dead ? 1 : 0, s.solved ? 1 : 0];
     }
     return out;
   }
@@ -352,10 +366,10 @@ export class Fountains {
   load(d) {
     this.state.clear();
     for (const k of Object.keys(d || {})) {
-      const [hp, broken, dead] = d[k];
+      const [hp, broken, dead, solved] = d[k];
       // a spring that was already running has finished running: the ground
       // round it is green and it stays green
-      this.state.set(k, { hp, broken: !!broken, flood: 0, dead: !!dead });
+      this.state.set(k, { hp, broken: !!broken, flood: 0, dead: !!dead, solved: !!solved || !!broken });
     }
   }
 }

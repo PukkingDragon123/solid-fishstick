@@ -20,6 +20,9 @@ import { drawShell, drawBloom, drawSprig, drawOrb, drawTab, drawPanel, drawGlyph
 import * as K from './kit.js';
 import { TreeScreen } from './tree.js';
 import { WORLD_NOTES, ERAS } from '../data/lore.js';
+import { baseRank } from '../systems/economy.js';
+import { FISH, FISH_BY_ID } from '../data/fish.js';
+import { fishFrame } from '../art/fishart.js';
 import { biomeAt } from '../world/biomes.js';
 
 const INK = '#f2e4c2';
@@ -529,6 +532,8 @@ export class UI {
     if (this.game.work?.live && !this.touchEnabled) this._workBar(ctx, W, H);
     this._thumbBand(ctx, W, H);
     this._questNote(ctx, W, H);
+    this._catchCard(ctx, W, H);
+    this._chapterCard(ctx, W, H);
     if (this.toast) this._toast(ctx, W, H);
     if (this.game.taming?.live) this._songCard(ctx, W, H);
     if (this.drag) this._drawCarried(ctx, W, H);
@@ -596,12 +601,10 @@ export class UI {
       band = { kind: 'hunt', label: 'STRIKE', tint: '#e2564f',
         needle: c.pos ?? 0, centre: c.band ?? 0.5, width: c.width ?? 0.26,
         hit: () => g.strike() };
-    } else if (g.pump?.open > 0.01) {
-      const p = g.pump;
-      band = { kind: 'pump', label: 'SPRING', tint: '#5fc6d8',
-        needle: p.pos ?? 0, centre: p.centre ?? 0.5, width: p.band ?? 0.3,
-        hit: () => g.pumpStroke() };
     }
+    // The spring does not get a band. It used to throw a slider across the
+    // middle of a phone every time you pumped - a second copy of the gauge
+    // that is already on the dial under your thumb.
     return band;
   }
 
@@ -682,7 +685,7 @@ export class UI {
     // And for as long as it is new, WHAT TO PRESS. A job you have agreed to
     // and cannot start is worse than no job, and the one sentence that fixes
     // that belongs on the screen for six seconds and then never again.
-    if (took && job.how) {
+    if (took && job.how && !q.chapterCard) {
       const a = clamp01(q.tookT / 1.2);
       const hw = Math.min(W - 16, 210);
       const hl = wrapText(job.how, hw - 12);
@@ -692,6 +695,79 @@ export class UI {
       hl.forEach((l, i) => drawText(ctx, l, x + 6, y + h + 7 + i * LINE_H,
         { color: K.C.ink }));
       ctx.globalAlpha = 1;
+    }
+    ctx.restore();
+  }
+
+  /**
+   * A chapter starting. The story has five of them, and each one gets its
+   * title across the middle of the screen once, the way a book does - the
+   * number small, the name large, one line under it saying what it is about.
+   */
+  _chapterCard(ctx, W, H) {
+    const c = this.game.quests?.chapterCard;
+    if (!c) return;
+    const a = Math.min(clamp01((c.max - c.t) / 0.6), clamp01(c.t / 0.9));
+    const ROMAN = ['', 'I', 'II', 'III', 'IV', 'V'];
+    const sc = W > 420 ? 2 : 1;
+    const y = Math.round(H * 0.26 - (1 - a) * 8);
+    const subL = wrapText(c.sub, W - 24);
+    ctx.save();
+    ctx.globalAlpha = a * 0.55;
+    ctx.fillStyle = '#0b0806';
+    ctx.fillRect(0, y - 16, W, 32 + 9 * sc + subL.length * LINE_H);
+    ctx.globalAlpha = a;
+    drawText(ctx, `CHAPTER ${ROMAN[c.n] || c.n}`, W / 2, y - 10, { color: K.C.gold, align: 'center' });
+    drawText(ctx, c.title, W / 2, y + 1, { color: '#fff3d2', align: 'center', scale: sc, outline: true, outlineColor: OUT });
+    const lw = Math.min(W - 40, textWidth(c.title, sc) + 30);
+    K.rule(ctx, Math.round(W / 2 - lw / 2), y + 3 + 8 * sc, Math.round(lw));
+    subL.forEach((l, i) => drawText(ctx, l, W / 2, y + 7 + 8 * sc + i * LINE_H, { color: K.C.ink, align: 'center' }));
+    ctx.restore();
+  }
+
+  /**
+   * THE CATCH.
+   *
+   * A fish you caught is held up for a moment, the way anybody holds up a
+   * fish: big, in its own colours, swimming in the air, with its name, what
+   * it is properly called, and how long it is - because the length is the
+   * whole point of telling anyone.
+   */
+  _catchCard(ctx, W, H) {
+    const c = this.game.fishing?.card;
+    if (!c) return;
+    const def = FISH_BY_ID[c.id];
+    if (!def) return;
+    const aIn = clamp01((c.max - c.t) / 0.28), aOut = clamp01(c.t / 0.5);
+    const a = Math.min(aIn, aOut);
+    // held up big: every fish gets about the same room, the pupfish included
+    const S = clamp(Math.round(96 / def.L), 2, 7);
+    const art = fishFrame(def.id, Math.floor(this.t * 7) % 4, S);
+    const w = Math.min(W - 20, Math.max(200, art.w + 30));
+    const fit = Math.min(1, (w - 24) / art.w);
+    const ah = Math.round(art.h * fit);
+    const h = ah + 58;
+    const x = Math.round((W - w) / 2), y = Math.round(34 - (1 - easeOutCubic(aIn)) * 24);
+    ctx.save();
+    ctx.globalAlpha = a;
+    K.slab(ctx, x, y, w, h, {});
+    K.slot(ctx, x + 6, y + 6, w - 12, ah + 12, { back: '#15394a' });
+    // a little water behind it, lit from above
+    for (let k = 0; k < ah + 8; k += 2) {
+      K.px(ctx, x + 9, y + 9 + k, w - 18, 1, `rgba(120,210,230,${0.10 * (1 - k / (ah + 8))})`);
+    }
+    const bob = Math.round(Math.sin(this.t * 3) * 1.5);
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(art.cv, Math.round(x + w / 2 - (art.w * fit) / 2), y + 12 + bob, Math.round(art.w * fit), ah);
+    const ty = y + ah + 22;
+    drawText(ctx, def.name.toUpperCase(), x + 10, ty, { color: K.C.gold });
+    drawText(ctx, def.latin, x + 10, ty + 11, { color: K.C.inkSoft });
+    drawText(ctx, `${c.cm} cm`, x + w - 10, ty, { color: K.C.ink, align: 'right' });
+    const tag = c.first ? 'NEW' : c.best ? 'BEST' : null;
+    if (tag) {
+      const tw = textWidth(tag) + 10;
+      K.plaque(ctx, x + w - 10 - tw, ty + 9, tw, 13, { tint: c.first ? '#8cc468' : '#e2b74a' });
+      drawText(ctx, tag, x + w - 10 - tw / 2, ty + 12, { color: '#fff3d2', align: 'center' });
     }
     ctx.restore();
   }
@@ -1379,6 +1455,18 @@ export class UI {
 
   // -- HUD ------------------------------------------------------------------
 
+  /**
+   * Balance, when it matters. Tipping over into overload is the one moment
+   * the number is worth saying out loud, so it is said once, then left alone.
+   */
+  _balanceWarn(gd) {
+    const heavy = gd.overload > 0;
+    if (heavy && !this._wasHeavy) this.say?.('Too heavy - you slow down', 3);
+    else if (gd.listed && !this._wasListed && !heavy) this.say?.('Listing - even out your back', 3);
+    this._wasHeavy = heavy;
+    this._wasListed = gd.listed;
+  }
+
   _hud(ctx, W, H) {
     const g = this.game;
     const e = g.economy;
@@ -1484,9 +1572,11 @@ export class UI {
       }
     }
 
+    this._topRowX = mine.length ? fx + Math.min(mine.length, W < 320 ? 3 : 5) * 18 + 6 : fx + 30;
     // What is in the claw. It only exists while there is sand in it, because a
     // permanent empty gauge for a thing you may never do is furniture.
     const sand = g.sandHeld || 0;
+    if (sand > 0.5) this._topRowX += 30;
     if (sand > 0.5) {
       const k = clamp01(sand / g.sandMax);
       const sx = fx + 34, sy = 16;
@@ -1547,50 +1637,28 @@ export class UI {
       }
     }
 
-    // the shell's balance: what you are carrying and how evenly. The rail
-    // already shows this while you are up there, so it is not drawn twice.
+    // The shell's balance used to be a gauge and a needle hung under the
+    // water shell, where it sat on top of the job card and read as a broken
+    // bar. The rail shows balance while you are up there building, which is
+    // the only time you can do anything about it; out here it only speaks up
+    // when it matters - see _balanceWarn.
     const gd = g.garden;
-    const load = gd.load, cap = gd.capacity, trim = gd.trim;
-    const bx0 = L + 1, by0 = 50;
-    if (!this.buildOn) {
-    drawGlyph(ctx, 'scale', bx0, by0 - 1, {
-      color: gd.overload > 0 ? '#e08c9c' : gd.listed ? '#e2b74a' : '#d6ba8a',
-    });
-    drawGauge(ctx, bx0 + 15, by0 + 1, 42, 4, load / Math.max(1, cap),
-      gd.overload > 0 ? '#c8425c' : load > cap * 0.8 ? '#e2b74a' : '#8cc468');
-    // trim: a needle that swings off centre as the load goes to one side
-    const tw = 42, tx = bx0 + 15;
-    ctx.fillStyle = 'rgba(12,8,5,0.7)';
-    ctx.fillRect(tx - 1, by0 + 6, tw + 2, 4);
-    ctx.fillStyle = 'rgba(90,72,48,0.9)';
-    ctx.fillRect(tx, by0 + 7, tw, 2);
-    ctx.fillStyle = gd.listed ? '#e2b74a' : '#d6ba8a';
-    ctx.fillRect(Math.round(tx + tw / 2 + trim * tw * 0.5) - 1, by0 + 5, 2, 6);
-    ctx.fillStyle = 'rgba(242,228,194,0.4)';
-    ctx.fillRect(Math.round(tx + tw / 2), by0 + 6, 1, 4);
-    if (this._hit(bx0, by0 - 2, 60, 14)) {
-      this.hover = {
-        title: 'Balance',
-        body: `Carrying ${load.toFixed(1)} of ${cap.toFixed(1)}.\n`
-          + (gd.overload > 0 ? 'Overloaded: everything grows slower and you walk slower.\n' : '')
-          + (gd.listed ? `Listing ${trim > 0 ? 'right' : 'left'}. Whatever is stacked on the heavy side is suffering.` : 'Evenly loaded.'),
-      };
-    }
+    this._balanceWarn(gd);
 
-    }
-
-    // how many are ready to pick
+    // how many are ready to pick: a chip in the top row, after whatever is
+    // already in it, rather than a line of text under the shell
     const ripe = gd.ripeCount;
-    if (ripe) {
-      const rx0 = bx0, ry0 = by0 + 14;
+    if (ripe && !this.buildOn) {
+      const rx0 = this._topRowX ?? (L + 120), ry0 = 16;
       const pulse = 0.6 + Math.sin(this.t * 3.2) * 0.4;
+      const cw = textWidth(`${ripe}`) + 22;
+      K.plaque(ctx, rx0, ry0 - 2, cw, 15, { tint: '#8cc468' });
       ctx.globalAlpha = 0.7 + pulse * 0.3;
-      drawGlyph(ctx, 'hand', rx0, ry0, { color: '#cfe89a' });
+      drawNodeIcon(ctx, 'fruit', rx0 + 8, ry0 + 5, '#cfe89a', 1);
       ctx.globalAlpha = 1;
-      drawText(ctx, `${ripe} ready   R`, rx0 + 15, ry0 + 3,
-        { color: '#cfe89a', outline: true, outlineColor: OUT });
-      if (this._hit(rx0, ry0, 70, 12)) {
-        this.hover = { title: 'Ready to pick', body: 'R, or tap the bead.' };
+      drawText(ctx, `${ripe}`, rx0 + 16, ry0 + 2, { color: '#e6f4c8' });
+      if (this._hit(rx0, ry0 - 2, cw, 15)) {
+        this.hover = { title: `${ripe} ready to pick`, body: 'R, or tap here.' };
         if (g.input.clicked) { g.input.clicked = false; g.harvestAll(); }
       }
     }
@@ -1760,115 +1828,248 @@ export class UI {
   }
 
   /**
-   * The pump. It is a valve in your own shell, so it is drawn as one, and it
-   * behaves like one: every tap is one stroke of the muscle behind it.
+   * THE SPOUT.
+   *
+   * It used to be a 34-pixel valve, a ten-pixel bar floating over it and two
+   * anti-aliased curves pretending to be water. Three things that did not
+   * look like they belonged to each other, and none of them looked like a
+   * spring.
+   *
+   * It is one instrument now, off the side of a steam engine:
+   *
+   *   A PRESSURE DIAL. A brass-rimmed face with the needle sweeping round it
+   *   and the band painted on the face where the chamber is full - a dial is
+   *   the thing everybody already knows how to read as "pressure", and a bar
+   *   is not.
+   *   A VALVE WHEEL in the middle of it that turns a notch on every stroke,
+   *   so pressing it is mechanical and not a click.
+   *   A GLASS TANK beside it with the shell's water standing in it.
+   *   And a FOUNTAIN out of the top: every stroke throws water, and how high
+   *   it goes is how well you timed it. A perfect one on a long chain goes
+   *   over the top of the screen furniture; a slip dribbles.
    */
   _pumpButton(ctx, W, H) {
-    // In SPORE mode the corner is not a spring at all. Same place, same hand,
-    // entirely different organ - so it gets its own drawing rather than the
-    // valve with a different tint on it.
     if (this.mode === 'spore') return this._sprayButton(ctx, W, H);
     if (this.mode === 'hunt') return this._clawStick(ctx, W, H);
     const g = this.game;
-    const size = 34;
-    const { x, y } = this.valveBox(W, H);
-    const hold = g.pumpHold || 0;
-    const hot = this._hit(x, y, size, size);
+    const p = g.pump;
+    const e = g.economy;
+    const vb = this.valveBox(W, H);
+    const size = this.touchEnabled ? 58 : 46;
+    // anchored on the same bottom-right corner the old valve used, one size up
+    const x = Math.round(vb.x + vb.size - size), y = Math.round(vb.y + vb.size - size);
+    const cx = x + size / 2, cy = y + size / 2;
+    const R = size / 2 - 1;
     const i = g.input;
+    const hot = Math.hypot(i.sx - cx, i.sy - cy) <= R + 3;
+    const play = g.state === 'play' && !this.drawerOpen;
     this.valveRect = { x, y, w: size, h: size };
-    // on a touchscreen the valve is a real button, so a finger on it is not
-    // stolen by whatever else is near the corner
-    if (this.touchEnabled && g.state === 'play' && !this.drawerOpen) {
+    if (this.touchEnabled && play) {
       this.buttons.push({ x: x - 4, y: y - 4, w: size + 8, h: size + 8, key: ' ' });
     }
-
-    // one tap of the valve is one stroke of the spring, the same as one press
-    // of the key. The rising edge is what counts, so hammering it works.
-    const live = hot && i.down && !this.drawerOpen && g.state === 'play';
+    const live = hot && i.down && play;
     if (live && !this._valveDown) this.valveTapped = true;
-    if (hot && i.clicked && g.state === 'play' && !this.drawerOpen) {
-      i.clicked = false;
-      this.valveTapped = true;
-    }
+    if (hot && i.clicked && play) { i.clicked = false; this.valveTapped = true; }
     this._valveDown = live;
     this.valveHeld = live;
-    if (hot) this.hover = { title: 'The spring', body: 'Tap on the band. Chains pay more.' };
+    if (hot) this.hover = { title: 'The spring', body: 'Press when the needle is in the green. The bright middle pays double.' };
 
-    // water: the valve throws it, it arcs, it lands, it runs off the button
-    this.spray = this.spray || [];
-    if (hold > 0.05) {
-      const n = 2 + Math.floor(hold * 5);
-      for (let k = 0; k < n; k++) {
-        if (Math.random() > hold * 0.9) continue;
-        const a = -Math.PI * (0.30 + Math.random() * 0.40);
-        const sp = (26 + Math.random() * 54) * (0.5 + hold);
-        this.spray.push({
-          x: x + size / 2 + (Math.random() - 0.5) * 8,
-          y: y + size / 2,
-          vx: Math.cos(a) * sp * (Math.random() < 0.5 ? -1 : 1) * 0.7,
-          vy: Math.sin(a) * sp,
-          life: 0.55 + Math.random() * 0.55, t: 0,
-          r: Math.random() < 0.42 ? 3 : 2,
-        });
+    // ---- what just happened ----------------------------------------------
+    // a stroke is read off the pump's own counter, so the fountain answers
+    // the key, the valve and a finger identically
+    const struck = p.strokes !== this._spoutSeen;
+    if (struck) {
+      const kind = p.flash?.text || 'GOOD';
+      const power = kind === 'PERFECT' ? 1 : kind === 'GOOD' ? 0.62 : kind === 'SLIPPED' ? 0.16 : 0;
+      this._spoutSeen = p.strokes;
+      if (this._spoutSeen > 0 && power > 0) this._throwSpout(cx, y + 5, power * (0.8 + Math.min(p.combo, 10) * 0.04), kind);
+      this._wheelTo = (this._wheelTo || 0) + (power > 0 ? Math.PI / 4 : 0);
+      this._stamp = { text: kind, t: 0.9, col: p.flash?.colour || '#9de3ee' };
+    }
+    this._wheel = damp(this._wheel || 0, this._wheelTo || 0, 0.0005, 1 / 60);
+    if (this._stamp) { this._stamp.t -= 1 / 60; if (this._stamp.t <= 0) this._stamp = null; }
+
+    // ---- the tank, beside it ---------------------------------------------
+    const maxW = e.stat('waterMax');
+    const fill = clamp01(e.water / Math.max(1, maxW));
+    const tw = 9, th = size - 8;
+    const tx = x - tw - 4, ty = y + 4;
+    K.px(ctx, tx - 1, ty - 1, tw + 2, th + 2, 'rgba(10,7,4,0.85)');
+    K.px(ctx, tx, ty, tw, th, K.C.goldDim);
+    K.px(ctx, tx + 1, ty + 1, tw - 2, th - 2, '#0d1a1f');
+    const wh = Math.round((th - 2) * fill);
+    if (wh > 0) {
+      K.px(ctx, tx + 1, ty + th - 1 - wh, tw - 2, wh, '#2b7f92');
+      K.px(ctx, tx + 1, ty + th - 1 - wh, tw - 2, 1, '#c9f2fa');           // meniscus
+      K.px(ctx, tx + 2, ty + th - wh, 1, Math.max(0, wh - 2), 'rgba(201,242,250,0.35)');
+      // bubbles, rising while it runs
+      if (p.live) {
+        for (let k = 0; k < 3; k++) {
+          const ph = (this.t * (0.9 + k * 0.37) + k * 0.31) % 1;
+          const by = Math.round(ty + th - 2 - ph * (wh - 2));
+          if (by > ty + th - 1 - wh) K.px(ctx, tx + 3 + (k * 2) % (tw - 4), by, 1, 1, '#9de3ee');
+        }
       }
     }
-    for (let k = this.spray.length - 1; k >= 0; k--) {
-      const d = this.spray[k];
-      d.t += 1 / 60;
-      if (d.t > d.life) { this.spray.splice(k, 1); continue; }
-      d.vy += 260 / 60;
-      d.x += d.vx / 60;
-      d.y += d.vy / 60;
+    // the gradations etched on the glass
+    for (let k = 1; k < 4; k++) K.px(ctx, tx + tw - 3, Math.round(ty + (th * k) / 4), 2, 1, 'rgba(226,183,74,0.5)');
+    K.px(ctx, tx, ty - 2, tw, 2, K.C.gold);
+
+    // ---- the dial ---------------------------------------------------------
+    ctx.save();
+    const glow = Math.max(g.pumpHold || 0, p.open * 0.35);
+    if (glow > 0.02) pxGlow(ctx, cx, cy, R + 8, '#9fe8ee', 0.35 * glow, { p: 1, steps: 3 });
+    // brass rim, a dark bezel, the face
+    pxDisc(ctx, cx, cy, R + 1, 'rgba(10,7,4,0.9)');
+    pxDisc(ctx, cx, cy, R, hot ? '#f0d89a' : K.C.gold);
+    pxDisc(ctx, cx, cy, R - 1, K.C.goldDim);
+    pxDisc(ctx, cx, cy, R - 3, 'rgba(10,7,4,0.9)');
+    pxDisc(ctx, cx, cy, R - 4, '#1b2226');
+    // a lit crescent on the rim, top-left, so it is a thing and not a circle
+    for (let k = 0; k < 10; k++) {
+      const an = Math.PI * (1.05 + k * 0.05);
+      K.px(ctx, Math.round(cx + Math.cos(an) * (R - 0.5)), Math.round(cy + Math.sin(an) * (R - 0.5)), 1, 1, K.C.goldLit);
+    }
+    // the sweep runs round the bottom-open three-quarters of the face
+    const A0 = Math.PI * 0.75, A1 = Math.PI * 2.25;
+    const ang = (f) => A0 + clamp01(f) * (A1 - A0);
+    const arc = (f0, f1, r, col, thick = 1) => {
+      const n = Math.max(3, Math.ceil((f1 - f0) * 60));
+      for (let k = 0; k <= n; k++) {
+        const an = ang(f0 + (f1 - f0) * (k / n));
+        for (let t2 = 0; t2 < thick; t2++) {
+          K.px(ctx, Math.round(cx + Math.cos(an) * (r - t2)), Math.round(cy + Math.sin(an) * (r - t2)), 1, 1, col);
+        }
+      }
+    };
+    const rr = R - 5;
+    // ticks, every tenth
+    for (let k = 0; k <= 10; k++) {
+      const an = ang(k / 10);
+      const l = k % 5 === 0 ? 3 : 2;
+      for (let d = 0; d < l; d++) {
+        K.px(ctx, Math.round(cx + Math.cos(an) * (rr - d)), Math.round(cy + Math.sin(an) * (rr - d)), 1, 1, 'rgba(214,186,138,0.55)');
+      }
+    }
+    // the band, painted on the face - only while the chamber is drawn
+    if (p.open > 0.05) {
+      ctx.globalAlpha = clamp01(p.open);
+      const half = p.band / 2;
+      arc(p.centre - half, p.centre + half, rr - 1, '#5e9f55', 3);
+      const pulse = 0.6 + 0.4 * Math.sin(this.t * 6);
+      ctx.globalAlpha = clamp01(p.open) * (0.7 + pulse * 0.3);
+      arc(p.centre - half * 0.34, p.centre + half * 0.34, rr - 1, '#d8f5a4', 3);
+      ctx.globalAlpha = 1;
+    }
+    // the valve wheel: a hub and four spokes, turning a notch on each stroke
+    const wr = 7;
+    for (let k = 0; k < 4; k++) {
+      const an = this._wheel + k * Math.PI / 2;
+      for (let d = 2; d <= wr; d++) {
+        K.px(ctx, Math.round(cx + Math.cos(an) * d), Math.round(cy + Math.sin(an) * d), 1, 1, '#b8543a');
+      }
+    }
+    pxRing(ctx, cx, cy, wr, wr, '#c2702e', { p: 1 });
+    pxDisc(ctx, cx, cy, 2.2, K.C.gold);
+    K.px(ctx, Math.round(cx) - 1, Math.round(cy) - 1, 1, 1, K.C.goldLit);
+    // the needle, with a counterweight behind the pivot
+    const na = ang(p.open > 0.05 ? p.pos : 0);
+    const shake = p.shake > 0 ? Math.sin(p.shake * 50) * p.shake * 0.08 : 0;
+    const nx = Math.cos(na + shake), ny = Math.sin(na + shake);
+    for (let d = -3; d <= rr - 1; d++) {
+      const col = d > rr - 5 ? '#ff6b5a' : d < 0 ? '#8a6a3a' : '#f6efe0';
+      K.px(ctx, Math.round(cx + nx * d), Math.round(cy + ny * d), 1, 1, col);
+      if (d > 2 && d < rr - 4) K.px(ctx, Math.round(cx + nx * d + ny), Math.round(cy + ny * d - nx), 1, 1, 'rgba(246,239,224,0.4)');
+    }
+    // the chain, as rivets round the rim that light one by one
+    const pips = 10;
+    for (let k = 0; k < pips; k++) {
+      const an = ang(k / (pips - 1));
+      const on = k < Math.min(p.combo, pips);
+      K.px(ctx, Math.round(cx + Math.cos(an) * (R - 2)) , Math.round(cy + Math.sin(an) * (R - 2)), 1, 1,
+        on ? (k >= 7 ? '#fff0a0' : '#d8f5a4') : 'rgba(40,30,18,0.9)');
+    }
+    // the throat at the top, where the water comes out
+    K.px(ctx, Math.round(cx) - 3, y - 1, 7, 3, K.C.goldDim);
+    K.px(ctx, Math.round(cx) - 2, y - 2, 5, 1, K.C.gold);
+    K.px(ctx, Math.round(cx) - 1, y - 1, 3, 1, '#0d1a1f');
+    ctx.restore();
+
+    // ---- the fountain ------------------------------------------------------
+    this._drawSpout(ctx, cx, y);
+
+    // ---- what it says ------------------------------------------------------
+    const full = e.water >= maxW - 0.5;
+    const lab = full ? 'FULL' : this.touchEnabled ? 'PUMP' : 'PUMP  SPC';
+    const lw = textWidth(lab) + 10;
+    const ly = y + size + 2;
+    K.px(ctx, Math.round(cx - lw / 2), ly, lw, 11, 'rgba(10,7,4,0.72)');
+    drawText(ctx, lab, cx, ly + 2, { color: full ? '#9de3ee' : p.live ? '#d8f5a4' : INK, align: 'center' });
+    if (p.combo > 1) {
+      drawText(ctx, `x${p.mult.toFixed(1)}`, this.touchEnabled ? x - tw - 8 : x - tw - 6,
+        this.touchEnabled ? y + 20 : y - 9,
+        { color: '#d8f5a4', align: this.touchEnabled ? 'right' : 'left', outline: true, outlineColor: OUT });
+    }
+    if (this._stamp) {
+      const s = this._stamp;
+      const k = clamp01(s.t / 0.9);
+      const lift = (1 - k) * 8;
+      ctx.globalAlpha = Math.min(1, k * 2);
+      // on a phone the row of buttons is right above the dial, so the word
+      // comes out of the side of it instead of the top
+      const sx2 = this.touchEnabled ? x - tw - 8 : cx, sy2 = this.touchEnabled ? y + 8 - lift : y - 20 - lift;
+      drawText(ctx, s.text, sx2, sy2,
+        { color: s.col, align: this.touchEnabled ? 'right' : 'center', outline: true, outlineColor: OUT,
+          scale: s.text === 'PERFECT' && k > 0.75 && !this.touchEnabled ? 2 : 1 });
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  /** A stroke landed: throw water up out of the throat of the dial. */
+  _throwSpout(x, y, power, kind) {
+    this.spout = this.spout || [];
+    const n = Math.round(10 + power * 34);
+    const up = 60 + power * 150;
+    for (let k = 0; k < n; k++) {
+      const spread = (Math.random() - 0.5) * (18 + power * 30);
+      this.spout.push({
+        x: x + (Math.random() - 0.5) * 3, y,
+        vx: spread, vy: -up * (0.72 + Math.random() * 0.38),
+        t: 0, life: 0.7 + Math.random() * 0.6 + power * 0.4,
+        r: Math.random() < 0.3 ? 2 : 1,
+        c: kind === 'PERFECT' && Math.random() < 0.35 ? '#ffffff' : Math.random() < 0.5 ? '#c9f2fa' : '#5fc6d8',
+      });
+    }
+    // and a ring of splash at the throat
+    for (let k = 0; k < 8; k++) {
+      const an = Math.PI + (k / 7) * Math.PI;
+      this.spout.push({ x, y, vx: Math.cos(an) * 40, vy: Math.sin(an) * 30, t: 0, life: 0.35, r: 1, c: '#9de3ee' });
+    }
+    if (this.spout.length > 320) this.spout.splice(0, this.spout.length - 320);
+  }
+
+  _drawSpout(ctx, cx, top) {
+    const sp = this.spout;
+    if (!sp || !sp.length) return;
+    const dt = 1 / 60;
+    for (let k = sp.length - 1; k >= 0; k--) {
+      const d = sp[k];
+      d.t += dt;
+      if (d.t > d.life) { sp.splice(k, 1); continue; }
+      d.vy += 330 * dt;
+      d.vx *= 0.985;
+      d.x += d.vx * dt;
+      d.y += d.vy * dt;
       const a = clamp01(1 - d.t / d.life);
-      ctx.globalAlpha = 0.40 + a * 0.60;
-      ctx.fillStyle = d.r > 2 ? '#c9f2fa' : '#5fc6d8';
-      ctx.fillRect(Math.round(d.x), Math.round(d.y), d.r, d.r + 1);
-      // a short tail, so a droplet reads as moving rather than as a speck
-      ctx.globalAlpha *= 0.45;
-      ctx.fillRect(Math.round(d.x - d.vx / 90), Math.round(d.y - d.vy / 90), Math.max(1, d.r - 1), Math.max(1, d.r - 1));
-    }
-    if (this.spray.length > 240) this.spray.splice(0, this.spray.length - 240);
-
-    ctx.globalAlpha = hot || hold > 0 ? 1 : 0.72;
-    drawValve(ctx, x, y, hold, this.t);
-    // the jet: a bright arc leaving the throat of the valve
-    if (hold > 0.05) {
-      ctx.globalAlpha = 0.35 + hold * 0.45;
-      ctx.strokeStyle = '#9de3ee';
-      ctx.lineWidth = Math.max(1, 2 * hold);
-      for (const dir of [-1, 1]) {
-        ctx.beginPath();
-        const jx = x + size / 2, jy = y + size / 2;
-        ctx.moveTo(jx, jy);
-        ctx.quadraticCurveTo(jx + dir * 16 * hold, jy - 26 * hold,
-          jx + dir * 30 * hold, jy - 6 * hold + Math.sin(this.t * 12) * 2);
-        ctx.stroke();
+      ctx.globalAlpha = 0.35 + a * 0.65;
+      K.px(ctx, Math.round(d.x), Math.round(d.y), d.r, d.r + (Math.abs(d.vy) > 60 ? 1 : 0), d.c);
+      // a streak behind the fast ones, so a drop reads as moving
+      if (Math.abs(d.vy) > 90) {
+        ctx.globalAlpha *= 0.4;
+        K.px(ctx, Math.round(d.x - d.vx * 0.012), Math.round(d.y - d.vy * 0.018), 1, 2, d.c);
       }
-    }
-    // and it runs down the face of the valve while it is open
-    if (hold > 0.1) {
-      for (let k = 0; k < 5; k++) {
-        const ph = (this.t * (1.4 + k * 0.3) + k * 0.7) % 1;
-        ctx.globalAlpha = hold * (1 - ph) * 0.7;
-        ctx.fillStyle = '#9de3ee';
-        ctx.fillRect(Math.round(x + 6 + k * 6), Math.round(y + size * 0.55 + ph * size * 0.5), 1, 2 + k % 2);
-      }
-      // a puddle under it, spreading while you hold
-      ctx.globalAlpha = Math.min(0.5, hold * 0.5);
-      ctx.fillStyle = '#2b7f92';
-      const pw = size * (0.4 + hold * 0.7);
-      ctx.beginPath();
-      ctx.ellipse(x + size / 2, y + size + 3, pw, 2.5, 0, 0, TAU);
-      ctx.fill();
     }
     ctx.globalAlpha = 1;
-    const e = g.economy;
-    const full = e.water >= e.stat('waterMax') - 0.5;
-    drawText(ctx, full ? 'SPILLING' : 'STROKE', x + size / 2, y + size + 1, {
-      color: full ? '#9de3ee' : hold > 0 ? '#9de3ee' : FAINT,
-      align: 'center', outline: true, outlineColor: OUT,
-    });
-    this._pumpGauge(ctx, W, H, x + size / 2, y - 10);
   }
 
   /**
@@ -2221,8 +2422,11 @@ export class UI {
         pxDisc(ctx, s.x, s.y + bob, r + 1, 'rgba(20,30,10,0.8)', { p: 1 });
         pxDisc(ctx, s.x, s.y + bob, r, hot ? '#f6ffd8' : '#cfe89a', { p: 1 });
         ctx.globalAlpha = 1;
-      } else if (cam.zoom > 1.4) {
-        // still filling: a short bar, and a mark if its condition is not met
+      } else if (cam.zoom > 1.4 && (this.buildOn || hot || !met) && !g.coverShot) {
+        // Still filling: a short bar, and a mark if its condition is not met.
+        // Only while you are up on your back looking at it, or pointing at it,
+        // or when something is wrong - a row of little bars over every plant
+        // all the time was clutter hanging off the shell.
         ctx.globalAlpha = met ? 0.75 : 0.5;
         drawGauge(ctx, s.x - 6, s.y, 12, 2, ripe, met ? '#8cc468' : '#7a6a52');
         if (!met) {
@@ -2714,8 +2918,26 @@ export class UI {
     });
     ry += tbh + 5;
 
-    // what you are carrying, since that is the constraint that matters here
+    // what your back has become, and what it takes to be the next thing
     const gd = g.garden;
+    const rank = baseRank(gd);
+    K.plaque(ctx, inX - 2, ry, inW + 4, 22, { tint: rank.i > 0 ? '#e2b74a' : '#8a7a5a' });
+    drawNodeIcon(ctx, rank.i >= 3 ? 'crown' : rank.i > 0 ? 'load' : 'step', inX + 7, ry + 11, K.C.gold, 1);
+    drawText(ctx, ellipsize(rank.name, inW - 18), inX + 15, ry + 3, { color: K.C.gold });
+    drawText(ctx, rank.next ? `next ${rank.next.need} built, ${rank.next.kinds} kinds` : 'as big as it gets',
+      inX + 15, ry + 12, { color: K.C.inkSoft });
+    if (this._hit(inX - 2, ry, inW + 4, 22)) {
+      this.hover = { title: rank.name, body: `${rank.built} structures, ${rank.kinds} kinds.\n`
+        + (rank.i > 0 ? `Growth +${rank.i * 8}%, water +${rank.i * 25}, carries +${rank.i * 0.5}.` : 'Build something on your back and it becomes a camp.') };
+    }
+    if (this._lastRank !== undefined && rank.i > this._lastRank) {
+      this.say(`Your back is a ${rank.name.toLowerCase()} now`, 4);
+      g.audio?.play('discover');
+    }
+    this._lastRank = rank.i;
+    ry += 26;
+
+    // what you are carrying, since that is the constraint that matters here
     K.gauge(ctx, inX, ry, inW, 6, gd.load / Math.max(1, gd.capacity),
       gd.overload > 0 ? K.C.bad : K.C.good);
     drawText(ctx, `${gd.load.toFixed(1)}/${gd.capacity.toFixed(0)}`,
@@ -2954,6 +3176,44 @@ export class UI {
     if (this.codexPick) return this._codexEntry(ctx, x, y, w, h);
     let ry = y + 4 - this.scroll;
     let total = 0;
+
+    // What you have caught, first, as a case of slots: the ones you have in
+    // full colour with the biggest you have landed under them, the ones you
+    // have not as a shadow of the shape - so an empty slot is a thing to go
+    // and find rather than a blank.
+    const log = g.fishing?.log || {};
+    if (ry > y - 12 && ry < y + h) {
+      drawText(ctx, 'FISH', x, ry, { color: '#9de3ee' });
+      drawText(ctx, `${Object.keys(log).length} / ${FISH.length}`, x + w, ry, { color: K.C.inkSoft, align: 'right' });
+    }
+    ry += 11; total += 11;
+    {
+      const sw = 50, shh = 40, gap = 4;
+      const cols = Math.max(1, Math.floor((w + gap) / (sw + gap)));
+      FISH.forEach((f, i) => {
+        const cx = x + (i % cols) * (sw + gap), cy = ry + Math.floor(i / cols) * (shh + gap);
+        if (cy < y - shh || cy > y + h) return;
+        const got = log[f.id];
+        K.slot(ctx, cx, cy, sw, shh - 10, { empty: !got, back: got ? '#16394a' : undefined });
+        const art = fishFrame(f.id, got ? Math.floor(this.t * 5 + i) % 4 : 0, 1);
+        const k = Math.min(2, (sw - 10) / art.w, (shh - 16) / art.h);
+        ctx.save();
+        if (!got) { ctx.filter = 'brightness(0)'; ctx.globalAlpha = 0.45; }
+        ctx.imageSmoothingEnabled = false;
+        ctx.drawImage(art.cv, Math.round(cx + sw / 2 - (art.w * k) / 2), Math.round(cy + (shh - 10) / 2 - (art.h * k) / 2),
+          Math.round(art.w * k), Math.round(art.h * k));
+        ctx.restore();
+        drawText(ctx, got ? `${got.best}cm` : '?', cx + sw / 2, cy + shh - 8,
+          { color: got ? K.C.ink : FAINT, align: 'center' });
+        if (this._hit(cx, cy, sw, shh)) {
+          this.hover = got
+            ? { title: f.name, body: `${f.latin}\nCaught ${got.n}. Best ${got.best} cm.\n${f.note}` }
+            : { title: 'Not caught yet', body: f.where === 'oasis' ? 'Lives in the oasis pools.' : f.where === 'sea' ? 'Lives in the sea to the west.' : 'Lives in the deep water, far out to the west.' };
+        }
+      });
+      const rows = Math.ceil(FISH.length / cols);
+      ry += rows * (shh + gap) + 4; total += rows * (shh + gap) + 4;
+    }
 
     // what he has worked out about the basin itself
     if (ry > y - 12 && ry < y + h) drawText(ctx, 'THE BASIN', x, ry, { color: '#7fd0dd' });
@@ -3215,7 +3475,10 @@ export class UI {
         wanted.push({ icon: 'fruit', label: `PICK ${g.garden.ripeCount}`, key: 'r',
           colour: '#cfe89a' });
       } else if (hint) {
-        wanted.push({ icon: 'hand', label: 'ACT', key: 'e', colour: '#e2b74a' });
+        // the plate says what it will actually do, with a picture of it
+        const HINT_ICON = { CATCH: 'fish', STUDY: 'leaf', CUT: 'saw', BREAK: 'hammer', SING: 'call', STRIKE: 'claw' };
+        wanted.push({ icon: HINT_ICON[hint] || 'hand', label: hint.length <= 6 ? hint : 'ACT', key: 'e',
+          colour: hint === 'CATCH' ? '#9de3ee' : '#e2b74a' });
       }
       // the sand: DIG always, and POUR only beside it - never in front of it,
       // so picking up your first grain cannot slide DIG out from under the

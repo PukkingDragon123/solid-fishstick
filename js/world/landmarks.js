@@ -98,7 +98,7 @@ export function groundOffset(seed, x) {
  * air above the sand. A body of water finds the lowest point, so that is what
  * it is measured from now: the deepest ground anywhere in the bowl.
  */
-function poolSurface(lm, terrain) {
+export function poolSurface(lm, terrain) {
   if (lm.surface !== undefined) return lm.surface;
   let deep = -Infinity;
   const step = Math.max(2, lm.size / 24);

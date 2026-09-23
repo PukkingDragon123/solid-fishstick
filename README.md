@@ -16,6 +16,63 @@ night with their mouths open.
 
 ![The oasis on your back](docs/shot-03-oasis.png)
 
+### A whole game, start to finish
+
+It has a story now, in five chapters, and an ending:
+
+| | |
+| --- | --- |
+| **I. The Dry** | fill the shell, grow the first thing on your back |
+| **II. What the Sand Kept** | a clean fossil, a fish in a desert pool, a copper seam |
+| **III. A Home on Your Back** | make camp, bring dead ground back, grow the camp into an outpost |
+| **IV. The Lids** | beat the guardians, solve the locks under the stone caps, break three of them |
+| **V. The Old Sea** | walk west to the sea that never left, and catch a fish that should be extinct |
+
+Each chapter opens with its title across the screen, every job tells you what
+to press the moment you take it, and the last one ends with **the sea coming
+back** - the water rising out of the ground round you, full of the fish you
+caught, the desert greening under it, and a closing card with the numbers of
+your run. Then the world is yours to keep walking about in.
+
+**Fish.** Eight species, painted a pixel at a time from what a fish actually
+is: countershading, a ringed eye with a catchlight, a gill cover, a lateral
+line, a scale lattice and translucent fins with the rays showing, baked in four
+swim frames so the whole spine flexes. Desert pupfish, salt perch and a blind
+vent fish in the oasis pools; sardines, tiger mackerel, parrotfish and mottled
+groupers in the sea; and in the deepest water, rarely, a coelacanth. Walk in
+slowly - run and they scatter - and press E when one is at your claw. Every
+catch is held up on a card with its name, its Latin name and its length, and
+the field notes keep a case of slots for all eight.
+
+**The locks.** A stone cap will not break until the lock under its collar is
+open: a grid of carved stones you turn a quarter at a time until there is a
+channel all the way from the spring to the plug. The first is three by three;
+the last is six across.
+
+**Your base.** What you build on your back is ranked - camp, outpost,
+settlement, and finally a town on a crab - by how many structures and how many
+different kinds, and every rank pays: more growth, more water held, more you
+can carry.
+
+**Dr. Vess, drawn.** Every earlier version of him was bitmaps rotated to his
+joint angles, which is how pixel art gets shredded. Now nothing about him is
+rotated: his head, torso, pack, boots and tools are hand-placed pixel sprites,
+his limbs are solid pixel strokes laid between the joints his poser already
+solves, and one outline goes round the whole figure with a darker line wherever
+a nearer part crosses a further one.
+
+**The spout.** Pumping is a brass pressure dial now - the timing band painted
+on its face, a valve wheel that turns a notch every stroke, a glass tank beside
+it with the shell's water standing in it, and a fountain out of the top that
+goes higher the better you time it.
+
+### itch.io
+
+`dist/itch/` has everything a page needs: `crabden-itch.zip` (upload as an HTML
+game, "This file will be played in the browser", viewport 960 x 540 or
+fullscreen), a 630 x 500 cover, banners at 1920 x 480 and 960 x 240, and two
+screenshots.
+
 ---
 
 ## Play it
