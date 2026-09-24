@@ -638,7 +638,7 @@ export class Person {
     if (flat < 0.995) ctx.translate(0, -(1 - flat) * 2.2 * rig.K);
     if (Math.abs(this.squash) > 0.005) ctx.scale(1 - this.squash * 0.5, 1 + this.squash);
     ctx.imageSmoothingEnabled = false;
-    // the figure is drawn at twice the world's resolution; this puts it back
+    // one art pixel per world pixel, the same grid as everything else
     ctx.drawImage(cv, -this.fig.ox, -this.fig.oy, this.fig.w, this.fig.h);
     ctx.restore();
   }

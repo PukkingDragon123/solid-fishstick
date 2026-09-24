@@ -10808,27 +10808,28 @@ body {
   }
 
   // js/art/pixelperson.js
-  var HR = 2;
+  var HR = 1;
   var VESS = {
     outline: "#26160e",
-    hatL: "#f2dfb4",
-    hat: "#d9ba8a",
-    hatD: "#b39262",
-    hatDD: "#7e6240",
-    band: "#963c30",
-    bandD: "#62251c",
-    brass: "#e8bb58",
-    brassD: "#9a7030",
-    lens: "#5aa8c4",
-    lensL: "#d8f4fa",
-    hair: "#704128",
-    hairL: "#9e6842",
-    hairD: "#472616",
+    hatL: "#efdcb0",
+    hat: "#d2b384",
+    hatD: "#a88a5e",
+    hatDD: "#745b3c",
+    band: "#a23a2e",
+    bandD: "#6a241c",
+    brass: "#d9a452",
+    brassD: "#8a6030",
+    lens: "#6f93d6",
+    lensL: "#c4d8ff",
+    frame: "#5a4a3e",
+    hair: "#7a4a2c",
+    hairL: "#a56e44",
+    hairD: "#4a2a18",
     skinL: "#f4c89c",
     skin: "#dfa074",
     skinD: "#b87450",
     skinDD: "#84492f",
-    stubble: "#c08560",
+    stubble: "#b97c58",
     eyeW: "#f6efe2",
     eye: "#1a100c",
     brow: "#3e2416",
@@ -10852,11 +10853,11 @@ body {
     trouser: "#8c8759",
     trouserD: "#65613f",
     trouserL: "#aca676",
-    canvasL: "#c9b183",
-    canvas: "#a68d5f",
-    canvasD: "#7a6442",
-    roll: "#71825c",
-    rollD: "#4f5e3f",
+    canvasL: "#a2714a",
+    canvas: "#7e5234",
+    canvasD: "#583620",
+    roll: "#c9b183",
+    rollD: "#96805a",
     packStrap: "#5a3a22",
     boot: "#553624",
     bootL: "#7a5238",
@@ -10919,8 +10920,8 @@ body {
     palCache.set(key2, p);
     return p;
   }
-  var HW = 20;
-  var HH = 22;
+  var HW = 16;
+  var HH = 15;
   var HEAD_KEY2 = {
     o: "outline",
     1: "hatL",
@@ -10933,6 +10934,7 @@ body {
     G: "brassD",
     e: "lens",
     E: "lensL",
+    f: "frame",
     h: "hair",
     H: "hairL",
     k: "hairD",
@@ -10948,7 +10950,33 @@ body {
     n: "lip",
     y: "pencil"
   };
-  var HEAD_NECK = { x: 10, y: 21 };
+  var HEAD_NECK = { x: 8, y: 14 };
+  var HAT_KEYS = "1234bBgGeE";
+  var HAT_ROWS = 5;
+  var HEAD_BASE = [
+    "......11122.....",
+    "....11111Ggg3...",
+    "....bBbbbgeEg...",
+    "1112222222222223",
+    "4..khhHhhhhhdd.4",
+    "..hkhHhhhsSrrd..",
+    "..kkhhhkfffpE...",
+    "..hkhhkdssfees..",
+    "...khksDssSssS..",
+    "...hkhsdssssd...",
+    ".....ssdssssm...",
+    "......dqqqsqS...",
+    ".......qdddd....",
+    "......dsssS.....",
+    "......dsssd....."
+  ];
+  var HEAD_BARE_TOP = [
+    "................",
+    ".....kkhhhh.....",
+    "....khhHhhhhh...",
+    "...khhhhHhhhhd..",
+    "...khhHhhhhhdd.."
+  ];
   var EXPR = {
     flat: { eye: "open", brow: "mid", mouth: "shut" },
     talk: { eye: "open", brow: "mid", mouth: "open" },
@@ -10977,107 +11005,54 @@ body {
     const key2 = `${e.eye}:${e.brow}:${e.mouth}:${bare ? 1 : 0}`;
     let G2 = headCache.get(key2);
     if (G2) return G2;
-    G2 = [];
-    for (let y = 0; y < HH; y++) G2.push(new Array(HW).fill("."));
+    G2 = HEAD_BASE.map((r) => [...r]);
     const put = (x, y, c) => {
       if (x >= 0 && y >= 0 && x < HW && y < HH) G2[y][x] = c;
     };
-    const run = (y, x0, str) => {
-      for (let i = 0; i < str.length; i++) if (str[i] !== " ") put(x0 + i, y, str[i]);
-    };
-    const FRONT = { 6: 14, 7: 15, 8: 15, 9: 16, 10: 15, 11: 16, 12: 17, 13: 16, 14: 15, 15: 15, 16: 15, 17: 15, 18: 13 };
-    const BACK = { 6: 5, 7: 4, 8: 3, 9: 3, 10: 3, 11: 3, 12: 3, 13: 3, 14: 4, 15: 5, 16: 6, 17: 7, 18: 7 };
-    const HAIR = { 6: 13, 7: 10, 8: 8, 9: 7, 10: 6, 11: 5, 12: 4, 13: 4 };
-    for (let y = 6; y <= 18; y++) {
-      for (let x = BACK[y]; x <= FRONT[y]; x++) {
-        let c = "s";
-        if (HAIR[y] !== void 0 && x <= HAIR[y]) c = x === BACK[y] ? "k" : (x * 3 + y) % 7 === 0 ? "H" : "h";
-        put(x, y, c);
-      }
-    }
-    for (const [y, x] of [[9, 7], [10, 6], [11, 5], [12, 4], [13, 4]]) put(x, y, "k");
-    for (let y = 19; y < HH; y++) run(y, 7, "dsssd");
-    run(18, 7, "dddddd");
-    put(12, 19, "S");
-    for (let x = 9; x <= 15; x++) put(x, 7, "d");
-    run(8, 13, "SSS");
-    run(11, 12, "SS");
-    for (let x = 8; x <= 14; x++) put(x, 17, "d");
-    for (let y = 13; y <= 16; y++) for (let x = 9; x <= 15; x++) {
-      if (G2[y][x] !== "s" || y === 13 && x < 13) continue;
-      if (x <= 10 || y === 16 || (x + y) % 2 === 0) put(x, y, "q");
-    }
-    for (let x = 9; x <= 14; x++) if ((x + 1) % 2 === 0) put(x, 17, "q");
-    run(10, 7, "dd");
-    run(11, 7, "dD");
-    run(12, 7, "dd");
-    put(16, 11, "S");
-    run(12, 16, "ss");
-    put(15, 13, "D");
-    put(16, 13, "d");
-    put(15, 16, "S");
-    put(14, 16, "S");
-    if (e.brow === "up") run(8, 13, "rrr");
-    else if (e.brow === "frown") {
-      run(9, 13, "rrr");
+    if (e.brow === "up") {
+      put(11, 4, "r");
+      put(12, 4, "r");
+      put(10, 5, "S");
+      put(11, 5, "s");
+    } else if (e.brow === "frown") {
+      put(12, 6, "r");
+      put(10, 5, "S");
     } else if (e.brow === "sad") {
-      put(14, 8, "r");
-      put(13, 9, "r");
-    } else {
-      run(9, 13, "rrr");
+      put(12, 4, "r");
+      put(11, 5, "r");
+      put(10, 5, "S");
     }
-    if (e.eye === "shut") run(10, 13, "rr");
+    if (e.eye === "shut") put(11, 6, "D");
     else if (e.eye === "squint") {
-      put(13, 10, "r");
-      put(14, 10, "p");
+      put(11, 6, "p");
+      put(12, 6, e.brow === "frown" ? "r" : "e");
     } else if (e.eye === "wide") {
-      put(13, 9, "w");
-      put(13, 10, "w");
-      put(14, 10, "p");
-      put(14, 9, "w");
-    } else {
-      put(13, 10, "w");
-      put(14, 10, "p");
+      put(11, 6, "w");
+      put(12, 6, "p");
     }
     if (e.mouth === "open") {
-      run(14, 13, "mm");
-      run(15, 13, "mm");
-      put(14, 16, "n");
+      put(12, 10, "m");
+      put(12, 11, "m");
+      put(12, 12, "S");
+      put(11, 11, "q");
     } else if (e.mouth === "grin") {
-      run(14, 13, "ww");
-      run(15, 13, "mm");
+      put(12, 10, "w");
+      put(11, 10, "m");
     } else if (e.mouth === "smile") {
-      put(14, 14, "m");
-      put(13, 13, "m");
-      put(12, 13, "d");
+      put(12, 10, "n");
+      put(11, 10, "m");
+      put(11, 9, "m");
     } else if (e.mouth === "down") {
-      put(14, 14, "m");
-      put(13, 14, "m");
-      put(12, 15, "m");
-    } else {
-      run(14, 13, "mm");
-      put(14, 15, "n");
+      put(12, 10, "m");
+      put(11, 11, "m");
     }
-    if (!bare) {
-      run(0, 6, "111122");
-      run(1, 5, "11111222");
-      run(2, 4, "1111122223");
-      run(3, 4, "bBbBbbbGeG");
-      run(4, 4, "BBBBBBBGGG");
-      run(5, 2, "22222222222221");
-      run(6, 1, "4444444444444443");
-    } else {
-      run(3, 6, "kkhhh");
-      run(4, 5, "khhHhhh");
-      run(5, 4, "khhhHHhhh");
-      for (let x = 4; x <= 13; x++) put(x, 6, x % 3 === 0 ? "H" : "h");
-    }
+    if (bare) for (let y = 0; y < HEAD_BARE_TOP.length; y++) G2[y] = [...HEAD_BARE_TOP[y]];
     headCache.set(key2, G2);
     return G2;
   }
-  var TW = 20;
-  var TH = 34;
-  var TORSO_HIP = { x: 10, y: TH };
+  var TW = 12;
+  var TH = 17;
+  var TORSO_HIP = { x: 6, y: TH };
   var TORSO_KEY = {
     o: "outline",
     c: "scarf",
@@ -11113,30 +11088,29 @@ body {
     }
     return pts[pts.length - 1][1];
   };
-  var T_FRONT = [[0, 4.6], [3, 6.8], [9, 7.2], [15, 6.8], [22, 6.4], [28, 6.2], [34, 5.8]];
-  var T_BACK = [[0, -6], [4, -7.6], [10, -7.2], [16, -6.2], [22, -5.8], [28, -5.8], [34, -5.6]];
+  var T_FRONT = [[0, 2.4], [1.5, 3.5], [4.5, 3.7], [8, 3.4], [11, 3.2], [14, 3.1], [17, 2.9]];
+  var T_BACK = [[0, -3], [2, -3.9], [5, -3.7], [8, -3.2], [11, -3], [14, -3], [17, -2.9]];
   var torsoGrid = null;
   function buildTorso() {
     if (torsoGrid) return torsoGrid;
     const G2 = [];
     for (let y = 0; y < TH; y++) G2.push(new Array(TW).fill("."));
-    const cx = 10;
+    const cx = 6;
+    const frontAt = (y) => Math.round(cx + lerpPts(T_FRONT, y + 0.5));
     for (let y = 0; y < TH; y++) {
-      const f = Math.round(cx + lerpPts(T_FRONT, y + 0.5));
+      const f = frontAt(y);
       const b = Math.round(cx + lerpPts(T_BACK, y + 0.5));
       for (let x = b; x < f; x++) {
         const fromB = x - b, fromF = f - 1 - x;
         let c;
-        if (y >= 22 && y <= 24) {
-          c = fromF <= 2 ? y === 24 ? "Y" : "y" : "l";
-        } else if (y > 24) {
-          c = fromB <= 1 ? "T" : fromF === 0 ? "U" : "t";
-          if (y > 28 && fromB === 2) c = "T";
+        if (y === 11 || y === 12) {
+          c = fromF === 0 ? y === 12 ? "Y" : "y" : "l";
+        } else if (y > 12) {
+          c = fromB === 0 ? "T" : fromF === 0 ? "U" : "t";
         } else {
-          const shirt = fromF <= 2 || y < 2;
-          if (shirt) c = fromF === 0 ? "f" : y > 11 && y < 15 ? "j" : "i";
-          else if (fromF === 3) c = "V";
-          else c = fromB === 0 ? "X" : fromB <= 2 ? "x" : "v";
+          if (fromF <= 1 || y < 1) c = fromF === 0 ? "f" : y > 5 && y < 8 ? "j" : "i";
+          else if (fromF === 2) c = "V";
+          else c = fromB === 0 ? "X" : fromB === 1 ? "x" : "v";
         }
         G2[y][x] = c;
       }
@@ -11144,80 +11118,42 @@ body {
     const put = (x, y, c) => {
       if (x >= 0 && y >= 0 && x < TW && y < TH && G2[y][x] !== ".") G2[y][x] = c;
     };
-    for (let x = 7; x <= 13; x++) put(x, 0, "c");
-    for (let x = 8; x <= 14; x++) put(x, 1, x === 14 ? "C" : "c");
-    put(14, 2, "c");
-    put(15, 2, "C");
-    put(15, 3, "C");
-    put(15, 4, "c");
-    for (let y = 0; y <= 13; y++) {
-      const x = Math.round(9 + y * 0.32);
-      put(x, y, "a");
-      put(x + 1, y, y % 3 === 0 ? "A" : "a");
-    }
-    put(12, 11, "p");
-    put(13, 11, "p");
-    for (let x = 10; x <= 13; x++) {
-      put(x, 12, "V");
-      put(x, 13, "x");
-    }
-    put(15, 0, "f");
-    put(16, 1, "f");
-    put(16, 2, "j");
-    for (let y = 5; y <= 19; y += 4) {
-      const x = Math.round(cx + lerpPts(T_FRONT, y + 0.5)) - 4;
-      put(x, y, "g");
-    }
-    for (let x = 9; x <= 13; x++) {
-      put(x, 17, "V");
-      put(x, 18, "X");
-    }
-    put(11, 18, "g");
-    for (const x of [4, 9, 14]) {
-      put(x, 22, "L");
-      put(x, 24, "L");
-    }
-    for (let y = 25; y < TH; y++) put(Math.round(cx + lerpPts(T_FRONT, y + 0.5)) - 2, y, "T");
-    for (let y = 4; y < 21; y += 2) put(Math.round(cx + lerpPts(T_BACK, y) + 3), y, "V");
-    for (let y = 23; y <= 28; y++) for (let x = 2; x <= 5; x++) put(x, y, y === 23 ? "A" : "L");
-    put(4, 25, "g");
+    for (let x = 3; x <= 8; x++) put(x, 0, "c");
+    for (let x = 4; x <= 8; x++) put(x, 1, x === 8 ? "C" : "c");
+    put(frontAt(2) - 1, 2, "C");
+    put(frontAt(3) - 1, 3, "c");
+    for (let y = 1; y <= 8; y++) put(Math.round(4 + y * 0.3), y, y === 4 ? "A" : "a");
+    for (const y of [4, 7, 10]) put(frontAt(y) - 3, y, "g");
+    put(frontAt(4) - 5, 4, "p");
+    put(frontAt(5) - 5, 5, "x");
+    for (let y = 11; y <= 14; y++) for (let x = 2; x <= 3; x++) put(x, y, y === 11 ? "A" : "L");
+    put(2, 12, "g");
     torsoGrid = G2;
     return G2;
   }
   var PACK_KEY = { o: "outline", K: "canvasL", M: "canvas", N: "canvasD", R: "roll", Q: "rollD", L: "packStrap", y: "buckle", Y: "buckleD" };
   var PACK = [
-    "..ooooooooo.",
-    ".oRRRRRRRQQo",
-    "oRRQRRRRRQQo",
-    "oQQQQQQQQQQo",
-    ".ooooooooooo",
-    ".oKKKKKKKMMo",
-    ".oKKMMMMMMNo",
-    ".oLLLLLLLLLo",
-    ".oKMMyMMMMNo",
-    ".oKMMYMMMMNo",
-    ".oKMMMMMMMNo",
-    ".oKMMMMMMNNo",
-    ".oMMMMMMMNNo",
-    ".oMMMMMMNNNo",
-    ".oNNNNNNNNNo",
-    "..ooooooooo."
+    ".RRRRR.",
+    "RRRQRRQ",
+    "QQQQQQQ",
+    "KKKKKKM",
+    "KLLLLLN",
+    "KMMyMMN",
+    "KMMMMMN",
+    "KMMMMNN",
+    "MMMMMNN",
+    "NNNNNNN"
   ];
-  var PACK_ANCHOR = { x: 11, y: 2 };
+  var PACK_ANCHOR = { x: 6, y: 1 };
   var BOOT_KEY = { o: "outline", O: "boot", P: "bootL", Z: "sole", W: "shirtD" };
   var BOOT = [
-    ".oPOOOOo.......",
-    ".oPOWOOo.......",
-    ".oPOOOWOoo.....",
-    ".oPOOWOOOOoo...",
-    ".oPOOOOWOOOOoo.",
-    ".oPPOOOOOOOOOOo",
-    ".oZZZZZZZZZZZZo",
-    "..oZZoooooooZo."
+    "PO.....",
+    "POWO...",
+    "POOOOO.",
+    "ZZZZZZZ"
   ];
-  var BOOT_ANKLE = { x: 5, y: 1 };
+  var BOOT_ANKLE = { x: 1, y: 0 };
   var PROP_KEY = {
-    o: "outline",
     w: "wood",
     W: "woodL",
     S: "steel",
@@ -11237,28 +11173,20 @@ body {
     y: "pencil",
     k: "outline"
   };
-  var PROPS_1X = {
-    trowel: { at: { x: 1, y: 0 }, rows: ["ow...", "oWo..", ".oso.", "oSSso", "oSSso", ".oSo.", "..o.."] },
-    brush: { at: { x: 1, y: 1 }, rows: [".o..", "oWo.", "owo.", "oBBo", "ohho", "ohho", ".oo."] },
-    pencil: { at: { x: 2, y: 2 }, rows: ["....o", "...oy", "..oyo", ".oyo.", "oko.."] },
-    notebook: { at: { x: 2, y: 3 }, rows: ["ooooo", "oLLpo", "oLLpo", "oLLpo", "oLLpo", "ooooo"] },
-    canteen: { at: { x: 2, y: 2 }, rows: [".oo...", "oCCo..", "oCcco.", ".occco", "..occo", "...oo."] },
-    beer: { at: { x: 2, y: 3 }, rows: ["....oo", "...oGo", "..oggo", ".ongo.", "ogo...", "oo...."] },
-    lens: { at: { x: 1, y: 1 }, rows: [".oooooo.", "obBbbBlo", ".oooooo."] },
-    peg: { at: { x: 1, y: 1 }, rows: ["orro", "owo.", "owo.", "owo.", ".o.."] }
+  var PROPS = {
+    trowel: { at: { x: 1, y: 0 }, rows: [".w...", ".Wo..", "..s..", ".SSs.", ".SSs.", "..S.."] },
+    brush: { at: { x: 1, y: 1 }, rows: ["....", ".W..", ".w..", ".BB.", ".hh.", ".hh."] },
+    pencil: { at: { x: 2, y: 2 }, rows: [".....", "....y", "...y.", "..y..", ".k..."] },
+    notebook: { at: { x: 2, y: 3 }, rows: [".....", ".LLp.", ".LLp.", ".LLp.", ".LLp."] },
+    canteen: { at: { x: 2, y: 2 }, rows: ["......", ".CC...", ".Ccc..", "..ccc.", "...cc."] },
+    beer: { at: { x: 2, y: 3 }, rows: ["......", "....G.", "...gg.", "..ng..", ".g...."] },
+    lens: { at: { x: 1, y: 1 }, rows: ["........", ".bBbbBl."] },
+    peg: { at: { x: 1, y: 1 }, rows: [".rr.", ".w..", ".w..", ".w.."] }
   };
-  var PROPS = Object.fromEntries(Object.entries(PROPS_1X).map(([k, v]) => {
-    const rows = [];
-    for (const r of v.rows) {
-      const d = [...r].map((c) => c + c).join("");
-      rows.push(d, d);
-    }
-    return [k, { at: { x: v.at.x * 2, y: v.at.y * 2 }, rows }];
-  }));
-  var CW = 132;
-  var CH = 172;
-  var OX = 66;
-  var OY = 100;
+  var CW = 66;
+  var CH = 86;
+  var OX = 33;
+  var OY = 50;
   var PixelFigure = class {
     constructor(kind = "vess") {
       this.kind = kind;
@@ -11338,7 +11266,7 @@ body {
         }
         if (opts.cuff && along < opts.cuff) c = opts.cuffCol;
         if (opts.band && Math.abs(along - opts.band[0]) < opts.band[1]) c = opts.bandCol;
-        const back = !inside(x - 1, y) || !inside(x - 2, y);
+        const back = !inside(x - 1, y) || HR > 1 && !inside(x - 2, y);
         const under = !inside(x, y + 1) && Math.abs(by - ay) < Math.abs(bx - ax) * 1.2;
         if (back || under) c = mix(c, tone.shade, !inside(x - 1, y) ? 0.95 : 0.55);
         else if (!inside(x + 1, y) && tone.light) c = tone.light;
@@ -11400,29 +11328,28 @@ body {
       let id = 1;
       const leg = (lg, dark, idl) => {
         const tr = tone("trouser", "trouserD", "trouserL", dark);
-        this._limb(lg.hip, lg.knee, [10.2, 9.4, 8.2, 0.4], tr, idl, { seam: 1.2 });
-        this._limb(lg.knee, lg.ankle, [8.2, 7.8, 7, 0.5], tr, idl, { crease: 3, seam: 1.2 });
+        this._limb(lg.hip, lg.knee, [5.2, 4.8, 4.2, 0.4], tr, idl);
+        this._limb(lg.knee, lg.ankle, [4.2, 3.9, 3.4, 0.5], tr, idl);
         const lift = lg.air > 0.4 ? -1 : 0;
         this._sprite(BOOT, BOOT_KEY, pal, lg.ankle.x, lg.ankle.y + lift / HR, BOOT_ANKLE, idl + 1, 0, dark ? FAR2 : 0);
       };
       const arm = (a, dark, idl, tool, watch) => {
         const sh = { x: a.sh.x, y: a.sh.y + br }, el = { x: a.el.x, y: a.el.y + br }, ha = { x: a.ha.x, y: a.ha.y + br };
-        this._limb(sh, el, [8.6, 7.8, 6.8, 0.3], tone("shirt", "shirtD", "shirtL", dark), idl, { crease: 10, seam: -1.5 });
+        this._limb(sh, el, [4.4, 4, 3.4, 0.3], tone("shirt", "shirtD", "shirtL", dark), idl);
         this._limb(
           el,
           ha,
-          [6.8, 6.6, 5.2, 0.4],
+          [3.4, 3.2, 2.6, 0.4],
           tone("skin", "skinD", "skinL", dark),
           idl,
           {
-            cuff: 3.4,
+            cuff: 1.8,
             cuffCol: dark ? mix(pal.shirtL, pal.outline, FAR2) : pal.shirtL,
-            band: watch ? [Math.hypot(ha.x - el.x, ha.y - el.y) * HR - 2.2, 0.8] : null,
+            band: watch ? [Math.hypot(ha.x - el.x, ha.y - el.y) * HR - 1.2, 0.5] : null,
             bandCol: pal.leather
           }
         );
-        this._limb(ha, ha, [6.6, 6.6, 6.6, 0.5], tone("skin", "skinD", "skinL", dark), idl);
-        this._put(OX + ha.x * HR + 1, OY + ha.y * HR + 2, dark ? mix(pal.skinD, pal.outline, FAR2) : pal.skinD, idl);
+        this._limb(ha, ha, [3.4, 3.4, 3.4, 0.5], tone("skin", "skinD", "skinL", dark), idl);
         if (tool && PROPS[tool]) {
           const P = PROPS[tool];
           this._sprite(P.rows, PROP_KEY, pal, ha.x, ha.y, P.at, idl + 1, 0, dark ? FAR2 : 0);
@@ -11468,7 +11395,8 @@ body {
     return cv;
   }
   function hatSprite(kind = "vess") {
-    const cv = bake3(buildHead(EXPR.flat, false).slice(0, 7), HEAD_KEY2, palette(kind, false));
+    const rows = buildHead(EXPR.flat, false).slice(0, HAT_ROWS).map((r) => r.map((c) => HAT_KEYS.includes(c) ? c : "."));
+    const cv = bake3(rows, HEAD_KEY2, palette(kind, false));
     const small = makeCanvas2(Math.ceil(cv.width / HR), Math.ceil(cv.height / HR));
     const g = small.getContext("2d");
     g.imageSmoothingEnabled = false;
