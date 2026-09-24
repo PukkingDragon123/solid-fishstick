@@ -246,12 +246,12 @@ export class Crab {
       tx = clamp((this.threat.x - this.x) / 70, -1.2, 1.2);
       ty = clamp((this.threat.y - this.y) / 70, -1, 0.6);
     } else if (this.lookT <= 0) {
-      this.lookT = 1.2 + Math.random() * 2.6;
-      this.idleLook = { x: (Math.random() - 0.5) * 1.3, y: -0.15 - Math.random() * 0.5 };
+      this.lookT = 0.6 + Math.random() * 1.6;
+      this.idleLook = { x: (Math.random() - 0.5) * 1.8, y: -0.1 - Math.random() * 0.6 };
     }
     if (spd < 6 && this.alarm < 0.1 && this.idleLook) { tx = this.idleLook.x; ty = this.idleLook.y; }
-    this.look.x = damp(this.look.x, tx, 0.002, dt);
-    this.look.y = damp(this.look.y, ty, 0.002, dt);
+    this.look.x = damp(this.look.x, tx, 0.0004, dt);
+    this.look.y = damp(this.look.y, ty, 0.0004, dt);
     this.eyeLook = this.look.x;
     this.alarm = Math.max(0, this.alarm - dt * 0.7);
 
@@ -489,14 +489,22 @@ export class Crab {
     const art = rig.eye;
     for (const e of rig.sockets.eyes) {
       // stalks splay out and up, and both lean the way the crab is looking
+      // Stalks splay out and up and both lean the way the crab is looking.
+      // Each one also has a life of its own: a slow sway out of step with
+      // the other, a bob while it walks, and a little springy stretch.
+      const tm = this.game.time || 0;
+      const walk = clamp01(Math.abs(this.vx) / Math.max(1, this.speed));
       const base = -Math.PI / 2 + e.side * 0.34;
-      const a = base + this.look.x * 0.22 * e.side + this.look.y * 0.18;
+      const a = base + this.look.x * 0.45 + this.look.y * 0.12 * e.side
+        + Math.sin(tm * 2.1 + e.side * 1.7) * 0.10
+        + Math.sin(tm * 9.0 + e.side) * 0.14 * walk;
+      const st = 1 + Math.sin(tm * 3.3 + e.side * 2.2) * 0.07 + walk * Math.abs(Math.sin(tm * 9.0)) * 0.08;
       const shrink = this.blink > 0
         ? 1 - Math.sin(clamp01(this.blink / 0.16) * Math.PI) * 0.7 : 1;
       ctx.save();
       ctx.translate(e.x, e.y);
       ctx.rotate(a);
-      ctx.scale(1, shrink);
+      ctx.scale(st, shrink);
       ctx.drawImage(art.cv, -art.ox, -art.oy);
       ctx.restore();
       // the eyeball, placed in body space so it does not swing with the
@@ -505,8 +513,8 @@ export class Crab {
       // a plain bead of pitch black on the end of each stalk, centred on a
       // whole pixel so it is a clean round dot
       const r = Math.max(2, Math.round(art.r * 0.7));
-      const ex = Math.round(e.x + Math.cos(a) * art.globe) + 0.5;
-      const ey = Math.round(e.y + Math.sin(a) * art.globe) + 0.5;
+      const ex = Math.round(e.x + Math.cos(a) * art.globe * st) + 0.5;
+      const ey = Math.round(e.y + Math.sin(a) * art.globe * st) + 0.5;
       if (shrink > 0.55) {
         // What you are holding still shows in the animal: the mode's colour
         // burns faintly round the bead, harder while something is happening.
@@ -525,7 +533,28 @@ export class Crab {
         const sr = r * Math.hypot(T.a, T.b);
         ctx.save();
         ctx.setTransform(1, 0, 0, 1, 0, 0);
-        pxDisc(ctx, Math.round(sx), Math.round(sy), sr, '#000000', { p: 1 });
+        const bx = Math.round(sx), by = Math.round(sy);
+        pxDisc(ctx, bx, by, sr, '#000000', { p: 1 });
+        // the sparkle in it: a bright glint up on the side the light comes
+        // from and a pinprick under it, so the bead looks wet and alive
+        const gs = Math.max(1, Math.round(sr * 0.38));
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(Math.round(bx - sr * 0.45), Math.round(by - sr * 0.5), gs, gs);
+        ctx.fillRect(Math.round(bx + sr * 0.25), Math.round(by + sr * 0.2), Math.max(1, gs >> 1), Math.max(1, gs >> 1));
+        // and every so often a star twinkles off the top of it
+        const ph = (tm * 0.45 + (e.side > 0 ? 0.5 : 0)) % 1;
+        if (ph < 0.2) {
+          const k = Math.sin((ph / 0.2) * Math.PI);
+          const L = Math.round(1 + k * Math.max(2, sr * 0.8));
+          const cx = Math.round(bx + sr * 0.85), cy = Math.round(by - sr * 0.85);
+          ctx.globalAlpha = 0.35 + k * 0.65;
+          ctx.fillStyle = '#fff6d8';
+          ctx.fillRect(cx - L, cy, L * 2 + 1, 1);
+          ctx.fillRect(cx, cy - L, 1, L * 2 + 1);
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(cx - 1, cy - 1, 3, 3);
+          ctx.globalAlpha = 1;
+        }
         ctx.restore();
       } else {
         // shut: a happy little arc

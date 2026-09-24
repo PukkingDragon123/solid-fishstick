@@ -1602,25 +1602,13 @@ export class UI {
       }
     }
 
-    // place, weather, and a clock you can actually read at a glance. On a
-    // phone there is no room for all of it across the top, so the place name
-    // gets the space that is left and the rest moves down.
+    // (no place / weather / day plate any more: the top right is left clear
+    // for the pause button and the genome)
     const narrow = W < 320;
-    const room = W - (L + 96) - 10;
-    const label = narrow ? ellipsize(g.biome.name, Math.max(40, room))
-      : `${g.biome.name}   ${g.weather.label()}`;
-    // Everything the HUD knows about the world outside you - where you are,
-    // what the sky is doing, what day it is - hangs off one riveted plate in
-    // the corner, instead of three sizes of outlined text over the sky.
-    const lw = Math.max(textWidth(label), 62) + 12;
-    K.plaque(ctx, W - 22 - lw, 1, lw + 20, narrow ? 30 : 44);
-    drawText(ctx, label, W - 26, 4, { color: '#dfd0ab', align: 'right' });
-    K.px(ctx, W - 20 - lw, 13, lw + 16, 1, 'rgba(148,118,68,0.45)');
-    this._clock(ctx, W - 15, narrow ? 20 : 23);
     if (!narrow) this._compass(ctx, W, H);
 
     // the gene orb: the way into the tree
-    const ox = W - 32, oy = narrow ? 42 : 48;
+    const ox = W - 32, oy = 24;
     const ready = this._treeReady();
     drawOrb(ctx, ox, oy, this.t, ready ? 0.5 + Math.sin(this.t * 3) * 0.5 : 0);
     drawText(ctx, `${e.genes.size}`, ox + 15, oy + 32,
@@ -2320,7 +2308,6 @@ export class UI {
   _compass(ctx, W, H) {
     const g = this.game;
     const lm = g.world.nextUnfound(g.crab.x);
-    drawText(ctx, `${g.world.found.size} found`, W - 6, 34, { color: FAINT, align: 'right' });
     if (!lm) return;
     const d = lm.x - g.crab.x;
     const dir = Math.sign(d) || 1;
