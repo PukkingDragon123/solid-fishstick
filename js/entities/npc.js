@@ -15,7 +15,7 @@ import { ITEM_BY_ID } from '../data/craft.js';
 import { pxEllipse, pxSize } from '../render/pix.js';
 import { ik2 } from './crab.js';
 import { buildPerson, portrait } from '../art/personart.js';
-import { PixelFigure, FIGURE_SOCKETS, hatSprite, WALK, WALK_BOB, WALK_CYCLE } from '../art/pixelperson.js';
+import { PixelFigure, FIGURE_SOCKETS, hatSprite, WALK, WALK_BOB, WALK_CYCLE, ARM } from '../art/pixelperson.js';
 import { facePortrait, faceFor } from '../art/faces.js';
 
 export const POSE = {
@@ -653,7 +653,7 @@ export class Person {
     const A = a0 + lean + sw;
     // the elbow flexes the forearm FORWARD, off the shoulder angle
     const B = A - a1 - Math.abs(sw) * 0.22;
-    const LU = 7.3 * this.rig.K, LL = 6.9 * this.rig.K;
+    const LU = ARM.upper * this.rig.K, LL = ARM.lower * this.rig.K;
     const el = { x: sh.x + Math.cos(A) * LU, y: sh.y + Math.sin(A) * LU };
     const ha = { x: el.x + Math.cos(B) * LL, y: el.y + Math.sin(B) * LL };
     return { sh, el, ha };
@@ -678,17 +678,14 @@ export class Person {
 
   /** Which of his faces this frame: blinking, talking, frowning. */
   _faceState() {
-    const m = this.face | 0;
     const saying = !!this.speech && (this.speechAge || 0) * 34 < (this.speech.length + 4);
     const jaw = saying && Math.floor(this.t * 8.5) % 2 === 1;
     const blink = (this.t % 4.3) < 0.13;
-    return {
-      shut: blink || m === 7,
-      open: jaw || m === 2 || m === 3 || m === 8 || m === 9,
-      brow: m === 4 || m === 12 || m === 10,
-      bare: !!this.hatOff,
-    };
+    // the same face his portrait card is pulling, so the man in the desert
+    // and the man on the card say a line with the same expression
+    return { mood: this.mood || 'flat', shut: blink, open: jaw, bare: !!this.hatOff };
   }
+
 
   /** One arm, plus whatever is in the hand at the end of it. */
   _arm(ctx, art, sh, a0, a1, lean, side, tool) {

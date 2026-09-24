@@ -72,100 +72,213 @@ function palette(kind, spore) {
 }
 
 // ---------------------------------------------------------------------------
-// the sprites, at HR. '.' is nothing.
+// the body, built to proportion
+//
+// The last version of him was a big head on a box on two sausages, which is
+// a cartoon's anatomy and it looked like one. These are a person's: the head
+// (hat off) about an eighth of his height, the legs half of it, the elbow at
+// the waist, the wrist at the crotch and the fingertips halfway down the
+// thigh. The torso has a CHEST that stands forward, a WAIST that goes in, a
+// lower back that curves and a seat that stands back out; the thigh is thick
+// at the hip and narrows to the knee, the calf swells under it and narrows
+// to the ankle.
+//
+// The head and torso are BUILT rather than typed - a front edge and a back
+// edge per row, filled and shaded - so the curves are curves, and then the
+// features and the kit are laid on top by hand.
 
+// ---- the head --------------------------------------------------------------
+
+const HW = 20, HH = 22;
 const HEAD_KEY = {
   o: 'outline', 1: 'hatL', 2: 'hat', 3: 'hatD', 4: 'hatDD', b: 'band', B: 'bandD',
   g: 'brass', G: 'brassD', e: 'lens', E: 'lensL', h: 'hair', H: 'hairL', k: 'hairD',
   S: 'skinL', s: 'skin', d: 'skinD', D: 'skinDD', q: 'stubble',
-  w: 'eyeW', p: 'eye', r: 'brow', m: 'mouth', n: 'lip',
+  w: 'eyeW', p: 'eye', r: 'brow', m: 'mouth', n: 'lip', y: 'pencil',
 };
-const HEAD = [
-  '..........oooooooo..........',
-  '........oo11111122oo........',
-  '.......o1111111222223o......',
-  '......o11111112222233o......',
-  '......o111111122222233o.....',
-  '.....o1111111222222233o.....',
-  '.....o11111122222222233o....',
-  '.....obbbbbbbbbbbbGgggGo....',
-  '.....oBBBBBBBBBBBBGeEGGo....',
-  '....o33333333333333GGG3o....',
-  '..oo2222222222222222222222oo',
-  '.o4444444444444444444444444o',
-  '...okkkhHhhhdddddddddddo....',
-  '...okhhHHHhhdsssssssssso....',
-  '...okhHHhhhhdSSSSSSSSSso....',
-  '...okhhhhhhhdssssssrrrrso...',
-  '...okhHhhhhdDdsssssdwpso....',
-  '...okhhHhhhdDdsssssssdSso...',
-  '...okhhhhhhdDdssssssSSsSso..',
-  '...okkhhhhhdddsssssssssSsso.',
-  '...okkhhhhhhddssssssssDddo..',
-  '...okkhhhhhhddsssssssssdo...',
-  '...okkhhhhhddqqssssssmmso...',
-  '...okkhhhhdddqqqsssssnso....',
-  '....okkhhhdqqqqqqsssssSo....',
-  '.....okkhddqqqqqqqqssso.....',
-  '......ookdddqqqqqqdo........',
-  '..........oddddDdo..........',
-  '..........osssddDo..........',
-  '..........osssddDo..........',
-];
-const HEAD_NECK = { x: 14, y: 29 };
-// the face rows are 12..26; patches replace whole rows
-const HEAD_SHUT = { 16: HEAD[16].slice(0, 19) + 'rrs' + HEAD[16].slice(22) };
-const HEAD_OPEN = { 22: HEAD[22].slice(0, 20) + 'mmm' + HEAD[22].slice(23), 23: HEAD[23].slice(0, 20) + 'mn' + HEAD[23].slice(22) };
-const HEAD_BROW = { 16: HEAD[16].slice(0, 19) + 'r' + HEAD[16].slice(20) };
-const HEAD_BARE = (() => {
-  const b = {};
-  for (let y = 0; y < 8; y++) b[y] = '.'.repeat(28);
-  b[8] = '......oooooooooo............';
-  b[9] = '.....okkhhhhHHhhoo..........';
-  b[10] = '....okhhhHHHhhhhhhoo........';
-  b[11] = '...okhhHHhhhhhhhhhhhoo......';
-  b[12] = HEAD[12].slice(0, 12) + 'hhssssssss' + HEAD[12].slice(22);
-  return b;
-})();
+const HEAD_NECK = { x: 10, y: 21 };
 
+/**
+ * What his face is doing, for each of the twenty-one faces on his portrait
+ * sheet - so the man in the desert pulls the same face as the man on the
+ * card when he says the same line.
+ */
+const EXPR = {
+  flat:   { eye: 'open', brow: 'mid', mouth: 'shut' },
+  talk:   { eye: 'open', brow: 'mid', mouth: 'open' },
+  grin:   { eye: 'squint', brow: 'mid', mouth: 'grin' },
+  laugh:  { eye: 'shut', brow: 'up', mouth: 'open' },
+  joy:    { eye: 'shut', brow: 'up', mouth: 'smile' },
+  drink:  { eye: 'shut', brow: 'mid', mouth: 'shut' },
+  smug:   { eye: 'squint', brow: 'mid', mouth: 'smile' },
+  squint: { eye: 'squint', brow: 'frown', mouth: 'shut' },
+  frown:  { eye: 'open', brow: 'frown', mouth: 'down' },
+  glare:  { eye: 'squint', brow: 'frown', mouth: 'shut' },
+  shut:   { eye: 'shut', brow: 'mid', mouth: 'shut' },
+  peer:   { eye: 'squint', brow: 'up', mouth: 'shut' },
+  gasp:   { eye: 'wide', brow: 'up', mouth: 'open' },
+  blank:  { eye: 'open', brow: 'mid', mouth: 'shut' },
+  shout:  { eye: 'wide', brow: 'frown', mouth: 'open' },
+  scowl:  { eye: 'squint', brow: 'frown', mouth: 'down' },
+  dull:   { eye: 'squint', brow: 'mid', mouth: 'shut' },
+  sad:    { eye: 'open', brow: 'sad', mouth: 'down' },
+  tired:  { eye: 'squint', brow: 'sad', mouth: 'shut' },
+  sleep:  { eye: 'shut', brow: 'sad', mouth: 'shut' },
+  spore:  { eye: 'wide', brow: 'mid', mouth: 'open' },
+};
+
+const headCache = new Map();
+function buildHead(e, bare) {
+  const key = `${e.eye}:${e.brow}:${e.mouth}:${bare ? 1 : 0}`;
+  let G = headCache.get(key);
+  if (G) return G;
+  G = [];
+  for (let y = 0; y < HH; y++) G.push(new Array(HW).fill('.'));
+  const put = (x, y, c) => { if (x >= 0 && y >= 0 && x < HW && y < HH) G[y][x] = c; };
+  const run = (y, x0, str) => { for (let i = 0; i < str.length; i++) if (str[i] !== ' ') put(x0 + i, y, str[i]); };
+
+  // the skull, row by row: where the face stops and where the head stops
+  const FRONT = { 6: 14, 7: 15, 8: 15, 9: 16, 10: 15, 11: 16, 12: 17, 13: 16, 14: 15, 15: 15, 16: 15, 17: 14, 18: 12 };
+  const BACK = { 6: 5, 7: 4, 8: 3, 9: 3, 10: 3, 11: 3, 12: 3, 13: 3, 14: 4, 15: 5, 16: 6, 17: 7, 18: 9 };
+  const HAIR = { 6: 13, 7: 9, 8: 8, 9: 8, 10: 7, 11: 7, 12: 7, 13: 7, 14: 6 };
+  for (let y = 6; y <= 18; y++) {
+    for (let x = BACK[y]; x <= FRONT[y]; x++) {
+      let c = 's';
+      if (HAIR[y] !== undefined && x <= HAIR[y]) c = x === BACK[y] ? 'k' : (x + y) % 5 === 0 ? 'H' : 'h';
+      put(x, y, c);
+    }
+  }
+  // the neck, set back under the jaw
+  for (let y = 19; y < HH; y++) run(y, 8, 'dssd');
+  run(18, 9, 'ddd');
+  // light and shade: the brim shadows the brow, the jaw shadows the neck
+  for (let x = 10; x <= 15; x++) put(x, 7, 'd');
+  run(8, 14, 'SS');
+  run(11, 12, 'SS');
+  for (let x = 8; x <= 13; x++) put(x, 17, 'd');
+  // stubble along the jaw and over the lip
+  for (let y = 15; y <= 16; y++) for (let x = 9; x <= 13; x++) if (G[y][x] === 's') put(x, y, 'q');
+  put(12, 14, 'q');
+  // the ear, and a pencil tucked behind it
+  run(10, 8, 'dd'); run(11, 8, 'dD'); run(12, 8, 'dd');
+  // (a pencil used to sit behind it; at this size it read as a streak in the hair)
+  // the nose: a lit bridge, a tip that stands off the face, a nostril
+  put(16, 11, 'S'); run(12, 16, 'ss'); put(15, 13, 'D'); put(16, 13, 'd');
+  // the chin catches the light
+  put(14, 16, 'S');
+
+  // ---- the face he is making ----
+  // brows
+  if (e.brow === 'up') run(8, 13, 'rr');
+  else if (e.brow === 'frown') { run(9, 13, 'rrr'); }
+  else if (e.brow === 'sad') { put(14, 8, 'r'); put(13, 9, 'r'); }
+  else run(9, 13, 'rr');
+  // eyes
+  if (e.eye === 'shut') run(10, 13, 'rr');
+  else if (e.eye === 'squint') { put(13, 10, 'r'); put(14, 10, 'p'); }
+  else if (e.eye === 'wide') { put(13, 9, 'w'); put(13, 10, 'w'); put(14, 10, 'p'); put(14, 9, 'w'); }
+  else { put(13, 10, 'w'); put(14, 10, 'p'); }
+  // mouth
+  if (e.mouth === 'open') { run(14, 13, 'mm'); run(15, 13, 'mm'); put(14, 16, 'n'); }
+  else if (e.mouth === 'grin') { run(14, 13, 'ww'); run(15, 13, 'mm'); }
+  else if (e.mouth === 'smile') { put(14, 14, 'm'); put(13, 13, 'm'); put(12, 13, 'd'); }
+  else if (e.mouth === 'down') { put(14, 14, 'm'); put(13, 14, 'm'); put(12, 15, 'm'); }
+  else { run(14, 13, 'mm'); put(14, 15, 'n'); }
+
+  // ---- the hat ----
+  if (!bare) {
+    run(0, 6, '111122');
+    run(1, 5, '11111222');
+    run(2, 4, '1111112222');
+    run(3, 4, 'bbbbbbbGeG');
+    run(4, 4, 'BBBBBBBGGG');
+    run(5, 2, '22222222222221');
+    run(6, 1, '4444444444444443');
+  } else {
+    // hat off: the hair is swept back off the brow
+    run(3, 6, 'kkhhh');
+    run(4, 5, 'khhHhhh');
+    run(5, 4, 'khhhHHhhh');
+    for (let x = 4; x <= 13; x++) put(x, 6, (x % 3 === 0) ? 'H' : 'h');
+  }
+  headCache.set(key, G);
+  return G;
+}
+
+// ---- the torso ---------------------------------------------------------------
+
+const TW = 20, TH = 34;
+const TORSO_HIP = { x: 10, y: TH };
 const TORSO_KEY = {
   o: 'outline', c: 'scarf', C: 'scarfD', f: 'shirtL', i: 'shirt', j: 'shirtD', J: 'shirtDD',
   v: 'vest', V: 'vestL', x: 'vestD', X: 'vestDD', a: 'strap', A: 'strapL',
   l: 'belt', y: 'buckle', Y: 'buckleD', t: 'trouser', T: 'trouserD', U: 'trouserL',
+  p: 'paper', L: 'leather', g: 'brass',
 };
-const TORSO = [
-  '......occco.....',
-  '.....ocCccco....',
-  '....oxcCccifo...',
-  '...oxvACcciifo..',
-  '..oxvvaAcCiiifo.',
-  '.oxvvvvaACiiifo.',
-  '.oxvvvvvaAiiijfo',
-  '.oxvVvvvvaAiijfo',
-  '.oxvVvvvvvaAijfo',
-  '.oxvVvvvvvvaAjfo',
-  '.oxvvvvvvvvvaAio',
-  '.oxvvVVVVvvvviao',
-  '.oxvvxxxxvvvvijo',
-  '.oxvvvvvvvvvvijo',
-  '.oxvvvvvvvvvvijo',
-  '.oxvVvvvvvvvvjfo',
-  '.oxvVvvvvvvvvjio',
-  '.oxvvvvvvvvvvjio',
-  '.oxxvvvvvvvvvjio',
-  '.oxxvvvvvvvvvvjo',
-  '.oxxvVvvvvvvvvjo',
-  '.oxxvvvvvvvvvvjo',
-  '.oxxxvvvvvvvvvjo',
-  '.oXxxxvvvvvvvvjo',
-  '.olllllllllyYlo.',
-  '.olAlllllllyYlo.',
-  '.oTtttttttttUto.',
-  '.oTttttttttttto.',
-  '..oTtttttttttto.',
-  '..oTTtttttttto..',
-];
-const TORSO_HIP = { x: 8, y: 30 };
+const lerpPts = (pts, y) => {
+  for (let i = 1; i < pts.length; i++) {
+    if (y <= pts[i][0]) {
+      const [y0, v0] = pts[i - 1], [y1, v1] = pts[i];
+      const k = (y - y0) / Math.max(1e-6, y1 - y0);
+      const e = k * k * (3 - 2 * k);
+      return v0 + (v1 - v0) * e;
+    }
+  }
+  return pts[pts.length - 1][1];
+};
+// facing right: the front edge and the back edge, from the shoulders down
+const T_FRONT = [[0, 3.5], [3, 6.2], [8, 7.8], [12, 7.4], [17, 5.6], [22, 5.4], [27, 6.0], [34, 4.2]];
+const T_BACK = [[0, -4.5], [4, -6.8], [9, -6.6], [15, -5.2], [21, -4.4], [26, -6.2], [31, -7.0], [34, -5.2]];
+let torsoGrid = null;
+function buildTorso() {
+  if (torsoGrid) return torsoGrid;
+  const G = [];
+  for (let y = 0; y < TH; y++) G.push(new Array(TW).fill('.'));
+  const cx = 10;
+  for (let y = 0; y < TH; y++) {
+    const f = Math.round(cx + lerpPts(T_FRONT, y + 0.5));
+    const b = Math.round(cx + lerpPts(T_BACK, y + 0.5));
+    for (let x = b; x < f; x++) {
+      const fromB = x - b, fromF = f - 1 - x;
+      let c;
+      if (y >= 22 && y <= 24) {
+        // the belt, with the buckle at the front
+        c = fromF <= 2 ? (y === 24 ? 'Y' : 'y') : 'l';
+      } else if (y > 24) {
+        // trousers: the seat in shade, a lit edge down the front
+        c = fromB <= 1 ? 'T' : fromF === 0 ? 'U' : 't';
+        if (y > 28 && fromB === 2) c = 'T';
+      } else {
+        // the shirt shows down the open front of the vest
+        const shirt = fromF <= 2 || y < 2;
+        if (shirt) c = fromF === 0 ? 'f' : y > 11 && y < 15 ? 'j' : 'i';
+        else if (fromF === 3) c = 'V';
+        else c = fromB === 0 ? 'X' : fromB <= 2 ? 'x' : 'v';
+      }
+      G[y][x] = c;
+    }
+  }
+  const put = (x, y, c) => { if (x >= 0 && y >= 0 && x < TW && y < TH && G[y][x] !== '.') G[y][x] = c; };
+  // the neckerchief, knotted at the front of the throat, a tail hanging
+  for (let x = 7; x <= 13; x++) put(x, 0, 'c');
+  for (let x = 8; x <= 14; x++) put(x, 1, x === 14 ? 'C' : 'c');
+  put(14, 2, 'c'); put(15, 2, 'C'); put(15, 3, 'C'); put(15, 4, 'c');
+  // the pack strap, over the shoulder and down to under the arm
+  for (let y = 0; y <= 13; y++) {
+    const x = Math.round(9 + y * 0.32);
+    put(x, y, 'a'); put(x + 1, y, y % 3 === 0 ? 'A' : 'a');
+  }
+  // a breast pocket with a notebook in it
+  put(12, 11, 'p'); put(13, 11, 'p');
+  for (let x = 10; x <= 13; x++) { put(x, 12, 'V'); put(x, 13, 'x'); }
+  // and the vest stitched down its seams
+  for (let y = 4; y < 21; y += 2) put(Math.round(cx + lerpPts(T_BACK, y) + 3), y, 'V');
+  // a leather pouch on the back of the belt, with a brass stud
+  for (let y = 23; y <= 28; y++) for (let x = 2; x <= 5; x++) put(x, y, y === 23 ? 'A' : 'L');
+  put(4, 25, 'g');
+  torsoGrid = G;
+  return G;
+}
 
 const PACK_KEY = { o: 'outline', K: 'canvasL', M: 'canvas', N: 'canvasD', R: 'roll', Q: 'rollD', L: 'packStrap', y: 'buckle', Y: 'buckleD' };
 const PACK = [
@@ -188,17 +301,17 @@ const PACK = [
 ];
 const PACK_ANCHOR = { x: 11, y: 2 };
 
-const BOOT_KEY = { o: 'outline', O: 'boot', P: 'bootL', Z: 'sole', W: 'bootL' };
+const BOOT_KEY = { o: 'outline', O: 'boot', P: 'bootL', Z: 'sole', W: 'shirtD' };
 const BOOT = [
-  'oOOOOo....',
-  'oPOOOo....',
-  'oPOOOOo...',
-  'oPOOOOOo..',
-  'oPPOOOOOo.',
-  'oZZZZZZZZo',
-  '.oooooooo.',
+  '.oPOOOo......',
+  '.oPOOOOo.....',
+  '.oPOOWOOoo...',
+  '.oPOOOWOOOoo.',
+  '.oPPOOOOOOOOo',
+  '.oZZZZZZZZZZo',
+  '..oooooooooo.',
 ];
-const BOOT_ANKLE = { x: 3, y: 1 };
+const BOOT_ANKLE = { x: 4, y: 1 };
 
 /** Everything he holds, drawn at world scale and doubled on the way in. */
 const PROP_KEY = {
@@ -225,8 +338,8 @@ const PROPS = Object.fromEntries(Object.entries(PROPS_1X).map(([k, v]) => {
 // ---------------------------------------------------------------------------
 // the compositor
 
-const CW = 124, CH = 156;
-const OX = 62, OY = 92;            // where the hip sits in the canvas, in art px
+const CW = 132, CH = 172;
+const OX = 66, OY = 100;           // where the hip sits in the canvas, in art px
 
 export class PixelFigure {
   constructor(kind = 'vess') {
@@ -250,7 +363,7 @@ export class PixelFigure {
     this.pid[i] = id;
   }
 
-  /** A sprite with its anchor at a body-space point (world units). */
+  /** A grid of palette keys (rows of strings or arrays) with its anchor at a body-space point. */
   _sprite(rows, key, pal, wx, wy, anchor, id, lean = 0, dark = 0) {
     const bx = Math.round(OX + wx * HR), by = Math.round(OY + wy * HR);
     const H = rows.length;
@@ -270,21 +383,21 @@ export class PixelFigure {
   }
 
   /**
-   * A limb: a solid stroke from a to b (world units), `w` art pixels across,
-   * in three tones - the cloth, a shaded back edge two pixels deep, and a lit
-   * pixel down the front. `cuff` paints the stretch nearest `a` another
-   * colour, which is how a rolled sleeve ends at the elbow.
+   * A limb from a to b (world units). `prof` is its width in art pixels at
+   * the top, at the swell, and at the bottom, and where the swell sits - a
+   * thigh is thick at the hip, a calf swells under the knee.
    */
-  _limb(a, b, w, tone, id, opts = {}) {
+  _limb(a, b, prof, tone, id, opts = {}) {
     const ax = OX + a.x * HR, ay = OY + a.y * HR, bx = OX + b.x * HR, by = OY + b.y * HR;
     const len = Math.hypot(bx - ax, by - ay);
     const n = Math.max(2, Math.ceil(len * 2));
-    const w0 = w, w1 = opts.taper ? w * opts.taper : w;
+    const [w0, wm, w1, tm] = prof;
+    const width = (t) => t < tm ? w0 + (wm - w0) * (t / tm) : wm + (w1 - wm) * ((t - tm) / Math.max(1e-6, 1 - tm));
     const mask = new Map();
     for (let k = 0; k <= n; k++) {
       const t = k / n;
       const cx = ax + (bx - ax) * t, cy = ay + (by - ay) * t;
-      const r = (w0 + (w1 - w0) * t) / 2;
+      const r = width(t) / 2;
       const x0 = Math.floor(cx - r), x1 = Math.ceil(cx + r);
       const y0 = Math.floor(cy - r), y1 = Math.ceil(cy + r);
       for (let y = y0; y <= y1; y++) {
@@ -303,8 +416,7 @@ export class PixelFigure {
       const x = key % CW, y = (key / CW) | 0;
       let c = tone.base;
       if (opts.cuff && along < opts.cuff) c = opts.cuffCol;
-      // the back edge and the underside are turned away from the sun; the
-      // front edge catches it
+      if (opts.band && Math.abs(along - opts.band[0]) < opts.band[1]) c = opts.bandCol;
       const back = !inside(x - 1, y) || !inside(x - 2, y);
       const under = !inside(x, y + 1) && Math.abs(by - ay) < Math.abs(bx - ax) * 1.2;
       if (back || under) c = mix(c, tone.shade, !inside(x - 1, y) ? 0.95 : 0.55);
@@ -346,7 +458,7 @@ export class PixelFigure {
 
   /**
    * One frame. `s` is the solved skeleton in body space (hip at 0,0, world
-   * units, y down, facing right).
+   * units, y down, facing right); `s.face.mood` is one of his portrait faces.
    */
   render(s) {
     const pal = palette(this.kind, !!s.spore);
@@ -364,17 +476,21 @@ export class PixelFigure {
 
     const leg = (lg, dark, idl) => {
       const tr = tone('trouser', 'trouserD', 'trouserL', dark);
-      this._limb(lg.hip, lg.knee, 8.4, tr, idl, { taper: 0.86 });
-      this._limb(lg.knee, lg.ankle, 7.0, tr, idl, { taper: 0.84, crease: 3 });
+      // thick at the hip, narrowing to the knee
+      this._limb(lg.hip, lg.knee, [10.5, 9.4, 7.0, 0.35], tr, idl);
+      // the calf swells just under the knee and narrows to the ankle
+      this._limb(lg.knee, lg.ankle, [7.0, 7.8, 5.2, 0.3], tr, idl, { crease: 4 });
       const lift = lg.air > 0.4 ? -1 : 0;
       this._sprite(BOOT, BOOT_KEY, pal, lg.ankle.x, lg.ankle.y + lift / HR, BOOT_ANKLE, idl + 1, 0, dark ? FAR : 0);
     };
-    const arm = (a, dark, idl, tool) => {
+    const arm = (a, dark, idl, tool, watch) => {
       const sh = { x: a.sh.x, y: a.sh.y + br }, el = { x: a.el.x, y: a.el.y + br }, ha = { x: a.ha.x, y: a.ha.y + br };
-      this._limb(sh, el, 6.2, tone('shirt', 'shirtD', 'shirtL', dark), idl, { taper: 0.9, crease: 6 });
-      this._limb(el, ha, 5.0, tone('skin', 'skinD', 'skinL', dark), idl,
-        { taper: 0.9, cuff: 3.2, cuffCol: dark ? mix(pal.shirtL, pal.outline, FAR) : pal.shirtL });
-      this._limb(ha, ha, 5.6, tone('skin', 'skinD', 'skinL', dark), idl);
+      // the shoulder is round and the sleeve is loose; rolled at the elbow
+      this._limb(sh, el, [7.4, 6.6, 5.6, 0.3], tone('shirt', 'shirtD', 'shirtL', dark), idl, { crease: 9 });
+      this._limb(el, ha, [5.4, 5.6, 4.0, 0.35], tone('skin', 'skinD', 'skinL', dark), idl,
+        { cuff: 3.4, cuffCol: dark ? mix(pal.shirtL, pal.outline, FAR) : pal.shirtL,
+          band: watch ? [Math.hypot(ha.x - el.x, ha.y - el.y) * HR - 2.2, 0.8] : null, bandCol: pal.leather });
+      this._limb(ha, ha, [5.0, 5.0, 5.0, 0.5], tone('skin', 'skinD', 'skinL', dark), idl);
       if (tool && PROPS[tool]) {
         const P = PROPS[tool];
         this._sprite(P.rows, PROP_KEY, pal, ha.x, ha.y, P.at, idl + 1, 0, dark ? FAR : 0);
@@ -385,22 +501,19 @@ export class PixelFigure {
     this._sprite(PACK, PACK_KEY, pal, s.bag.x, s.bag.y + br, PACK_ANCHOR, id++, 0, 0);
     arm(s.armF, true, id); id += 2;
 
-    // the head goes under the torso, so the neckerchief sits over the neck
-    const rows = HEAD.slice();
     const f = s.face || {};
-    if (f.bare) for (const k of Object.keys(HEAD_BARE)) rows[+k] = HEAD_BARE[k];
-    if (f.brow && !f.shut) for (const k of Object.keys(HEAD_BROW)) rows[+k] = HEAD_BROW[k];
-    if (f.shut) for (const k of Object.keys(HEAD_SHUT)) rows[+k] = HEAD_SHUT[k];
-    if (f.open) for (const k of Object.keys(HEAD_OPEN)) rows[+k] = HEAD_OPEN[k];
-    this._sprite(rows, HEAD_KEY, pal, s.neck.x, s.neck.y + br + (s.nod || 0) / HR, HEAD_NECK, id++, 0);
-    this._sprite(TORSO, TORSO_KEY, pal, 0, br, TORSO_HIP, id++, L);
+    const e = { ...(EXPR[f.mood] || EXPR.flat) };
+    if (f.shut) e.eye = 'shut';
+    if (f.open) e.mouth = 'open';
+    this._sprite(buildHead(e, !!f.bare), HEAD_KEY, pal, s.neck.x, s.neck.y + br + (s.nod || 0) / HR, HEAD_NECK, id++, 0);
+    this._sprite(buildTorso(), TORSO_KEY, pal, 0, br, TORSO_HIP, id++, L);
 
     leg(s.legN, false, id); id += 2;
     if (s.hold && PROPS[s.hold]) {
       const P = PROPS[s.hold];
       this._sprite(P.rows, PROP_KEY, pal, s.chest.x, s.chest.y + br, P.at, id++, 0);
     }
-    arm(s.armN, false, id, s.tool); id += 2;
+    arm(s.armN, false, id, s.tool, true); id += 2;
 
     this._finish(pal);
     return this.cv;
@@ -426,8 +539,7 @@ function bake(rows, key, pal) {
 
 /** The hat on its own, for when it has come off. Drawn at world scale. */
 export function hatSprite(kind = 'vess') {
-  const cv = bake(HEAD.slice(0, 12), HEAD_KEY, palette(kind, false));
-  // halve it back to world pixels so it matches everything else it lies next to
+  const cv = bake(buildHead(EXPR.flat, false).slice(0, 7), HEAD_KEY, palette(kind, false));
   const small = makeCanvas(Math.ceil(cv.width / HR), Math.ceil(cv.height / HR));
   const g = small.getContext('2d');
   g.imageSmoothingEnabled = false;
@@ -435,33 +547,31 @@ export function hatSprite(kind = 'vess') {
   return { cv: small, ox: small.width / 2, oy: small.height };
 }
 
-/** The head on its own, at art resolution, for tokens and speech bubbles. */
+/** The head on its own, at art resolution. */
 export function headSprite(kind = 'vess', opts = {}) {
-  const rows = HEAD.slice();
-  if (opts.bare) for (const k of Object.keys(HEAD_BARE)) rows[+k] = HEAD_BARE[k];
-  const cv = bake(rows, HEAD_KEY, palette(kind, !!opts.spore));
+  const cv = bake(buildHead(EXPR[opts.mood] || EXPR.flat, !!opts.bare), HEAD_KEY, palette(kind, !!opts.spore));
   return { cv, ox: HEAD_NECK.x, oy: HEAD_NECK.y, W: cv.width, H: cv.height };
 }
 
 /** Where the parts join, in world units from the hip. */
 export const FIGURE_SOCKETS = {
-  shoulder: { x: -0.3, y: -12.4 },
-  neck: { x: -0.5, y: -14.2 },
-  bag: { x: -3.6, y: -13.6 },
-  chest: { x: 2.6, y: -8.6 },
+  shoulder: { x: -0.2, y: -15.6 },
+  neck: { x: 0.2, y: -16.6 },
+  bag: { x: -4.4, y: -16.2 },
+  chest: { x: 3.4, y: -10.4 },
 };
+/** Arm bones, in world units: the elbow at the waist, the wrist at the crotch. */
+export const ARM = { upper: 8.6, lower: 7.8 };
 
 /**
- * THE WALK, as eight frames - the way every walk cycle on a pixel-art sheet is
- * drawn: contact, down, passing, up, and the same again on the other foot.
- * Each entry is where one foot is, as a fraction of the leg's length ahead of
- * the hip and above the ground; the other foot runs four frames behind.
+ * THE WALK, as eight frames - contact, down, passing, up, and the same again
+ * on the other foot. Each entry is where one foot is, as a fraction of the
+ * leg's length ahead of the hip and above the ground; the other foot runs
+ * four frames behind.
  */
 export const WALK = [
-  [0.44, 0.00], [0.26, 0.00], [0.07, 0.00], [-0.13, 0.00],
-  [-0.34, 0.02], [-0.33, 0.13], [0.00, 0.20], [0.31, 0.10],
+  [0.40, 0.00], [0.24, 0.00], [0.06, 0.00], [-0.12, 0.00],
+  [-0.31, 0.02], [-0.30, 0.12], [0.00, 0.18], [0.28, 0.09],
 ];
-/** How far the hip drops on each frame: lowest on the down, highest on the up. */
-export const WALK_BOB = [0.2, 1.0, 0.35, -0.55, 0.2, 1.0, 0.35, -0.55];
-/** How far the body travels in one full cycle, in leg lengths. */
-export const WALK_CYCLE = 1.56;
+export const WALK_BOB = [0.2, 1.1, 0.4, -0.6, 0.2, 1.1, 0.4, -0.6];
+export const WALK_CYCLE = 1.46;

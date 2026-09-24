@@ -10772,12 +10772,12 @@ body {
       },
       leg: {
         near: {
-          upper: bone(11.6, 1.95, 1.6, "trouser", false, { bow: 0.45 * K }),
-          lower: bone(10.4, 1.6, 1.2, "trouser", false, { bow: -0.4 * K, knee: true })
+          upper: bone(13.2, 1.95, 1.6, "trouser", false, { bow: 0.45 * K }),
+          lower: bone(12.8, 1.6, 1.2, "trouser", false, { bow: -0.4 * K, knee: true })
         },
         far: {
-          upper: bone(11.6, 1.95, 1.6, "trouser", true, { bow: 0.45 * K }),
-          lower: bone(10.4, 1.6, 1.2, "trouser", true, { bow: -0.4 * K, knee: true })
+          upper: bone(13.2, 1.95, 1.6, "trouser", true, { bow: 0.45 * K }),
+          lower: bone(12.8, 1.6, 1.2, "trouser", true, { bow: -0.4 * K, knee: true })
         }
       }
     };
@@ -10919,6 +10919,8 @@ body {
     palCache.set(key2, p);
     return p;
   }
+  var HW = 20;
+  var HH = 22;
   var HEAD_KEY2 = {
     o: "outline",
     1: "hatL",
@@ -10943,54 +10945,131 @@ body {
     p: "eye",
     r: "brow",
     m: "mouth",
-    n: "lip"
+    n: "lip",
+    y: "pencil"
   };
-  var HEAD = [
-    "..........oooooooo..........",
-    "........oo11111122oo........",
-    ".......o1111111222223o......",
-    "......o11111112222233o......",
-    "......o111111122222233o.....",
-    ".....o1111111222222233o.....",
-    ".....o11111122222222233o....",
-    ".....obbbbbbbbbbbbGgggGo....",
-    ".....oBBBBBBBBBBBBGeEGGo....",
-    "....o33333333333333GGG3o....",
-    "..oo2222222222222222222222oo",
-    ".o4444444444444444444444444o",
-    "...okkkhHhhhdddddddddddo....",
-    "...okhhHHHhhdsssssssssso....",
-    "...okhHHhhhhdSSSSSSSSSso....",
-    "...okhhhhhhhdssssssrrrrso...",
-    "...okhHhhhhdDdsssssdwpso....",
-    "...okhhHhhhdDdsssssssdSso...",
-    "...okhhhhhhdDdssssssSSsSso..",
-    "...okkhhhhhdddsssssssssSsso.",
-    "...okkhhhhhhddssssssssDddo..",
-    "...okkhhhhhhddsssssssssdo...",
-    "...okkhhhhhddqqssssssmmso...",
-    "...okkhhhhdddqqqsssssnso....",
-    "....okkhhhdqqqqqqsssssSo....",
-    ".....okkhddqqqqqqqqssso.....",
-    "......ookdddqqqqqqdo........",
-    "..........oddddDdo..........",
-    "..........osssddDo..........",
-    "..........osssddDo.........."
-  ];
-  var HEAD_NECK = { x: 14, y: 29 };
-  var HEAD_SHUT2 = { 16: HEAD[16].slice(0, 19) + "rrs" + HEAD[16].slice(22) };
-  var HEAD_OPEN2 = { 22: HEAD[22].slice(0, 20) + "mmm" + HEAD[22].slice(23), 23: HEAD[23].slice(0, 20) + "mn" + HEAD[23].slice(22) };
-  var HEAD_BROW = { 16: HEAD[16].slice(0, 19) + "r" + HEAD[16].slice(20) };
-  var HEAD_BARE = (() => {
-    const b = {};
-    for (let y = 0; y < 8; y++) b[y] = ".".repeat(28);
-    b[8] = "......oooooooooo............";
-    b[9] = ".....okkhhhhHHhhoo..........";
-    b[10] = "....okhhhHHHhhhhhhoo........";
-    b[11] = "...okhhHHhhhhhhhhhhhoo......";
-    b[12] = HEAD[12].slice(0, 12) + "hhssssssss" + HEAD[12].slice(22);
-    return b;
-  })();
+  var HEAD_NECK = { x: 10, y: 21 };
+  var EXPR = {
+    flat: { eye: "open", brow: "mid", mouth: "shut" },
+    talk: { eye: "open", brow: "mid", mouth: "open" },
+    grin: { eye: "squint", brow: "mid", mouth: "grin" },
+    laugh: { eye: "shut", brow: "up", mouth: "open" },
+    joy: { eye: "shut", brow: "up", mouth: "smile" },
+    drink: { eye: "shut", brow: "mid", mouth: "shut" },
+    smug: { eye: "squint", brow: "mid", mouth: "smile" },
+    squint: { eye: "squint", brow: "frown", mouth: "shut" },
+    frown: { eye: "open", brow: "frown", mouth: "down" },
+    glare: { eye: "squint", brow: "frown", mouth: "shut" },
+    shut: { eye: "shut", brow: "mid", mouth: "shut" },
+    peer: { eye: "squint", brow: "up", mouth: "shut" },
+    gasp: { eye: "wide", brow: "up", mouth: "open" },
+    blank: { eye: "open", brow: "mid", mouth: "shut" },
+    shout: { eye: "wide", brow: "frown", mouth: "open" },
+    scowl: { eye: "squint", brow: "frown", mouth: "down" },
+    dull: { eye: "squint", brow: "mid", mouth: "shut" },
+    sad: { eye: "open", brow: "sad", mouth: "down" },
+    tired: { eye: "squint", brow: "sad", mouth: "shut" },
+    sleep: { eye: "shut", brow: "sad", mouth: "shut" },
+    spore: { eye: "wide", brow: "mid", mouth: "open" }
+  };
+  var headCache = /* @__PURE__ */ new Map();
+  function buildHead(e, bare) {
+    const key2 = `${e.eye}:${e.brow}:${e.mouth}:${bare ? 1 : 0}`;
+    let G2 = headCache.get(key2);
+    if (G2) return G2;
+    G2 = [];
+    for (let y = 0; y < HH; y++) G2.push(new Array(HW).fill("."));
+    const put = (x, y, c) => {
+      if (x >= 0 && y >= 0 && x < HW && y < HH) G2[y][x] = c;
+    };
+    const run = (y, x0, str) => {
+      for (let i = 0; i < str.length; i++) if (str[i] !== " ") put(x0 + i, y, str[i]);
+    };
+    const FRONT = { 6: 14, 7: 15, 8: 15, 9: 16, 10: 15, 11: 16, 12: 17, 13: 16, 14: 15, 15: 15, 16: 15, 17: 14, 18: 12 };
+    const BACK = { 6: 5, 7: 4, 8: 3, 9: 3, 10: 3, 11: 3, 12: 3, 13: 3, 14: 4, 15: 5, 16: 6, 17: 7, 18: 9 };
+    const HAIR = { 6: 13, 7: 9, 8: 8, 9: 8, 10: 7, 11: 7, 12: 7, 13: 7, 14: 6 };
+    for (let y = 6; y <= 18; y++) {
+      for (let x = BACK[y]; x <= FRONT[y]; x++) {
+        let c = "s";
+        if (HAIR[y] !== void 0 && x <= HAIR[y]) c = x === BACK[y] ? "k" : (x + y) % 5 === 0 ? "H" : "h";
+        put(x, y, c);
+      }
+    }
+    for (let y = 19; y < HH; y++) run(y, 8, "dssd");
+    run(18, 9, "ddd");
+    for (let x = 10; x <= 15; x++) put(x, 7, "d");
+    run(8, 14, "SS");
+    run(11, 12, "SS");
+    for (let x = 8; x <= 13; x++) put(x, 17, "d");
+    for (let y = 15; y <= 16; y++) for (let x = 9; x <= 13; x++) if (G2[y][x] === "s") put(x, y, "q");
+    put(12, 14, "q");
+    run(10, 8, "dd");
+    run(11, 8, "dD");
+    run(12, 8, "dd");
+    put(16, 11, "S");
+    run(12, 16, "ss");
+    put(15, 13, "D");
+    put(16, 13, "d");
+    put(14, 16, "S");
+    if (e.brow === "up") run(8, 13, "rr");
+    else if (e.brow === "frown") {
+      run(9, 13, "rrr");
+    } else if (e.brow === "sad") {
+      put(14, 8, "r");
+      put(13, 9, "r");
+    } else run(9, 13, "rr");
+    if (e.eye === "shut") run(10, 13, "rr");
+    else if (e.eye === "squint") {
+      put(13, 10, "r");
+      put(14, 10, "p");
+    } else if (e.eye === "wide") {
+      put(13, 9, "w");
+      put(13, 10, "w");
+      put(14, 10, "p");
+      put(14, 9, "w");
+    } else {
+      put(13, 10, "w");
+      put(14, 10, "p");
+    }
+    if (e.mouth === "open") {
+      run(14, 13, "mm");
+      run(15, 13, "mm");
+      put(14, 16, "n");
+    } else if (e.mouth === "grin") {
+      run(14, 13, "ww");
+      run(15, 13, "mm");
+    } else if (e.mouth === "smile") {
+      put(14, 14, "m");
+      put(13, 13, "m");
+      put(12, 13, "d");
+    } else if (e.mouth === "down") {
+      put(14, 14, "m");
+      put(13, 14, "m");
+      put(12, 15, "m");
+    } else {
+      run(14, 13, "mm");
+      put(14, 15, "n");
+    }
+    if (!bare) {
+      run(0, 6, "111122");
+      run(1, 5, "11111222");
+      run(2, 4, "1111112222");
+      run(3, 4, "bbbbbbbGeG");
+      run(4, 4, "BBBBBBBGGG");
+      run(5, 2, "22222222222221");
+      run(6, 1, "4444444444444443");
+    } else {
+      run(3, 6, "kkhhh");
+      run(4, 5, "khhHhhh");
+      run(5, 4, "khhhHHhhh");
+      for (let x = 4; x <= 13; x++) put(x, 6, x % 3 === 0 ? "H" : "h");
+    }
+    headCache.set(key2, G2);
+    return G2;
+  }
+  var TW = 20;
+  var TH = 34;
+  var TORSO_HIP = { x: 10, y: TH };
   var TORSO_KEY = {
     o: "outline",
     c: "scarf",
@@ -11010,41 +11089,76 @@ body {
     Y: "buckleD",
     t: "trouser",
     T: "trouserD",
-    U: "trouserL"
+    U: "trouserL",
+    p: "paper",
+    L: "leather",
+    g: "brass"
   };
-  var TORSO = [
-    "......occco.....",
-    ".....ocCccco....",
-    "....oxcCccifo...",
-    "...oxvACcciifo..",
-    "..oxvvaAcCiiifo.",
-    ".oxvvvvaACiiifo.",
-    ".oxvvvvvaAiiijfo",
-    ".oxvVvvvvaAiijfo",
-    ".oxvVvvvvvaAijfo",
-    ".oxvVvvvvvvaAjfo",
-    ".oxvvvvvvvvvaAio",
-    ".oxvvVVVVvvvviao",
-    ".oxvvxxxxvvvvijo",
-    ".oxvvvvvvvvvvijo",
-    ".oxvvvvvvvvvvijo",
-    ".oxvVvvvvvvvvjfo",
-    ".oxvVvvvvvvvvjio",
-    ".oxvvvvvvvvvvjio",
-    ".oxxvvvvvvvvvjio",
-    ".oxxvvvvvvvvvvjo",
-    ".oxxvVvvvvvvvvjo",
-    ".oxxvvvvvvvvvvjo",
-    ".oxxxvvvvvvvvvjo",
-    ".oXxxxvvvvvvvvjo",
-    ".olllllllllyYlo.",
-    ".olAlllllllyYlo.",
-    ".oTtttttttttUto.",
-    ".oTttttttttttto.",
-    "..oTtttttttttto.",
-    "..oTTtttttttto.."
-  ];
-  var TORSO_HIP = { x: 8, y: 30 };
+  var lerpPts = (pts, y) => {
+    for (let i = 1; i < pts.length; i++) {
+      if (y <= pts[i][0]) {
+        const [y0, v0] = pts[i - 1], [y1, v1] = pts[i];
+        const k = (y - y0) / Math.max(1e-6, y1 - y0);
+        const e = k * k * (3 - 2 * k);
+        return v0 + (v1 - v0) * e;
+      }
+    }
+    return pts[pts.length - 1][1];
+  };
+  var T_FRONT = [[0, 3.5], [3, 6.2], [8, 7.8], [12, 7.4], [17, 5.6], [22, 5.4], [27, 6], [34, 4.2]];
+  var T_BACK = [[0, -4.5], [4, -6.8], [9, -6.6], [15, -5.2], [21, -4.4], [26, -6.2], [31, -7], [34, -5.2]];
+  var torsoGrid = null;
+  function buildTorso() {
+    if (torsoGrid) return torsoGrid;
+    const G2 = [];
+    for (let y = 0; y < TH; y++) G2.push(new Array(TW).fill("."));
+    const cx = 10;
+    for (let y = 0; y < TH; y++) {
+      const f = Math.round(cx + lerpPts(T_FRONT, y + 0.5));
+      const b = Math.round(cx + lerpPts(T_BACK, y + 0.5));
+      for (let x = b; x < f; x++) {
+        const fromB = x - b, fromF = f - 1 - x;
+        let c;
+        if (y >= 22 && y <= 24) {
+          c = fromF <= 2 ? y === 24 ? "Y" : "y" : "l";
+        } else if (y > 24) {
+          c = fromB <= 1 ? "T" : fromF === 0 ? "U" : "t";
+          if (y > 28 && fromB === 2) c = "T";
+        } else {
+          const shirt = fromF <= 2 || y < 2;
+          if (shirt) c = fromF === 0 ? "f" : y > 11 && y < 15 ? "j" : "i";
+          else if (fromF === 3) c = "V";
+          else c = fromB === 0 ? "X" : fromB <= 2 ? "x" : "v";
+        }
+        G2[y][x] = c;
+      }
+    }
+    const put = (x, y, c) => {
+      if (x >= 0 && y >= 0 && x < TW && y < TH && G2[y][x] !== ".") G2[y][x] = c;
+    };
+    for (let x = 7; x <= 13; x++) put(x, 0, "c");
+    for (let x = 8; x <= 14; x++) put(x, 1, x === 14 ? "C" : "c");
+    put(14, 2, "c");
+    put(15, 2, "C");
+    put(15, 3, "C");
+    put(15, 4, "c");
+    for (let y = 0; y <= 13; y++) {
+      const x = Math.round(9 + y * 0.32);
+      put(x, y, "a");
+      put(x + 1, y, y % 3 === 0 ? "A" : "a");
+    }
+    put(12, 11, "p");
+    put(13, 11, "p");
+    for (let x = 10; x <= 13; x++) {
+      put(x, 12, "V");
+      put(x, 13, "x");
+    }
+    for (let y = 4; y < 21; y += 2) put(Math.round(cx + lerpPts(T_BACK, y) + 3), y, "V");
+    for (let y = 23; y <= 28; y++) for (let x = 2; x <= 5; x++) put(x, y, y === 23 ? "A" : "L");
+    put(4, 25, "g");
+    torsoGrid = G2;
+    return G2;
+  }
   var PACK_KEY = { o: "outline", K: "canvasL", M: "canvas", N: "canvasD", R: "roll", Q: "rollD", L: "packStrap", y: "buckle", Y: "buckleD" };
   var PACK = [
     "..ooooooooo.",
@@ -11065,17 +11179,17 @@ body {
     "..ooooooooo."
   ];
   var PACK_ANCHOR = { x: 11, y: 2 };
-  var BOOT_KEY = { o: "outline", O: "boot", P: "bootL", Z: "sole", W: "bootL" };
+  var BOOT_KEY = { o: "outline", O: "boot", P: "bootL", Z: "sole", W: "shirtD" };
   var BOOT = [
-    "oOOOOo....",
-    "oPOOOo....",
-    "oPOOOOo...",
-    "oPOOOOOo..",
-    "oPPOOOOOo.",
-    "oZZZZZZZZo",
-    ".oooooooo."
+    ".oPOOOo......",
+    ".oPOOOOo.....",
+    ".oPOOWOOoo...",
+    ".oPOOOWOOOoo.",
+    ".oPPOOOOOOOOo",
+    ".oZZZZZZZZZZo",
+    "..oooooooooo."
   ];
-  var BOOT_ANKLE = { x: 3, y: 1 };
+  var BOOT_ANKLE = { x: 4, y: 1 };
   var PROP_KEY = {
     o: "outline",
     w: "wood",
@@ -11115,10 +11229,10 @@ body {
     }
     return [k, { at: { x: v.at.x * 2, y: v.at.y * 2 }, rows }];
   }));
-  var CW = 124;
-  var CH = 156;
-  var OX = 62;
-  var OY = 92;
+  var CW = 132;
+  var CH = 172;
+  var OX = 66;
+  var OY = 100;
   var PixelFigure = class {
     constructor(kind = "vess") {
       this.kind = kind;
@@ -11140,7 +11254,7 @@ body {
       this.col[i] = rgb;
       this.pid[i] = id;
     }
-    /** A sprite with its anchor at a body-space point (world units). */
+    /** A grid of palette keys (rows of strings or arrays) with its anchor at a body-space point. */
     _sprite(rows, key2, pal, wx, wy, anchor, id, lean = 0, dark = 0) {
       const bx = Math.round(OX + wx * HR), by = Math.round(OY + wy * HR);
       const H = rows.length;
@@ -11159,21 +11273,21 @@ body {
       }
     }
     /**
-     * A limb: a solid stroke from a to b (world units), `w` art pixels across,
-     * in three tones - the cloth, a shaded back edge two pixels deep, and a lit
-     * pixel down the front. `cuff` paints the stretch nearest `a` another
-     * colour, which is how a rolled sleeve ends at the elbow.
+     * A limb from a to b (world units). `prof` is its width in art pixels at
+     * the top, at the swell, and at the bottom, and where the swell sits - a
+     * thigh is thick at the hip, a calf swells under the knee.
      */
-    _limb(a, b, w, tone, id, opts = {}) {
+    _limb(a, b, prof, tone, id, opts = {}) {
       const ax = OX + a.x * HR, ay = OY + a.y * HR, bx = OX + b.x * HR, by = OY + b.y * HR;
       const len = Math.hypot(bx - ax, by - ay);
       const n = Math.max(2, Math.ceil(len * 2));
-      const w0 = w, w1 = opts.taper ? w * opts.taper : w;
+      const [w0, wm, w1, tm] = prof;
+      const width = (t) => t < tm ? w0 + (wm - w0) * (t / tm) : wm + (w1 - wm) * ((t - tm) / Math.max(1e-6, 1 - tm));
       const mask = /* @__PURE__ */ new Map();
       for (let k = 0; k <= n; k++) {
         const t = k / n;
         const cx = ax + (bx - ax) * t, cy = ay + (by - ay) * t;
-        const r = (w0 + (w1 - w0) * t) / 2;
+        const r = width(t) / 2;
         const x0 = Math.floor(cx - r), x1 = Math.ceil(cx + r);
         const y0 = Math.floor(cy - r), y1 = Math.ceil(cy + r);
         for (let y = y0; y <= y1; y++) {
@@ -11192,6 +11306,7 @@ body {
         const x = key2 % CW, y = key2 / CW | 0;
         let c = tone.base;
         if (opts.cuff && along < opts.cuff) c = opts.cuffCol;
+        if (opts.band && Math.abs(along - opts.band[0]) < opts.band[1]) c = opts.bandCol;
         const back = !inside(x - 1, y) || !inside(x - 2, y);
         const under = !inside(x, y + 1) && Math.abs(by - ay) < Math.abs(bx - ax) * 1.2;
         if (back || under) c = mix(c, tone.shade, !inside(x - 1, y) ? 0.95 : 0.55);
@@ -11237,7 +11352,7 @@ body {
     }
     /**
      * One frame. `s` is the solved skeleton in body space (hip at 0,0, world
-     * units, y down, facing right).
+     * units, y down, facing right); `s.face.mood` is one of his portrait faces.
      */
     render(s) {
       const pal = palette(this.kind, !!s.spore);
@@ -11254,23 +11369,28 @@ body {
       let id = 1;
       const leg = (lg, dark, idl) => {
         const tr = tone("trouser", "trouserD", "trouserL", dark);
-        this._limb(lg.hip, lg.knee, 8.4, tr, idl, { taper: 0.86 });
-        this._limb(lg.knee, lg.ankle, 7, tr, idl, { taper: 0.84, crease: 3 });
+        this._limb(lg.hip, lg.knee, [10.5, 9.4, 7, 0.35], tr, idl);
+        this._limb(lg.knee, lg.ankle, [7, 7.8, 5.2, 0.3], tr, idl, { crease: 4 });
         const lift = lg.air > 0.4 ? -1 : 0;
         this._sprite(BOOT, BOOT_KEY, pal, lg.ankle.x, lg.ankle.y + lift / HR, BOOT_ANKLE, idl + 1, 0, dark ? FAR2 : 0);
       };
-      const arm = (a, dark, idl, tool) => {
+      const arm = (a, dark, idl, tool, watch) => {
         const sh = { x: a.sh.x, y: a.sh.y + br }, el = { x: a.el.x, y: a.el.y + br }, ha = { x: a.ha.x, y: a.ha.y + br };
-        this._limb(sh, el, 6.2, tone("shirt", "shirtD", "shirtL", dark), idl, { taper: 0.9, crease: 6 });
+        this._limb(sh, el, [7.4, 6.6, 5.6, 0.3], tone("shirt", "shirtD", "shirtL", dark), idl, { crease: 9 });
         this._limb(
           el,
           ha,
-          5,
+          [5.4, 5.6, 4, 0.35],
           tone("skin", "skinD", "skinL", dark),
           idl,
-          { taper: 0.9, cuff: 3.2, cuffCol: dark ? mix(pal.shirtL, pal.outline, FAR2) : pal.shirtL }
+          {
+            cuff: 3.4,
+            cuffCol: dark ? mix(pal.shirtL, pal.outline, FAR2) : pal.shirtL,
+            band: watch ? [Math.hypot(ha.x - el.x, ha.y - el.y) * HR - 2.2, 0.8] : null,
+            bandCol: pal.leather
+          }
         );
-        this._limb(ha, ha, 5.6, tone("skin", "skinD", "skinL", dark), idl);
+        this._limb(ha, ha, [5, 5, 5, 0.5], tone("skin", "skinD", "skinL", dark), idl);
         if (tool && PROPS[tool]) {
           const P = PROPS[tool];
           this._sprite(P.rows, PROP_KEY, pal, ha.x, ha.y, P.at, idl + 1, 0, dark ? FAR2 : 0);
@@ -11281,21 +11401,19 @@ body {
       this._sprite(PACK, PACK_KEY, pal, s.bag.x, s.bag.y + br, PACK_ANCHOR, id++, 0, 0);
       arm(s.armF, true, id);
       id += 2;
-      const rows = HEAD.slice();
       const f = s.face || {};
-      if (f.bare) for (const k of Object.keys(HEAD_BARE)) rows[+k] = HEAD_BARE[k];
-      if (f.brow && !f.shut) for (const k of Object.keys(HEAD_BROW)) rows[+k] = HEAD_BROW[k];
-      if (f.shut) for (const k of Object.keys(HEAD_SHUT2)) rows[+k] = HEAD_SHUT2[k];
-      if (f.open) for (const k of Object.keys(HEAD_OPEN2)) rows[+k] = HEAD_OPEN2[k];
-      this._sprite(rows, HEAD_KEY2, pal, s.neck.x, s.neck.y + br + (s.nod || 0) / HR, HEAD_NECK, id++, 0);
-      this._sprite(TORSO, TORSO_KEY, pal, 0, br, TORSO_HIP, id++, L);
+      const e = { ...EXPR[f.mood] || EXPR.flat };
+      if (f.shut) e.eye = "shut";
+      if (f.open) e.mouth = "open";
+      this._sprite(buildHead(e, !!f.bare), HEAD_KEY2, pal, s.neck.x, s.neck.y + br + (s.nod || 0) / HR, HEAD_NECK, id++, 0);
+      this._sprite(buildTorso(), TORSO_KEY, pal, 0, br, TORSO_HIP, id++, L);
       leg(s.legN, false, id);
       id += 2;
       if (s.hold && PROPS[s.hold]) {
         const P = PROPS[s.hold];
         this._sprite(P.rows, PROP_KEY, pal, s.chest.x, s.chest.y + br, P.at, id++, 0);
       }
-      arm(s.armN, false, id, s.tool);
+      arm(s.armN, false, id, s.tool, true);
       id += 2;
       this._finish(pal);
       return this.cv;
@@ -11318,7 +11436,7 @@ body {
     return cv;
   }
   function hatSprite(kind = "vess") {
-    const cv = bake3(HEAD.slice(0, 12), HEAD_KEY2, palette(kind, false));
+    const cv = bake3(buildHead(EXPR.flat, false).slice(0, 7), HEAD_KEY2, palette(kind, false));
     const small = makeCanvas2(Math.ceil(cv.width / HR), Math.ceil(cv.height / HR));
     const g = small.getContext("2d");
     g.imageSmoothingEnabled = false;
@@ -11326,23 +11444,24 @@ body {
     return { cv: small, ox: small.width / 2, oy: small.height };
   }
   var FIGURE_SOCKETS = {
-    shoulder: { x: -0.3, y: -12.4 },
-    neck: { x: -0.5, y: -14.2 },
-    bag: { x: -3.6, y: -13.6 },
-    chest: { x: 2.6, y: -8.6 }
+    shoulder: { x: -0.2, y: -15.6 },
+    neck: { x: 0.2, y: -16.6 },
+    bag: { x: -4.4, y: -16.2 },
+    chest: { x: 3.4, y: -10.4 }
   };
+  var ARM = { upper: 8.6, lower: 7.8 };
   var WALK = [
-    [0.44, 0],
-    [0.26, 0],
-    [0.07, 0],
-    [-0.13, 0],
-    [-0.34, 0.02],
-    [-0.33, 0.13],
-    [0, 0.2],
-    [0.31, 0.1]
+    [0.4, 0],
+    [0.24, 0],
+    [0.06, 0],
+    [-0.12, 0],
+    [-0.31, 0.02],
+    [-0.3, 0.12],
+    [0, 0.18],
+    [0.28, 0.09]
   ];
-  var WALK_BOB = [0.2, 1, 0.35, -0.55, 0.2, 1, 0.35, -0.55];
-  var WALK_CYCLE = 1.56;
+  var WALK_BOB = [0.2, 1.1, 0.4, -0.6, 0.2, 1.1, 0.4, -0.6];
+  var WALK_CYCLE = 1.46;
 
   // js/art/facedata.js
   var FACE_W = 59;
@@ -12098,7 +12217,7 @@ body {
       const sw = swing * Math.cos((this.step + (side > 0 ? 0 : 0.5)) * TAU) * 0.4;
       const A = a0 + lean + sw;
       const B = A - a1 - Math.abs(sw) * 0.22;
-      const LU = 7.3 * this.rig.K, LL = 6.9 * this.rig.K;
+      const LU = ARM.upper * this.rig.K, LL = ARM.lower * this.rig.K;
       const el = { x: sh.x + Math.cos(A) * LU, y: sh.y + Math.sin(A) * LU };
       const ha = { x: el.x + Math.cos(B) * LL, y: el.y + Math.sin(B) * LL };
       return { sh, el, ha };
@@ -12121,16 +12240,10 @@ body {
     }
     /** Which of his faces this frame: blinking, talking, frowning. */
     _faceState() {
-      const m = this.face | 0;
       const saying = !!this.speech && (this.speechAge || 0) * 34 < this.speech.length + 4;
       const jaw = saying && Math.floor(this.t * 8.5) % 2 === 1;
       const blink = this.t % 4.3 < 0.13;
-      return {
-        shut: blink || m === 7,
-        open: jaw || m === 2 || m === 3 || m === 8 || m === 9,
-        brow: m === 4 || m === 12 || m === 10,
-        bare: !!this.hatOff
-      };
+      return { mood: this.mood || "flat", shut: blink, open: jaw, bare: !!this.hatOff };
     }
     /** One arm, plus whatever is in the hand at the end of it. */
     _arm(ctx, art3, sh, a0, a1, lean, side, tool) {
@@ -32948,7 +33061,7 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
       const q = this.quests;
       if (!q || q.active || !q.next()) return;
       if (!cam.isVisible(this.npc.x, this.npc.y, 60)) return;
-      const s = cam.worldToScreen(this.npc.x, this.npc.y - 60);
+      const s = cam.worldToScreen(this.npc.x, this.npc.y - 68);
       const p = Math.min(2, pxSize(cam.zoom));
       const bob = Math.sin(this.time * 3.2) * p;
       const x = Math.round(s.x), y = Math.round(s.y + bob);
@@ -33289,7 +33402,7 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
      * still something written down.
      */
     _drawSpeech(ctx, cam, who, code = false) {
-      const s = cam.worldToScreen(who.x, who.y - 40);
+      const s = cam.worldToScreen(who.x, who.y - (who === this.npc ? 58 : 40));
       const age = code ? 99 : who.speechAge || 0;
       const CPS = 34;
       const said = code ? 1e9 : Math.floor(Math.max(0, age - 0.1) * CPS);
@@ -33299,8 +33412,12 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
       const lines = wrapText(who.speech, 132 - (port ? pw + 6 : 0));
       const w = Math.max(...lines.map((l) => textWidth(l))) + 14 + (port ? pw + 6 : 0);
       const h = Math.max(lines.length * LINE_H + 10, port ? 56 : 0);
-      const x = clamp(Math.round(s.x - w / 2), 3, this.renderer.vw - w - 3);
+      let x = clamp(Math.round(s.x - w / 2), 3, this.renderer.vw - w - 3);
       const y = clamp(Math.round(s.y - h), 3, this.renderer.vh - h - 12);
+      if (s.y - h < 3) {
+        const side = s.x + 18 + w < this.renderer.vw - 3 ? 1 : -1;
+        x = clamp(Math.round(side > 0 ? s.x + 18 : s.x - 18 - w), 3, this.renderer.vw - w - 3);
+      }
       const tailX = clamp(Math.round(s.x), x + 8, x + w - 8);
       const shout = !code && who.shout > 0;
       const PAPER = code ? "#0e2226" : shout ? "#f6e0c4" : "#e9dcbc";

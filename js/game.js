@@ -2968,7 +2968,7 @@ export class Game {
     if (!q || q.active || !q.next()) return;
     if (!cam.isVisible(this.npc.x, this.npc.y, 60)) return;
     // clear of his hat, and small - it is a badge, not a billboard
-    const s = cam.worldToScreen(this.npc.x, this.npc.y - 60);
+    const s = cam.worldToScreen(this.npc.x, this.npc.y - 68);
     const p = Math.min(2, pxSize(cam.zoom));
     const bob = Math.sin(this.time * 3.2) * p;
     const x = Math.round(s.x), y = Math.round(s.y + bob);
@@ -3317,7 +3317,7 @@ export class Game {
    * still something written down.
    */
   _drawSpeech(ctx, cam, who, code = false) {
-    const s = cam.worldToScreen(who.x, who.y - 40);
+    const s = cam.worldToScreen(who.x, who.y - (who === this.npc ? 58 : 40));
     // his face goes on the card at four times his walking size: the whole
     // point of a close-up is that you can see what he thinks of you
     // His face on the card is his own portrait, cropped to the head - a card
@@ -3339,8 +3339,14 @@ export class Game {
     // eyes: the hat, the pack strap and what his shoulders are doing are all
     // part of what he is saying.
     const h = Math.max(lines.length * LINE_H + 10, port ? 56 : 0);
-    const x = clamp(Math.round(s.x - w / 2), 3, this.renderer.vw - w - 3);
+    let x = clamp(Math.round(s.x - w / 2), 3, this.renderer.vw - w - 3);
     const y = clamp(Math.round(s.y - h), 3, this.renderer.vh - h - 12);
+    // pushed down against the top of the screen it would sit on his head, so
+    // it moves out to the side of him instead
+    if (s.y - h < 3) {
+      const side = s.x + 18 + w < this.renderer.vw - 3 ? 1 : -1;
+      x = clamp(Math.round(side > 0 ? s.x + 18 : s.x - 18 - w), 3, this.renderer.vw - w - 3);
+    }
     const tailX = clamp(Math.round(s.x), x + 8, x + w - 8);
 
     // A yell is not a bigger page - it is a different one: hot paper, a hard
