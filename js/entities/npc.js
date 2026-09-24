@@ -15,7 +15,7 @@ import { ITEM_BY_ID } from '../data/craft.js';
 import { pxEllipse, pxSize } from '../render/pix.js';
 import { ik2 } from './crab.js';
 import { buildPerson, portrait } from '../art/personart.js';
-import { PixelFigure, FIGURE_SOCKETS, hatSprite } from '../art/pixelperson.js';
+import { PixelFigure, FIGURE_SOCKETS, hatSprite, WALK, WALK_BOB, WALK_CYCLE } from '../art/pixelperson.js';
 import { facePortrait, faceFor } from '../art/faces.js';
 
 export const POSE = {
@@ -461,6 +461,7 @@ export class Person {
     // in the air the feet come up with him, tucked under the hips, or he
     // reads as a person being dragged upward rather than one jumping
     if (this.jz > 0.5) {
+      this.walkFrame = -1;
       for (let i = 0; i < 2; i++) {
         const f = this.feet[i];
         f.air = 0;
@@ -471,8 +472,35 @@ export class Person {
       return;
     }
 
-    if (moving) this.step = (this.step + (spd * dt) / (stride * 2)) % 1;
-    else this.step = (this.step + dt * 0.35) % 1;     // keeps a slow idle sway
+    // WALKING is eight frames, not a simulation. The feet used to be planted
+    // and swung by physics, which is honest and looks like a man being blown
+    // along: every change of speed shows up as a stutter in the stride. Now
+    // it is a cycle off a sheet - contact, down, passing, up - advanced by how
+    // far he has actually gone, so the feet never skate and the timing never
+    // wobbles, and each frame is held the way a drawn walk holds it.
+    const legL = this.rig.leg.near.upper.len + this.rig.leg.near.lower.len;
+    if (moving) {
+      this.walkP = ((this.walkP || 0) + (spd * dt) / (legL * WALK_CYCLE * tuck)) % 1;
+      const fi = Math.floor(this.walkP * 8) % 8;
+      this.walkFrame = fi;
+      this.step = fi / 8;
+      const dir = Math.sign(this.vx) || this.facing || 1;
+      for (let i = 0; i < 2; i++) {
+        const f = this.feet[i];
+        const [fx, lift] = WALK[(fi + i * 4) % 8];
+        const was = f.air;
+        f.x = this.x + dir * fx * legL * tuck;
+        f.air = lift * legL;
+        f.y = terr.surfaceY(f.x) - f.air;
+        f.plant = f.x;
+        f.sw = false;
+        // a heel coming down on the contact frame kicks up a little sand
+        if (was > 0.5 && f.air === 0) this._land(f, terr);
+      }
+      return;
+    }
+    this.walkFrame = -1;
+    this.step = (this.step + dt * 0.35) % 1;     // keeps a slow idle sway
 
     const dir = Math.sign(this.vx) || this.facing || 1;
     for (let i = 0; i < 2; i++) {
@@ -569,8 +597,8 @@ export class Person {
 
     // hips: the root of everything, dropped by the crouch and bobbed by the gait
     const drop = this.b.crouch * rig.standH * 0.62;
-    const bob = Math.abs(this.vx) > 6 ? Math.sin(this.step * TAU * 2) * 1.1 * rig.K : 0;
-    const breath = Math.sin(this.breathe) * 0.35 * rig.K;
+    const bob = this.walkFrame >= 0 ? WALK_BOB[this.walkFrame] * rig.K : 0;
+    const breath = this.walkFrame >= 0 ? 0 : Math.round(Math.sin(this.breathe) * 1.2) * 0.25;
     const hipWorldY = this.y - rig.standH + drop + bob - this.jz;
     const s = cam.worldToScreen(this.x, hipWorldY);
 
@@ -610,7 +638,8 @@ export class Person {
     if (flat < 0.995) ctx.translate(0, -(1 - flat) * 2.2 * rig.K);
     if (Math.abs(this.squash) > 0.005) ctx.scale(1 - this.squash * 0.5, 1 + this.squash);
     ctx.imageSmoothingEnabled = false;
-    ctx.drawImage(cv, -this.fig.ox, -this.fig.oy);
+    // the figure is drawn at twice the world's resolution; this puts it back
+    ctx.drawImage(cv, -this.fig.ox, -this.fig.oy, this.fig.w, this.fig.h);
     ctx.restore();
   }
 
@@ -819,21 +848,29 @@ export class Archaeologist extends Person {
     const crab = this.game.crab;
     if (this.mode === 'ride' && crab) {
       this.climb = damp(this.climb, 1, 0.001, dt);
-      const seat = crab.shellWorldAB(0.34, 0.66);
+      // planting: he shuffles over to the bed and kneels at it
+      const job = this.game.planting;
+      const digging = job && job.by === this && job.phase === 'planting';
+      const at = digging ? { a: clamp(job.plot.a + 0.12, -0.9, 0.9), b: job.plot.b } : { a: 0.34, b: 0.66 };
+      this.seatA = damp(this.seatA ?? at.a, at.a, 0.02, dt);
+      this.seatB = damp(this.seatB ?? at.b, at.b, 0.02, dt);
+      const seat = crab.shellWorldAB(this.seatA, this.seatB);
       this.x = seat.x;
       this.y = seat.y + 1;
       this.vx = crab.vx;
-      this.setFacing(-1);
+      this.setFacing(digging ? -1 : -1);
+      if (digging && this.pose !== POSE.DIG) this.setPose(POSE.DIG);
       this._turn(dt);
       this.t += dt; this.poseT += dt; this.animT += dt; this.breathe += dt * 1.3;
       if (this.speechT > 0) { this.speechT -= dt; if (this.speechT <= 0) this.speech = null; }
-      if (this.pose !== POSE.SIT && this.pose !== POSE.WRITE && this.pose !== POSE.TALK) {
+      if (!digging && this.pose !== POSE.SIT && this.pose !== POSE.WRITE && this.pose !== POSE.TALK) {
         this.setPose(POSE.SIT);
       }
       if (this.poseT > 6 && this.pose === POSE.SIT) this.setPose(POSE.WRITE);
       else if (this.poseT > 8 && this.pose === POSE.WRITE) this.setPose(POSE.SIT);
       this._settle(dt);
       // riding, his feet are on the shell, not the ground
+      this.walkFrame = -1;
       for (const f of this.feet) { f.x = this.x - 3 * this.rig.K * f.side; f.y = this.y + 1; f.air = 0; }
       this._chatter(dt);
       return;
@@ -845,6 +882,16 @@ export class Archaeologist extends Person {
     }
 
     super.update(dt);
+    // planting from the ground: he kneels at your side facing the bed, and
+    // nothing in his rota moves him until it is in
+    const pj = this.game.planting;
+    if (pj && pj.by === this && pj.ground && (pj.phase === 'planting' || pj.phase === 'working')) {
+      this.moveTo = undefined;
+      this.vx = 0;
+      this.setFacing(Math.sign(crab.x - this.x) || 1);
+      if (this.pose !== POSE.DIG) this.setPose(POSE.DIG);
+      return;
+    }
     // during the opening the script owns him: no idle rota, no small talk
     if (this.game.state === 'intro') return;
     // and while the spore has him he has no small talk and no rota either -

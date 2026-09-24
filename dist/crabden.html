@@ -2023,6 +2023,7 @@ body {
       this._vignette = c;
     }
     update(dt, weather) {
+      this._dtAvg = (this._dtAvg || dt) * 0.95 + dt * 0.05;
       this.haze = lerp(this.haze, weather.haze * 1.7, 1 - Math.pow(0.06, dt));
       this.flash = Math.max(0, this.flash - dt * 2.6);
       const want = this.mode ? 1 : 0;
@@ -2174,14 +2175,68 @@ body {
         return;
       }
     }
+    /**
+     * BLOOM. The bright things glow: the sun, fire, the lit edge of the water,
+     * a spark. The frame is taken down to a quarter, pushed so only its
+     * brightest parts survive, blurred, and laid back over the top as light.
+     * Cheap, because a quarter of this frame is a few thousand pixels.
+     */
+    _bloom(s, amt) {
+      const dt = this._dtAvg || 0.016;
+      if (dt > 1 / 38) this._slow = (this._slow || 0) + dt;
+      else this._slow = Math.max(0, (this._slow || 0) - dt * 0.5);
+      if (this._slow > 2.5) this.bloomOff = true;
+      if (amt <= 0.01 || this.bloomOff) return;
+      const bw = Math.max(8, Math.ceil(this.vw / 4)), bh = Math.max(8, Math.ceil(this.vh / 4));
+      if (!this._bl || this._bl.width !== bw || this._bl.height !== bh) {
+        this._bl = newCanvas(bw, bh);
+        this._bl2 = newCanvas(bw, bh);
+      }
+      const a = this._bl.getContext("2d"), b = this._bl2.getContext("2d");
+      a.clearRect(0, 0, bw, bh);
+      a.filter = "brightness(0.9) contrast(3.2) saturate(1.3)";
+      a.drawImage(this.sceneC, 0, 0, bw, bh);
+      a.filter = "none";
+      b.clearRect(0, 0, bw, bh);
+      b.filter = "blur(2px)";
+      b.drawImage(this._bl, 0, 0);
+      b.filter = "none";
+      s.save();
+      s.globalCompositeOperation = "lighter";
+      s.globalAlpha = amt;
+      s.imageSmoothingEnabled = true;
+      s.drawImage(this._bl2, 0, 0, this.vw, this.vh);
+      s.restore();
+      s.imageSmoothingEnabled = false;
+    }
+    /**
+     * The grade. A soft-light wash that pushes the day warm and gold, the
+     * night blue, and the water teal - the difference between a picture that
+     * has been lit and one that has been coloured in.
+     */
+    _grade(s, weather) {
+      const day = clamp01(weather.daylight ?? 1);
+      const wet = this.underwater || 0;
+      s.save();
+      s.globalCompositeOperation = "soft-light";
+      s.globalAlpha = 0.16 + wet * 0.14;
+      s.fillStyle = wet > 0.3 ? "#3ec8d8" : day > 0.45 ? "#ffc070" : "#4a64b0";
+      s.fillRect(0, 0, this.vw, this.vh);
+      s.restore();
+    }
     composite(weather, game2) {
       const s = this.scene;
       s.globalCompositeOperation = "multiply";
       s.drawImage(this.lightC, 0, 0);
       s.globalCompositeOperation = "source-over";
       this.drawWeatherOverlay(weather, game2);
+      this._grade(s, weather);
+      this._bloom(s, 0.16 + (this.underwater || 0) * 0.26 + (weather.daylight < 0.3 ? 0.08 : 0));
       if (!this._vignette) this._buildVignette();
       s.drawImage(this._vignette, 0, 0);
+      if ((this.underwater || 0) > 0.05) {
+        pxVignette(s, this.vw, this.vh, "#021a33", this.underwater * 0.55, { p: 2, steps: 5, inner: 0.3 });
+      }
       this._drawModeGrade(s);
       if (this.flash > 4e-3) {
         s.globalAlpha = clamp01(this.flash);
@@ -10763,48 +10818,59 @@ body {
   }
 
   // js/art/pixelperson.js
+  var HR = 2;
   var VESS = {
-    outline: "#26160f",
-    skin: "#e6a676",
-    skinL: "#f6c79a",
-    skinD: "#bd7851",
-    stubble: "#c28c6c",
-    hair: "#6b3f27",
-    hairL: "#91603e",
-    hairD: "#44271a",
-    eyeW: "#f3ead8",
-    eye: "#22140e",
-    mouth: "#8a3a30",
-    brow: "#4a2c1c",
-    hat: "#d4b482",
-    hatL: "#efd6a6",
-    hatD: "#a6875b",
-    band: "#8e3a30",
-    brass: "#d9a94f",
-    brassD: "#94692b",
-    lens: "#72bcd0",
-    shirt: "#e4dac0",
-    shirtL: "#faf4e4",
-    shirtD: "#b5a786",
-    vest: "#76502f",
-    vestL: "#9a6d44",
-    vestD: "#4f331e",
-    scarf: "#a83f2e",
-    scarfD: "#74281d",
-    belt: "#3a2618",
-    buckle: "#e2b74a",
-    strap: "#4b301e",
-    trouser: "#898458",
-    trouserL: "#a6a172",
-    trouserD: "#605d3d",
-    boot: "#4e3322",
-    bootL: "#72503a",
-    sole: "#21140c",
-    canvas: "#a48d60",
-    canvasL: "#c4ad7e",
-    canvasD: "#776342",
-    roll: "#6b7c58",
-    rollD: "#4b5a3e",
+    outline: "#26160e",
+    hatL: "#f2dfb4",
+    hat: "#d9ba8a",
+    hatD: "#b39262",
+    hatDD: "#7e6240",
+    band: "#963c30",
+    bandD: "#62251c",
+    brass: "#e8bb58",
+    brassD: "#9a7030",
+    lens: "#5aa8c4",
+    lensL: "#d8f4fa",
+    hair: "#704128",
+    hairL: "#9e6842",
+    hairD: "#472616",
+    skinL: "#f9d2a8",
+    skin: "#e9aa7a",
+    skinD: "#c47e56",
+    skinDD: "#8c5238",
+    stubble: "#bf8a68",
+    eyeW: "#f6efe2",
+    eye: "#1a100c",
+    brow: "#3e2416",
+    mouth: "#7c3428",
+    lip: "#d0866a",
+    scarf: "#b04432",
+    scarfD: "#7a2a1e",
+    shirtL: "#fbf5e6",
+    shirt: "#e7dcc2",
+    shirtD: "#b9aa88",
+    shirtDD: "#8e8064",
+    vest: "#7a5232",
+    vestL: "#a0703f",
+    vestD: "#56361f",
+    vestDD: "#3c2414",
+    strap: "#4a2e1c",
+    strapL: "#6e4a2e",
+    belt: "#3a2416",
+    buckle: "#f0c050",
+    buckleD: "#9a7028",
+    trouser: "#8c8759",
+    trouserD: "#65613f",
+    trouserL: "#aca676",
+    canvasL: "#c9b183",
+    canvas: "#a68d5f",
+    canvasD: "#7a6442",
+    roll: "#71825c",
+    rollD: "#4f5e3f",
+    packStrap: "#5a3a22",
+    boot: "#553624",
+    bootL: "#7a5238",
+    sole: "#1e130c",
     wood: "#86582f",
     woodL: "#b07a48",
     steel: "#c9ced3",
@@ -10822,18 +10888,21 @@ body {
   };
   var ELDER2 = {
     ...VESS,
-    hat: "#95412f",
-    hatL: "#c3735c",
-    hatD: "#63251d",
+    hatL: "#d8826a",
+    hat: "#a8492f",
+    hatD: "#7a2f1e",
+    hatDD: "#4e1c12",
     band: "#3d2a20",
+    bandD: "#241810",
     hair: "#b8b2a8",
     hairL: "#e2ded6",
     hairD: "#8a847b",
     brow: "#8a847b",
-    stubble: "#e4ded4",
+    stubble: "#dcd6cc",
     vest: "#4f5364",
     vestL: "#686d80",
     vestD: "#373a47",
+    vestDD: "#262833",
     scarf: "#dcd4c2",
     scarfD: "#b0a892",
     trouser: "#7e4347",
@@ -10862,121 +10931,161 @@ body {
   }
   var HEAD_KEY2 = {
     o: "outline",
-    T: "hatL",
-    t: "hat",
-    u: "hatD",
+    1: "hatL",
+    2: "hat",
+    3: "hatD",
+    4: "hatDD",
     b: "band",
+    B: "bandD",
     g: "brass",
+    G: "brassD",
     e: "lens",
-    k: "hairD",
+    E: "lensL",
     h: "hair",
     H: "hairL",
-    s: "skin",
+    k: "hairD",
     S: "skinL",
+    s: "skin",
     d: "skinD",
+    D: "skinDD",
+    q: "stubble",
     w: "eyeW",
     p: "eye",
     r: "brow",
     m: "mouth",
-    q: "stubble"
+    n: "lip"
   };
   var HEAD = [
-    "....oooooo....",
-    "...oTTTTTtto..",
-    "...oTTTTttto..",
-    "..obbbbbbgeo..",
-    ".otttttttttto.",
-    "ouuuuuuuuuuuuo",
-    "..okhhddddddo.",
-    "..okhhssrrsso.",
-    "..okhdsswpsSo.",
-    "..okhddsssssSo",
-    "..okhhdsssdso.",
-    "..okhhdssmmso.",
-    "...okhdqqqso..",
-    "....okdqqoo...",
-    ".....oddo....."
+    "..........oooooooo..........",
+    "........oo11111122oo........",
+    ".......o1111111222223o......",
+    "......o11111112222233o......",
+    "......o111111122222233o.....",
+    ".....o1111111222222233o.....",
+    ".....o11111122222222233o....",
+    ".....obbbbbbbbbbbbGgggGo....",
+    ".....oBBBBBBBBBBBBGeEGGo....",
+    "....o33333333333333GGG3o....",
+    "..oo2222222222222222222222oo",
+    ".o4444444444444444444444444o",
+    "...okkkhHhhhdddddddddddo....",
+    "...okhhHHHhhdsssssssssso....",
+    "...okhHHhhhhdSSSSSSSSSso....",
+    "...okhhhhhhhdssssssrrrrso...",
+    "...okhHhhhhdDdsssssdwpso....",
+    "...okhhHhhhdDdsssssssdSso...",
+    "...okhhhhhhdDdssssssSSsSso..",
+    "...okkhhhhhdddsssssssssSsso.",
+    "...okkhhhhhhddssssssssDddo..",
+    "...okkhhhhhhddsssssssssdo...",
+    "...okkhhhhhddqqssssssmmso...",
+    "...okkhhhhdddqqqsssssnso....",
+    "....okkhhhdqqqqqqsssssSo....",
+    ".....okkhddqqqqqqqqssso.....",
+    "......ookdddqqqqqqdo........",
+    "..........oddddDdo..........",
+    "..........osssddDo..........",
+    "..........osssddDo.........."
   ];
-  var HEAD_NECK = { x: 7, y: 14 };
-  var HEAD_SHUT2 = { 8: "..okhdssddsSo." };
-  var HEAD_OPEN2 = { 11: "..okhhdsmmmso.", 12: "...okhdqmqso.." };
-  var HEAD_BARE = {
-    0: "..............",
-    1: "..............",
-    2: "..............",
-    3: "....oooooo....",
-    4: "...okhhhhHHo..",
-    5: "..okhhhhhHHHo.",
-    6: "..okhhhhhhsso."
-  };
-  var HEAD_BROW = { 7: "..okhhsrrrsso." };
+  var HEAD_NECK = { x: 14, y: 29 };
+  var HEAD_SHUT2 = { 16: HEAD[16].slice(0, 19) + "rrs" + HEAD[16].slice(22) };
+  var HEAD_OPEN2 = { 22: HEAD[22].slice(0, 20) + "mmm" + HEAD[22].slice(23), 23: HEAD[23].slice(0, 20) + "mn" + HEAD[23].slice(22) };
+  var HEAD_BROW = { 16: HEAD[16].slice(0, 19) + "r" + HEAD[16].slice(20) };
+  var HEAD_BARE = (() => {
+    const b = {};
+    for (let y = 0; y < 8; y++) b[y] = ".".repeat(28);
+    b[8] = "......oooooooooo............";
+    b[9] = ".....okkhhhhHHhhoo..........";
+    b[10] = "....okhhhHHHhhhhhhoo........";
+    b[11] = "...okhhHHhhhhhhhhhhhoo......";
+    b[12] = HEAD[12].slice(0, 12) + "hhssssssss" + HEAD[12].slice(22);
+    return b;
+  })();
   var TORSO_KEY = {
     o: "outline",
     c: "scarf",
     C: "scarfD",
-    i: "shirt",
     f: "shirtL",
+    i: "shirt",
     j: "shirtD",
+    J: "shirtDD",
     v: "vest",
     V: "vestL",
     x: "vestD",
+    X: "vestDD",
     a: "strap",
+    A: "strapL",
     l: "belt",
     y: "buckle",
+    Y: "buckleD",
     t: "trouser",
-    T: "trouserD"
+    T: "trouserD",
+    U: "trouserL"
   };
   var TORSO = [
-    "...occo..",
-    "..ocCcco.",
-    ".oxvaCifo",
-    "oxvvaiifo",
-    "oxvvaiifo",
-    "oxvvviafo",
-    "oxvVviiao",
-    "oxvVvijio",
-    "oxvvvijio",
-    "oxvvvvjio",
-    "oxvvvvjio",
-    "oxxvvvjjo",
-    "olllllylo",
-    "oTtttttto",
-    "oTtttttto",
-    ".oTtttto."
+    "......occco.....",
+    ".....ocCccco....",
+    "....oxcCccifo...",
+    "...oxvACcciifo..",
+    "..oxvvaAcCiiifo.",
+    ".oxvvvvaACiiifo.",
+    ".oxvvvvvaAiiijfo",
+    ".oxvVvvvvaAiijfo",
+    ".oxvVvvvvvaAijfo",
+    ".oxvVvvvvvvaAjfo",
+    ".oxvvvvvvvvvaAio",
+    ".oxvvVVVVvvvviao",
+    ".oxvvxxxxvvvvijo",
+    ".oxvvvvvvvvvvijo",
+    ".oxvvvvvvvvvvijo",
+    ".oxvVvvvvvvvvjfo",
+    ".oxvVvvvvvvvvjio",
+    ".oxvvvvvvvvvvjio",
+    ".oxxvvvvvvvvvjio",
+    ".oxxvvvvvvvvvvjo",
+    ".oxxvVvvvvvvvvjo",
+    ".oxxvvvvvvvvvvjo",
+    ".oxxxvvvvvvvvvjo",
+    ".oXxxxvvvvvvvvjo",
+    ".olllllllllyYlo.",
+    ".olAlllllllyYlo.",
+    ".oTtttttttttUto.",
+    ".oTttttttttttto.",
+    "..oTtttttttttto.",
+    "..oTTtttttttto.."
   ];
-  var TORSO_HIP = { x: 4, y: 16 };
-  var PACK_KEY = {
-    o: "outline",
-    A: "roll",
-    E: "rollD",
-    K: "canvasL",
-    M: "canvas",
-    N: "canvasD",
-    L: "strap",
-    y: "buckle"
-  };
+  var TORSO_HIP = { x: 8, y: 30 };
+  var PACK_KEY = { o: "outline", K: "canvasL", M: "canvas", N: "canvasD", R: "roll", Q: "rollD", L: "packStrap", y: "buckle", Y: "buckleD" };
   var PACK = [
-    ".ooooo.",
-    "oAAAAEo",
-    "oEEEEEo",
-    "ooooooo",
-    "oKKKKMo",
-    "oKMMMMo",
-    "oLLLLLo",
-    "oMMyMNo",
-    "oMMMMNo",
-    "oNNNNNo",
-    ".ooooo."
+    "..ooooooooo.",
+    ".oRRRRRRRQQo",
+    "oRRQRRRRRQQo",
+    "oQQQQQQQQQQo",
+    ".ooooooooooo",
+    ".oKKKKKKKMMo",
+    ".oKKMMMMMMNo",
+    ".oLLLLLLLLLo",
+    ".oKMMyMMMMNo",
+    ".oKMMYMMMMNo",
+    ".oKMMMMMMMNo",
+    ".oKMMMMMMNNo",
+    ".oMMMMMMMNNo",
+    ".oMMMMMMNNNo",
+    ".oNNNNNNNNNo",
+    "..ooooooooo."
   ];
-  var PACK_ANCHOR = { x: 6, y: 1 };
-  var BOOT_KEY = { o: "outline", O: "boot", Q: "bootL", U: "sole" };
+  var PACK_ANCHOR = { x: 11, y: 2 };
+  var BOOT_KEY = { o: "outline", O: "boot", P: "bootL", Z: "sole", W: "bootL" };
   var BOOT = [
-    "oQOo..",
-    "oQOOo.",
-    "oOOOOo",
-    "oUUUUo"
+    "oOOOOo....",
+    "oPOOOo....",
+    "oPOOOOo...",
+    "oPOOOOOo..",
+    "oPPOOOOOo.",
+    "oZZZZZZZZo",
+    ".oooooooo."
   ];
-  var BOOT_ANKLE = { x: 2, y: 1 };
+  var BOOT_ANKLE = { x: 3, y: 1 };
   var PROP_KEY = {
     o: "outline",
     w: "wood",
@@ -10998,73 +11107,28 @@ body {
     y: "pencil",
     k: "outline"
   };
-  var PROPS = {
-    trowel: { at: { x: 1, y: 0 }, rows: [
-      "ow...",
-      "oWo..",
-      ".oso.",
-      "oSSso",
-      "oSSso",
-      ".oSo.",
-      "..o.."
-    ] },
-    brush: { at: { x: 1, y: 1 }, rows: [
-      ".o..",
-      "oWo.",
-      "owo.",
-      "oBBo",
-      "ohho",
-      "ohho",
-      ".oo."
-    ] },
-    pencil: { at: { x: 2, y: 2 }, rows: [
-      "....o",
-      "...oy",
-      "..oyo",
-      ".oyo.",
-      "oko.."
-    ] },
-    notebook: { at: { x: 2, y: 3 }, rows: [
-      "ooooo",
-      "oLLpo",
-      "oLLpo",
-      "oLLpo",
-      "oLLpo",
-      "ooooo"
-    ] },
-    canteen: { at: { x: 2, y: 2 }, rows: [
-      ".oo...",
-      "oCCo..",
-      "oCcco.",
-      ".occco",
-      "..occo",
-      "...oo."
-    ] },
-    beer: { at: { x: 2, y: 3 }, rows: [
-      "....oo",
-      "...oGo",
-      "..oggo",
-      ".ongo.",
-      "ogo...",
-      "oo...."
-    ] },
-    lens: { at: { x: 1, y: 1 }, rows: [
-      ".oooooo.",
-      "obBbbBlo",
-      ".oooooo."
-    ] },
-    peg: { at: { x: 1, y: 1 }, rows: [
-      "orro",
-      "owo.",
-      "owo.",
-      "owo.",
-      ".o.."
-    ] }
+  var PROPS_1X = {
+    trowel: { at: { x: 1, y: 0 }, rows: ["ow...", "oWo..", ".oso.", "oSSso", "oSSso", ".oSo.", "..o.."] },
+    brush: { at: { x: 1, y: 1 }, rows: [".o..", "oWo.", "owo.", "oBBo", "ohho", "ohho", ".oo."] },
+    pencil: { at: { x: 2, y: 2 }, rows: ["....o", "...oy", "..oyo", ".oyo.", "oko.."] },
+    notebook: { at: { x: 2, y: 3 }, rows: ["ooooo", "oLLpo", "oLLpo", "oLLpo", "oLLpo", "ooooo"] },
+    canteen: { at: { x: 2, y: 2 }, rows: [".oo...", "oCCo..", "oCcco.", ".occco", "..occo", "...oo."] },
+    beer: { at: { x: 2, y: 3 }, rows: ["....oo", "...oGo", "..oggo", ".ongo.", "ogo...", "oo...."] },
+    lens: { at: { x: 1, y: 1 }, rows: [".oooooo.", "obBbbBlo", ".oooooo."] },
+    peg: { at: { x: 1, y: 1 }, rows: ["orro", "owo.", "owo.", "owo.", ".o.."] }
   };
-  var CW = 60;
-  var CH = 80;
-  var OX = 30;
-  var OY = 48;
+  var PROPS = Object.fromEntries(Object.entries(PROPS_1X).map(([k, v]) => {
+    const rows = [];
+    for (const r of v.rows) {
+      const d = [...r].map((c) => c + c).join("");
+      rows.push(d, d);
+    }
+    return [k, { at: { x: v.at.x * 2, y: v.at.y * 2 }, rows }];
+  }));
+  var CW = 124;
+  var CH = 156;
+  var OX = 62;
+  var OY = 92;
   var PixelFigure = class {
     constructor(kind = "vess") {
       this.kind = kind;
@@ -11073,12 +11137,10 @@ body {
       this.img = this.g.createImageData(CW, CH);
       this.col = new Array(CW * CH);
       this.pid = new Uint8Array(CW * CH);
-      this.ox = OX;
-      this.oy = OY;
-    }
-    _clear() {
-      this.pid.fill(0);
-      this.col.fill(null);
+      this.ox = OX / HR;
+      this.oy = OY / HR;
+      this.w = CW / HR;
+      this.h = CH / HR;
     }
     _put(x, y, rgb, id) {
       x = Math.round(x);
@@ -11088,8 +11150,9 @@ body {
       this.col[i] = rgb;
       this.pid[i] = id;
     }
-    /** A sprite at a body-space point, optionally sheared by a lean. */
-    _sprite(rows, key2, pal, bx, by, anchor, id, lean = 0, dark = 0) {
+    /** A sprite with its anchor at a body-space point (world units). */
+    _sprite(rows, key2, pal, wx, wy, anchor, id, lean = 0, dark = 0) {
+      const bx = Math.round(OX + wx * HR), by = Math.round(OY + wy * HR);
       const H = rows.length;
       for (let y = 0; y < H; y++) {
         const row2 = rows[y];
@@ -11101,30 +11164,32 @@ body {
           let c = pal[key2[ch]];
           if (!c) continue;
           if (dark) c = mix(c, pal.outline, dark);
-          this._put(OX + bx + x - anchor.x + sx, OY + by + y - anchor.y, c, id);
+          this._put(bx + x - anchor.x + sx, by + y - anchor.y, c, id);
         }
       }
     }
     /**
-     * A limb: a solid stroke from a to b, `w` pixels across, coloured with a
-     * shaded back edge. `cuff` paints the first stretch near `a` another colour,
-     * which is how a rolled sleeve ends at the elbow.
+     * A limb: a solid stroke from a to b (world units), `w` art pixels across,
+     * in three tones - the cloth, a shaded back edge two pixels deep, and a lit
+     * pixel down the front. `cuff` paints the stretch nearest `a` another
+     * colour, which is how a rolled sleeve ends at the elbow.
      */
-    _limb(a, b, w, base, shade2, id, opts = {}) {
-      const ax = OX + a.x, ay = OY + a.y, bx = OX + b.x, by = OY + b.y;
+    _limb(a, b, w, tone, id, opts = {}) {
+      const ax = OX + a.x * HR, ay = OY + a.y * HR, bx = OX + b.x * HR, by = OY + b.y * HR;
       const len = Math.hypot(bx - ax, by - ay);
       const n = Math.max(2, Math.ceil(len * 2));
-      const r = w / 2;
+      const w0 = w, w1 = opts.taper ? w * opts.taper : w;
       const mask = /* @__PURE__ */ new Map();
       for (let k = 0; k <= n; k++) {
         const t = k / n;
         const cx = ax + (bx - ax) * t, cy = ay + (by - ay) * t;
+        const r = (w0 + (w1 - w0) * t) / 2;
         const x0 = Math.floor(cx - r), x1 = Math.ceil(cx + r);
         const y0 = Math.floor(cy - r), y1 = Math.ceil(cy + r);
         for (let y = y0; y <= y1; y++) {
           for (let x = x0; x <= x1; x++) {
             const dx = x + 0.5 - cx, dy = y + 0.5 - cy;
-            if (dx * dx + dy * dy > r * r + 0.15) continue;
+            if (dx * dx + dy * dy > r * r + 0.2) continue;
             const key2 = y * CW + x;
             const along = t * len;
             const prev = mask.get(key2);
@@ -11135,38 +11200,34 @@ body {
       const inside = (x, y) => mask.has(y * CW + x);
       for (const [key2, along] of mask) {
         const x = key2 % CW, y = key2 / CW | 0;
-        let c = base;
+        let c = tone.base;
         if (opts.cuff && along < opts.cuff) c = opts.cuffCol;
-        else if (opts.tip && along > len - opts.tip) c = opts.tipCol;
-        if (!inside(x - 1, y) || !inside(x, y + 1) && Math.abs(by - ay) < Math.abs(bx - ax)) c = mix(c, shade2, 0.85);
+        const back = !inside(x - 1, y) || !inside(x - 2, y);
+        const under = !inside(x, y + 1) && Math.abs(by - ay) < Math.abs(bx - ax) * 1.2;
+        if (back || under) c = mix(c, tone.shade, !inside(x - 1, y) ? 0.95 : 0.55);
+        else if (!inside(x + 1, y) && tone.light) c = tone.light;
+        if (opts.crease && Math.abs(along - opts.crease) < 0.9 && inside(x - 2, y) && inside(x + 2, y)) c = mix(c, tone.shade, 0.6);
         this._put(x, y, c, id);
       }
     }
-    /** The finishing pass: one outline round the lot, and lines between parts. */
     _finish(pal) {
       const { col, pid, img } = this;
       const d = img.data;
       const out = pal.outline;
       const sel = new Uint8Array(CW * CH);
-      for (let y = 0; y < CH; y++) {
-        for (let x = 0; x < CW; x++) {
+      for (let y = 1; y < CH - 1; y++) {
+        for (let x = 1; x < CW - 1; x++) {
           const i = y * CW + x;
           const a = pid[i];
           if (!a) continue;
-          const n4 = [x > 0 ? i - 1 : -1, x < CW - 1 ? i + 1 : -1, y > 0 ? i - CW : -1, y < CH - 1 ? i + CW : -1];
-          for (const j of n4) {
-            if (j >= 0 && pid[j] > a + 0) {
-              sel[i] = 1;
-              break;
-            }
-          }
+          if (pid[i - 1] > a || pid[i + 1] > a || pid[i - CW] > a || pid[i + CW] > a) sel[i] = 1;
         }
       }
       for (let i = 0; i < CW * CH; i++) {
         const o = i * 4;
         let c = col[i];
         if (c) {
-          if (sel[i]) c = mix(c, out, 0.6);
+          if (sel[i]) c = mix(c, out, 0.55);
           d[o] = c[0];
           d[o + 1] = c[1];
           d[o + 2] = c[2];
@@ -11185,85 +11246,64 @@ body {
       this.g.putImageData(img, 0, 0);
     }
     /**
-     * Draw one frame.
-     *
-     * `s` is the solved skeleton in body space (hip at 0,0, y down, facing
-     * right): lean, breath, the two arms as {sh, el, ha}, the two legs as
-     * {hip, knee, ankle, air}, what is held, and the face.
+     * One frame. `s` is the solved skeleton in body space (hip at 0,0, world
+     * units, y down, facing right).
      */
     render(s) {
       const pal = palette(this.kind, !!s.spore);
-      this._clear();
+      this.pid.fill(0);
+      this.col.fill(null);
       const L = s.lean || 0;
-      const br = Math.round(s.breath || 0);
-      const FAR2 = 0.3;
-      const far = (k) => mix(pal[k], pal.outline, FAR2);
+      const br = s.breath || 0;
+      const FAR2 = 0.32;
+      const tone = (base, shade2, light, dark) => ({
+        base: dark ? mix(pal[base], pal.outline, FAR2) : pal[base],
+        shade: dark ? mix(pal[shade2], pal.outline, FAR2) : pal[shade2],
+        light: light ? dark ? mix(pal[light], pal.outline, FAR2) : pal[light] : null
+      });
       let id = 1;
       const leg = (lg, dark, idl) => {
-        const base = dark ? far("trouser") : pal.trouser;
-        const shade2 = dark ? far("trouserD") : pal.trouserD;
-        this._limb(lg.hip, lg.knee, 4, base, shade2, idl);
-        this._limb(lg.knee, lg.ankle, 3.2, base, shade2, idl);
-        const tip = lg.air > 0.05 ? -1 : 0;
-        this._sprite(
-          BOOT,
-          BOOT_KEY,
-          pal,
-          Math.round(lg.ankle.x),
-          Math.round(lg.ankle.y) + tip,
-          BOOT_ANKLE,
-          idl + 1,
-          0,
-          dark ? FAR2 : 0
-        );
+        const tr = tone("trouser", "trouserD", "trouserL", dark);
+        this._limb(lg.hip, lg.knee, 8.4, tr, idl, { taper: 0.86 });
+        this._limb(lg.knee, lg.ankle, 7, tr, idl, { taper: 0.84, crease: 3 });
+        const lift = lg.air > 0.4 ? -1 : 0;
+        this._sprite(BOOT, BOOT_KEY, pal, lg.ankle.x, lg.ankle.y + lift / HR, BOOT_ANKLE, idl + 1, 0, dark ? FAR2 : 0);
       };
-      leg(s.legF, true, id);
-      id += 2;
-      const bag = s.bag;
-      this._sprite(PACK, PACK_KEY, pal, Math.round(bag.x), Math.round(bag.y) + br, PACK_ANCHOR, id++, 0, 0);
       const arm = (a, dark, idl, tool) => {
         const sh = { x: a.sh.x, y: a.sh.y + br }, el = { x: a.el.x, y: a.el.y + br }, ha = { x: a.ha.x, y: a.ha.y + br };
-        this._limb(sh, el, 3, dark ? far("shirt") : pal.shirt, dark ? far("shirtD") : pal.shirtD, idl);
+        this._limb(sh, el, 6.2, tone("shirt", "shirtD", "shirtL", dark), idl, { taper: 0.9, crease: 6 });
         this._limb(
           el,
           ha,
-          2.6,
-          dark ? far("skin") : pal.skin,
-          dark ? far("skinD") : pal.skinD,
+          5,
+          tone("skin", "skinD", "skinL", dark),
           idl,
-          { cuff: 1.6, cuffCol: dark ? far("shirtL") : pal.shirtL }
+          { taper: 0.9, cuff: 3.2, cuffCol: dark ? mix(pal.shirtL, pal.outline, FAR2) : pal.shirtL }
         );
-        this._limb(ha, ha, 3.2, dark ? far("skin") : pal.skin, dark ? far("skinD") : pal.skinD, idl);
+        this._limb(ha, ha, 5.6, tone("skin", "skinD", "skinL", dark), idl);
         if (tool && PROPS[tool]) {
           const P = PROPS[tool];
-          this._sprite(P.rows, PROP_KEY, pal, Math.round(ha.x), Math.round(ha.y), P.at, idl + 1, 0, dark ? FAR2 : 0);
+          this._sprite(P.rows, PROP_KEY, pal, ha.x, ha.y, P.at, idl + 1, 0, dark ? FAR2 : 0);
         }
       };
+      leg(s.legF, true, id);
+      id += 2;
+      this._sprite(PACK, PACK_KEY, pal, s.bag.x, s.bag.y + br, PACK_ANCHOR, id++, 0, 0);
       arm(s.armF, true, id);
       id += 2;
-      this._sprite(TORSO, TORSO_KEY, pal, 0, br, TORSO_HIP, id++, L);
       const rows = HEAD.slice();
       const f = s.face || {};
-      const patch = f.shut ? HEAD_SHUT2 : null;
-      if (patch) for (const k of Object.keys(patch)) rows[+k] = patch[k];
-      if (f.brow && !f.shut) for (const k of Object.keys(HEAD_BROW)) rows[+k] = HEAD_BROW[k];
-      if (f.open) for (const k of Object.keys(HEAD_OPEN2)) rows[+k] = HEAD_OPEN2[k];
       if (f.bare) for (const k of Object.keys(HEAD_BARE)) rows[+k] = HEAD_BARE[k];
-      this._sprite(
-        rows,
-        HEAD_KEY2,
-        pal,
-        Math.round(s.neck.x),
-        Math.round(s.neck.y) + br + (s.nod || 0),
-        HEAD_NECK,
-        id++,
-        0
-      );
+      if (f.brow && !f.shut) for (const k of Object.keys(HEAD_BROW)) rows[+k] = HEAD_BROW[k];
+      if (f.shut) for (const k of Object.keys(HEAD_SHUT2)) rows[+k] = HEAD_SHUT2[k];
+      if (f.open) for (const k of Object.keys(HEAD_OPEN2)) rows[+k] = HEAD_OPEN2[k];
+      this._sprite(rows, HEAD_KEY2, pal, s.neck.x, s.neck.y + br + (s.nod || 0) / HR, HEAD_NECK, id++, 0);
+      this._sprite(TORSO, TORSO_KEY, pal, 0, br, TORSO_HIP, id++, L);
       leg(s.legN, false, id);
       id += 2;
       if (s.hold && PROPS[s.hold]) {
         const P = PROPS[s.hold];
-        this._sprite(P.rows, PROP_KEY, pal, Math.round(s.chest.x), Math.round(s.chest.y) + br, P.at, id++, 0);
+        this._sprite(P.rows, PROP_KEY, pal, s.chest.x, s.chest.y + br, P.at, id++, 0);
       }
       arm(s.armN, false, id, s.tool);
       id += 2;
@@ -11271,30 +11311,48 @@ body {
       return this.cv;
     }
   };
-  function hatSprite(kind = "vess") {
-    const pal = palette(kind, false);
-    const rows = HEAD.slice(0, 6);
+  function bake3(rows, key2, pal) {
     const W2 = rows[0].length, H = rows.length;
-    const cv = makeCanvas2(W2 + 2, H + 2);
+    const cv = makeCanvas2(W2, H);
     const g = cv.getContext("2d");
     for (let y = 0; y < H; y++) {
       for (let x = 0; x < W2; x++) {
         const ch = rows[y][x];
         if (ch === ".") continue;
-        const c = pal[HEAD_KEY2[ch]];
+        const c = pal[key2[ch]];
         if (!c) continue;
         g.fillStyle = `rgb(${c[0] | 0},${c[1] | 0},${c[2] | 0})`;
-        g.fillRect(x + 1, y + 1, 1, 1);
+        g.fillRect(x, y, 1, 1);
       }
     }
-    return { cv, ox: (W2 + 2) / 2, oy: H + 1 };
+    return cv;
+  }
+  function hatSprite(kind = "vess") {
+    const cv = bake3(HEAD.slice(0, 12), HEAD_KEY2, palette(kind, false));
+    const small = makeCanvas2(Math.ceil(cv.width / HR), Math.ceil(cv.height / HR));
+    const g = small.getContext("2d");
+    g.imageSmoothingEnabled = false;
+    g.drawImage(cv, 0, 0, small.width, small.height);
+    return { cv: small, ox: small.width / 2, oy: small.height };
   }
   var FIGURE_SOCKETS = {
-    shoulder: { x: 0.4, y: -13.4 },
-    neck: { x: 0.6, y: -16 },
-    bag: { x: -3.4, y: -14 },
-    chest: { x: 2.6, y: -8.5 }
+    shoulder: { x: -0.3, y: -12.4 },
+    neck: { x: -0.5, y: -14.2 },
+    bag: { x: -3.6, y: -13.6 },
+    chest: { x: 2.6, y: -8.6 }
   };
+  var WALK = [
+    [0.44, 0],
+    [0.26, 0],
+    [0.07, 0],
+    [-0.13, 0],
+    [-0.34, 0.02],
+    [-0.33, 0.13],
+    [0, 0.2],
+    [0.31, 0.1]
+  ];
+  var WALK_BOB = [0.2, 1, 0.35, -0.55, 0.2, 1, 0.35, -0.55];
+  var WALK_CYCLE = 1.56;
 
   // js/art/facedata.js
   var FACE_W = 59;
@@ -11899,6 +11957,7 @@ body {
       const moving = spd > 5;
       const tuck = 1 - this.b.crouch * 0.62;
       if (this.jz > 0.5) {
+        this.walkFrame = -1;
         for (let i = 0; i < 2; i++) {
           const f = this.feet[i];
           f.air = 0;
@@ -11908,8 +11967,28 @@ body {
         }
         return;
       }
-      if (moving) this.step = (this.step + spd * dt / (stride * 2)) % 1;
-      else this.step = (this.step + dt * 0.35) % 1;
+      const legL = this.rig.leg.near.upper.len + this.rig.leg.near.lower.len;
+      if (moving) {
+        this.walkP = ((this.walkP || 0) + spd * dt / (legL * WALK_CYCLE * tuck)) % 1;
+        const fi = Math.floor(this.walkP * 8) % 8;
+        this.walkFrame = fi;
+        this.step = fi / 8;
+        const dir2 = Math.sign(this.vx) || this.facing || 1;
+        for (let i = 0; i < 2; i++) {
+          const f = this.feet[i];
+          const [fx, lift] = WALK[(fi + i * 4) % 8];
+          const was = f.air;
+          f.x = this.x + dir2 * fx * legL * tuck;
+          f.air = lift * legL;
+          f.y = terr.surfaceY(f.x) - f.air;
+          f.plant = f.x;
+          f.sw = false;
+          if (was > 0.5 && f.air === 0) this._land(f, terr);
+        }
+        return;
+      }
+      this.walkFrame = -1;
+      this.step = (this.step + dt * 0.35) % 1;
       const dir = Math.sign(this.vx) || this.facing || 1;
       for (let i = 0; i < 2; i++) {
         const f = this.feet[i];
@@ -11982,8 +12061,8 @@ body {
         ctx.restore();
       }
       const drop = this.b.crouch * rig.standH * 0.62;
-      const bob = Math.abs(this.vx) > 6 ? Math.sin(this.step * TAU * 2) * 1.1 * rig.K : 0;
-      const breath = Math.sin(this.breathe) * 0.35 * rig.K;
+      const bob = this.walkFrame >= 0 ? WALK_BOB[this.walkFrame] * rig.K : 0;
+      const breath = this.walkFrame >= 0 ? 0 : Math.round(Math.sin(this.breathe) * 1.2) * 0.25;
       const hipWorldY = this.y - rig.standH + drop + bob - this.jz;
       const s = cam.worldToScreen(this.x, hipWorldY);
       const lean = this.b.lean;
@@ -12020,7 +12099,7 @@ body {
       if (flat2 < 0.995) ctx.translate(0, -(1 - flat2) * 2.2 * rig.K);
       if (Math.abs(this.squash) > 5e-3) ctx.scale(1 - this.squash * 0.5, 1 + this.squash);
       ctx.imageSmoothingEnabled = false;
-      ctx.drawImage(cv, -this.fig.ox, -this.fig.oy);
+      ctx.drawImage(cv, -this.fig.ox, -this.fig.oy, this.fig.w, this.fig.h);
       ctx.restore();
     }
     /** Where the shoulder, elbow and hand of one arm are, in body space. */
@@ -12182,11 +12261,17 @@ body {
       const crab = this.game.crab;
       if (this.mode === "ride" && crab) {
         this.climb = damp(this.climb, 1, 1e-3, dt);
-        const seat = crab.shellWorldAB(0.34, 0.66);
+        const job = this.game.planting;
+        const digging = job && job.by === this && job.phase === "planting";
+        const at = digging ? { a: clamp(job.plot.a + 0.12, -0.9, 0.9), b: job.plot.b } : { a: 0.34, b: 0.66 };
+        this.seatA = damp(this.seatA ?? at.a, at.a, 0.02, dt);
+        this.seatB = damp(this.seatB ?? at.b, at.b, 0.02, dt);
+        const seat = crab.shellWorldAB(this.seatA, this.seatB);
         this.x = seat.x;
         this.y = seat.y + 1;
         this.vx = crab.vx;
-        this.setFacing(-1);
+        this.setFacing(digging ? -1 : -1);
+        if (digging && this.pose !== POSE.DIG) this.setPose(POSE.DIG);
         this._turn(dt);
         this.t += dt;
         this.poseT += dt;
@@ -12196,12 +12281,13 @@ body {
           this.speechT -= dt;
           if (this.speechT <= 0) this.speech = null;
         }
-        if (this.pose !== POSE.SIT && this.pose !== POSE.WRITE && this.pose !== POSE.TALK) {
+        if (!digging && this.pose !== POSE.SIT && this.pose !== POSE.WRITE && this.pose !== POSE.TALK) {
           this.setPose(POSE.SIT);
         }
         if (this.poseT > 6 && this.pose === POSE.SIT) this.setPose(POSE.WRITE);
         else if (this.poseT > 8 && this.pose === POSE.WRITE) this.setPose(POSE.SIT);
         this._settle(dt);
+        this.walkFrame = -1;
         for (const f of this.feet) {
           f.x = this.x - 3 * this.rig.K * f.side;
           f.y = this.y + 1;
@@ -12215,6 +12301,14 @@ body {
         if (Math.abs(want - this.x) > 12) this.moveTo = want;
       }
       super.update(dt);
+      const pj = this.game.planting;
+      if (pj && pj.by === this && pj.ground && (pj.phase === "planting" || pj.phase === "working")) {
+        this.moveTo = void 0;
+        this.vx = 0;
+        this.setFacing(Math.sign(crab.x - this.x) || 1);
+        if (this.pose !== POSE.DIG) this.setPose(POSE.DIG);
+        return;
+      }
       if (this.game.state === "intro") return;
       if (this.mode === "owned") return;
       this._chatter(dt);
@@ -13765,6 +13859,9 @@ body {
       this.justDone = a;
       this.doneT = 4;
       a.reward?.(this.game);
+      if (this.game.garden?.unlockPlot()) {
+        setTimeout(() => this.game.ui?.say("A new bed on your back", 3.5), 4200);
+      }
       this.game.audio?.play("discover");
       this.game.npc?.say(a.say, 6);
       this.game.ui?.say(`${a.name} - ${a.gain}`, 4);
@@ -13814,7 +13911,7 @@ body {
       want: (g) => g.economy?.water > 4 ? 1 : 8,
       lines: [
         { icon: "drop", t: "From you. There is a spring under that shell and it has been sitting on it since before there were people." },
-        { icon: "pump", t: "The valve in the corner is the muscle. Tap it in time with the band on the gauge - in the band it pays, dead centre it pays double, and a run of good ones pays far more than a run of bad ones." },
+        { icon: "pump", t: "The valve in the corner is the muscle. Press it when the needle on the dial is in the green - in the green it pays, the bright middle pays double, and a run of good ones pays far more than a run of bad ones." },
         { icon: "well", t: "Fill the shell and everything on your back drinks out of it. Let it run dry and everything on your back dies. That is the whole economy of this place." }
       ]
     },
@@ -14958,7 +15055,7 @@ body {
     }
   });
   var cache10 = /* @__PURE__ */ new Map();
-  var bake3 = (p, ox, oy, outline = "#14101a", extra = {}) => ({
+  var bake4 = (p, ox, oy, outline = "#14101a", extra = {}) => ({
     cv: p.resolve(MATS2, { ...LIGHT6, outline: 1, outlineColor: outline }),
     ox,
     oy,
@@ -14992,7 +15089,7 @@ body {
     grow(cx, base, -Math.PI / 2 + (rng5() - 0.5) * 0.3, 6 * S2, 2.6 * S2, 0);
     p.grain(mat, { freq: 0.9 / S2, amp: 0.18, seed: 11 });
     p.speckle(mat, { density: 0.08, amp: 0.3, seed: 5 });
-    return bake3(p, cx, base, "#20101c");
+    return bake4(p, cx, base, "#20101c");
   }
   function paintFan(S2, rng5, mat) {
     const H = 20 * S2, W2 = 22 * S2;
@@ -15028,7 +15125,7 @@ body {
       }
     }
     p.speckle(mat, { density: 0.1, amp: 0.34, seed: 9 });
-    return bake3(p, cx, base, "#20101c");
+    return bake4(p, cx, base, "#20101c");
   }
   function paintBrain(S2, rng5, mat) {
     const W2 = 18 * S2, H = 12 * S2;
@@ -15046,7 +15143,7 @@ body {
       );
     }
     p.grain(mat, { freq: 1.1 / S2, amp: 0.2, seed: 17 });
-    return bake3(p, cx, base, "#20101c");
+    return bake4(p, cx, base, "#20101c");
   }
   function paintTubes(S2, rng5, mat) {
     const W2 = 16 * S2, H = 20 * S2;
@@ -15075,7 +15172,7 @@ body {
       );
     }
     p.grain(mat, { freq: 1 / S2, amp: 0.16, seed: 23 });
-    return bake3(p, cx, base, "#20101c");
+    return bake4(p, cx, base, "#20101c");
   }
   function paintAnemone(S2, rng5, mat) {
     const W2 = 16 * S2, H = 14 * S2;
@@ -15098,7 +15195,7 @@ body {
         { mat, dome: 0.9 * S2, steps: 7, tint: 0.1 }
       );
     }
-    return bake3(p, cx, base, "#20101c");
+    return bake4(p, cx, base, "#20101c");
   }
   function paintWeed2(S2, rng5) {
     const H = 26 * S2, W2 = 14 * S2;
@@ -15121,7 +15218,7 @@ body {
       );
     }
     p.grain("weed", { freq: 1 / S2, amp: 0.16, seed: 29 });
-    return bake3(p, cx, base, "#0a1d13");
+    return bake4(p, cx, base, "#0a1d13");
   }
   function paintUrchin(S2, rng5) {
     const R2 = 5 * S2;
@@ -15141,7 +15238,7 @@ body {
       );
     }
     p.ellipse(cx, base - R2 * 0.5, R2, R2 * 0.82, { mat: "coralViolet", dome: R2 * 0.8, tint: 0.06 });
-    return bake3(p, cx, base, "#160c1e");
+    return bake4(p, cx, base, "#160c1e");
   }
   function paintStar(S2, rng5) {
     const R2 = 6 * S2;
@@ -15161,7 +15258,7 @@ body {
     }
     p.ellipse(cx, base - R2 * 0.22, R2 * 0.42, R2 * 0.3, { mat: "coralGold", dome: R2 * 0.35, tint: 0.1 });
     p.speckle("coralGold", { density: 0.16, amp: 0.4, seed: 3 });
-    return bake3(p, cx, base, "#241804");
+    return bake4(p, cx, base, "#241804");
   }
   function paintShell(S2, rng5) {
     const W2 = 7 * S2;
@@ -15180,7 +15277,7 @@ body {
         { mat: "petalWhite", mask: true, dome: 0.4 * S2, tint: -0.2 }
       );
     }
-    return bake3(p, cx, base, "#2a2620");
+    return bake4(p, cx, base, "#2a2620");
   }
   function paintCrablet(S2, rng5) {
     const W2 = 9 * S2, H = 6 * S2;
@@ -15223,7 +15320,7 @@ body {
       );
     }
     p.grain(mat, { freq: 1.2 / S2, amp: 0.16, seed: 7 });
-    return bake3(p, cx, base, "#20101c");
+    return bake4(p, cx, base, "#20101c");
   }
   function paintJelly(S2) {
     const R2 = 7 * S2;
@@ -15244,7 +15341,7 @@ body {
         { mat: "jelly", dome: 0.5 * S2, steps: 8, tint: 0.16 }
       );
     }
-    return bake3(p, cx, cy, "#1a1328", { R: R2 });
+    return bake4(p, cx, cy, "#1a1328", { R: R2 });
   }
   function reefArt(kind, S2 = 1, seed = 0) {
     const k = `${kind}:${S2.toFixed(2)}:${seed}`;
@@ -19515,6 +19612,145 @@ body {
     }
   };
 
+  // js/render/waterfx.js
+  var TILE = 96;
+  var FRAMES = 12;
+  var tiles = null;
+  function bakeCaustics() {
+    const pts = [];
+    let s = 1234567;
+    const rnd3 = () => {
+      s = Math.imul(s ^ s >>> 15, 2246822507) + 2654435769 >>> 0;
+      return s / 4294967296;
+    };
+    for (let i = 0; i < 12; i++) pts.push({ x: rnd3() * TILE, y: rnd3() * TILE, r: 4 + rnd3() * 7, ph: rnd3() * 6.283, sp: rnd3() < 0.5 ? 1 : -1 });
+    const out = [];
+    for (let f = 0; f < FRAMES; f++) {
+      const cv = document.createElement("canvas");
+      cv.width = TILE;
+      cv.height = TILE;
+      const g = cv.getContext("2d");
+      const img = g.createImageData(TILE, TILE);
+      const a = f / FRAMES * Math.PI * 2;
+      const P = pts.map((p) => ({ x: p.x + Math.cos(a * p.sp + p.ph) * p.r, y: p.y + Math.sin(a * p.sp + p.ph) * p.r }));
+      for (let y = 0; y < TILE; y++) {
+        for (let x = 0; x < TILE; x++) {
+          let d1 = 1e9, d2 = 1e9;
+          for (const p of P) {
+            for (let oy = -1; oy <= 1; oy++) {
+              for (let ox = -1; ox <= 1; ox++) {
+                const dx = x - (p.x + ox * TILE), dy = y - (p.y + oy * TILE);
+                const d = dx * dx + dy * dy;
+                if (d < d1) {
+                  d2 = d1;
+                  d1 = d;
+                } else if (d < d2) d2 = d;
+              }
+            }
+          }
+          const e = Math.sqrt(d2) - Math.sqrt(d1);
+          let v = clamp01(1 - e / 3.2);
+          v = v * v;
+          v = v > 0.62 ? 1 : v > 0.3 ? 0.55 : v > 0.12 ? 0.22 : 0;
+          const o = (y * TILE + x) * 4;
+          img.data[o] = 210;
+          img.data[o + 1] = 250;
+          img.data[o + 2] = 255;
+          img.data[o + 3] = Math.round(v * 255);
+        }
+      }
+      g.putImageData(img, 0, 0);
+      out.push(cv);
+    }
+    return out;
+  }
+  var scratch = null;
+  function scratchFor(vw, vh) {
+    if (!scratch || scratch.width !== vw || scratch.height !== vh) {
+      scratch = document.createElement("canvas");
+      scratch.width = vw;
+      scratch.height = vh;
+    }
+    return scratch;
+  }
+  function drawWaterLight(ctx, vw, vh, opts) {
+    const { t, wet, surf, bed, camX, camY, zoom } = opts;
+    if (wet <= 0.02) return;
+    if (!tiles) tiles = bakeCaustics();
+    const frame2 = tiles[Math.floor(t * 9) % FRAMES];
+    const z = zoom;
+    const top = clamp(surf(vw / 2), -vh, vh);
+    const fog = ctx.createLinearGradient(0, Math.max(0, top), 0, vh);
+    fog.addColorStop(0, `rgba(40,170,196,${0.1 * wet})`);
+    fog.addColorStop(0.55, `rgba(16,92,140,${0.26 * wet})`);
+    fog.addColorStop(1, `rgba(6,30,70,${0.46 * wet})`);
+    ctx.fillStyle = fog;
+    ctx.fillRect(0, Math.max(0, top), vw, vh - Math.max(0, top));
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    const sc = Math.max(1, Math.round(z * 0.9));
+    const T = TILE * sc;
+    const offX = (-camX * z % T + T) % T, offY = (-camY * z % T + T) % T;
+    const layer = scratchFor(vw, vh);
+    const lg = layer.getContext("2d");
+    lg.clearRect(0, 0, vw, vh);
+    lg.imageSmoothingEnabled = false;
+    for (let y = offY - T; y < vh; y += T) {
+      for (let x = offX - T; x < vw; x += T) lg.drawImage(frame2, Math.round(x), Math.round(y), T, T);
+    }
+    const step = 3;
+    for (let x = 0; x < vw; x += step) {
+      const by = bed(x);
+      if (!isFinite(by)) continue;
+      const s0 = surf(x);
+      const depth = clamp01((by - s0) / (vh * 1.1));
+      const k = wet * (0.95 - depth * 0.55);
+      if (k <= 0.02) continue;
+      const band = Math.round(10 * z);
+      ctx.globalAlpha = k * 0.85;
+      ctx.drawImage(layer, x, Math.round(by - 2), step, band, x, Math.round(by - 2), step, band);
+      ctx.globalAlpha = k * 0.06;
+      const up = Math.round(Math.min(by - Math.max(s0, 0), 70 * z));
+      if (up > 2) ctx.drawImage(layer, x, Math.round(by - up), step, up, x, Math.round(by - up), step, up);
+    }
+    const sy = Math.max(-10, top);
+    for (let i = 0; i < 5; i++) {
+      const ph = i * 2.3;
+      const x = vw * ((i + 0.3) / 5) + Math.sin(t * 0.13 + ph) * vw * 0.06 - camX * z * 0.05 % (vw / 5);
+      const lean = 0.3 + Math.sin(t * 0.11 + ph) * 0.06;
+      const w0 = vw * 0.018, w1 = vw * (0.06 + 0.03 * Math.sin(ph));
+      const a = (0.05 + 0.05 * Math.pow(0.5 + 0.5 * Math.sin(t * 0.7 + ph * 1.7), 2)) * wet;
+      const len = vh * 0.95;
+      const g = ctx.createLinearGradient(x, sy, x + len * lean, sy + len);
+      g.addColorStop(0, `rgba(230,255,255,${a * 1.6})`);
+      g.addColorStop(0.5, `rgba(180,236,248,${a * 0.6})`);
+      g.addColorStop(1, "rgba(120,200,230,0)");
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.moveTo(x - w0, sy);
+      ctx.lineTo(x + w0, sy);
+      ctx.lineTo(x + len * lean + w1, sy + len);
+      ctx.lineTo(x + len * lean - w1, sy + len);
+      ctx.closePath();
+      ctx.fill();
+    }
+    if (top > -vh && top < vh) {
+      for (let x = 0; x < vw; x += 2) {
+        const yy = surf(x);
+        if (!isFinite(yy) || yy < -4 || yy > vh) continue;
+        const r = 0.5 + 0.5 * Math.sin(x * 0.09 + t * 2.1) * Math.sin(x * 0.031 - t * 1.3);
+        ctx.globalAlpha = wet * (0.25 + r * 0.55);
+        ctx.fillStyle = "#e8fdff";
+        ctx.fillRect(x, Math.round(yy), 2, Math.max(1, Math.round(z)));
+        ctx.globalAlpha = wet * 0.1 * (0.5 + r);
+        ctx.fillStyle = "#7fe0f0";
+        ctx.fillRect(x, Math.round(yy) + Math.round(z), 2, Math.round(6 * z));
+      }
+    }
+    ctx.restore();
+  }
+
   // js/ui/menu.js
   var ITEMS2 = [
     { id: "start", name: "START" },
@@ -20799,6 +21035,7 @@ body {
 
   // js/systems/garden.js
   var GROW_STAGES = 4;
+  var START_BEDS = 2;
   var Garden = class {
     constructor(game2) {
       this.game = game2;
@@ -20842,7 +21079,7 @@ body {
       this.plots = spots.map((s, i) => ({
         ...s,
         i,
-        unlocked: true,
+        unlocked: i < START_BEDS,
         plant: null,
         u: (s.b + 1) / 2,
         sway: Math.random() * TAU,
@@ -20910,7 +21147,8 @@ body {
       return this.plots.some((p) => p.plant && p.plant.id === id && p.plant.stage >= 3);
     }
     unlockPlot() {
-      const p = this.plots.find((q) => !q.unlocked);
+      const ORDER2 = [2, 16, 3, 4, 5, 17, 6, 7, 9, 8, 18, 10, 11, 12, 13, 14, 15];
+      const p = ORDER2.map((i) => this.plots[i]).find((q) => q && !q.unlocked) || this.plots.find((q) => !q.unlocked);
       if (p) {
         p.unlocked = true;
         return true;
@@ -23903,7 +24141,7 @@ body {
     h = Math.imul(h ^ h >>> 15, 739982445);
     return ((h ^ h >>> 13) >>> 0) / 4294967296;
   };
-  var bake4 = (p, opts = {}) => p.resolve(MATERIALS, {
+  var bake5 = (p, opts = {}) => p.resolve(MATERIALS, {
     ...LIGHT8,
     outline: 1,
     outlineColor: "#0a0f10",
@@ -23960,7 +24198,7 @@ body {
     p.grain("organ", { freq: 0.34 / S2, amp: 0.15, seed: 3, oct: 2 });
     p.speckle("organ", { density: 0.045, amp: 0.26, seed: 29 });
     p.smoothHeight(1, 0.45);
-    return { cv: bake4(p), ox: cx, oy: cy, r: R2 };
+    return { cv: bake5(p), ox: cx, oy: cy, r: R2 };
   }
   function paintSpring(S2, lv) {
     const w = Math.ceil(146 * S2) + 12, h = Math.ceil(162 * S2) + 12;
@@ -24005,7 +24243,7 @@ body {
     );
     p.grain("membrane", { freq: 0.3 / S2, amp: 0.12, seed: 13 });
     p.smoothHeight(1, 0.5);
-    return { cv: bake4(p), ox: cx, oy: cy, r: R2 };
+    return { cv: bake5(p), ox: cx, oy: cy, r: R2 };
   }
   function paintGut(S2, lv) {
     const w = Math.ceil(188 * S2) + 12, h = Math.ceil(146 * S2) + 12;
@@ -24059,7 +24297,7 @@ body {
     p.grain("organPale", { freq: 0.36 / S2, amp: 0.15, seed: 7 });
     p.speckle("organ", { density: 0.05, amp: 0.28, seed: 37 });
     p.smoothHeight(1, 0.5);
-    return { cv: bake4(p), ox: cx, oy: cy, r: R2 };
+    return { cv: bake5(p), ox: cx, oy: cy, r: R2 };
   }
   function paintGanglion(S2, lv) {
     const w = Math.ceil(168 * S2) + 12, h = Math.ceil(152 * S2) + 12;
@@ -24104,7 +24342,7 @@ body {
     p.speckle("nerve", { density: 0.07, amp: 0.32, seed: 23 });
     p.grain("nerve", { freq: 0.44 / S2, amp: 0.13, seed: 11 });
     p.smoothHeight(1, 0.5);
-    return { cv: bake4(p), ox: cx, oy: cy, r: R2 };
+    return { cv: bake5(p), ox: cx, oy: cy, r: R2 };
   }
   function paintMuscle(S2, lv) {
     const w = Math.ceil(172 * S2) + 12, h = Math.ceil(150 * S2) + 12;
@@ -24149,7 +24387,7 @@ body {
     p.grain("organ", { freq: 0.3 / S2, amp: 0.16, seed: 47, oct: 2 });
     p.speckle("organ", { density: 0.035, amp: 0.26, seed: 59 });
     p.smoothHeight(1, 0.5);
-    return { cv: bake4(p), ox: cx, oy: cy, r: R2 };
+    return { cv: bake5(p), ox: cx, oy: cy, r: R2 };
   }
   function paintGill(S2, lv, flip = 1) {
     const w = Math.ceil(150 * S2) + 10, h = Math.ceil(210 * S2) + 10;
@@ -24201,7 +24439,7 @@ body {
     ], H * 0.062, H * 0.05, { mat: "organPale", dome: H * 0.055, steps: 12, tint: -0.06 });
     p.grain("gill", { freq: 0.22 / S2, amp: 0.16, seed: 19 });
     p.smoothHeight(1, 0.5);
-    return { cv: bake4(p), ox: cx, oy: cy };
+    return { cv: bake5(p), ox: cx, oy: cy };
   }
   function paintSeed(S2, lv) {
     const w = Math.ceil(74 * S2) + 10, h = Math.ceil(84 * S2) + 10;
@@ -24233,7 +24471,7 @@ body {
     p.ellipse(cx, cy, R2 * 0.24, R2 * 0.34, { mat: "sap", mask: true, dome: R2 * 0.3, tint: 0.42, emissive: 0.75 });
     p.grain("seedcoat", { freq: 0.5 / S2, amp: 0.18, seed: 71 });
     p.smoothHeight(1, 0.4);
-    return { cv: bake4(p), ox: cx, oy: cy, r: R2 };
+    return { cv: bake5(p), ox: cx, oy: cy, r: R2 };
   }
   var cache13 = /* @__PURE__ */ new Map();
   function rampFrom(hex3, { lo = 0.1, hi = 1.55 } = {}) {
@@ -27811,7 +28049,7 @@ Coming back.` };
     _keys(ctx, W2, H) {
       const caps = [
         ["A D", "walk"],
-        ["SPC", "spring"],
+        ["SPC", "pump"],
         ["R", "pick"],
         ["E", "dig"],
         ["M", "mode"]
@@ -28421,29 +28659,31 @@ Coming back.` };
       const y = clamp(onScreen ? s.y - 26 : H * 0.42, 30, H - 60);
       const x = onScreen ? s.x : dir > 0 ? W2 - 10 : 10;
       const pulse = 0.6 + Math.sin(this.t * 2.4) * 0.4;
+      const col = lm.kind === "oasis" ? "#7fd0dd" : "#e2b74a";
+      if (!onScreen) {
+        const label = `${Math.round(Math.abs(d) / 10)}m`;
+        const pw = textWidth(label) + 24, ph = 15;
+        const px = dir > 0 ? W2 - pw - 6 : 6;
+        const py = Math.round(y - ph / 2);
+        ctx.globalAlpha = 0.78 + pulse * 0.22;
+        plaque(ctx, px, py, pw, ph, { tint: col });
+        drawNodeIcon(ctx, lm.kind === "oasis" ? "drop" : "crown", dir > 0 ? px + 8 : px + pw - 8, py + ph / 2, col, 1);
+        drawText(ctx, label, px + pw / 2 + (dir > 0 ? 3 : -3), py + 4, { color: INK, align: "center" });
+        ctx.fillStyle = col;
+        for (let i = 0; i < 3; i++) {
+          ctx.fillRect(dir > 0 ? px + pw + 1 + i : px - 2 - i, py + 4 + i, 1, Math.max(1, 7 - i * 2));
+        }
+        ctx.globalAlpha = 1;
+        if (this._hit(px, py, pw, ph)) this.hover = { title: lm.name || "Somewhere new", body: `${Math.round(Math.abs(d) / 10)}m ${dir > 0 ? "east" : "west"}.` };
+        return;
+      }
       ctx.globalAlpha = 0.35 + pulse * 0.4;
-      ctx.fillStyle = lm.kind === "oasis" ? "#7fd0dd" : "#e2b74a";
+      ctx.fillStyle = col;
       for (let i = 0; i < 4; i++) {
         ctx.fillRect(Math.round(x - dir * i), Math.round(y - 3 + i), 1, Math.max(1, 7 - i * 2));
       }
       ctx.globalAlpha = 1;
-      if (!onScreen) {
-        drawText(
-          ctx,
-          `${Math.round(Math.abs(d) / 10)}`,
-          x - dir * 6,
-          y + 6,
-          { color: FAINT, align: dir > 0 ? "right" : "left", outline: true, outlineColor: OUT2 }
-        );
-      } else {
-        drawText(
-          ctx,
-          lm.name,
-          x,
-          y - 12,
-          { color: INK, align: "center", outline: true, outlineColor: OUT2 }
-        );
-      }
+      drawText(ctx, lm.name, x, y - 12, { color: INK, align: "center", outline: true, outlineColor: OUT2 });
     }
     _treeReady() {
       const e = this.game.economy;
@@ -28455,10 +28695,39 @@ Coming back.` };
      * Drawn over the shell in world space: how close each plant is to being
      * worth picking. A full ring with a bead on it means take it.
      */
+    /**
+     * A bed going in. A small plate over it with the seed on one end and a bar
+     * that fills while he digs - the only thing on screen while it happens,
+     * because the thing to watch is him.
+     */
+    _plantTimer(ctx, cam) {
+      const j = this.game.planting;
+      if (!j) return;
+      const g = this.game;
+      const w = g.garden.plotWorld(j.plot);
+      const s = cam.worldToScreen(w.x, w.y - 18);
+      const bw = 30, bh = 9;
+      const x = Math.round(s.x - bw / 2), y = Math.round(s.y - bh);
+      const p = j.phase === "planting" ? j.p : 0;
+      const bob = Math.round(Math.sin(this.t * 2.4) * 1);
+      slab(ctx, x, y + bob, bw, bh, {});
+      drawNodeIcon(ctx, "sprout", x + 5, y + bob + bh / 2, j.phase === "planting" ? "#9ad86a" : "#b8a878", 1);
+      const tx = x + 10, tw = bw - 13;
+      R(ctx, tx, y + bob + 3, tw, 3, "rgba(10,7,4,0.8)");
+      if (p > 0) {
+        R(ctx, tx, y + bob + 3, Math.max(1, Math.round(tw * p)), 3, "#8cc468");
+        R(ctx, tx, y + bob + 3, Math.max(1, Math.round(tw * p)), 1, "#d8f5a4");
+      } else {
+        const k = 0.5 + 0.5 * Math.sin(this.t * 5);
+        R(ctx, tx, y + bob + 3, tw, 3, `rgba(226,183,74,${0.15 + k * 0.2})`);
+      }
+      R(ctx, Math.round(s.x) - 1, y + bob + bh, 2, 2, "rgba(10,7,4,0.6)");
+    }
     drawCrop(ctx, cam) {
       if (this.placing || this.drawerOpen) return;
       const g = this.game;
       const i = g.input;
+      this._plantTimer(ctx, cam);
       let pickHit = null;
       let waterHit = null;
       for (const plot of g.garden.plots) {
@@ -29879,7 +30148,7 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
       this.unlocked = /* @__PURE__ */ new Set();
       this.unlockCard = null;
       this.ui = new UI(this);
-      this.seeds = { dustmoss: 3, saltgrass: 2 };
+      this.seeds = { dustmoss: 1 };
       this.studied = { dustmoss: 9, saltgrass: 9 };
       this.research = {};
       this.readInscriptions = 0;
@@ -30817,7 +31086,7 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
       };
       switch (step) {
         case 1:
-          say("Your back is a spring. Tap in time with the band - the middle of it pays double.", 10);
+          say("Your back is a spring. Press the valve when the needle is in the green - the bright middle pays double.", 10);
           break;
         case 2:
           say("Good. Now get up on yourself: tap your own shell.", 3);
@@ -31972,7 +32241,8 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
       const there = this.npc && !this.npc.hidden && this.npc.alive !== false;
       const near = there && Math.abs(this.npc.x - this.crab.x) < 420;
       if (!req) {
-        return { by: this.npc.riding ? this.npc : this.crab, ok: true };
+        const free = there && !this.mind?.owned && Math.abs(this.npc.x - this.crab.x) < 900;
+        return { by: free ? this.npc : this.crab, ok: true };
       }
       if (req.by === "hands") {
         if (!near) return { ok: false, why: `${req.why} Call him over (F).` };
@@ -32066,9 +32336,17 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
             j.phase = "working";
             return;
           }
-          const room = this.crab.m.shellW * 0.5 + 18;
+          const small = this.crab.m.t < 0.55;
+          const room = small ? this.crab.m.shellW * 0.5 + 6 : this.crab.m.shellW * 0.5 + 18;
           this.npc.moveTo = this.crab.x + Math.sign(this.npc.x - this.crab.x || 1) * room;
-          if (Math.abs(this.npc.x - this.crab.x) < room + 16) this.npc.board();
+          if (Math.abs(this.npc.x - this.crab.x) < room + 16) {
+            if (small) {
+              j.phase = "working";
+              j.ground = true;
+              return;
+            }
+            this.npc.board();
+          }
           if (j.t > 30) this.stopPlanting("He never got there.");
           return;
         }
@@ -32078,40 +32356,48 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
         return;
       }
       if (j.phase === "working") {
-        if (this.work.live) return;
-        const pw = this.garden.plotWorld(j.plot);
-        const plot = j.plot;
-        this.work.begin("plant", {
-          tag: "plant:" + plot.i,
-          x: pw.x,
-          y: pw.y,
-          by: w,
-          label: j.def.name,
-          skill: w === this.npc ? 1.25 : 1,
-          onDone: (r) => {
-            this.planting = null;
-            plot.pending = null;
-            const pl = this.garden.plant(plot.i, j.def.id);
-            if (!pl) {
-              this.ui.say("It would not take.", 3);
-              return;
-            }
-            pl.health = 0.55 + r.quality * 0.45;
-            this.fx.spark(pw.x, pw.y - 4, "#9ad86a", 16, 40);
-            this.fx.popup(pw.x, pw.y - 12, r.clean ? "well in" : "in", "#cfe89a");
-            if (this.garden.load > this.garden.capacity) this.ui.say("Overloaded.", 2.5);
-            if (w === this.npc) {
-              this.npc.say(r.clean ? "In, and in properly. Now water it, or all of that was me digging a hole." : "In. Not my finest hole. Water it.", 6);
-            } else {
-              this.ui.say("In. Water it.", 5);
-            }
-            this.teach(4);
-          }
-        });
-        j.phase = "busy";
+        j.phase = "planting";
+        j.p = 0;
+        j.dur = w === this.npc ? 3.6 : w === this.crab ? 4.2 : 5;
+        j.puff = 0;
+        if (w === this.npc) this.npc.setPose("dig");
+        this.audio.play("dig");
         return;
       }
-      if (j.phase === "busy" && !this.work.live) this.planting = null;
+      if (j.phase === "planting") {
+        const pw = this.garden.plotWorld(j.plot);
+        j.p = Math.min(1, j.p + dt / j.dur);
+        j.puff -= dt;
+        if (j.puff <= 0) {
+          j.puff = 0.28 + Math.random() * 0.2;
+          this.fx.drift?.(pw.x + (Math.random() - 0.5) * 6, pw.y - 2, "#a58e4a", 3);
+          if (Math.random() < 0.5) this.audio.play("step", { pitch: 0.8 });
+        }
+        if (j.p >= 1) {
+          const plot = j.plot;
+          this.planting = null;
+          plot.pending = null;
+          const pl = this.garden.plant(plot.i, j.def.id);
+          if (!pl) {
+            this.ui.say("It would not take.", 3);
+            return;
+          }
+          pl.health = 1;
+          this.fx.spark(pw.x, pw.y - 4, "#9ad86a", 16, 40);
+          this.fx.popup(pw.x, pw.y - 12, "planted", "#cfe89a");
+          this.audio.play("grow");
+          if (this.garden.load > this.garden.capacity) this.ui.say("Overloaded.", 2.5);
+          if (w === this.npc) {
+            this.npc.setPose("sit");
+            this.npc.say("In. Now water it, or all of that was me digging a hole.", 6);
+          } else {
+            this.ui.say("In. Water it.", 5);
+          }
+          this.teach(4);
+        }
+        return;
+      }
+      if (j.phase === "busy") this.planting = null;
     }
     /**
      * Watering a bed. Pour in the band and it soaks; pour badly and it runs off
@@ -32153,7 +32439,7 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
     tryBuild(id, plotIndex) {
       const b = BUILD_BY_ID[id];
       if (!b) return { ok: false, msg: "No such structure." };
-      const plot = plotIndex !== void 0 ? this.garden.plots[plotIndex] : this.garden.plots.find((p) => !p.plant && !p.build && !p.wet);
+      const plot = plotIndex !== void 0 ? this.garden.plots[plotIndex] : this.garden.plots.find((p) => p.unlocked && !p.plant && !p.build && !p.pending && !p.wet);
       if (!plot) return { ok: false, msg: "No free spot to build on." };
       if (!this.economy.canBuild(id)) return { ok: false, msg: `Needs ${b.cost} water and ${b.nut} nutrients.` };
       if (!this.economy.build(plot.i, id)) return { ok: false, msg: "It will not sit there." };
@@ -32597,6 +32883,23 @@ ${level}/${OBSERVE_STEPS.length} notes written` };
         this.sea.drawReef(ctx, cam, false);
         this.sea.drawSwimmers(ctx, cam);
       }
+      if (this.seaShowing) {
+        const sea = this.sea, terr = this.terrain;
+        const wx = (x) => cam.screenToWorld(x, 0).x;
+        drawWaterLight(ctx, r.vw, r.vh, {
+          t: this.time,
+          wet: sea.wet,
+          zoom: cam.zoom,
+          camX: cam.rx,
+          camY: cam.ry,
+          surf: (x) => cam.worldToScreen(0, sea.level(wx(x))).y,
+          bed: (x) => {
+            const w = wx(x);
+            return cam.worldToScreen(w, terr.surfaceY(w)).y;
+          }
+        });
+      }
+      r.underwater = this.seaShowing ? this.sea.wet : 0;
       this.backdrop.drawForeground(ctx, cam, this.weather, this.terrain);
       r.beginLights(this.weather);
       const lightPow = this.economy.stat("light");

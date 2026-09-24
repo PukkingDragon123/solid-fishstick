@@ -54,7 +54,7 @@ export const LESSONS = [
     want: (g) => (g.economy?.water > 4 ? 1 : 8),
     lines: [
       { icon: 'drop', t: "From you. There is a spring under that shell and it has been sitting on it since before there were people." },
-      { icon: 'pump', t: "The valve in the corner is the muscle. Tap it in time with the band on the gauge - in the band it pays, dead centre it pays double, and a run of good ones pays far more than a run of bad ones." },
+      { icon: 'pump', t: "The valve in the corner is the muscle. Press it when the needle on the dial is in the green - in the green it pays, the bright middle pays double, and a run of good ones pays far more than a run of bad ones." },
       { icon: 'well', t: "Fill the shell and everything on your back drinks out of it. Let it run dry and everything on your back dies. That is the whole economy of this place." },
     ],
   },

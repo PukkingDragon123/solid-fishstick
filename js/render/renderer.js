@@ -125,6 +125,7 @@ export class Renderer {
   }
 
   update(dt, weather) {
+    this._dtAvg = (this._dtAvg || dt) * 0.95 + dt * 0.05;
     this.haze = lerp(this.haze, weather.haze * 1.7, 1 - Math.pow(0.06, dt));
     this.flash = Math.max(0, this.flash - dt * 2.6);
     const want = this.mode ? 1 : 0;
@@ -286,6 +287,56 @@ export class Renderer {
     }
   }
 
+  /**
+   * BLOOM. The bright things glow: the sun, fire, the lit edge of the water,
+   * a spark. The frame is taken down to a quarter, pushed so only its
+   * brightest parts survive, blurred, and laid back over the top as light.
+   * Cheap, because a quarter of this frame is a few thousand pixels.
+   */
+  _bloom(s, amt) {
+    // a device that cannot hold its frame rate loses the glow first
+    const dt = this._dtAvg || 0.016;
+    if (dt > 1 / 38) this._slow = (this._slow || 0) + dt; else this._slow = Math.max(0, (this._slow || 0) - dt * 0.5);
+    if (this._slow > 2.5) this.bloomOff = true;
+    if (amt <= 0.01 || this.bloomOff) return;
+    const bw = Math.max(8, Math.ceil(this.vw / 4)), bh = Math.max(8, Math.ceil(this.vh / 4));
+    if (!this._bl || this._bl.width !== bw || this._bl.height !== bh) {
+      this._bl = newCanvas(bw, bh); this._bl2 = newCanvas(bw, bh);
+    }
+    const a = this._bl.getContext('2d'), b = this._bl2.getContext('2d');
+    a.clearRect(0, 0, bw, bh);
+    a.filter = 'brightness(0.9) contrast(3.2) saturate(1.3)';
+    a.drawImage(this.sceneC, 0, 0, bw, bh);
+    a.filter = 'none';
+    b.clearRect(0, 0, bw, bh);
+    b.filter = 'blur(2px)';
+    b.drawImage(this._bl, 0, 0);
+    b.filter = 'none';
+    s.save();
+    s.globalCompositeOperation = 'lighter';
+    s.globalAlpha = amt;
+    s.imageSmoothingEnabled = true;
+    s.drawImage(this._bl2, 0, 0, this.vw, this.vh);
+    s.restore();
+    s.imageSmoothingEnabled = false;
+  }
+
+  /**
+   * The grade. A soft-light wash that pushes the day warm and gold, the
+   * night blue, and the water teal - the difference between a picture that
+   * has been lit and one that has been coloured in.
+   */
+  _grade(s, weather) {
+    const day = clamp01(weather.daylight ?? 1);
+    const wet = this.underwater || 0;
+    s.save();
+    s.globalCompositeOperation = 'soft-light';
+    s.globalAlpha = 0.16 + wet * 0.14;
+    s.fillStyle = wet > 0.3 ? '#3ec8d8' : day > 0.45 ? '#ffc070' : '#4a64b0';
+    s.fillRect(0, 0, this.vw, this.vh);
+    s.restore();
+  }
+
   composite(weather, game) {
     const s = this.scene;
     s.globalCompositeOperation = 'multiply';
@@ -294,8 +345,16 @@ export class Renderer {
 
     this.drawWeatherOverlay(weather, game);
 
+    // the grade and the glow, before the vignette closes the frame
+    this._grade(s, weather);
+    this._bloom(s, 0.16 + (this.underwater || 0) * 0.26 + (weather.daylight < 0.3 ? 0.08 : 0));
+
     if (!this._vignette) this._buildVignette();
     s.drawImage(this._vignette, 0, 0);
+    if ((this.underwater || 0) > 0.05) {
+      // and underwater the edges go to deep blue rather than to brown
+      pxVignette(s, this.vw, this.vh, '#021a33', this.underwater * 0.55, { p: 2, steps: 5, inner: 0.30 });
+    }
 
     this._drawModeGrade(s);
 

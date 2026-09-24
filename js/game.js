@@ -37,6 +37,7 @@ import { Critters } from './systems/critters.js';
 import { Fishing } from './systems/fishing.js';
 import { VentPuzzle } from './ui/ventpuzzle.js';
 import { Ending } from './systems/ending.js';
+import { drawWaterLight } from './render/waterfx.js';
 import { Menu } from './ui/menu.js';
 import { ITEM_BY_ID } from './data/craft.js';
 import { Fx } from './systems/fx.js';
@@ -160,7 +161,8 @@ export class Game {
     this.unlockCard = null;      // { name, desc, got, tint, glyph, t }
     this.ui = new UI(this);
 
-    this.seeds = { dustmoss: 3, saltgrass: 2 };
+    // one seed, for one plant: the first thing on your back is precious
+    this.seeds = { dustmoss: 1 };
     // flora id -> how many wild specimens of it you have actually studied
     this.studied = { dustmoss: 9, saltgrass: 9 };
     this.research = {};
@@ -1103,7 +1105,7 @@ export class Game {
     this.tutorial = step;
     const say = (text, mood) => { this.npc.say(text, 6.5, mood); };
     switch (step) {
-      case 1: say('Your back is a spring. Tap in time with the band - the middle of it pays double.', 10); break;
+      case 1: say('Your back is a spring. Press the valve when the needle is in the green - the bright middle pays double.', 10); break;
       case 2: say('Good. Now get up on yourself: tap your own shell.', 3); break;
       case 3: say('Drag a seed out and drop it on a bed. It is your back, you can put it where you like.', 5); break;
       case 4: say('It is a seed until it has drunk. Run the spring again and it will come up.', 0); break;
@@ -2237,8 +2239,11 @@ export class Game {
     const there = this.npc && !this.npc.hidden && this.npc.alive !== false;
     const near = there && Math.abs(this.npc.x - this.crab.x) < 420;
     if (!req) {
-      // anything you can do yourself, he will still do if he is on your back
-      return { by: this.npc.riding ? this.npc : this.crab, ok: true };
+      // He plants. You have claws; he has a trowel and eleven years of
+      // opinions about holes. If he is anywhere in the basin he walks over and
+      // climbs up to do it - only with him gone do you scrape it in yourself.
+      const free = there && !this.mind?.owned && Math.abs(this.npc.x - this.crab.x) < 900;
+      return { by: free ? this.npc : this.crab, ok: true };
     }
     if (req.by === 'hands') {
       if (!near) return { ok: false, why: `${req.why} Call him over (F).` };
@@ -2333,9 +2338,14 @@ export class Game {
       if (w === this.crab) { j.phase = 'working'; return; }
       if (w === this.npc) {
         if (this.npc.riding) { j.phase = 'working'; return; }
-        const room = this.crab.m.shellW * 0.5 + 18;
+        const small = this.crab.m.t < 0.55;
+        // a hatchling's back is at his knee: he plants it from the ground
+        const room = small ? this.crab.m.shellW * 0.5 + 6 : this.crab.m.shellW * 0.5 + 18;
         this.npc.moveTo = this.crab.x + Math.sign(this.npc.x - this.crab.x || 1) * room;
-        if (Math.abs(this.npc.x - this.crab.x) < room + 16) this.npc.board();
+        if (Math.abs(this.npc.x - this.crab.x) < room + 16) {
+          if (small) { j.phase = 'working'; j.ground = true; return; }
+          this.npc.board();
+        }
         // he is not going to jog for ever
         if (j.t > 30) this.stopPlanting('He never got there.');
         return;
@@ -2347,40 +2357,52 @@ export class Game {
       return;
     }
 
+    // Planting is his job, and you watch him do it. There used to be a timing
+    // bar here - a QTE for putting a seed in a hole - which is a minigame
+    // about somebody else's hands. Now he kneels at the bed on your back and
+    // digs, and a small timer over the bed says how long he has left.
     if (j.phase === 'working') {
-      if (this.work.live) return;
+      j.phase = 'planting';
+      j.p = 0;
+      j.dur = w === this.npc ? 3.6 : w === this.crab ? 4.2 : 5;
+      j.puff = 0;
+      if (w === this.npc) this.npc.setPose('dig');
+      this.audio.play('dig');
+      return;
+    }
+    if (j.phase === 'planting') {
       const pw = this.garden.plotWorld(j.plot);
-      const plot = j.plot;
-      this.work.begin('plant', {
-        tag: 'plant:' + plot.i, x: pw.x, y: pw.y, by: w,
-        label: j.def.name,
-        skill: w === this.npc ? 1.25 : 1,
-        onDone: (r) => {
-          this.planting = null;
-          plot.pending = null;
-          const pl = this.garden.plant(plot.i, j.def.id);
-          if (!pl) { this.ui.say('It would not take.', 3); return; }
-          // a bed opened badly is a bed the plant starts behind in
-          pl.health = 0.55 + r.quality * 0.45;
-          this.fx.spark(pw.x, pw.y - 4, '#9ad86a', 16, 40);
-          this.fx.popup(pw.x, pw.y - 12, r.clean ? 'well in' : 'in', '#cfe89a');
-          if (this.garden.load > this.garden.capacity) this.ui.say('Overloaded.', 2.5);
-          if (w === this.npc) {
-            this.npc.say(r.clean
-              ? 'In, and in properly. Now water it, or all of that was me digging a hole.'
-              : 'In. Not my finest hole. Water it.', 6);
-          } else {
-            this.ui.say('In. Water it.', 5);
-          }
-          this.teach(4);
-        },
-      });
-      j.phase = 'busy';
+      j.p = Math.min(1, j.p + dt / j.dur);
+      j.puff -= dt;
+      if (j.puff <= 0) {
+        j.puff = 0.28 + Math.random() * 0.2;
+        this.fx.drift?.(pw.x + (Math.random() - 0.5) * 6, pw.y - 2, '#a58e4a', 3);
+        if (Math.random() < 0.5) this.audio.play('step', { pitch: 0.8 });
+      }
+      if (j.p >= 1) {
+        const plot = j.plot;
+        this.planting = null;
+        plot.pending = null;
+        const pl = this.garden.plant(plot.i, j.def.id);
+        if (!pl) { this.ui.say('It would not take.', 3); return; }
+        pl.health = 1;
+        this.fx.spark(pw.x, pw.y - 4, '#9ad86a', 16, 40);
+        this.fx.popup(pw.x, pw.y - 12, 'planted', '#cfe89a');
+        this.audio.play('grow');
+        if (this.garden.load > this.garden.capacity) this.ui.say('Overloaded.', 2.5);
+        if (w === this.npc) {
+          this.npc.setPose('sit');
+          this.npc.say('In. Now water it, or all of that was me digging a hole.', 6);
+        } else {
+          this.ui.say('In. Water it.', 5);
+        }
+        this.teach(4);
+      }
       return;
     }
 
     // busy: the work system owns it now, and if the job went away so did this
-    if (j.phase === 'busy' && !this.work.live) this.planting = null;
+    if (j.phase === 'busy') this.planting = null;
   }
 
   /**
@@ -2417,7 +2439,7 @@ export class Game {
     const b = BUILD_BY_ID[id];
     if (!b) return { ok: false, msg: 'No such structure.' };
     const plot = plotIndex !== undefined ? this.garden.plots[plotIndex]
-      : this.garden.plots.find((p) => !p.plant && !p.build && !p.wet);
+      : this.garden.plots.find((p) => p.unlocked && !p.plant && !p.build && !p.pending && !p.wet);
     if (!plot) return { ok: false, msg: 'No free spot to build on.' };
     if (!this.economy.canBuild(id)) return { ok: false, msg: `Needs ${b.cost} water and ${b.nut} nutrients.` };
     if (!this.economy.build(plot.i, id)) return { ok: false, msg: 'It will not sit there.' };
@@ -2862,6 +2884,18 @@ export class Game {
     this._drawGreenPlants(ctx, cam);
     this._drawDigs(ctx, cam);
     if (this.seaShowing) { this.sea.drawReef(ctx, cam, false); this.sea.drawSwimmers(ctx, cam); }
+    // the light in the water: caustics on the sand, shafts in front of you,
+    // the depth going blue, and the surface rippling overhead
+    if (this.seaShowing) {
+      const sea = this.sea, terr = this.terrain;
+      const wx = (x) => cam.screenToWorld(x, 0).x;
+      drawWaterLight(ctx, r.vw, r.vh, {
+        t: this.time, wet: sea.wet, zoom: cam.zoom, camX: cam.rx, camY: cam.ry,
+        surf: (x) => cam.worldToScreen(0, sea.level(wx(x))).y,
+        bed: (x) => { const w = wx(x); return cam.worldToScreen(w, terr.surfaceY(w)).y; },
+      });
+    }
+    r.underwater = this.seaShowing ? this.sea.wet : 0;
     this.backdrop.drawForeground(ctx, cam, this.weather, this.terrain);
 
     // lights

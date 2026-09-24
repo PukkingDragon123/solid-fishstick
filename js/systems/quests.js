@@ -281,6 +281,10 @@ export class Quests {
     this.justDone = a;
     this.doneT = 4;
     a.reward?.(this.game);
+    // and every job done opens another bed on your back
+    if (this.game.garden?.unlockPlot()) {
+      setTimeout(() => this.game.ui?.say('A new bed on your back', 3.5), 4200);
+    }
     this.game.audio?.play('discover');
     this.game.npc?.say(a.say, 6);
     this.game.ui?.say(`${a.name} - ${a.gain}`, 4);

@@ -15,6 +15,8 @@ import { MATERIALS } from '../lib/palette.js';
 
 const GROW_STAGES = 4;
 
+export const START_BEDS = 2;
+
 export class Garden {
   constructor(game) {
     this.game = game;
@@ -51,8 +53,10 @@ export class Garden {
       { a: -0.19, b: -0.30, wet: true }, { a: 0.19, b: -0.30, wet: true },
       { a: 0.00, b: -0.58, wet: true },
     ];
+    // You start with two beds. A shell has room for nineteen, but nobody
+    // wakes up with a garden: every job you do for him opens another one.
     this.plots = spots.map((s, i) => ({
-      ...s, i, unlocked: true, plant: null,
+      ...s, i, unlocked: i < START_BEDS, plant: null,
       u: (s.b + 1) / 2,
       sway: Math.random() * TAU, variant: i % 3,
     }));
@@ -111,7 +115,9 @@ export class Garden {
   }
 
   unlockPlot() {
-    const p = this.plots.find((q) => !q.unlocked);
+    // the pool beds come early enough to matter, not last
+    const ORDER = [2, 16, 3, 4, 5, 17, 6, 7, 9, 8, 18, 10, 11, 12, 13, 14, 15];
+    const p = ORDER.map((i) => this.plots[i]).find((q) => q && !q.unlocked) || this.plots.find((q) => !q.unlocked);
     if (p) { p.unlocked = true; return true; }
     return false;
   }

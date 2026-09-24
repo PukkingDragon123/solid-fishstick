@@ -1703,7 +1703,7 @@ export class UI {
     // labels across the bottom of the screen for five things you learn in
     // thirty seconds. Now the words fade out on their own and the keys stay,
     // because a row of keys is a reminder and a row of sentences is a manual.
-    const caps = [['A D', 'walk'], ['SPC', 'spring'], ['R', 'pick'],
+    const caps = [['A D', 'walk'], ['SPC', 'pump'], ['R', 'pick'],
       ['E', 'dig'], ['M', 'mode']];
     const age = this.game.playT || 0;
     const near = this._hit(0, H - 16, W, 16);
@@ -2322,20 +2322,34 @@ export class UI {
     const y = clamp(onScreen ? s.y - 26 : H * 0.42, 30, H - 60);
     const x = onScreen ? s.x : (dir > 0 ? W - 10 : 10);
     const pulse = 0.6 + Math.sin(this.t * 2.4) * 0.4;
+    const col = lm.kind === 'oasis' ? '#7fd0dd' : '#e2b74a';
+    if (!onScreen) {
+      // A small plate pinned to the edge: what it is, how far, which way.
+      // It used to be a bare chevron and a number, which read as a glitch.
+      const label = `${Math.round(Math.abs(d) / 10)}m`;
+      const pw = textWidth(label) + 24, ph = 15;
+      const px = dir > 0 ? W - pw - 6 : 6;
+      const py = Math.round(y - ph / 2);
+      ctx.globalAlpha = 0.78 + pulse * 0.22;
+      K.plaque(ctx, px, py, pw, ph, { tint: col });
+      drawNodeIcon(ctx, lm.kind === 'oasis' ? 'drop' : 'crown', dir > 0 ? px + 8 : px + pw - 8, py + ph / 2, col, 1);
+      drawText(ctx, label, px + pw / 2 + (dir > 0 ? 3 : -3), py + 4, { color: INK, align: 'center' });
+      // the arrow, off the outside edge of the plate
+      ctx.fillStyle = col;
+      for (let i = 0; i < 3; i++) {
+        ctx.fillRect(dir > 0 ? px + pw + 1 + i : px - 2 - i, py + 4 + i, 1, Math.max(1, 7 - i * 2));
+      }
+      ctx.globalAlpha = 1;
+      if (this._hit(px, py, pw, ph)) this.hover = { title: lm.name || 'Somewhere new', body: `${Math.round(Math.abs(d) / 10)}m ${dir > 0 ? 'east' : 'west'}.` };
+      return;
+    }
     ctx.globalAlpha = 0.35 + pulse * 0.4;
-    ctx.fillStyle = lm.kind === 'oasis' ? '#7fd0dd' : '#e2b74a';
-    // a small chevron, pointing the way
+    ctx.fillStyle = col;
     for (let i = 0; i < 4; i++) {
       ctx.fillRect(Math.round(x - dir * i), Math.round(y - 3 + i), 1, Math.max(1, 7 - i * 2));
     }
     ctx.globalAlpha = 1;
-    if (!onScreen) {
-      drawText(ctx, `${Math.round(Math.abs(d) / 10)}`, x - dir * 6, y + 6,
-        { color: FAINT, align: dir > 0 ? 'right' : 'left', outline: true, outlineColor: OUT });
-    } else {
-      drawText(ctx, lm.name, x, y - 12,
-        { color: INK, align: 'center', outline: true, outlineColor: OUT });
-    }
+    drawText(ctx, lm.name, x, y - 12, { color: INK, align: 'center', outline: true, outlineColor: OUT });
   }
 
   _treeReady() {
@@ -2352,10 +2366,42 @@ export class UI {
    * Drawn over the shell in world space: how close each plant is to being
    * worth picking. A full ring with a bead on it means take it.
    */
+  /**
+   * A bed going in. A small plate over it with the seed on one end and a bar
+   * that fills while he digs - the only thing on screen while it happens,
+   * because the thing to watch is him.
+   */
+  _plantTimer(ctx, cam) {
+    const j = this.game.planting;
+    if (!j) return;
+    const g = this.game;
+    const w = g.garden.plotWorld(j.plot);
+    const s = cam.worldToScreen(w.x, w.y - 18);
+    const bw = 30, bh = 9;
+    const x = Math.round(s.x - bw / 2), y = Math.round(s.y - bh);
+    const p = j.phase === 'planting' ? j.p : 0;
+    const bob = Math.round(Math.sin(this.t * 2.4) * 1);
+    K.slab(ctx, x, y + bob, bw, bh, {});
+    drawNodeIcon(ctx, 'sprout', x + 5, y + bob + bh / 2, j.phase === 'planting' ? '#9ad86a' : '#b8a878', 1);
+    const tx = x + 10, tw = bw - 13;
+    K.px(ctx, tx, y + bob + 3, tw, 3, 'rgba(10,7,4,0.8)');
+    if (p > 0) {
+      K.px(ctx, tx, y + bob + 3, Math.max(1, Math.round(tw * p)), 3, '#8cc468');
+      K.px(ctx, tx, y + bob + 3, Math.max(1, Math.round(tw * p)), 1, '#d8f5a4');
+    } else {
+      // still walking over: the bar breathes instead of filling
+      const k = 0.5 + 0.5 * Math.sin(this.t * 5);
+      K.px(ctx, tx, y + bob + 3, tw, 3, `rgba(226,183,74,${0.15 + k * 0.2})`);
+    }
+    // the little tail pointing down at the bed
+    K.px(ctx, Math.round(s.x) - 1, y + bob + bh, 2, 2, 'rgba(10,7,4,0.6)');
+  }
+
   drawCrop(ctx, cam) {
     if (this.placing || this.drawerOpen) return;
     const g = this.game;
     const i = g.input;
+    this._plantTimer(ctx, cam);
     let pickHit = null;
     let waterHit = null;
     for (const plot of g.garden.plots) {
