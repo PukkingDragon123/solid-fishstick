@@ -8910,7 +8910,7 @@ body {
       Math.max(0.9, 1.7 * S2),
       { mat: "chitin", dome: 1.4 * S2, tint: 0 }
     );
-    p.ellipse(x0 + len, cy, r * 0.55, r * 0.55, { mat: "eye", dome: r, tint: -0.18 });
+    p.ellipse(x0 + len, cy, r * 0.4, r * 0.4, { mat: "chitin", dome: r * 0.6, tint: 0 });
     const cv = p.resolve(MATERIALS, { ...LIGHT4, outline: 1, outlineColor: "#171009" });
     return { cv, ox: pad, oy: cy, len, r, globe: len };
   }
@@ -9453,29 +9453,27 @@ body {
         ctx.scale(1, shrink);
         ctx.drawImage(art3.cv, -art3.ox, -art3.oy);
         ctx.restore();
-        const r = Math.max(2, Math.round(art3.r));
+        const r = Math.max(2, Math.round(art3.r * 0.7));
         const ex = Math.round(e.x + Math.cos(a) * art3.globe) + 0.5;
         const ey = Math.round(e.y + Math.sin(a) * art3.globe) + 0.5;
         if (shrink > 0.55) {
-          pxDisc(ctx, ex, ey, r + 1, "#1c120c", { p: 1 });
-          pxDisc(ctx, ex, ey, r, "#f7f1e6", { p: 1 });
-          const qx = ex + this.look.x * r * 0.3, qy = ey + this.look.y * r * 0.22 + r * 0.08;
           const tint = this.game.modeTint;
           if (tint) {
             const heat = 0.55 + 0.45 * Math.sin(this.game.time * 3.2);
             ctx.save();
-            ctx.globalAlpha = 0.35 + heat * 0.4;
+            ctx.globalAlpha = 0.3 + heat * 0.35;
             pxGlow(ctx, ex, ey, r * 2.6, tint.glow, 1, { p: 1, steps: 3 });
             ctx.restore();
           }
-          pxDisc(ctx, qx, qy, r * 0.6, tint ? tint.iris : "#5a3a26", { p: 1 });
-          pxDisc(ctx, qx, qy, r * 0.38, "#140c0a", { p: 1 });
-          ctx.fillStyle = "#ffffff";
-          const hs = Math.max(1, Math.round(r * 0.4));
-          ctx.fillRect(Math.round(qx - r * 0.4), Math.round(qy - r * 0.46), hs, hs);
-          ctx.fillRect(Math.round(qx + r * 0.2), Math.round(qy + r * 0.16), Math.max(1, hs >> 1), Math.max(1, hs >> 1));
+          const T = ctx.getTransform();
+          const sx = T.a * ex + T.c * ey + T.e, sy = T.b * ex + T.d * ey + T.f;
+          const sr = r * Math.hypot(T.a, T.b);
+          ctx.save();
+          ctx.setTransform(1, 0, 0, 1, 0, 0);
+          pxDisc(ctx, Math.round(sx), Math.round(sy), sr, "#000000", { p: 1 });
+          ctx.restore();
         } else {
-          ctx.fillStyle = "#1c120c";
+          ctx.fillStyle = "#000000";
           for (let k = -2; k <= 2; k++) {
             ctx.fillRect(Math.round(ex + k * r * 0.4), Math.round(ey - (2 - Math.abs(k)) * 0.5 * S2), 1, 1);
           }

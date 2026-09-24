@@ -446,7 +446,7 @@ function paintEye(m) {
   p.capsule(x0, cy, x0 + len - r * 0.2, cy, Math.max(0.8, 1.5 * S), Math.max(0.9, 1.7 * S),
     { mat: 'chitin', dome: 1.4 * S, tint: 0 });
   // only a nub: the eyeball itself is drawn over it, unrotated, by the crab
-  p.ellipse(x0 + len, cy, r * 0.55, r * 0.55, { mat: 'eye', dome: r, tint: -0.18 });
+  p.ellipse(x0 + len, cy, r * 0.4, r * 0.4, { mat: 'chitin', dome: r * 0.6, tint: 0 });
   const cv = p.resolve(MATERIALS, { ...LIGHT, outline: 1, outlineColor: '#171009' });
   return { cv, ox: pad, oy: cy, len, r, globe: len };
 }

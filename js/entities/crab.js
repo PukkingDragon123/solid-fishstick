@@ -502,35 +502,34 @@ export class Crab {
       // the eyeball, placed in body space so it does not swing with the
       // stalk: a dark rim, the white, a big pupil that follows the look, and
       // two catchlights - which is most of what makes it a face you like
-      // centred on a whole pixel with a whole radius, so the rim and the
-      // white are true concentric rings rather than two jagged ones
-      const r = Math.max(2, Math.round(art.r));
+      // a plain bead of pitch black on the end of each stalk, centred on a
+      // whole pixel so it is a clean round dot
+      const r = Math.max(2, Math.round(art.r * 0.7));
       const ex = Math.round(e.x + Math.cos(a) * art.globe) + 0.5;
       const ey = Math.round(e.y + Math.sin(a) * art.globe) + 0.5;
       if (shrink > 0.55) {
-        pxDisc(ctx, ex, ey, r + 1, '#1c120c', { p: 1 });
-        pxDisc(ctx, ex, ey, r, '#f7f1e6', { p: 1 });
-        const qx = ex + this.look.x * r * 0.30, qy = ey + this.look.y * r * 0.22 + r * 0.08;
-        // What you are holding shows in the animal, not only in the corner of
-        // the screen: the eye takes the mode's colour and burns a little at
-        // the back of it, harder while something is actually happening.
+        // What you are holding still shows in the animal: the mode's colour
+        // burns faintly round the bead, harder while something is happening.
         const tint = this.game.modeTint;
         if (tint) {
           const heat = 0.55 + 0.45 * Math.sin(this.game.time * 3.2);
           ctx.save();
-          ctx.globalAlpha = 0.35 + heat * 0.4;
+          ctx.globalAlpha = 0.30 + heat * 0.35;
           pxGlow(ctx, ex, ey, r * 2.6, tint.glow, 1, { p: 1, steps: 3 });
           ctx.restore();
         }
-        pxDisc(ctx, qx, qy, r * 0.60, tint ? tint.iris : '#5a3a26', { p: 1 });
-        pxDisc(ctx, qx, qy, r * 0.38, '#140c0a', { p: 1 });
-        ctx.fillStyle = '#ffffff';
-        const hs = Math.max(1, Math.round(r * 0.40));
-        ctx.fillRect(Math.round(qx - r * 0.40), Math.round(qy - r * 0.46), hs, hs);
-        ctx.fillRect(Math.round(qx + r * 0.20), Math.round(qy + r * 0.16), Math.max(1, hs >> 1), Math.max(1, hs >> 1));
+        // drawn on the screen's own grid: the body rocks and tilts, and a
+        // disc laid out in its tilted space comes out furry
+        const T = ctx.getTransform();
+        const sx = T.a * ex + T.c * ey + T.e, sy = T.b * ex + T.d * ey + T.f;
+        const sr = r * Math.hypot(T.a, T.b);
+        ctx.save();
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        pxDisc(ctx, Math.round(sx), Math.round(sy), sr, '#000000', { p: 1 });
+        ctx.restore();
       } else {
         // shut: a happy little arc
-        ctx.fillStyle = '#1c120c';
+        ctx.fillStyle = '#000000';
         for (let k = -2; k <= 2; k++) {
           ctx.fillRect(Math.round(ex + k * r * 0.4), Math.round(ey - (2 - Math.abs(k)) * 0.5 * S), 1, 1);
         }
