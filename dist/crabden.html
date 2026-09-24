@@ -10834,11 +10834,11 @@ body {
     hair: "#704128",
     hairL: "#9e6842",
     hairD: "#472616",
-    skinL: "#f9d2a8",
-    skin: "#e9aa7a",
-    skinD: "#c47e56",
-    skinDD: "#8c5238",
-    stubble: "#bf8a68",
+    skinL: "#f4c89c",
+    skin: "#dfa074",
+    skinD: "#b87450",
+    skinDD: "#84492f",
+    stubble: "#c08560",
     eyeW: "#f6efe2",
     eye: "#1a100c",
     brow: "#3e2416",
@@ -10995,39 +10995,47 @@ body {
     const run = (y, x0, str) => {
       for (let i = 0; i < str.length; i++) if (str[i] !== " ") put(x0 + i, y, str[i]);
     };
-    const FRONT = { 6: 14, 7: 15, 8: 15, 9: 16, 10: 15, 11: 16, 12: 17, 13: 16, 14: 15, 15: 15, 16: 15, 17: 14, 18: 12 };
-    const BACK = { 6: 5, 7: 4, 8: 3, 9: 3, 10: 3, 11: 3, 12: 3, 13: 3, 14: 4, 15: 5, 16: 6, 17: 7, 18: 9 };
-    const HAIR = { 6: 13, 7: 9, 8: 8, 9: 8, 10: 7, 11: 7, 12: 7, 13: 7, 14: 6 };
+    const FRONT = { 6: 14, 7: 15, 8: 15, 9: 16, 10: 15, 11: 16, 12: 17, 13: 16, 14: 15, 15: 15, 16: 15, 17: 15, 18: 13 };
+    const BACK = { 6: 5, 7: 4, 8: 3, 9: 3, 10: 3, 11: 3, 12: 3, 13: 3, 14: 4, 15: 5, 16: 6, 17: 7, 18: 7 };
+    const HAIR = { 6: 13, 7: 10, 8: 8, 9: 7, 10: 6, 11: 5, 12: 4, 13: 4 };
     for (let y = 6; y <= 18; y++) {
       for (let x = BACK[y]; x <= FRONT[y]; x++) {
         let c = "s";
-        if (HAIR[y] !== void 0 && x <= HAIR[y]) c = x === BACK[y] ? "k" : (x + y) % 5 === 0 ? "H" : "h";
+        if (HAIR[y] !== void 0 && x <= HAIR[y]) c = x === BACK[y] ? "k" : (x * 3 + y) % 7 === 0 ? "H" : "h";
         put(x, y, c);
       }
     }
-    for (let y = 19; y < HH; y++) run(y, 8, "dssd");
-    run(18, 9, "ddd");
-    for (let x = 10; x <= 15; x++) put(x, 7, "d");
-    run(8, 14, "SS");
+    for (const [y, x] of [[9, 7], [10, 6], [11, 5], [12, 4], [13, 4]]) put(x, y, "k");
+    for (let y = 19; y < HH; y++) run(y, 7, "dsssd");
+    run(18, 7, "dddddd");
+    put(12, 19, "S");
+    for (let x = 9; x <= 15; x++) put(x, 7, "d");
+    run(8, 13, "SSS");
     run(11, 12, "SS");
-    for (let x = 8; x <= 13; x++) put(x, 17, "d");
-    for (let y = 15; y <= 16; y++) for (let x = 9; x <= 13; x++) if (G2[y][x] === "s") put(x, y, "q");
-    put(12, 14, "q");
-    run(10, 8, "dd");
-    run(11, 8, "dD");
-    run(12, 8, "dd");
+    for (let x = 8; x <= 14; x++) put(x, 17, "d");
+    for (let y = 13; y <= 16; y++) for (let x = 9; x <= 15; x++) {
+      if (G2[y][x] !== "s" || y === 13 && x < 13) continue;
+      if (x <= 10 || y === 16 || (x + y) % 2 === 0) put(x, y, "q");
+    }
+    for (let x = 9; x <= 14; x++) if ((x + 1) % 2 === 0) put(x, 17, "q");
+    run(10, 7, "dd");
+    run(11, 7, "dD");
+    run(12, 7, "dd");
     put(16, 11, "S");
     run(12, 16, "ss");
     put(15, 13, "D");
     put(16, 13, "d");
+    put(15, 16, "S");
     put(14, 16, "S");
-    if (e.brow === "up") run(8, 13, "rr");
+    if (e.brow === "up") run(8, 13, "rrr");
     else if (e.brow === "frown") {
       run(9, 13, "rrr");
     } else if (e.brow === "sad") {
       put(14, 8, "r");
       put(13, 9, "r");
-    } else run(9, 13, "rr");
+    } else {
+      run(9, 13, "rrr");
+    }
     if (e.eye === "shut") run(10, 13, "rr");
     else if (e.eye === "squint") {
       put(13, 10, "r");
@@ -11063,8 +11071,8 @@ body {
     if (!bare) {
       run(0, 6, "111122");
       run(1, 5, "11111222");
-      run(2, 4, "1111112222");
-      run(3, 4, "bbbbbbbGeG");
+      run(2, 4, "1111122223");
+      run(3, 4, "bBbBbbbGeG");
       run(4, 4, "BBBBBBBGGG");
       run(5, 2, "22222222222221");
       run(6, 1, "4444444444444443");
@@ -11115,8 +11123,8 @@ body {
     }
     return pts[pts.length - 1][1];
   };
-  var T_FRONT = [[0, 3.5], [3, 6.2], [8, 7.8], [12, 7.4], [17, 5.6], [22, 5.4], [27, 6], [34, 4.2]];
-  var T_BACK = [[0, -4.5], [4, -6.8], [9, -6.6], [15, -5.2], [21, -4.4], [26, -6.2], [31, -7], [34, -5.2]];
+  var T_FRONT = [[0, 4.6], [3, 6.8], [9, 7.2], [15, 6.8], [22, 6.4], [28, 6.2], [34, 5.8]];
+  var T_BACK = [[0, -6], [4, -7.6], [10, -7.2], [16, -6.2], [22, -5.8], [28, -5.8], [34, -5.6]];
   var torsoGrid = null;
   function buildTorso() {
     if (torsoGrid) return torsoGrid;
@@ -11163,6 +11171,23 @@ body {
       put(x, 12, "V");
       put(x, 13, "x");
     }
+    put(15, 0, "f");
+    put(16, 1, "f");
+    put(16, 2, "j");
+    for (let y = 5; y <= 19; y += 4) {
+      const x = Math.round(cx + lerpPts(T_FRONT, y + 0.5)) - 4;
+      put(x, y, "g");
+    }
+    for (let x = 9; x <= 13; x++) {
+      put(x, 17, "V");
+      put(x, 18, "X");
+    }
+    put(11, 18, "g");
+    for (const x of [4, 9, 14]) {
+      put(x, 22, "L");
+      put(x, 24, "L");
+    }
+    for (let y = 25; y < TH; y++) put(Math.round(cx + lerpPts(T_FRONT, y + 0.5)) - 2, y, "T");
     for (let y = 4; y < 21; y += 2) put(Math.round(cx + lerpPts(T_BACK, y) + 3), y, "V");
     for (let y = 23; y <= 28; y++) for (let x = 2; x <= 5; x++) put(x, y, y === 23 ? "A" : "L");
     put(4, 25, "g");
@@ -11191,15 +11216,16 @@ body {
   var PACK_ANCHOR = { x: 11, y: 2 };
   var BOOT_KEY = { o: "outline", O: "boot", P: "bootL", Z: "sole", W: "shirtD" };
   var BOOT = [
-    ".oPOOOo......",
-    ".oPOOOOo.....",
-    ".oPOOWOOoo...",
-    ".oPOOOWOOOoo.",
-    ".oPPOOOOOOOOo",
-    ".oZZZZZZZZZZo",
-    "..oooooooooo."
+    ".oPOOOOo.......",
+    ".oPOWOOo.......",
+    ".oPOOOWOoo.....",
+    ".oPOOWOOOOoo...",
+    ".oPOOOOWOOOOoo.",
+    ".oPPOOOOOOOOOOo",
+    ".oZZZZZZZZZZZZo",
+    "..oZZoooooooZo."
   ];
-  var BOOT_ANKLE = { x: 4, y: 1 };
+  var BOOT_ANKLE = { x: 5, y: 1 };
   var PROP_KEY = {
     o: "outline",
     w: "wood",
@@ -11312,9 +11338,14 @@ body {
         }
       }
       const inside = (x, y) => mask.has(y * CW + x);
+      const ux = (bx - ax) / (len || 1), uy = (by - ay) / (len || 1);
       for (const [key2, along] of mask) {
         const x = key2 % CW, y = key2 / CW | 0;
         let c = tone.base;
+        if (opts.seam !== void 0 && along > 2 && along < len - 2) {
+          const perp = (x + 0.5 - ax) * -uy + (y + 0.5 - ay) * ux;
+          if (Math.abs(perp - opts.seam) < 0.5) c = mix(c, tone.shade, 0.7);
+        }
         if (opts.cuff && along < opts.cuff) c = opts.cuffCol;
         if (opts.band && Math.abs(along - opts.band[0]) < opts.band[1]) c = opts.bandCol;
         const back = !inside(x - 1, y) || !inside(x - 2, y);
@@ -11379,18 +11410,18 @@ body {
       let id = 1;
       const leg = (lg, dark, idl) => {
         const tr = tone("trouser", "trouserD", "trouserL", dark);
-        this._limb(lg.hip, lg.knee, [10.5, 9.4, 7, 0.35], tr, idl);
-        this._limb(lg.knee, lg.ankle, [7, 7.8, 5.2, 0.3], tr, idl, { crease: 4 });
+        this._limb(lg.hip, lg.knee, [10.2, 9.4, 8.2, 0.4], tr, idl, { seam: 1.2 });
+        this._limb(lg.knee, lg.ankle, [8.2, 7.8, 7, 0.5], tr, idl, { crease: 3, seam: 1.2 });
         const lift = lg.air > 0.4 ? -1 : 0;
         this._sprite(BOOT, BOOT_KEY, pal, lg.ankle.x, lg.ankle.y + lift / HR, BOOT_ANKLE, idl + 1, 0, dark ? FAR2 : 0);
       };
       const arm = (a, dark, idl, tool, watch) => {
         const sh = { x: a.sh.x, y: a.sh.y + br }, el = { x: a.el.x, y: a.el.y + br }, ha = { x: a.ha.x, y: a.ha.y + br };
-        this._limb(sh, el, [7.4, 6.6, 5.6, 0.3], tone("shirt", "shirtD", "shirtL", dark), idl, { crease: 9 });
+        this._limb(sh, el, [8.6, 7.8, 6.8, 0.3], tone("shirt", "shirtD", "shirtL", dark), idl, { crease: 10, seam: -1.5 });
         this._limb(
           el,
           ha,
-          [5.4, 5.6, 4, 0.35],
+          [6.8, 6.6, 5.2, 0.4],
           tone("skin", "skinD", "skinL", dark),
           idl,
           {
@@ -11400,7 +11431,8 @@ body {
             bandCol: pal.leather
           }
         );
-        this._limb(ha, ha, [5, 5, 5, 0.5], tone("skin", "skinD", "skinL", dark), idl);
+        this._limb(ha, ha, [6.6, 6.6, 6.6, 0.5], tone("skin", "skinD", "skinL", dark), idl);
+        this._put(OX + ha.x * HR + 1, OY + ha.y * HR + 2, dark ? mix(pal.skinD, pal.outline, FAR2) : pal.skinD, idl);
         if (tool && PROPS[tool]) {
           const P = PROPS[tool];
           this._sprite(P.rows, PROP_KEY, pal, ha.x, ha.y, P.at, idl + 1, 0, dark ? FAR2 : 0);
