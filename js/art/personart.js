@@ -967,12 +967,12 @@ export function buildPerson(kind = 'vess', K = 1) {
     },
     leg: {
       near: {
-        upper: bone(13.2, 1.95, 1.60, 'trouser', false, { bow: 0.45 * K }),
-        lower: bone(12.8, 1.60, 1.20, 'trouser', false, { bow: -0.4 * K, knee: true }),
+        upper: bone(10.8, 1.95, 1.60, 'trouser', false, { bow: 0.45 * K }),
+        lower: bone(10.4, 1.60, 1.20, 'trouser', false, { bow: -0.4 * K, knee: true }),
       },
       far: {
-        upper: bone(13.2, 1.95, 1.60, 'trouser', true, { bow: 0.45 * K }),
-        lower: bone(12.8, 1.60, 1.20, 'trouser', true, { bow: -0.4 * K, knee: true }),
+        upper: bone(10.8, 1.95, 1.60, 'trouser', true, { bow: 0.45 * K }),
+        lower: bone(10.4, 1.60, 1.20, 'trouser', true, { bow: -0.4 * K, knee: true }),
       },
     },
   };

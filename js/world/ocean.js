@@ -87,9 +87,13 @@ export class Ocean {
       if (on) {
         g.sea.startStanding(this.surfaceY());
         g.audio?.play('splash');
+        // pull back when you go under: the sea is wide and full of things,
+        // and you should see them coming
+        if (g.cam && g.autoZoom) g.cam.targetZoom = Math.max(g.cam.minZoom, g.autoZoom() * 0.72);
       } else {
         g.sea.stop();
         g.audio?.play('splash', { pitch: 1.4 });
+        if (g.cam && g.autoZoom) g.cam.targetZoom = g.autoZoom();
       }
     }
     if (on) g.sea.flat = this.surfaceY();

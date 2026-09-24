@@ -261,7 +261,8 @@ export class Game {
     this.npc.hidden = true;
     this.npc.x = this.crab.x + 900;
     this.cam.followEntity(this.crab, true);
-    this.cam.targetZoom = this.cam.zoom = clamp(this.autoZoom() * 1.25, this.cam.minZoom, this.cam.maxZoom);
+    // wide: the sea is the point of this scene, not the animal in it
+    this.cam.targetZoom = this.cam.zoom = clamp(this.autoZoom() * 0.72, 0.6, this.cam.maxZoom);
     this.say('narrator', 'Thirty metres of water. Every one of them warm.');
     this._proT = 0;
     this._whaleShot = 0;
@@ -299,7 +300,7 @@ export class Game {
         wh.dir = 1;
         wh.sp = 62;
       }
-      this.cam.cineTo(c.x + 60, c.y - 150, Math.max(this.cam.minZoom, this.autoZoom() * 0.46), 4.2);
+      this.cam.cineTo(c.x + 60, c.y - 170, Math.max(0.4, this.autoZoom() * 0.36), 4.2);
     }
     if (t > 20 && !this._pro2b) {
       this._pro2b = 1;
@@ -310,7 +311,7 @@ export class Game {
       this._whaleShot = 0;
       for (const wh of this.sea.whales) wh.sp = 26;
       this.cam.followEntity(this.crab);
-      this.cam.targetZoom = clamp(this.autoZoom() * 1.25, this.cam.minZoom, this.cam.maxZoom);
+      this.cam.targetZoom = clamp(this.autoZoom() * 0.72, 0.6, this.cam.maxZoom);
       N('You will never see one again. Nothing here will.');
     }
     // the other thing that is bigger than you, and the only one that has
@@ -2968,7 +2969,7 @@ export class Game {
     if (!q || q.active || !q.next()) return;
     if (!cam.isVisible(this.npc.x, this.npc.y, 60)) return;
     // clear of his hat, and small - it is a badge, not a billboard
-    const s = cam.worldToScreen(this.npc.x, this.npc.y - 68);
+    const s = cam.worldToScreen(this.npc.x, this.npc.y - 63);
     const p = Math.min(2, pxSize(cam.zoom));
     const bob = Math.sin(this.time * 3.2) * p;
     const x = Math.round(s.x), y = Math.round(s.y + bob);
@@ -3106,10 +3107,14 @@ export class Game {
       if (Math.abs(site.x - this.crab.x) < 40) {
         // on a phone there is no E, and the ACT plate is already saying it -
         // so the only thing worth writing over the hole is the bad news
-        const touch = this.ui?.touchEnabled;
-        const label = power ? (touch ? null : 'E to dig') : 'you would need a digging claw';
+        // (the prompt bar already says E, and the crab is standing on the
+        // spot - words over it only land on the shell and cannot be read)
+        const label = power ? null : 'you would need a digging claw';
         if (label) {
-          drawText(ctx, label, s.x, s.y - 18 * z, { color: '#dcd6c3', align: 'center' });
+          const tw = textWidth(label), ly = Math.round(s.y + 6 * z);
+          ctx.fillStyle = 'rgba(14,10,7,0.78)';
+          ctx.fillRect(Math.round(s.x - tw / 2) - 4, ly - 2, tw + 8, 11);
+          drawText(ctx, label, s.x, ly, { color: '#f0d6a0', align: 'center' });
         }
       }
     }
@@ -3317,7 +3322,7 @@ export class Game {
    * still something written down.
    */
   _drawSpeech(ctx, cam, who, code = false) {
-    const s = cam.worldToScreen(who.x, who.y - (who === this.npc ? 58 : 40));
+    const s = cam.worldToScreen(who.x, who.y - (who === this.npc ? 54 : 40));
     // his face goes on the card at four times his walking size: the whole
     // point of a close-up is that you can see what he thinks of you
     // His face on the card is his own portrait, cropped to the head - a card

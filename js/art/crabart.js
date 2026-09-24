@@ -54,7 +54,7 @@ export function crabMetrics(stage = 'adult') {
   const oy = Math.round(rimY + faceH * 0.30);       // anchor: the hip line
 
   const legN = t < 0.25 ? 3 : 4;
-  const legLen = [shellW * 0.130, shellW * 0.300, shellW * 0.235];
+  const legLen = [shellW * 0.120, shellW * 0.245, shellW * 0.190];   // short and sturdy
 
   return {
     stage, t, S, w, h, ox, oy,
@@ -432,19 +432,21 @@ function paintClaw(m, far = false) {
 }
 
 /**
- * The eye: a short stalk with a small hard black bead on it. Crabs do not have
- * large expressive eyes and pretending otherwise makes them look like a toy.
+ * The eye: a stalk with a big round eye on the end of it - white, a large
+ * dark pupil, a catchlight. The crab drawing puts the eyeball on top of this
+ * bead, so it can look where it is going and blink.
  */
 function paintEye(m) {
   const S = Math.max(0.4, m.S);
-  const len = Math.max(2.5, m.eyeRise * 0.62);
-  const r = Math.max(1.4, 2.5 * S);
+  const len = Math.max(3, m.eyeRise * 0.95);
+  const r = Math.max(2.4, 5.0 * S);
   const pad = Math.ceil(r + 4);
   const p = new Painter(Math.ceil(len + r) + pad * 2, pad * 2 + 2);
   const cy = p.h / 2, x0 = pad;
   p.capsule(x0, cy, x0 + len - r * 0.2, cy, Math.max(0.8, 1.5 * S), Math.max(0.9, 1.7 * S),
     { mat: 'chitin', dome: 1.4 * S, tint: 0 });
-  p.ellipse(x0 + len, cy, r, r, { mat: 'eye', dome: r * 1.5, tint: -0.18 });
+  // only a nub: the eyeball itself is drawn over it, unrotated, by the crab
+  p.ellipse(x0 + len, cy, r * 0.55, r * 0.55, { mat: 'eye', dome: r, tint: -0.18 });
   const cv = p.resolve(MATERIALS, { ...LIGHT, outline: 1, outlineColor: '#171009' });
   return { cv, ox: pad, oy: cy, len, r, globe: len };
 }
@@ -482,9 +484,9 @@ export function buildCrab(stage = 'adult') {
   const legArt = {};
   for (const far of [false, true]) {
     legArt[far ? 'far' : 'near'] = {
-      coxa: seg(m.legLen[0], 3.2 * S, 2.6 * S, far, { bow: -0.8 * S }),
-      femur: seg(m.legLen[1], 2.6 * S, 1.7 * S, far, { bow: 1.6 * S, spines: true }),
-      tibia: paintFoot(Math.max(3, m.legLen[2] * 1.1), Math.max(1, 1.8 * S), { far, S }),
+      coxa: seg(m.legLen[0], 3.8 * S, 3.3 * S, far, { bow: -0.8 * S }),
+      femur: seg(m.legLen[1], 3.4 * S, 2.6 * S, far, { bow: 1.2 * S }),
+      tibia: paintFoot(Math.max(3, m.legLen[2] * 1.1), Math.max(1, 2.5 * S), { far, S }),
     };
   }
 
@@ -536,8 +538,8 @@ export function buildCrab(stage = 'adult') {
         { x: m.rx * 0.40, y: hipY - m.skirtH * 0.10, side: 1 },
       ],
       eyes: [
-        { x: -m.rx * 0.115, y: faceMid - m.oy - m.faceH * 0.26, side: -1 },
-        { x: m.rx * 0.115, y: faceMid - m.oy - m.faceH * 0.26, side: 1 },
+        { x: -m.rx * 0.20, y: faceMid - m.oy - m.faceH * 0.26, side: -1 },
+        { x: m.rx * 0.20, y: faceMid - m.oy - m.faceH * 0.26, side: 1 },
       ],
       mouth: { x: 0, y: faceMid - m.oy + m.faceH * 0.16 },
       organ: shellSurface(m, m.organ.a, m.organ.b),

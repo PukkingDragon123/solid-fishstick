@@ -790,7 +790,11 @@ export class UI {
     const near = d < 90;
     const x = 6, y = this.build > 0.005 ? 6 : 56;
     const label = 'WORK';
-    const w = near ? textWidth(label) + 24 : textWidth(label) + 42;
+    // laid out left to right so nothing can land on anything else:
+    // [icon] WORK  12m >
+    const dist = near ? '' : `${Math.max(1, Math.round(d / 10))}m`;
+    const lw = textWidth(label), dw = dist ? textWidth(dist) : 0;
+    const w = 17 + lw + (near ? 6 : 6 + dw + 4 + 6 + 4);
     const h = 15;
     const pulse = 0.5 + 0.5 * Math.sin(this.t * 3);
     ctx.save();
@@ -800,13 +804,14 @@ export class UI {
     // which way, and how far
     if (!near) {
       const east = g.npc.x > g.crab.x;
+      const dx = x + 17 + lw + 6;
+      drawText(ctx, dist, dx, y + (h - 7) / 2, { color: 'rgba(240,226,192,0.75)' });
       ctx.fillStyle = K.C.warn;
+      const ax0 = dx + dw + 4 + (east ? 0 : 3);
       for (let k = 0; k < 4; k++) {
-        const ax = Math.round(x + w - 9 + (east ? k : -k));
+        const ax = Math.round(ax0 + (east ? k : -k));
         ctx.fillRect(ax, Math.round(y + h / 2 - k), 1, 1 + k * 2);
       }
-      drawText(ctx, `${Math.round(d / 10)}`, x + w - 13, y + (h - 7) / 2,
-        { color: 'rgba(240,226,192,0.6)', align: 'right' });
     }
     ctx.restore();
   }
@@ -931,7 +936,9 @@ export class UI {
     if (!j) return;
     const cam = this.game.cam;
     const s = cam.worldToScreen(j.x, j.y);
-    const w = 104, h = 30;
+    // wide enough for the whole name and the quality pips beside it
+    const title = j.label.toUpperCase();
+    const w = Math.min(W - 12, Math.max(104, textWidth(title) + 18 + 24)), h = 30;
     const sh = j.shake > 0 ? Math.round(Math.sin(this.t * 46) * j.shake * 2) : 0;
     const x = Math.round(clamp(s.x - w / 2, 6, W - w - 6)) + sh;
     const y = Math.round(clamp(s.y - 56 * cam.zoom, 20, H - h - 40));
@@ -939,7 +946,7 @@ export class UI {
     drawPlate(ctx, x, y, w, h, { mat: 'stone', edge: 'none' });
     // what is being done, and what it is being done to
     drawNodeIcon(ctx, j.def.icon, x + 9, y + 8, j.def.tint, 1);
-    drawText(ctx, ellipsize(j.label.toUpperCase(), w - 34), x + 18, y + 4,
+    drawText(ctx, ellipsize(title, w - 42), x + 18, y + 4,
       { color: '#e6dcc0' });
 
     // the sunk bar
@@ -2326,7 +2333,9 @@ export class UI {
     if (!onScreen) {
       // A small plate pinned to the edge: what it is, how far, which way.
       // It used to be a bare chevron and a number, which read as a glitch.
-      const label = `${Math.round(Math.abs(d) / 10)}m`;
+      // say what kind of place it is, so the plate means something at a glance
+      const what = lm.kind === 'oasis' ? 'OASIS' : 'EXPLORE';
+      const label = `${what} ${Math.round(Math.abs(d) / 10)}m`;
       const pw = textWidth(label) + 24, ph = 15;
       const px = dir > 0 ? W - pw - 6 : 6;
       const py = Math.round(y - ph / 2);

@@ -144,6 +144,13 @@ export class TreeScreen {
     this.diving = true;
     this.dive = 0;
     this.manual = false;
+    // whatever you were walking with when you came in is still held down:
+    // it must not carry on as a pan. The keys only steer the view once they
+    // have been let go, and the thumb-stick is dropped outright.
+    this.axisLatch = true;
+    const inp = this.game.input;
+    if (inp) inp.clearVirtual();
+    if (this.game.ui) this.game.ui.stick = null;
     this.from = { x: fromX, y: fromY };
     this.t = 0;
     this.pulses.length = 0;
@@ -316,7 +323,8 @@ export class TreeScreen {
         this.target.z = clamp(this.target.z * Math.pow(1.22, -i.wheel), 0.26, 2.8);
       }
       const ax = i.axis();
-      if (ax.len > 0.1) {
+      if (ax.len <= 0.1) this.axisLatch = false;
+      if (ax.len > 0.1 && !this.axisLatch) {
         this.manual = true;
         this.target.x += ax.x * 260 * dt; this.target.y += ax.y * 260 * dt;
       }
@@ -914,13 +922,13 @@ export class TreeScreen {
       const d = armDir(arm.deg);
       const a = this._S(d.x * (R_GENE + 26), d.y * (R_GENE + 26), vw, vh);
       let reach = R_TIER[0] + 40;
-      let far = R_GENE + 40;
+      let first = null, firstD = Infinity;
       for (const n of this.L.nodes) {
         if (n.arm !== arm.id) continue;
         if ((this.seen[n.id] ?? 0) < 0.4) continue;
         const dd = Math.hypot(n.x, n.y);
         reach = Math.max(reach, dd + 70);
-        far = Math.max(far, dd + 18);
+        if (dd < firstD) { firstD = dd; first = n; }
       }
       const b = this._S(d.x * reach, d.y * reach, vw, vh);
       // the spoke: a dark bed with the arm's colour laid into it
@@ -937,10 +945,11 @@ export class TreeScreen {
       ctx.lineWidth = Math.max(1, 9 * z);
       ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
 
-      // the name, set beside the spoke so it never lands on an organ, with a
-      // bar underneath it that fills as the system grows
-      const px2 = -d.y, py2 = d.x;
-      const lp = this._S(d.x * far + px2 * 124, d.y * far + py2 * 124, vw, vh);
+      // the name, pinned right under the first bead of its own arm (under
+      // that bead's price) so there is never any doubt which arm is which,
+      // with a bar underneath it that fills as the system grows
+      const fp = first ? this._S(first.x, first.y, vw, vh) : this._S(d.x * R_TIER[0], d.y * R_TIER[0], vw, vh);
+      const lp = { x: fp.x, y: fp.y + (first ? first.r : 10) * z + 26 };
       if (lp.x > 30 && lp.x < vw - 30 && lp.y > 28 && lp.y < vh - 16) {
         const nw = textWidth(arm.name);
         ctx.globalAlpha = fade * 0.62;
@@ -1384,11 +1393,11 @@ export class TreeScreen {
     ctx.fillRect(bx - 1, by - 1, 2, 2);
     ctx.globalAlpha = fade;
     drawText(ctx, label, vw / 2, 3, { color: '#cfe89a', align: 'center' });
-    drawText(ctx, `${open}/${total} grown   ${e.genes.size}/${GENES.length} genes`, vw - 6, 3,
+    drawText(ctx, `${open}/${total} grown   ${e.genes.size}/${GENES.length} genes`, vw - 26, 3,
       { color: 'rgba(200,226,210,0.7)', align: 'right' });
 
-    drawText(ctx, 'drag  ·  scroll  ·  C centres  ·  esc', vw / 2, vh - 10,
-      { color: 'rgba(200,226,210,0.38)', align: 'center' });
+    drawText(ctx, 'tap a bead to grow it  ·  drag to look  ·  scroll to zoom  ·  C centres  ·  esc', vw / 2, vh - 10,
+      { color: 'rgba(200,226,210,0.55)', align: 'center' });
 
     if (hover) this._card(ctx, hover.n, hover.p, vw, vh);
     if (this.toast) {

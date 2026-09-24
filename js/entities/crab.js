@@ -74,7 +74,7 @@ export class Crab {
     this.rig = buildCrab(stage);
     this.m = this.rig.m;
     this.S = this.rig.S;
-    this.standH = this.m.faceH * 0.90 + this.m.shellW * 0.13;
+    this.standH = this.m.faceH * 0.90 + this.m.shellW * 0.05;   // sits low: a squat, round animal
     this.speed = lerp(48, 100, this.m.t);
     this._buildLegs();
     if (snap && this.game && this.game.terrain) this.snapToGround();
@@ -98,7 +98,7 @@ export class Crab {
   /** Where this leg wants its foot: a little outboard of its own socket. */
   homeX(l, lead = 0) {
     const sp = Math.abs(l.def.spread || 0.6);
-    return this.x + l.def.side * this.m.rx * (1.05 + sp * 0.78) + lead;
+    return this.x + l.def.side * this.m.rx * (0.95 + sp * 0.58) + lead;
   }
 
   /** Back legs contact further away, so their feet sit higher on screen. */
@@ -499,32 +499,51 @@ export class Crab {
       ctx.scale(1, shrink);
       ctx.drawImage(art.cv, -art.ox, -art.oy);
       ctx.restore();
-      // the shine, placed in body space so it does not swing with the stalk
+      // the eyeball, placed in body space so it does not swing with the
+      // stalk: a dark rim, the white, a big pupil that follows the look, and
+      // two catchlights - which is most of what makes it a face you like
+      // centred on a whole pixel with a whole radius, so the rim and the
+      // white are true concentric rings rather than two jagged ones
+      const r = Math.max(2, Math.round(art.r));
+      const ex = Math.round(e.x + Math.cos(a) * art.globe) + 0.5;
+      const ey = Math.round(e.y + Math.sin(a) * art.globe) + 0.5;
       if (shrink > 0.55) {
-        const r = art.r;
-        const ex = e.x + Math.cos(a) * art.globe;
-        const ey = e.y + Math.sin(a) * art.globe;
+        pxDisc(ctx, ex, ey, r + 1, '#1c120c', { p: 1 });
+        pxDisc(ctx, ex, ey, r, '#f7f1e6', { p: 1 });
+        const qx = ex + this.look.x * r * 0.30, qy = ey + this.look.y * r * 0.22 + r * 0.08;
         // What you are holding shows in the animal, not only in the corner of
         // the screen: the eye takes the mode's colour and burns a little at
         // the back of it, harder while something is actually happening.
         const tint = this.game.modeTint;
         if (tint) {
           const heat = 0.55 + 0.45 * Math.sin(this.game.time * 3.2);
-          // the face is drawn inside the animal's own transform, so one unit
-          // here is already one world pixel - no zoom to pass in
           ctx.save();
           ctx.globalAlpha = 0.35 + heat * 0.4;
-          pxGlow(ctx, ex, ey, r * 3.4, tint.glow, 1, { p: 1, steps: 3 });
+          pxGlow(ctx, ex, ey, r * 2.6, tint.glow, 1, { p: 1, steps: 3 });
           ctx.restore();
-          pxDisc(ctx, ex, ey, r * 0.62, tint.iris, { p: 1 });
         }
-        const px = ex + this.look.x * r * 0.22 - r * 0.34;
-        const py = ey + this.look.y * r * 0.22 - r * 0.36;
-        ctx.fillStyle = 'rgba(246,242,248,0.95)';
-        ctx.fillRect(Math.round(px), Math.round(py), Math.max(1, Math.round(r * 0.42)),
-          Math.max(1, Math.round(r * 0.42)));
+        pxDisc(ctx, qx, qy, r * 0.60, tint ? tint.iris : '#5a3a26', { p: 1 });
+        pxDisc(ctx, qx, qy, r * 0.38, '#140c0a', { p: 1 });
+        ctx.fillStyle = '#ffffff';
+        const hs = Math.max(1, Math.round(r * 0.40));
+        ctx.fillRect(Math.round(qx - r * 0.40), Math.round(qy - r * 0.46), hs, hs);
+        ctx.fillRect(Math.round(qx + r * 0.20), Math.round(qy + r * 0.16), Math.max(1, hs >> 1), Math.max(1, hs >> 1));
+      } else {
+        // shut: a happy little arc
+        ctx.fillStyle = '#1c120c';
+        for (let k = -2; k <= 2; k++) {
+          ctx.fillRect(Math.round(ex + k * r * 0.4), Math.round(ey - (2 - Math.abs(k)) * 0.5 * S), 1, 1);
+        }
       }
     }
+
+    // pink cheeks under the eyes
+    const E = rig.sockets.eyes;
+    const fy = E[0].y + 1.5 * S;
+    ctx.save();
+    ctx.globalAlpha = 0.55;
+    for (const e of E) pxEllipse(ctx, e.x + e.side * art.r * 1.1, fy + 0.5 * S, 2.6 * S, 1.5 * S, '#f07c86', { p: 1 });
+    ctx.restore();
   }
 
   _drawShadow(ctx, cam) {

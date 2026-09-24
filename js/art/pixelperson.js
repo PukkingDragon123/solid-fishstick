@@ -529,7 +529,7 @@ export const FIGURE_SOCKETS = {
   chest: { x: 3.4, y: -10.4 },
 };
 /** Arm bones, in world units: the elbow at the waist, the wrist at the crotch. */
-export const ARM = { upper: 8.6, lower: 7.8 };
+export const ARM = { upper: 8.0, lower: 7.2 };
 
 /**
  * THE WALK, as eight frames - contact, down, passing, up, and the same again
