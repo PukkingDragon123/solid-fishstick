@@ -9477,21 +9477,22 @@ body {
     const shellW = Math.round(lerp(36, 92, Math.pow(t, 0.86)));
     const S2 = shellW / 92;
     const rx = shellW * 0.5;
-    const ry = rx * lerp(0.56, 0.48, t);
-    const domeH = rx * 0.62;
-    const skirtH = rx * lerp(0.3, 0.34, t);
+    const ry = rx * lerp(0.6, 0.54, t);
+    const domeH = rx * 0.66;
+    const skirtH = rx * lerp(0.56, 0.6, t);
     const faceH = rx * lerp(0.36, 0.3, t);
     const eyeRise = rx * lerp(0.46, 0.32, t);
-    const spireLen = rx * 1.1;
+    const spireLen = rx * 0.34;
     const pad = Math.round(6 + 8 * t);
     const crownLift = domeH * KZ;
-    const w = Math.ceil(shellW + pad * 2 + spireLen + rx * 0.25);
+    const w = Math.ceil(shellW + pad * 2 + spireLen + rx * 0.6);
     const h = Math.ceil(crownLift + ry * 2 + skirtH + faceH + pad * 2);
     const ox = Math.round(pad + spireLen + rx);
     const topCy = Math.round(pad + crownLift + ry);
     const rimY = topCy + ry * KY + skirtH;
     const oy = Math.round(rimY + faceH * 0.15);
     const legN = 2;
+    const carry = rx * lerp(0.16, 0.12, t);
     const legLen = [shellW * 0.06, shellW * lerp(0.32, 0.27, t), shellW * lerp(0.31, 0.26, t)];
     return {
       stage,
@@ -9521,6 +9522,7 @@ body {
       bodyH: Math.round(faceH),
       legN,
       legLen,
+      carry,
       reach: (legLen[0] + legLen[1] + legLen[2] * 1.1) * 0.88,
       clawLen: [shellW * 0.065, shellW * 0.07],
       clawScale: lerp(0.24, 0.36, t),
@@ -9609,7 +9611,7 @@ body {
       if (maxY[x] < 0) continue;
       const sa = (x - ox) / rx;
       const q = Math.sqrt(Math.max(0, 1 - Math.min(1, sa * sa)));
-      const wh = skirtH * (0.25 + 0.75 * Math.pow(q, 0.9));
+      const wh = skirtH * (0.12 + 0.88 * Math.pow(q, 0.55));
       const y0 = maxY[x] + 1, y1 = maxY[x] + wh;
       wallBase[x] = Math.round(y1);
       for (let y = y0; y <= y1; y++) {
@@ -9631,39 +9633,39 @@ body {
         p.rect(x, y, 1, 1, { mat: "conch", dome: 0, addHeight: false, tint, lift: h });
       }
     }
-    const spN = 5;
-    let prev = null;
-    for (let k = 1; k <= spN; k++) {
-      const u = k / spN;
-      const r = (ry + skirtH * 0.55) * Math.pow(0.7, k) * 1.05;
-      const cx = ox - rx * (0.62 + 0.96 * Math.pow(u, 0.85));
-      const cy = topCy + ry * 0.55 - u * ry * 0.75;
-      p.ellipse(cx, cy, r * 1.2, r, { mat: "conch", dome: r * 0.95, tint: 0.04 - u * 0.05, under: true });
-      for (let j = -2; j <= 2; j++) {
-        p.capsule(
-          cx + j * r * 0.32,
-          cy - r * 0.85,
-          cx + j * r * 0.32 - r * 0.15,
-          cy + r * 0.85,
-          0.35 * S2 + 0.3,
-          0.35 * S2 + 0.3,
-          { mat: "conch", mask: true, dome: 0.4, tint: -0.12, onlyMat: "conch" }
-        );
+    const top = topCy - ry * KY - domeH * KZ;
+    const ccx = ox - rx * 0.3, ccy = lerp(top, rimY, 0.42);
+    const R0 = (rimY - top) * 0.5;
+    const GROW = 0.2, A0 = 2.2;
+    const cm = p._mid("conch"), cp = p._mid("conchPearl");
+    for (let y = 0; y < p.h; y++) {
+      for (let x = 0; x < p.w; x++) {
+        const i = y * p.w + x, mt = p.mat[i];
+        if (mt !== cm && mt !== cp) continue;
+        const dx = (x - ccx) / 1.18, dy = y - ccy;
+        const r = Math.hypot(dx, dy);
+        if (r > R0 * 1.02 || r < 0.6) continue;
+        const ang = Math.atan2(dy, dx);
+        let u = (Math.log(R0 / r) / GROW - (ang - A0)) / TAU;
+        u -= Math.floor(u);
+        const bulge = Math.sin(u * Math.PI);
+        const fade = Math.min(1, (R0 - r) / (R0 * 0.12));
+        p.tint[i] += ((bulge - 0.6) * 0.16 + (u < 0.07 || u > 0.95 ? -0.2 : 0)) * fade;
+        p.hgt[i] += bulge * 1.4 * S2 * fade;
       }
-      if (prev) {
-        p.ellipse(cx + r * 1.05, cy + r * 0.05, r * 0.16 + 0.4, r * 0.9, { mat: "conch", mask: true, dome: -0.6, tint: -0.32, onlyMat: "conch" });
-      }
-      prev = { cx, cy, r };
     }
-    p.capsule(
-      prev.cx - prev.r * 0.9,
-      prev.cy - prev.r * 0.1,
-      prev.cx - prev.r * 2,
-      prev.cy - prev.r * 0.45,
-      prev.r * 0.6,
-      0.6,
-      { mat: "conchPearl", dome: prev.r * 0.5, tint: -0.04, under: true }
-    );
+    {
+      let r = Math.max(1.4, rx * 0.2);
+      let cx = ox - rx * 0.8, cy = top + (rimY - top) * 0.22;
+      for (let k = 0; k < 3; k++) {
+        p.ellipse(cx, cy, r * 1.1, r, { mat: "conch", dome: r * 0.9, tint: 0.02 - k * 0.04, under: true });
+        p.ellipse(cx + r * 0.75, cy + r * 0.2, Math.max(0.6, r * 0.18), r * 0.8, { mat: "conch", mask: true, onlyMat: "conch", dome: -0.5, tint: -0.3 });
+        cx -= r * 0.85;
+        cy -= r * 0.55;
+        r *= 0.66;
+      }
+      p.ellipse(cx + r * 0.4, cy + r * 0.3, Math.max(0.8, r), Math.max(0.8, r), { mat: "conchPearl", dome: r * 0.6, tint: -0.02, under: true });
+    }
     p.grain("conch", { freq: 0.07 / S2, amp: 0.1, seed: seed + 77, oct: 2 });
     p.grain("conch", { freq: 0.3 / S2, amp: 0.06, seed, oct: 3, height: 0.3 * S2 });
     p.grain("moss", { freq: 0.7 / S2, amp: 0.12, seed: seed + 4 });
@@ -9706,8 +9708,8 @@ body {
       p.ellipse(x, y, r, r * 0.84, { mat: "bone", mask: true, dome: r * 0.9, tint: 0.06 });
       p.ellipse(x, y, r * 0.4, r * 0.32, { mat: "bone", mask: true, dome: -r * 0.6, tint: -0.34 });
     }
-    const ax = ox + rx * 0.66, ay = rimY - skirtH * 0.55;
-    const arx = rx * 0.32, ary = (skirtH + ry * 0.45) * 0.62;
+    const ax = ox + rx * 0.8, ay = rimY - skirtH * 0.58;
+    const arx = rx * 0.3, ary = skirtH * 0.62;
     p.ellipse(ax, ay, arx * 1.2, ary * 1.14, { mat: "conchPearl", dome: arx * 0.55, tint: 0.08 });
     p.ellipse(ax + arx * 0.1, ay + ary * 0.06, arx * 0.94, ary * 0.92, { mat: "conch", dome: -arx * 0.6, tint: -0.66 });
     p.ellipse(ax + arx * 0.18, ay - ary * 0.3, arx * 0.62, ary * 0.42, { mat: "hermitRed", dome: arx * 0.5, tint: 0.02 });
@@ -9850,6 +9852,26 @@ body {
     const m = crabMetrics(stage);
     const S2 = Math.max(0.4, m.S);
     const body = paintBody(m);
+    const ap = m.ap;
+    const sandY = m.rimY - m.oy + 1 + m.carry;
+    const farLift = 0;
+    const LEGS = [
+      { side: 1, far: false, x: ap.x + ap.rx * 0.35, y: ap.y + ap.ry * 0.1, home: ap.x + m.rx * 0.86 },
+      { side: 1, far: true, x: ap.x + ap.rx * 0.05, y: ap.y - ap.ry * 0.05, home: ap.x + m.rx * 0.64 },
+      { side: -1, far: false, x: ap.x - ap.rx * 0.05, y: ap.y + ap.ry * 0.25, home: ap.x - m.rx * 0.44 },
+      { side: -1, far: true, x: ap.x - ap.rx * 0.35, y: ap.y + ap.ry * 0.05, home: ap.x - m.rx * 0.3 }
+    ];
+    const coxaL = Math.max(2, m.shellW * 0.035);
+    let spanMax = 0;
+    for (const d of LEGS) {
+      const gy = sandY - (d.far ? farLift : 0);
+      const D = Math.hypot(Math.abs(d.home - d.x) + m.rx * 0.22, gy - d.y);
+      d.span = Math.max(6, (D - coxaL * 0.5) * 1.25);
+      spanMax = Math.max(spanMax, d.span);
+    }
+    m.legLen = [coxaL, spanMax * 0.5, spanMax * 0.5];
+    m.reach = coxaL + spanMax;
+    m.farLift = farLift;
     const seg2 = (len, r0, r1, far, extra) => paintSegment(
       Math.max(3, len),
       Math.max(1, r0),
@@ -9861,27 +9883,26 @@ body {
       legArt[far ? "far" : "near"] = {
         coxa: seg2(m.legLen[0], 4 * S2, 3.8 * S2, far, { bow: 0, legs: true }),
         femur: seg2(m.legLen[1], 3.8 * S2, 3 * S2, far, { bow: 0.8 * S2, legs: true }),
-        tibia: paintFoot(Math.max(3, m.legLen[2] * 1.1), Math.max(1.2, 3.2 * S2), { far, S: S2 })
+        tibia: paintFoot(Math.max(3, m.legLen[2]), Math.max(1.2, 3.2 * S2), { far, S: S2 })
       };
     }
-    const ap = m.ap;
-    const hipY = ap.y + ap.ry * 0.62;
-    const legs = [];
-    for (const side of [-1, 1]) {
-      for (let i = 0; i < m.legN; i++) {
-        const far = i === 1;
-        legs.push({
-          x: ap.x - ap.rx * (side > 0 ? 0.05 : 0.55) - (far ? ap.rx * 0.25 : 0),
-          y: hipY - (far ? ap.ry * 0.25 : 0),
-          side,
-          depth: far ? 1 : 0,
-          far,
-          spread: side * (far ? 0.75 : 0.35),
-          reach: m.reach,
-          order: i
-        });
-      }
-    }
+    const hipY = ap.y + ap.ry * 0.5;
+    const legs = LEGS.map((d, i) => ({
+      x: d.x,
+      y: d.y,
+      home: d.home,
+      art: {
+        coxa: seg2(coxaL, 4 * S2, 3.8 * S2, d.far, { bow: 0, legs: true }),
+        femur: seg2(d.span * 0.5, 3.8 * S2, 3 * S2, d.far, { bow: 0.8 * S2, legs: true }),
+        tibia: paintFoot(Math.max(3, d.span * 0.5), Math.max(1.2, 3.2 * S2), { far: d.far, S: S2 })
+      },
+      side: d.side,
+      depth: d.far ? 1 : 0,
+      far: d.far,
+      spread: d.side * (d.far ? 0.75 : 0.35),
+      reach: m.reach,
+      order: i
+    }));
     const rig = {
       stage,
       m,
@@ -10012,7 +10033,7 @@ body {
       this.rig = buildCrab(stage);
       this.m = this.rig.m;
       this.S = this.rig.S;
-      this.standH = Math.max(0.6, this.m.shellW * 0.015) - (this.m.oy - this.m.rimY);
+      this.standH = Math.max(0.6, this.m.shellW * 0.015) + (this.m.carry || 0) - (this.m.oy - this.m.rimY);
       this.speed = lerp(48, 100, this.m.t);
       this._buildLegs();
       if (snap && this.game && this.game.terrain) this.snapToGround();
@@ -10036,6 +10057,7 @@ body {
       const sp = Math.abs(l.def.spread || 0.6);
       if (this.rig.hermit) {
         const f = this.turnDir >= 0 ? 1 : -1;
+        if (l.def.home != null) return this.x + f * l.def.home + lead;
         const ap = this.m.ap || { x: this.m.rx * 0.66 };
         const fx = l.def.side > 0 ? ap.x + this.m.rx * (0.7 + sp * 0.45) : ap.x - this.m.rx * (0.55 + sp * 0.45);
         return this.x + f * fx + lead;
@@ -10044,7 +10066,7 @@ body {
     }
     /** Back legs contact further away, so their feet sit higher on screen. */
     footLift(l) {
-      return (l.def.depth || 0) * this.m.rx * 0.3;
+      return (l.def.depth || 0) * (this.m.farLift ?? this.m.rx * 0.3);
     }
     snapToGround() {
       const t = this.game.terrain;
@@ -10221,7 +10243,7 @@ body {
       const want = spd > 0.5 ? 1 : 0;
       this.gaitAmp = damp(this.gaitAmp ?? 0, want, want ? 0.02 : 4e-3, dt);
       const amp = this.gaitAmp;
-      const liftH = this.m.legLen[1] * 0.45;
+      const liftH = this.m.rx * 0.2;
       const turning = this.turnP < 1;
       const rig = this.rig;
       const tsx = this.turnScaleX;
@@ -10250,7 +10272,7 @@ body {
           l.foot.x = tx;
           l.foot.y = ty;
         }
-        const art4 = l.def.far ? rig.legArt.far : rig.legArt.near;
+        const art4 = l.def.art || (l.def.far ? rig.legArt.far : rig.legArt.near);
         const reach = (art4.coxa.len + art4.femur.len + art4.tibia.len) * 0.97;
         const hx = this.x + l.def.x * tsx, hy = this.y + this.bob + l.def.y;
         const dx = l.foot.x - hx, dy = l.foot.y - hy, d = Math.hypot(dx, dy);
@@ -10288,7 +10310,7 @@ body {
       }
       const targetY = groundY - this.standH * (1 - this.crouch * 0.28);
       this.y = damp(this.y, targetY, 8e-4, dt);
-      this.bodyAngle = damp(this.bodyAngle, clamp(Math.atan(slope), -0.5, 0.5), 9e-4, dt);
+      this.bodyAngle = damp(this.bodyAngle, clamp(Math.atan(slope) * 0.6, -0.25, 0.25), 9e-4, dt);
     }
     /** Something worth watching: sets the gaze and lifts a claw. */
     alertTo(ent, amount = 1) {
@@ -10347,22 +10369,23 @@ body {
       const mx = Math.abs(tsx) < 0.2 ? 0.2 * sg : tsx;
       for (const leg of this.legs) {
         if (!!leg.def.far !== far) continue;
-        const art4 = far ? rig.legArt.far : rig.legArt.near;
+        const art4 = leg.def.art || (far ? rig.legArt.far : rig.legArt.near);
         const l1 = art4.coxa.len, l2 = art4.femur.len, l3 = art4.tibia.len;
         const wx = (leg.foot.x - (this.x + this.lurch * 0.35)) / mx;
         const wy = leg.foot.y - (this.y + this.bob);
         const lx = wx * c - wy * s, ly = wx * s + wy * c;
         const hx = leg.def.x, hy = leg.def.y;
-        const side = leg.def.side;
-        const ankX = lx - side * l3 * 0.4;
-        const ankY = ly - l3 * 0.8;
-        const sol = ik2(hx, hy, ankX, ankY, l1, l2, side);
-        const fx = sol.kx + Math.cos(sol.a2) * l2, fy = sol.ky + Math.sin(sol.a2) * l2;
-        this._limb(ctx, art4.coxa, hx, hy, sol.kx, sol.ky);
-        this._limb(ctx, art4.femur, sol.kx, sol.ky, fx, fy);
-        const tdx = lx - fx, tdy = ly - fy, tl = Math.hypot(tdx, tdy) || 1;
-        const tk = Math.min(1, l3 * 1.08 / tl);
-        this._limb(ctx, art4.tibia, fx, fy, fx + tdx * tk, fy + tdy * tk);
+        const da = Math.atan2(ly - hy, lx - hx);
+        const ca = lerp(Math.PI / 2, da, 0.5);
+        const cx = hx + Math.cos(ca) * l1, cy = hy + Math.sin(ca) * l1;
+        const s1 = ik2(cx, cy, lx, ly, l2, l3, 1), s2 = ik2(cx, cy, lx, ly, l2, l3, -1);
+        const sol = s1.ky <= s2.ky ? s1 : s2;
+        const tl = Math.hypot(lx - cx, ly - cy);
+        const k = Math.min(1, (l2 + l3 - 0.01) / (tl || 1));
+        const ex = cx + (lx - cx) * k, ey = cy + (ly - cy) * k;
+        this._limb(ctx, art4.coxa, hx, hy, cx, cy);
+        this._limb(ctx, art4.femur, cx, cy, sol.kx, sol.ky);
+        this._limb(ctx, art4.tibia, sol.kx, sol.ky, ex, ey);
       }
     }
     /**

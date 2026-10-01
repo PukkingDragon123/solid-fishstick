@@ -37,17 +37,19 @@ export function crabMetrics(stage = 'adult') {
   const shellW = Math.round(lerp(36, 92, Math.pow(t, 0.86)));
   const S = shellW / 92;
   const rx = shellW * 0.5;
-  const ry = rx * lerp(0.56, 0.48, t);
-  const domeH = rx * 0.62;
-  const skirtH = rx * lerp(0.30, 0.34, t);       // the body whorl's flank
+  const ry = rx * lerp(0.60, 0.54, t);
+  const domeH = rx * 0.66;
+  // a round body whorl: its flank is deep and bellied, so the shell sits on
+  // the sand like a ball rather than a log
+  const skirtH = rx * lerp(0.56, 0.60, t);
   const faceH = rx * lerp(0.36, 0.30, t);        // the animal, under and in front
   // long eye stalks: the young are mostly eyes
   const eyeRise = rx * lerp(0.46, 0.32, t);
-  const spireLen = rx * 1.10;                    // the shell's point, behind
+  const spireLen = rx * 0.34;                    // a short spire, up and behind
 
   const pad = Math.round(6 + 8 * t);
   const crownLift = domeH * KZ;
-  const w = Math.ceil(shellW + pad * 2 + spireLen + rx * 0.25);
+  const w = Math.ceil(shellW + pad * 2 + spireLen + rx * 0.60);
   const h = Math.ceil(crownLift + ry * 2 + skirtH + faceH + pad * 2);
 
   const ox = Math.round(pad + spireLen + rx);
@@ -58,6 +60,9 @@ export function crabMetrics(stage = 'adult') {
   const oy = Math.round(rimY + faceH * 0.15);       // anchor: the hip line
 
   const legN = 2;
+  // how high it carries its shell off the sand on its legs: enough that the
+  // legs can be seen dropping from the mouth of the shell to the ground
+  const carry = rx * lerp(0.16, 0.12, t);
   const legLen = [shellW * 0.06, shellW * lerp(0.32, 0.27, t), shellW * lerp(0.31, 0.26, t)];
 
   return {
@@ -65,7 +70,7 @@ export function crabMetrics(stage = 'adult') {
     shellW, rx, ry, domeH, skirtH, faceH, eyeRise, pad, topCy, rimY,
     sbase: rimY, sx0: ox - rx, sx1: ox + rx, shellH: Math.round(ry * 2 + domeH),
     bodyW: Math.round(shellW * 0.80), bodyH: Math.round(faceH),
-    legN, legLen,
+    legN, legLen, carry,
     reach: (legLen[0] + legLen[1] + legLen[2] * 1.1) * 0.88,
     clawLen: [shellW * 0.065, shellW * 0.070],
     clawScale: lerp(0.24, 0.36, t),
@@ -164,7 +169,7 @@ function paintBody(m, seed = 3) {
     if (maxY[x] < 0) continue;
     const sa = (x - ox) / rx;
     const q = Math.sqrt(Math.max(0, 1 - Math.min(1, sa * sa)));
-    const wh = skirtH * (0.25 + 0.75 * Math.pow(q, 0.9));
+    const wh = skirtH * (0.12 + 0.88 * Math.pow(q, 0.55));
     const y0 = maxY[x] + 1, y1 = maxY[x] + wh;
     wallBase[x] = Math.round(y1);
     for (let y = y0; y <= y1; y++) {
@@ -184,31 +189,46 @@ function paintBody(m, seed = 3) {
     }
   }
 
-  // -- the spire, running back to its point ---------------------------------
-  // Each turn smaller than the last, stacked back and a little up, with the
-  // dark seam of a suture between them. It goes in behind the body whorl.
-  const spN = 5;
-  let prev = null;
-  for (let k = 1; k <= spN; k++) {
-    const u = k / spN;
-    const r = (ry + skirtH * 0.55) * Math.pow(0.70, k) * 1.05;
-    const cx = ox - rx * (0.62 + 0.96 * Math.pow(u, 0.85));
-    const cy = topCy + ry * 0.55 - u * ry * 0.75;
-    p.ellipse(cx, cy, r * 1.2, r, { mat: 'conch', dome: r * 0.95, tint: 0.04 - u * 0.05, under: true });
-    // ribs across the whorl
-    for (let j = -2; j <= 2; j++) {
-      p.capsule(cx + j * r * 0.32, cy - r * 0.85, cx + j * r * 0.32 - r * 0.15, cy + r * 0.85, 0.35 * S + 0.3, 0.35 * S + 0.3,
-        { mat: 'conch', mask: true, dome: 0.4, tint: -0.12, onlyMat: 'conch' });
+  // -- the coil: the earlier turns of the shell wound into its side --------
+  // A spiral suture, a dark groove with a pale ridge just inside it, winding
+  // in to a point high on the back. It is what makes it read as a snail's
+  // shell rather than a stone.
+  const top = topCy - ry * KY - domeH * KZ;
+  const ccx = ox - rx * 0.30, ccy = lerp(top, rimY, 0.42);
+  const R0 = (rimY - top) * 0.50;
+  // Every pixel of shell is given its place on a logarithmic spiral; each
+  // turn swells out in the middle and sinks into a dark seam at its edges,
+  // so the whorls read as rounded bands of shell wound one inside the next.
+  const GROW = 0.20, A0 = 2.2;
+  const cm = p._mid('conch'), cp = p._mid('conchPearl');
+  for (let y = 0; y < p.h; y++) {
+    for (let x = 0; x < p.w; x++) {
+      const i = y * p.w + x, mt = p.mat[i];
+      if (mt !== cm && mt !== cp) continue;
+      const dx = (x - ccx) / 1.18, dy = y - ccy;
+      const r = Math.hypot(dx, dy);
+      if (r > R0 * 1.02 || r < 0.6) continue;
+      const ang = Math.atan2(dy, dx);
+      // how many turns in from the outer lip this point is
+      let u = (Math.log(R0 / r) / GROW - (ang - A0)) / TAU;
+      u -= Math.floor(u);
+      const bulge = Math.sin(u * Math.PI);
+      const fade = Math.min(1, (R0 - r) / (R0 * 0.12));
+      p.tint[i] += ((bulge - 0.6) * 0.16 + (u < 0.07 || u > 0.95 ? -0.20 : 0)) * fade;
+      p.hgt[i] += bulge * 1.4 * S * fade;
     }
-    if (prev) {
-      // the seam against the bigger whorl in front of it
-      p.ellipse(cx + r * 1.05, cy + r * 0.05, r * 0.16 + 0.4, r * 0.9, { mat: 'conch', mask: true, dome: -0.6, tint: -0.32, onlyMat: 'conch' });
-    }
-    prev = { cx, cy, r };
   }
-  // the very tip
-  p.capsule(prev.cx - prev.r * 0.9, prev.cy - prev.r * 0.1, prev.cx - prev.r * 2.0, prev.cy - prev.r * 0.45,
-    prev.r * 0.6, 0.6, { mat: 'conchPearl', dome: prev.r * 0.5, tint: -0.04, under: true });
+  // the apex: a little nub of the first, smallest turns, up at the back
+  {
+    let r = Math.max(1.4, rx * 0.20);
+    let cx = ox - rx * 0.80, cy = top + (rimY - top) * 0.22;
+    for (let k = 0; k < 3; k++) {
+      p.ellipse(cx, cy, r * 1.1, r, { mat: 'conch', dome: r * 0.9, tint: 0.02 - k * 0.04, under: true });
+      p.ellipse(cx + r * 0.75, cy + r * 0.2, Math.max(0.6, r * 0.18), r * 0.8, { mat: 'conch', mask: true, onlyMat: 'conch', dome: -0.5, tint: -0.3 });
+      cx -= r * 0.85; cy -= r * 0.55; r *= 0.66;
+    }
+    p.ellipse(cx + r * 0.4, cy + r * 0.3, Math.max(0.8, r), Math.max(0.8, r), { mat: 'conchPearl', dome: r * 0.6, tint: -0.02, under: true });
+  }
 
   p.grain('conch', { freq: 0.07 / S, amp: 0.10, seed: seed + 77, oct: 2 });
   p.grain('conch', { freq: 0.3 / S, amp: 0.06, seed, oct: 3, height: 0.3 * S });
@@ -258,8 +278,8 @@ function paintBody(m, seed = 3) {
   // The mouth of the shell opens at the front and low down, lipped with
   // pearl, dark inside - and in the dark, the front of a hermit crab: its
   // head shield, orange-red and studded pale.
-  const ax = ox + rx * 0.66, ay = rimY - skirtH * 0.55;
-  const arx = rx * 0.32, ary = (skirtH + ry * 0.45) * 0.62;
+  const ax = ox + rx * 0.80, ay = rimY - skirtH * 0.58;
+  const arx = rx * 0.30, ary = skirtH * 0.62;
   p.ellipse(ax, ay, arx * 1.2, ary * 1.14, { mat: 'conchPearl', dome: arx * 0.55, tint: 0.08 });
   p.ellipse(ax + arx * 0.1, ay + ary * 0.06, arx * 0.94, ary * 0.92, { mat: 'conch', dome: -arx * 0.6, tint: -0.66 });
   p.ellipse(ax + arx * 0.18, ay - ary * 0.30, arx * 0.62, ary * 0.42, { mat: 'hermitRed', dome: arx * 0.5, tint: 0.02 });
@@ -491,6 +511,35 @@ export function buildCrab(stage = 'adult') {
   const S = Math.max(0.4, m.S);
   const body = paintBody(m);
 
+  // Everything comes out of the aperture. Facing +x: the walking legs, two
+  // pairs, step out of its lower lip - one pair reaching forward, the other
+  // planted back under the lip - and the two claws hang in front of it, the
+  // near one much the bigger, the way a hermit crab's are. Each leg knows
+  // where its foot sits on the sand, and is made long enough to reach it
+  // with a high knee and a stride to spare.
+  const ap = m.ap;
+  const sandY = m.rimY - m.oy + 1 + m.carry;
+  // every foot stands on the one line of sand: lifting the far ones to
+  // suggest depth only made them look as if they were hanging in the air
+  const farLift = 0;
+  const LEGS = [
+    { side: 1, far: false, x: ap.x + ap.rx * 0.35, y: ap.y + ap.ry * 0.10, home: ap.x + m.rx * 0.86 },
+    { side: 1, far: true, x: ap.x + ap.rx * 0.05, y: ap.y - ap.ry * 0.05, home: ap.x + m.rx * 0.64 },
+    { side: -1, far: false, x: ap.x - ap.rx * 0.05, y: ap.y + ap.ry * 0.25, home: ap.x - m.rx * 0.44 },
+    { side: -1, far: true, x: ap.x - ap.rx * 0.35, y: ap.y + ap.ry * 0.05, home: ap.x - m.rx * 0.30 },
+  ];
+  const coxaL = Math.max(2, m.shellW * 0.035);
+  let spanMax = 0;
+  for (const d of LEGS) {
+    const gy = sandY - (d.far ? farLift : 0);
+    const D = Math.hypot(Math.abs(d.home - d.x) + m.rx * 0.22, gy - d.y);
+    d.span = Math.max(6, (D - coxaL * 0.5) * 1.25);
+    spanMax = Math.max(spanMax, d.span);
+  }
+  m.legLen = [coxaL, spanMax * 0.5, spanMax * 0.5];
+  m.reach = coxaL + spanMax;
+  m.farLift = farLift;
+
   const seg = (len, r0, r1, far, extra) =>
     paintSegment(Math.max(3, len), Math.max(1, r0), Math.max(0.8, r1),
       { mat: far || extra.legs ? 'hermitDark' : 'hermitRed', far, S, ...extra });
@@ -500,29 +549,24 @@ export function buildCrab(stage = 'adult') {
     legArt[far ? 'far' : 'near'] = {
       coxa: seg(m.legLen[0], 4.0 * S, 3.8 * S, far, { bow: 0, legs: true }),
       femur: seg(m.legLen[1], 3.8 * S, 3.0 * S, far, { bow: 0.8 * S, legs: true }),
-      tibia: paintFoot(Math.max(3, m.legLen[2] * 1.1), Math.max(1.2, 3.2 * S), { far, S }),
+      tibia: paintFoot(Math.max(3, m.legLen[2]), Math.max(1.2, 3.2 * S), { far, S }),
     };
   }
 
-  // Everything comes out of the aperture. Facing +x: the walking legs, two
-  // pairs, step out of its lower lip - one pair reaching forward, the other
-  // back under the shell - and the two claws hang in front of it, the near
-  // one much the bigger, the way a hermit crab's are.
-  const ap = m.ap;
-  const hipY = ap.y + ap.ry * 0.62;
-  const legs = [];
-  for (const side of [-1, 1]) {
-    for (let i = 0; i < m.legN; i++) {
-      const far = i === 1;
-      legs.push({
-        x: ap.x - ap.rx * (side > 0 ? 0.05 : 0.55) - (far ? ap.rx * 0.25 : 0),
-        y: hipY - (far ? ap.ry * 0.25 : 0),
-        side, depth: far ? 1 : 0, far,
-        spread: side * (far ? 0.75 : 0.35),
-        reach: m.reach, order: i,
-      });
-    }
-  }
+  const hipY = ap.y + ap.ry * 0.5;
+  // each leg is cut to its own length, so the short back ones arch the same
+  // way the long front ones do instead of folding up into a zigzag
+  const legs = LEGS.map((d, i) => ({
+    x: d.x, y: d.y, home: d.home,
+    art: {
+      coxa: seg(coxaL, 4.0 * S, 3.8 * S, d.far, { bow: 0, legs: true }),
+      femur: seg(d.span * 0.5, 3.8 * S, 3.0 * S, d.far, { bow: 0.8 * S, legs: true }),
+      tibia: paintFoot(Math.max(3, d.span * 0.5), Math.max(1.2, 3.2 * S), { far: d.far, S }),
+    },
+    side: d.side, depth: d.far ? 1 : 0, far: d.far,
+    spread: d.side * (d.far ? 0.75 : 0.35),
+    reach: m.reach, order: i,
+  }));
 
   const rig = {
     stage, m, S, hermit: true,

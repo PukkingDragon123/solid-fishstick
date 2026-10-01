@@ -106,7 +106,7 @@ export class Crab {
     // a hermit crab carries its shell just clear of the sand, not up on stilts
     // measured from the shell's real bottom edge, so a shell of any size
     // rests a hair above the ground
-    this.standH = Math.max(0.6, this.m.shellW * 0.015) - (this.m.oy - this.m.rimY);   // the shell carried just clear of the sand
+    this.standH = Math.max(0.6, this.m.shellW * 0.015) + (this.m.carry || 0) - (this.m.oy - this.m.rimY);   // the shell carried just clear of the sand
     this.speed = lerp(48, 100, this.m.t);
     this._buildLegs();
     if (snap && this.game && this.game.terrain) this.snapToGround();
@@ -134,6 +134,7 @@ export class Crab {
       // a hermit crab walks forward out of its shell: one pair reaches ahead
       // of the aperture, the other plants back under it
       const f = this.turnDir >= 0 ? 1 : -1;
+      if (l.def.home != null) return this.x + f * l.def.home + lead;
       const ap = this.m.ap || { x: this.m.rx * 0.66 };
       const fx = l.def.side > 0 ? ap.x + this.m.rx * (0.70 + sp * 0.45) : ap.x - this.m.rx * (0.55 + sp * 0.45);
       return this.x + f * fx + lead;
@@ -142,7 +143,7 @@ export class Crab {
   }
 
   /** Back legs contact further away, so their feet sit higher on screen. */
-  footLift(l) { return (l.def.depth || 0) * this.m.rx * 0.30; }
+  footLift(l) { return (l.def.depth || 0) * (this.m.farLift ?? this.m.rx * 0.30); }
 
   snapToGround() {
     const t = this.game.terrain;
@@ -341,7 +342,7 @@ export class Crab {
     const want = spd > 0.5 ? 1 : 0;
     this.gaitAmp = damp(this.gaitAmp ?? 0, want, want ? 0.02 : 0.004, dt);
     const amp = this.gaitAmp;
-    const liftH = this.m.legLen[1] * 0.45;
+    const liftH = this.m.rx * 0.20;
     const turning = this.turnP < 1;
     const rig = this.rig;
     const tsx = this.turnScaleX;
@@ -370,7 +371,7 @@ export class Crab {
         l.foot.y += (ty - l.foot.y) * k;
       } else { l.foot.x = tx; l.foot.y = ty; }
       // and the safety net: never further from the hip than the leg reaches
-      const art = l.def.far ? rig.legArt.far : rig.legArt.near;
+      const art = l.def.art || (l.def.far ? rig.legArt.far : rig.legArt.near);
       const reach = (art.coxa.len + art.femur.len + art.tibia.len) * 0.97;
       const hx = this.x + l.def.x * tsx, hy = this.y + this.bob + l.def.y;
       const dx = l.foot.x - hx, dy = l.foot.y - hy, d = Math.hypot(dx, dy);
@@ -403,7 +404,7 @@ export class Crab {
     }
     const targetY = groundY - this.standH * (1 - this.crouch * 0.28);
     this.y = damp(this.y, targetY, 0.0008, dt);
-    this.bodyAngle = damp(this.bodyAngle, clamp(Math.atan(slope), -0.5, 0.5), 0.0009, dt);
+    this.bodyAngle = damp(this.bodyAngle, clamp(Math.atan(slope) * 0.6, -0.25, 0.25), 0.0009, dt);
   }
 
   /** Something worth watching: sets the gaze and lifts a claw. */
@@ -482,31 +483,32 @@ export class Crab {
 
     for (const leg of this.legs) {
       if (!!leg.def.far !== far) continue;
-      const art = far ? rig.legArt.far : rig.legArt.near;
+      const art = leg.def.art || (far ? rig.legArt.far : rig.legArt.near);
       const l1 = art.coxa.len, l2 = art.femur.len, l3 = art.tibia.len;
       const wx = (leg.foot.x - (this.x + this.lurch * 0.35)) / mx;
       const wy = leg.foot.y - (this.y + this.bob);
       const lx = wx * c - wy * s, ly = wx * s + wy * c;
       const hx = leg.def.x, hy = leg.def.y;
-      const side = leg.def.side;
 
-      // the ankle sits above the contact point and outboard of it, so the
-      // knee comes up and out the way a crab's does
-      const ankX = lx - side * l3 * 0.40;
-      const ankY = ly - l3 * 0.80;
-      const sol = ik2(hx, hy, ankX, ankY, l1, l2, side);
-
-      const fx = sol.kx + Math.cos(sol.a2) * l2, fy = sol.ky + Math.sin(sol.a2) * l2;
+      // A short coxa drops out of the socket toward the foot; from its end
+      // the two long segments bend to put the tip exactly on the foot, with
+      // the knee taken whichever way is higher - up and arched, never
+      // buckled under. The foot is never further than the leg is long (the
+      // gait sees to that), so the tip always touches the sand it stands on.
+      const da = Math.atan2(ly - hy, lx - hx);
+      const ca = lerp(Math.PI / 2, da, 0.5);
+      const cx = hx + Math.cos(ca) * l1, cy = hy + Math.sin(ca) * l1;
+      const s1 = ik2(cx, cy, lx, ly, l2, l3, 1), s2 = ik2(cx, cy, lx, ly, l2, l3, -1);
+      const sol = s1.ky <= s2.ky ? s1 : s2;
+      const tl = Math.hypot(lx - cx, ly - cy);
+      const k = Math.min(1, (l2 + l3 - 0.01) / (tl || 1));
+      const ex = cx + (lx - cx) * k, ey = cy + (ly - cy) * k;
       // drawn live on the screen's own pixels rather than as rotated
       // bitmaps: a rotated sprite resamples its pixels unevenly at every
       // angle, which is what made the legs look chewed
-      this._limb(ctx, art.coxa, hx, hy, sol.kx, sol.ky);
-      this._limb(ctx, art.femur, sol.kx, sol.ky, fx, fy);
-      // the last segment is a fixed length: it points at the foot, and if
-      // the foot has got away it stops short rather than stretching
-      const tdx = lx - fx, tdy = ly - fy, tl = Math.hypot(tdx, tdy) || 1;
-      const tk = Math.min(1, (l3 * 1.08) / tl);
-      this._limb(ctx, art.tibia, fx, fy, fx + tdx * tk, fy + tdy * tk);
+      this._limb(ctx, art.coxa, hx, hy, cx, cy);
+      this._limb(ctx, art.femur, cx, cy, sol.kx, sol.ky);
+      this._limb(ctx, art.tibia, sol.kx, sol.ky, ex, ey);
     }
   }
 
