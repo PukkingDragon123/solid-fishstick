@@ -56,7 +56,7 @@ export function crabMetrics(stage = 'adult') {
   const oy = Math.round(rimY + faceH * 0.15);       // anchor: the hip line
 
   const legN = 2;
-  const legLen = [shellW * 0.06, shellW * 0.27, shellW * 0.26];
+  const legLen = [shellW * 0.06, shellW * lerp(0.32, 0.27, t), shellW * lerp(0.31, 0.26, t)];
 
   return {
     stage, t, S, w, h, ox, oy, hermit: true, spireLen,
@@ -66,7 +66,7 @@ export function crabMetrics(stage = 'adult') {
     legN, legLen,
     reach: (legLen[0] + legLen[1] + legLen[2] * 1.1) * 0.88,
     clawLen: [shellW * 0.065, shellW * 0.070],
-    clawScale: lerp(0.30, 0.36, t),
+    clawScale: lerp(0.24, 0.36, t),
     basin: { a: 0, b: -0.30, r: 0.44 },
     organ: { a: 0, b: -0.30 },
   };

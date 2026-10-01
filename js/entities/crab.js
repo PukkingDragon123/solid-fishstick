@@ -132,7 +132,7 @@ export class Crab {
       // of the aperture, the other plants back under it
       const f = this.turnDir >= 0 ? 1 : -1;
       const ap = this.m.ap || { x: this.m.rx * 0.66 };
-      const fx = l.def.side > 0 ? ap.x + this.m.rx * (0.80 + sp * 0.55) : ap.x - this.m.rx * (0.50 + sp * 0.50);
+      const fx = l.def.side > 0 ? ap.x + this.m.rx * (1.00 + sp * 0.60) : ap.x - this.m.rx * (0.75 + sp * 0.55);
       return this.x + f * fx + lead;
     }
     return this.x + l.def.side * this.m.rx * (0.80 + sp * 0.80) + lead;
@@ -492,7 +492,10 @@ export class Crab {
     const sc = Math.sqrt(Math.abs(m.a * m.d - m.b * m.c)) || 1;
     const p0x = m.a * ax + m.c * ay + m.e, p0y = m.b * ax + m.d * ay + m.f;
     const p1x = m.a * bx + m.c * by + m.e, p1y = m.b * bx + m.d * by + m.f;
-    const R0 = Math.max(1.2, seg.r0 * sc), R1 = Math.max(0.9, seg.r1 * sc);
+    // never thinner than a couple of the sprite's own pixels, or a small
+    // crab's legs dissolve into a tangle of one-pixel sticks
+    const cl = Math.max(1, sc);
+    const R0 = Math.max(1.6 * cl, seg.r0 * sc), R1 = Math.max(seg.foot ? 0.9 * cl : 1.3 * cl, seg.r1 * sc);
     const ramp = MATERIALS[seg.mat]?.ramp || MATERIALS.chitin.ramp;
     const horn = MATERIALS.horn?.ramp || ramp;
     const far = seg.far;
