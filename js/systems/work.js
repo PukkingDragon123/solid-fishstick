@@ -94,11 +94,15 @@ export class Work {
   get live() { return !!this.job; }
 
   /**
-   * True while the popup owns the screen: a job that opens it is running, or
-   * the card saying what it turned up is still showing. The world holds its
-   * breath for both.
+   * Nothing owns the screen any more. The timing game used to open a window
+   * in the middle of it; now it is played on the thing itself - a stone bar
+   * over the rock with the pickaxe riding along it - and the world carries
+   * on around you while you swing. Kept so old callers still read false.
    */
-  get modal() { return !!(this.job && this.job.def.popup) || !!this.result; }
+  get modal() { return false; }
+
+  /** A timing game is running out in the world: strike when the tool is in the crack. */
+  get timed() { return !!(this.job && this.job.def.popup); }
 
   /**
    * Start a job. `by` is whoever is doing it - you, or him while the spore has
@@ -121,6 +125,10 @@ export class Work {
       onDone: opts.onDone || null,
       onStroke: opts.onStroke || null,
       label: opts.label || def.name,
+      // the top of whatever is being worked, in world units - the bar sits
+      // just over it - and the colour its chips come off in
+      top: opts.top ?? null,
+      chip: opts.chip || def.tint,
       subject: opts.subject || null,     // what the popup shows being worked: an icon name
       sub: opts.sub || '',               // and a line under it
       secs: def.secs / Math.max(0.4, Math.min(3, skill)),
@@ -166,7 +174,9 @@ export class Work {
    * it on its card: `{ icon, name, count, note, good }`.
    */
   reward(r) {
-    this.result = { t: 0, ...r };
+    const j = this._ended;
+    this.result = { t: 0, x: j ? j.x : this.game.crab.x, y: j ? (j.top ?? j.y - 16) : this.game.crab.y - 20,
+      chip: j ? j.chip : null, ...r };
   }
 
   dismiss() { this.result = null; }
@@ -195,6 +205,7 @@ export class Work {
       j.last = { kind: 'miss', t: 0 };
       g.audio?.play('deny');
       g.fx?.dust(j.x, j.y, 0.5);
+      g.fx?.spark(j.x, j.top !== null ? lerp(j.y, j.top, 0.45) : j.y - 4, '#8a8072', 3, 18);
       this._swing(w, false);
       j.idle = 0;
       return { kind: 'miss', quality: j.quality };
@@ -209,10 +220,12 @@ export class Work {
     j.shake = core ? 0.8 : 0.45;
     j.idle = 0;
     j.last = { kind: core ? 'core' : 'hit', t: 0 };
-    // a few chips off the thing, for the popup to throw about
+    // chips off the thing itself, out in the world
     for (let i = 0; i < (core ? 7 : 4); i++) {
       j.hits.push({ t: 0, a: -Math.PI / 2 + (Math.random() - 0.5) * 2.4, v: 40 + Math.random() * 60, core });
     }
+    const hy = j.top !== null ? lerp(j.y, j.top, 0.45) : j.y - 4;
+    g.fx?.spark(j.x, hy, j.chip, core ? 12 : 7, core ? 46 : 30);
     // and every good stroke the needle gets a little keener
     if (popup) j.speed *= 1.07;
     g.audio?.play(j.def.sound, { pitch: core ? 1.25 : 1 });
@@ -239,6 +252,8 @@ export class Work {
       w.clawOpen = 1;
       w.lurch = (w.facing || 1) * (good ? 3 : 1.6);
       w.digging = 0.5;
+      // the big claw comes up and over and down on the rock
+      w.smashT = 1;
     } else if (w.setPose) {
       // him: the pose he is in says what he is doing, and the arm throws
       w.swingT = 0.32;
@@ -249,6 +264,8 @@ export class Work {
   _finish() {
     const j = this.job;
     this.job = null;
+    // remembered so the reward knows where to burst out of
+    this._ended = j;
     const g = this.game;
     g.audio?.play('discover');
     g.cam?.shake(2.4);
@@ -286,10 +303,9 @@ export class Work {
       if (j.hits[i].t > 0.7) j.hits.splice(i, 1);
     }
 
-    // the worker has to stay with the work (a popup job pauses the world, so
-    // nobody walks anywhere while it is open)
+    // the worker has to stay with the work
     const w = j.by;
-    if (!popup && w && Math.abs(w.x - j.x) > 70) { this.stop('walked off'); return; }
+    if (w && Math.abs(w.x - j.x) > (popup ? 64 : 70)) { this.stop('walked off'); return; }
     if (w && w.alive === false) { this.stop('died'); return; }
 
     if (!popup) {
@@ -299,8 +315,8 @@ export class Work {
       return;
     }
 
-    // the needle, bouncing off both ends - always moving, because the popup
-    // is the whole of your attention and there is nothing to hold down
+    // the tool, riding back and forth along the bar - always moving, so the
+    // only thing to do is choose the moment
     j.needle += j.dir * j.speed * dt;
     if (j.needle > 1) { j.needle = 1; j.dir = -1; }
     if (j.needle < 0) { j.needle = 0; j.dir = 1; }

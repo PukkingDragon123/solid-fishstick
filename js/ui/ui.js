@@ -19,7 +19,7 @@ import { buildStructure } from '../art/buildart.js';
 import { drawShell, drawBloom, drawSprig, drawOrb, drawTab, drawPanel, drawGlyph, drawValve, drawGauge, drawNodeIcon, drawPlate, drawModeArt, drawGland, drawTame, drawNozzle } from './icons.js';
 import * as K from './kit.js';
 import { drawChibi } from './chibi.js';
-import { drawWorkPopup } from './workpop.js';
+import { drawWorldWork } from './workbar.js';
 import { drawBook } from './bookui.js';
 import { drawIcon } from './iconcore.js';
 import './iconart.js';
@@ -584,18 +584,20 @@ export class UI {
       if (this.hover && !this.drag) this._tooltip(ctx, W, H);
       return;
     }
-    // A job that opens the popup owns the screen until it is done: the
-    // world dims, the popup is the only thing you can press, and it is one
-    // big target - see workpop.js.
-    if (this.game.work?.modal) {
-      drawWorkPopup(this, ctx, W, H);
-      return;
-    }
     if (this.bookOpen) {
       drawBook(this, ctx, W, H);
       return;
     }
-    if (this.touchEnabled) this._touchControls(ctx, W, H);
+    // A timing job is played out in the world, on the thing being worked -
+    // see workbar.js. While it is on, the whole screen is the strike, apart
+    // from the little stone that puts the tool down.
+    const timed = !!this.game.work?.timed;
+    drawWorldWork(this, ctx, W, H);
+    if (timed) {
+      if (this.workStopRect) this.buttons.push({ ...this.workStopRect, key: 'Escape' });
+      this.buttons.push({ x: 0, y: 0, w: W, h: H, key: 'e' });
+    }
+    if (this.touchEnabled && !timed) this._touchControls(ctx, W, H);
 
     // a quick job (picking, watering) gets a little bar at the thing itself
     if (this.game.work?.live) this._workBar(ctx, W, H);
@@ -604,7 +606,8 @@ export class UI {
     this._loopCard(ctx, W, H);
     this._catchCard(ctx, W, H);
     this._chapterCard(ctx, W, H);
-    if (this.toast) this._toast(ctx, W, H);
+    // nothing written gets laid over the bar while you are swinging at something
+    if (this.toast && !timed) this._toast(ctx, W, H);
     if (this.noteT > 0 && this.note) this._bookNote(ctx, W, H);
     if (this.game.taming?.live) this._songCard(ctx, W, H);
     if (this.drag) this._drawCarried(ctx, W, H);
@@ -741,16 +744,16 @@ export class UI {
     ctx.scale(pop, pop);
     ctx.translate(-x, -y);
     const tint = done ? K.C.good : took ? K.C.warn : '#c8a05a';
-    K.plaque(ctx, x, y, w, h, { tint });
-    drawNodeIcon(ctx, done ? 'sun' : 'hand', x + 9, y + 7, tint, 1);
-    drawText(ctx, ellipsize(label, w - 24 - textWidth(count)), x + 17, y + 4,
-      { color: done ? '#d6f0b8' : '#f0e2c0' });
+    // the job you are on is written down, on a scroll
+    K.scroll(ctx, x, y, w + 4, h, { seed: 5 });
+    drawNodeIcon(ctx, done ? 'sun' : 'hand', x + 11, y + 7, done ? K.INK_GREEN : K.INK_RED, 1);
+    drawText(ctx, ellipsize(label, w - 26 - textWidth(count)), x + 19, y + 4,
+      { color: done ? K.INK_GREEN : K.INK });
     if (count) {
-      drawText(ctx, count, x + w - 5, y + 4,
-        { color: 'rgba(240,226,192,0.66)', align: 'right' });
+      drawText(ctx, count, x + w - 4, y + 4, { color: K.INK_SOFT, align: 'right' });
     }
     if (prog) {
-      K.gauge(ctx, x + 4, y + h - 8, w - 8, 5,
+      K.gauge(ctx, x + 6, y + h - 8, w - 8, 5,
         clamp01(prog.have / prog.need), done ? K.C.good : K.C.warn);
     }
     ctx.restore();
@@ -764,9 +767,10 @@ export class UI {
       const hl = wrapText(job.how, hw - 12);
       const hh = hl.length * LINE_H + 8;
       ctx.globalAlpha = a;
-      K.slab(ctx, x, y + h + 3, hw, hh, {});
+      // and how to do it, on a note pinned under it
+      K.parchment(ctx, x, y + h + 3, hw, hh, { seed: 7 });
       hl.forEach((l, i) => drawText(ctx, l, x + 6, y + h + 7 + i * LINE_H,
-        { color: K.C.ink }));
+        { color: K.INK }));
       ctx.globalAlpha = 1;
     }
     ctx.restore();
@@ -793,17 +797,17 @@ export class UI {
     const w = narrow ? Math.min(W - 52, 132) : Math.min(W - 12, 176), h = narrow ? 30 : 36;
     const tint = pop > 0 ? K.C.good : '#c8a05a';
     this._leftBottom = y + h;
-    K.plaque(ctx, x, y, w, h, { tint });
+    K.scroll(ctx, x, y, w, h, { seed: 11 });
     // the crab doing it
     const sx = x + 3, sy = y + 3, sw = narrow ? 26 : 30, sh = narrow ? 24 : 30;
     K.slot(ctx, sx, sy, sw, sh, { on: pop > 0 });
     drawChibi(ctx, st ? st.chibi : 'collect', sx + sw / 2, sy + sh / 2 + 1, this.t, 1);
     const tx = sx + sw + 5;
     const name = st ? st.name : 'LOOP DONE';
-    drawText(ctx, `${Math.min(i + 1, steps.length)}/${steps.length}`, x + w - 5, y + 4,
-      { color: 'rgba(240,226,192,0.55)', align: 'right' });
-    drawText(ctx, name, tx, y + 4, { color: pop > 0 ? '#d6f0b8' : '#ffd648', outline: true, outlineColor: OUT });
-    if (st && !narrow) drawText(ctx, ellipsize(st.how, w - (tx - x) - 4), tx, y + 14, { color: '#f0e2c0' });
+    drawText(ctx, `${Math.min(i + 1, steps.length)}/${steps.length}`, x + w - 6, y + 4,
+      { color: K.INK_SOFT, align: 'right' });
+    drawText(ctx, name, tx, y + 4, { color: pop > 0 ? K.INK_GREEN : K.INK_RED });
+    if (st && !narrow) drawText(ctx, ellipsize(st.how, w - (tx - x) - 6), tx, y + 14, { color: K.INK });
     if (this._hit(x, y, w, h) && st) this.hover = { title: `${st.name} - step ${i + 1} of ${steps.length}`, body: st.how };
     // the cycle, as pips
     const pw = Math.floor((w - (tx - x) - 6) / steps.length);
@@ -811,9 +815,9 @@ export class UI {
       const px = tx + k * pw, py = y + h - 8;
       const done = q.loopDone.has(steps[k].id);
       const cur = k === i;
-      ctx.fillStyle = '#120a06';
+      ctx.fillStyle = 'rgba(56,38,26,0.75)';
       ctx.fillRect(px, py, pw - 2, 4);
-      ctx.fillStyle = done ? '#ffd648' : cur ? (Math.sin(this.t * 6) > 0 ? '#fff6c2' : '#e6a51c') : '#3a2414';
+      ctx.fillStyle = done ? '#7a9a3a' : cur ? (Math.sin(this.t * 6) > 0 ? '#d8963a' : '#9a2e1c') : '#e8d3a1';
       ctx.fillRect(px + 1, py + 1, pw - 4, 2);
     }
   }
@@ -917,15 +921,15 @@ export class UI {
     const h = 15;
     const pulse = 0.5 + 0.5 * Math.sin(this.t * 3);
     ctx.save();
-    K.plaque(ctx, x, y, w, h, { tint: mixHex('#8a6a28', K.C.warn, pulse) });
-    drawNodeIcon(ctx, 'call', x + 9, y + h / 2, K.C.warn, 1);
-    drawText(ctx, label, x + 17, y + (h - 7) / 2, { color: '#f0e2c0' });
+    K.scroll(ctx, x, y, w + 4, h, { seed: 13 });
+    drawNodeIcon(ctx, 'call', x + 11, y + h / 2, mixHex('#9a2e1c', '#d8963a', pulse), 1);
+    drawText(ctx, label, x + 19, y + (h - 7) / 2, { color: K.INK });
     // which way, and how far
     if (!near) {
       const east = g.npc.x > g.crab.x;
       const dx = x + 17 + lw + 6;
-      drawText(ctx, dist, dx, y + (h - 7) / 2, { color: 'rgba(240,226,192,0.75)' });
-      ctx.fillStyle = K.C.warn;
+      drawText(ctx, dist, dx + 2, y + (h - 7) / 2, { color: K.INK_SOFT });
+      ctx.fillStyle = K.INK_RED;
       const ax0 = dx + dw + 4 + (east ? 0 : 3);
       for (let k = 0; k < 4; k++) {
         const ax = Math.round(ax0 + (east ? k : -k));
@@ -1424,9 +1428,9 @@ export class UI {
       - (lines.length - 1) * LINE_H) + Math.round((1 - inK) * 5);
     ctx.save();
     ctx.globalAlpha = a;
-    K.plaque(ctx, bx, by, bw, bh, { tint: K.C.warn });
+    K.scroll(ctx, bx - 4, by, bw + 8, bh, { seed: lines.length * 3 + tw });
     lines.forEach((l, i) => drawText(ctx, l, W / 2 + 1, by + 4 + i * LINE_H,
-      { color: '#f3e6c6', align: 'center' }));
+      { color: K.INK, align: 'center' }));
     ctx.restore();
   }
 
@@ -1486,7 +1490,8 @@ export class UI {
       }],
     ];
     const w = 148;
-    const h = 12 + rows.length * (bh + 4) + 4 + 13 + 8;
+    // the title scroll takes its own row off the top of the page
+    const h = 12 + rows.length * (bh + 4) + 4 + 13 + 8 + 13;
     const x = Math.round((W - w) / 2), y = Math.round((H - h) / 2);
     const cs = 11, cbx = x + w - 4 - cs, cby = y + 4;
     const closeHot = this._hit(cbx - 4, cby - 4, cs + 8, cs + 8);
@@ -2750,12 +2755,13 @@ export class UI {
     // button - it was never anything else - so it is drawn as one.
     const railW = pw < 340 ? 44 : 60;
     const cellH = Math.min(46, Math.floor((page.h - 4) / 3) - 2);
-    // the rail is WOOD - it is part of the board, not part of the page, and
-    // a column of brass tabs floating on parchment read as three loose
-    // buttons somebody had left there
-    K.px(ctx, page.x, page.y, railW, page.h, K.C.wood);
-    K.px(ctx, page.x + railW, page.y, 1, page.h, K.C.woodDim);
-    K.px(ctx, page.x + railW - 1, page.y, 1, page.h, K.C.woodLit);
+    // the rail is a ledge of the frame's own stone, standing proud of the
+    // slab - part of the board, not three loose stones left on it
+    K.texture(ctx, 'stone', page.x, page.y, railW, page.h, px, py);
+    K.px(ctx, page.x, page.y, railW, 1, K.C.stone[1]);
+    K.px(ctx, page.x + railW, page.y, 1, page.h, K.C.out);
+    K.px(ctx, page.x + railW - 1, page.y, 1, page.h, K.C.stone[4]);
+    K.px(ctx, page.x + railW + 1, page.y, 1, page.h, 'rgba(0,0,0,0.35)');
     TABS.forEach((t, n) => {
       const ty = page.y + 3 + n * (cellH + 3);
       const on = this.tab === t.id;
@@ -3812,7 +3818,7 @@ export class UI {
     const text = n.text + (n.pay ? `  +${n.pay}` : '');
     const w = Math.min(W - 20, textWidth(text) + 32), h = 20;
     const x = Math.round((W - w) / 2), y = Math.round(-h + k * (h + 26));
-    K.bezel(ctx, x, y, w, h, { rim: 1, curls: false, body: ['#fffbe8', '#f2e2b4', '#d8c088', '#a88c58'] });
+    K.parchment(ctx, x, y, w, h, { seed: 17, pin: true });
     drawIcon(ctx, 'book', x + 11, y + h / 2, 1);
     drawText(ctx, ellipsize(text, w - 28), x + 22, y + 6, { color: '#3a2210' });
     const hot = this._hit(x, y, w, h);
@@ -3843,9 +3849,9 @@ export class UI {
     const i = this.game.input;
     const x = clamp(i.sx + 8, 2, W - w - 2);
     const y = clamp(i.sy - h - 4, 2, H - h - 2);
-    K.plaque(ctx, x, y, w, h, { tint: K.C.frame });
-    if (t.title) drawText(ctx, t.title, x + 5, y + 4, { color: '#f0e2c0' });
+    K.parchment(ctx, x, y, w, h, { seed: 19 });
+    if (t.title) drawText(ctx, t.title, x + 5, y + 4, { color: K.INK });
     lines.forEach((l, k) => drawText(ctx, l, x + 5, y + (t.title ? 15 : 4) + k * LINE_H,
-      { color: 'rgba(240,226,192,0.7)' }));
+      { color: K.INK_SOFT }));
   }
 }

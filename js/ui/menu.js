@@ -336,25 +336,23 @@ export class Menu {
     // the most obviously wrong thing on the whole screen
     for (let r = 5; r >= 1; r--) {
       ctx.globalAlpha = (0.035 + this.gust * 0.04) * (r / 5);
-      ctx.fillStyle = K.C.frame;
+      ctx.fillStyle = K.C.goldDim;
       const p2 = r * 4;
       ctx.fillRect(bx - p2, by - p2 * 0.6, bw + p2 * 2, bh + p2 * 1.2);
     }
     ctx.globalAlpha = 1;
 
-    K.slab(ctx, bx, by, bw, bh, { face: K.C.wood, lit: K.C.woodLit, dim: K.C.woodDim });
-    const cs = 8;
-    K.clasp(ctx, bx + 1, by + 1, cs, 1, 1);
-    K.clasp(ctx, bx + bw - 2, by + 1, cs, -1, 1);
-    K.clasp(ctx, bx + 1, by + bh - 2, cs, 1, -1);
-    K.clasp(ctx, bx + bw - 2, by + bh - 2, cs, -1, -1);
-    // the name, burnt into the board
+    // a slab of the desert's own rock, with the name cut into it and the cut
+    // painted in ochre, the way the oldest marks on any rock were made
+    K.bezel(ctx, bx, by, bw, bh, { rim: 3, field: 'slab', seed: 21 });
     const ty = by + 8;
-    drawText(ctx, title, W / 2 + 1, ty + 1, { color: '#20120a', align: 'center', scale });
-    drawText(ctx, title, W / 2, ty, { color: K.C.frameLit, align: 'center', scale });
-    // and a brass rule under it that catches the wind
+    // the cut: dark where the chisel went in, lit along its lower lip
+    drawText(ctx, title, W / 2 - 1, ty - 1, { color: '#14110e', align: 'center', scale });
+    drawText(ctx, title, W / 2 + 1, ty + 1, { color: '#6e5a3a', align: 'center', scale });
+    drawText(ctx, title, W / 2, ty, { color: K.C.goldLit, align: 'center', scale });
+    // and a groove under it that catches the wind
     ctx.globalAlpha = 0.5 + this.gust * 0.5;
-    K.px(ctx, Math.round(W / 2 - tw / 2), ty + scale * 8 + 2, tw, 1, K.C.frame);
+    K.rule(ctx, Math.round(W / 2 - tw / 2), ty + scale * 8 + 2, tw);
     ctx.globalAlpha = 1;
 
     // ---- the doors, down the left, out of the animal's way ---------------
@@ -417,7 +415,7 @@ export class Menu {
 
     // ---- whose desert this is --------------------------------------------
     ctx.globalAlpha = 0.55 + this.gust * 0.35;
-    drawText(ctx, CREDIT, W / 2, H - 13, { color: K.C.frame, align: 'center' });
+    drawText(ctx, CREDIT, W / 2, H - 13, { color: '#d8c8a8', align: 'center', outline: true, outlineColor: 'rgba(14,11,9,0.6)' });
     ctx.globalAlpha = 1;
 
     // ---- the fade up from black on the very first frame ------------------

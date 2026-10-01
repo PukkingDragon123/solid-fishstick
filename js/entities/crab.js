@@ -103,6 +103,7 @@ export class Crab {
     this.clawT = 0;
     this.clawOpen = 0;
     this.tapT = 0;
+    this.smashT = 0;            // 1 at the start of a swing at a rock, runs down to 0
     this.tapLong = false;
     this.look = { x: 0, y: -0.2 };
     this.lookT = 0;
@@ -473,6 +474,7 @@ export class Crab {
 
     this.pumping = Math.max(0, this.pumping - dt);
     this.tapT = Math.max(0, this.tapT - dt * 3.2);
+    this.smashT = Math.max(0, this.smashT - dt * 3.1);
     this.crouch = damp(this.crouch, this.pumping > 0 ? 1 : 0, 0.0009, dt);
   }
 
@@ -787,6 +789,19 @@ export class Crab {
     ctx.restore();
   }
 
+  /**
+   * A swing at a rock: up and back, then down on it hard, then it comes back
+   * up off the stone. The ground stops the claw, so the bottom of the slam
+   * is the claw resting on whatever it hit.
+   */
+  _smashRaise() {
+    if (this.smashT <= 0) return 0;
+    const p = 1 - this.smashT;
+    if (p < 0.42) return Math.sin((p / 0.42) * Math.PI / 2) * 1.7;
+    if (p < 0.58) return lerp(1.7, -1.0, (p - 0.42) / 0.16);
+    return lerp(-1.0, 0, (p - 0.58) / 0.42);
+  }
+
   _drawClaws(ctx) {
     const rig = this.rig;
     const tm = this.game.time || 0;
@@ -797,14 +812,15 @@ export class Crab {
       const k = so.k || 1;
       const sw = Math.sin(this.clawT * (near ? 1.07 : 0.83)) * 0.06;
       const raise = this.clawOpen * 0.5 + this.pumping * 0.6 + this.alarm * 0.5
-        + (near ? Math.sin(this.tapT * Math.PI) * (this.tapLong ? 0.85 : 0.5) : 0);
+        + (near ? Math.sin(this.tapT * Math.PI) * (this.tapLong ? 0.85 : 0.5) : 0)
+        + (near ? this._smashRaise() : 0);
       ctx.save();
       ctx.translate(so.x, so.y);
       // they hang down in front of the shell, the palm upright and the
       // fingers to the ground - lifted when it is busy
       // the whole limb swings up as one piece about the shoulder - lifting
       // each joint by its own amount is what folded it into a knot
-      let lift = Math.min(1, raise) * 0.75;
+      let lift = Math.min(this.smashT > 0 && near ? 1.7 : 1, raise) * 0.75;
       const K0 = Math.max(8, this.m.shellW * this.m.clawScale) * k;
       // the ground, in this frame: the claw swings up until it rests on it
       // rather than sinking into the sand

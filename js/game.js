@@ -10,6 +10,7 @@ import { Camera } from './core/camera.js';
 import * as Save from './core/save.js';
 import { Renderer } from './render/renderer.js';
 import { Backdrop } from './render/backdrop.js';
+import * as Kit from './ui/kit.js';
 import { drawPlate } from './ui/icons.js';
 import { Terrain } from './world/terrain.js';
 import { Ocean } from './world/ocean.js';
@@ -1291,7 +1292,27 @@ export class Game {
     const tapped = this.ui.valveTapped;
     this.ui.valveTapped = false;
 
-    if (roam && !this.ui.busy && !this.ui.building) {
+    // A timing job is played out in the world now, on the thing itself. While
+    // it runs every strike key is a swing - space too, so the pump cannot go
+    // off under your thumb - a click anywhere is a swing, and walking away or
+    // Escape puts the tool down.
+    const working = play && this.work.timed && !this.ui.busy;
+    if (working) {
+      const sr = this.ui.workStopRect;
+      const onStop = !!(i.clicked && sr && i.sx >= sr.x - 3 && i.sx <= sr.x + sr.w + 3 && i.sy >= sr.y - 3 && i.sy <= sr.y + sr.h + 3);
+      if (i.justPressed('Escape') || onStop) {
+        i.consumeKey('Escape'); if (onStop) i.clicked = false;
+        this.work.stop('closed');
+      } else if (i.justPressed('e') || i.justPressed(' ') || i.justPressed('Space') || i.justPressed('Enter') || i.clicked) {
+        i.consumeKey('e'); i.consumeKey(' '); i.consumeKey('Space'); i.consumeKey('Enter');
+        i.clicked = false;
+        this.work.strike();
+      }
+      const ax = i.axis();
+      if (Math.abs(ax.x) > 0.35) this.work.stop('walked off');
+    }
+
+    if (roam && !this.ui.busy && !this.ui.building && !working) {
       const ax = i.axis();
       move = ax.x;
       // while you are riding one of your own, the keys are its keys
@@ -1427,6 +1448,7 @@ export class Game {
     this._plantTick(sdt);
     // a job is held with the same key that started it
     this.work.update(sdt, i.key('e') || !!this.ui.actHeld);
+    this._frameWork(sdt);
     this.quests.update(sdt);
     this.ranch.update(sdt);
     this._checkUnlocks();
@@ -2078,9 +2100,11 @@ export class Game {
     const wild = this.world.wildPlantAt(c.x + (c.facing || 1) * 12, 22);
     if (wild && FLORA_BY_ID[wild.id]) {
       const def = FLORA_BY_ID[wild.id];
+      this._faceWork(wild.x);
       this.work.begin('study', {
         tag: 'study:' + wild.id + ':' + Math.round(wild.x),
         x: wild.x, y: this.terrain.surfaceY(wild.x),
+        top: this.terrain.surfaceY(wild.x) - 16, chip: '#b8e08a',
         label: def.name, subject: 'flower',
         onDone: () => {
           const before = this.studied[wild.id] || 0;
@@ -2110,9 +2134,11 @@ export class Game {
     // straight stiff thing in the whole basin.
     const mast = this.world.mastAt(c.x + (c.facing || 1) * 16);
     if (mast) {
+      this._faceWork(mast.x);
       this.work.begin('fell', {
         tag: 'fell:' + mast.id,
         x: mast.x, y: this.terrain.surfaceY(mast.x),
+        top: this.terrain.surfaceY(mast.x) - 30, chip: '#b88a54',
         label: 'Mast tree', subject: 'tree',
         onDone: () => {
           const got = this.world.fell(mast);
@@ -2168,6 +2194,7 @@ export class Game {
       this.work.begin('search', {
         tag: 'search:' + (site.id ?? site.x ?? 0),
         x: site.x ?? c.x, y: this.terrain.surfaceY(site.x ?? c.x),
+        top: this.terrain.surfaceY(site.x ?? c.x) - 22, chip: '#c8b48a',
         label: site.name || 'What is left of it', subject: 'chest',
         onDone: () => {
           const line = this.encounters.interact();
@@ -2182,8 +2209,46 @@ export class Game {
   }
 
   /**
-   * Mining an outcrop: the popup, a pickaxe, and the seam emptied into your
-   * pack when the last strike lands. A seam that wants a better pick says so
+   * While you are swinging at something the camera leans in on the pair of
+   * you - the crab and the rock - and lets go again when you are done.
+   */
+  _frameWork(dt = 1 / 60) {
+    const cam = this.cam;
+    const j = this.work.job;
+    const on = !!(j && j.def.popup && this.state === 'play');
+    if (on && j.by === this.crab && j.stand !== false) {
+      // stand off it so the claws come down on it, not the shell: the crab's
+      // front is most of a shell's width ahead of the middle of it
+      const dir = j.x >= this.crab.x ? 1 : -1;
+      const want = j.x - dir * (this.crab.m.rx * 1.05 + (j.halfW ?? 8));
+      const d = want - this.crab.x;
+      if (Math.abs(d) > 0.5) this.crab.x += Math.sign(d) * Math.min(Math.abs(d), 60 * dt);
+    }
+    if (on) {
+      const p = this._workCam || (this._workCam = { x: 0, y: 0, vx: 0 });
+      p.x = (this.crab.x + j.x) / 2;
+      p.y = Math.min(this.crab.y, (j.top ?? j.y) + 26);
+      if (cam.follow === this.crab) {
+        this._workZoom = cam.targetZoom;
+        cam.followEntity(p);
+      }
+      if (cam.follow === p) cam.targetZoom = clamp(this.autoZoom() * 1.32, cam.minZoom, cam.maxZoom);
+    } else if (this._workCam && cam.follow === this._workCam) {
+      cam.followEntity(this.crab);
+      cam.targetZoom = this._workZoom ?? this.autoZoom();
+    }
+  }
+
+  /** Turn to face the thing you are about to work on. */
+  _faceWork(x) {
+    const d = x >= this.crab.x ? 1 : -1;
+    this.crab.facing = d;
+    this.crab._startTurn?.(d);
+  }
+
+  /**
+   * Mining an outcrop: a stone bar over the rock, the pickaxe riding along
+   * it, and the seam emptied into your pack when the last strike lands. A seam that wants a better pick says so
    * instead of opening.
    */
   startMine(seam) {
@@ -2195,8 +2260,11 @@ export class Game {
       return;
     }
     const gy = this.terrain.surfaceY(seam.x);
+    this._faceWork(seam.x);
     this.work.begin('mine', {
-      tag: 'mine:' + seam.ci, x: seam.x, y: gy,
+      tag: 'mine:' + seam.ci, x: seam.x, y: gy, by: this.crab,
+      top: gy - (this.mining.outcropHeight?.(seam) ?? 20),
+      chip: seam.ore.colour || '#c9a24a',
       label: `${item ? item.name : 'Ore'} seam`,
       subject: seam.ore.id,
       strikes: Math.max(3, Math.min(6, seam.hits + 1)),
@@ -2232,8 +2300,9 @@ export class Game {
     const gy = this.terrain.surfaceY(site.x);
     const RELIC_ICON = { trilobite: 'trilobite', ammonite: 'ammonite', amberfly: 'amberfly',
       amberegg: 'amberchunk', vertebra: 'vertebra' };
+    this._faceWork(site.x);
     this.work.begin('dig', {
-      tag: site.id, x: site.x, y: gy,
+      tag: site.id, x: site.x, y: gy, top: gy - 8, chip: '#d8b878',
       by: this.mind?.owned ? this.npc : this.crab,
       label: site.relic.kind === 'amber' ? 'Something golden, buried' : 'Something buried',
       subject: site.relic.kind === 'amber' ? 'amberchunk' : 'fossil',
@@ -3084,7 +3153,9 @@ export class Game {
     if (this.talk.fade > 0.01) this.talk.draw(ui, r.vw, r.vh);
     if (this.puzzle.fade > 0.01) this.puzzle.draw(ui, r.vw, r.vh);
     this.ending.drawUI(ui, r.vw, r.vh);
-    if (!this.work.modal && !this.ui.bookOpen) this.fx.drawText(ui, cam, (c, t, x, y, o) => drawText(c, t, x, y, o));
+    // what a job turned up says so on its own scroll; nothing else floats over it
+    const looting = !!(this.work.result && this.work.result.t < 2.2);
+    if (!this.ui.bookOpen && !looting) this.fx.drawText(ui, cam, (c, t, x, y, o) => drawText(c, t, x, y, o));
     if (this.state === 'dead') this._drawDead(ui, r);
     // Anything that belongs to the WORLD stops at the edge of a screen. A
     // speech bubble floating over an open bench is the single thing that made
@@ -3092,7 +3163,7 @@ export class Game {
     const inside = this.ui.tree.dive > 0.4 || this.ui.drawer > 0.02
       || this.ui.paused || !!this.unlockCard || this.work.modal || this.ui.bookOpen;
     if (this.npc.speech && this.state === 'play' && !inside && !this.talk.on && !this.puzzle.on
-      && !(this.ending.on && this.ending.t > 3) && !this.quests.chapterCard) this._drawSpeech(ui, cam, this.npc);
+      && !(this.ending.on && this.ending.t > 3) && !this.quests.chapterCard && !this.work.timed && !looting) this._drawSpeech(ui, cam, this.npc);
     r.dctx.drawImage(r.uiC, 0, 0, r.vw, r.vh, 0, 0, r.vw * r.scale, r.vh * r.scale);
   }
 
@@ -3520,18 +3591,23 @@ export class Game {
     ctx.closePath();
     ctx.fill();
 
-    // the page, with a shadow under it and a torn bottom edge
-    ctx.fillStyle = 'rgba(0,0,0,0.30)';
-    ctx.fillRect(x + 2, y + 3, w, h);
-    ctx.fillStyle = PAPER;
-    ctx.fillRect(x, y, w, h);
-    // torn: a row of one-pixel bites along the bottom
-    for (let i = 0; i < w; i += 2) {
-      const bite = (i * 37 % 5) < 2 ? 1 : 0;
-      if (bite) { ctx.fillStyle = SHADE; ctx.fillRect(x + i, y + h - 1, 2, 1); }
+    // the page, with a shadow under it and a torn bottom edge - a sheet of
+    // the same old paper every note out here is written on
+    if (!code && !shout) {
+      Kit.parchment(ctx, x, y, w, h, { seed: w * 3 + h });
+    } else {
+      ctx.fillStyle = 'rgba(0,0,0,0.30)';
+      ctx.fillRect(x + 2, y + 3, w, h);
+      ctx.fillStyle = PAPER;
+      ctx.fillRect(x, y, w, h);
+      // torn: a row of one-pixel bites along the bottom
+      for (let i = 0; i < w; i += 2) {
+        const bite = (i * 37 % 5) < 2 ? 1 : 0;
+        if (bite) { ctx.fillStyle = SHADE; ctx.fillRect(x + i, y + h - 1, 2, 1); }
+      }
+      ctx.strokeStyle = EDGE;
+      ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
     }
-    ctx.strokeStyle = EDGE;
-    ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
 
     let tx = x + 7;
     if (port) {
