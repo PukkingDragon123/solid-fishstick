@@ -470,7 +470,7 @@ function paintEye(m) {
     const x = x0 + len * (k / 4);
     p.ellipse(x, cy, 0.5 * S + 0.3, 1.2 * S + 0.3, { mat: 'crabBelly', onlyMat: 'hermitRed', dome: 0.6, tint: 0.2 });
   }
-  const cv = p.resolve(MATERIALS, { ...LIGHT, outline: 1, outlineColor: '#1e0a06' });
+  const cv = p.resolve(MATERIALS, { ...LIGHT, outline: 1, outlineColor: '#000000' });
   return { cv, ox: pad, oy: cy, len, r, globe: len };
 }
 

@@ -25,6 +25,7 @@ function rampU32(ramp) {
   return r;
 }
 const LIMB = 256;
+const MOSS_N = 70;
 let limb = null;
 function limbBuf() {
   if (!limb) {
@@ -129,8 +130,149 @@ export class Crab {
     // rests a hair above the ground
     this.standH = Math.max(0.6, this.m.shellW * 0.015) + (this.m.carry || 0) - (this.m.oy - this.m.rimY);   // the shell carried just clear of the sand
     this.speed = lerp(48, 100, this.m.t);
+    this._mossInit();
     this._buildLegs();
     if (snap && this.game && this.game.terrain) this.snapToGround();
+  }
+
+  // -- moss -----------------------------------------------------------------
+  // Moss creeps over the shell the way paint goes on with a brush: one stroke
+  // at a time, each one drawn out along its length as it grows, the next
+  // usually starting where an old one ended. The strokes are laid out in the
+  // shell's own proportions, so the same moss is still there when it grows.
+
+  _mossInit() {
+    const body = this.rig.body, m = this.m;
+    const w = body.cv.width, h = body.cv.height;
+    // read from a throwaway copy: reading the sprite itself back can move it
+    // off the GPU, and it is drawn every frame
+    const tmp = document.createElement('canvas'); tmp.width = w; tmp.height = h;
+    const tg = tmp.getContext('2d', { willReadFrequently: true });
+    tg.drawImage(body.cv, 0, 0);
+    const src = tg.getImageData(0, 0, w, h).data;
+    const ok = new Uint8Array(w * h);
+    const apx = body.ox + m.ap.x, apy = body.oy + m.ap.y;
+    const org = this.rig.sockets.organ;
+    const ogx = body.ox + org.x, ogy = body.oy + org.y, ogr = Math.max(3, m.rx * 0.16);
+    let x0 = w, x1 = 0, y0 = h, y1 = 0;
+    for (let y = 1; y < h - 1; y++) {
+      for (let x = 1; x < w - 1; x++) {
+        const i = y * w + x;
+        if (src[i * 4 + 3] < 200) continue;
+        // keep off the outline, the mouth of the shell and the water organ
+        if (src[(i - 1) * 4 + 3] < 200 || src[(i + 1) * 4 + 3] < 200 || src[(i - w) * 4 + 3] < 200 || src[(i + w) * 4 + 3] < 200) continue;
+        if (((x - apx) / (m.ap.rx * 1.35)) ** 2 + ((y - apy) / (m.ap.ry * 1.25)) ** 2 < 1) continue;
+        if (Math.hypot(x - ogx, (y - ogy) * 1.6) < ogr) continue;
+        ok[i] = 1;
+        if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
+      }
+    }
+    const cv = document.createElement('canvas');
+    cv.width = w; cv.height = h;
+    const g = cv.getContext('2d');
+    this.mossCv = cv;
+    this._mz = { w, h, ok, g, img: g.createImageData(w, h), box: { x0, x1, y0, y1 }, drawn: -1, t: 0 };
+    if (this.moss == null) this.moss = 0.06;
+    this._mossPaint();
+  }
+
+  /** The brush strokes, the same every time: in shell-box units, 0..1. */
+  _mossStrokes() {
+    if (Crab._strokes) return Crab._strokes;
+    const R = (n) => { let h = Math.imul(n | 0, 0x27d4eb2d); h = Math.imul(h ^ (h >>> 15), 0x2c1b3c6d); return ((h ^ (h >>> 13)) >>> 0) / 4294967296; };
+    const out = [];
+    for (let i = 0; i < MOSS_N; i++) {
+      let sx, sy;
+      if (i > 2 && R(i * 7 + 1) < 0.7) {
+        // carry on from where an earlier stroke stopped
+        const p = out[Math.floor(R(i * 13 + 2) * i)];
+        sx = p.ex + (R(i * 5 + 3) - 0.5) * 0.08; sy = p.ey + (R(i * 11 + 4) - 0.5) * 0.08;
+      } else {
+        // it takes hold low down and in the grooves first, then climbs
+        sx = R(i * 17 + 5); sy = 0.45 + R(i * 19 + 6) * 0.55 - Math.min(0.45, i / MOSS_N * 0.6);
+      }
+      const ang = (R(i * 23 + 7) - 0.5) * 1.6 + (R(i * 29 + 8) < 0.5 ? Math.PI : 0);
+      const len = 0.10 + R(i * 31 + 9) * 0.22;
+      const pts = [];
+      let x = sx, y = sy, a = ang;
+      for (let k = 0; k <= 10; k++) {
+        pts.push({ x, y });
+        a += (R(i * 37 + k * 3) - 0.5) * 0.7;
+        x += Math.cos(a) * len / 10; y += Math.sin(a) * len / 10 * 0.8;
+      }
+      out.push({ pts, ex: x, ey: y, w: 0.6 + R(i * 41 + 10) * 0.8, tone: R(i * 43 + 11) });
+    }
+    return (Crab._strokes = out);
+  }
+
+  _mossPaint() {
+    const z = this._mz; if (!z) return;
+    const { w, h, ok, box } = z;
+    const n = this.moss * MOSS_N;
+    const full = Math.floor(n), part = n - full;
+    const key = Math.round(n * 12);
+    if (key === z.drawn) return;
+    z.drawn = key;
+    const mask = new Uint8Array(w * h);
+    const strokes = this._mossStrokes();
+    const bw = box.x1 - box.x0, bh = box.y1 - box.y0;
+    for (let i = 0; i <= Math.min(full, MOSS_N - 1); i++) {
+      const st = strokes[i];
+      const upto = i < full ? 1 : part;
+      if (upto <= 0) continue;
+      const last = Math.max(1, Math.round(upto * 10));
+      for (let k = 0; k <= last; k++) {
+        const p = st.pts[Math.min(10, k)];
+        // a brush: fat in the middle of the stroke, dragged thin at the ends
+        const taper = Math.sin(Math.PI * (0.15 + 0.7 * (k / 10)));
+        const r = Math.max(0.8, (0.012 + st.w * 0.030 * taper) * bw);
+        const cx = box.x0 + p.x * bw, cy = box.y0 + p.y * bh;
+        const R2 = Math.ceil(r);
+        for (let dy = -R2; dy <= R2; dy++) {
+          for (let dx = -R2; dx <= R2; dx++) {
+            if (dx * dx + dy * dy > r * r) continue;
+            const x = Math.round(cx + dx), y = Math.round(cy + dy);
+            if (x < 0 || y < 0 || x >= w || y >= h) continue;
+            const j = y * w + x;
+            if (ok[j] && !mask[j]) mask[j] = 1 + Math.floor(st.tone * 3);
+          }
+        }
+      }
+    }
+    // shade it as a pixel artist would: lit along the top of each patch, a
+    // dark lip along the bottom, a speckle of light inside, dithered
+    const ramp = MATERIALS.moss.ramp;
+    const rgb = ramp.map((c) => [parseInt(c.slice(1, 3), 16), parseInt(c.slice(3, 5), 16), parseInt(c.slice(5, 7), 16)]);
+    const d = z.img.data; d.fill(0);
+    const hash = (x, y) => (((x * 73856093) ^ (y * 19349663)) >>> 0) % 7;
+    for (let y = 1; y < h - 1; y++) {
+      for (let x = 1; x < w - 1; x++) {
+        const j = y * w + x;
+        if (!mask[j]) {
+          // a darker rim where moss meets bare shell below it
+          if (ok[j] && mask[j - w]) { const c = rgb[1]; d.set([c[0], c[1], c[2], 190], j * 4); }
+          continue;
+        }
+        const top = !mask[j - w], bot = !mask[j + w];
+        const vy = (y - box.y0) / Math.max(1, box.y1 - box.y0);
+        let k = 4 + (mask[j] - 2) * 0.6 - vy * 1.6 + (hash(x, y) === 0 ? 1.2 : 0) + (((x + y) & 1) ? 0.35 : -0.35);
+        if (top) k += 1.8; if (bot) k -= 1.5;
+        k = Math.max(1, Math.min(7, Math.round(k)));
+        const c = rgb[k];
+        d.set([c[0], c[1], c[2], 255], j * 4);
+      }
+    }
+    z.g.putImageData(z.img, 0, 0);
+  }
+
+  _mossTick(dt) {
+    const lush = this.game?.garden?.lushness || 0;
+    // about a quarter of an hour to cover the shell, faster if it is kept green
+    const rate = (1 / 900) * (1 + lush * 2);
+    this.moss = Math.min(1, (this.moss ?? 0.06) + rate * dt);
+    if (!this._mz) return;
+    this._mz.t += dt;
+    if (this._mz.t > 0.2) { this._mz.t = 0; this._mossPaint(); }
   }
 
   _buildLegs() {
@@ -272,6 +414,7 @@ export class Crab {
     this.lean = damp(this.lean, clamp(this.vx / this.speed, -1, 1) * 0.7, 0.0009, dt);
 
     this._gait(dt, t);
+    this._mossTick(dt);
     this._rideFeet(dt, t);
 
     const spd = Math.abs(this.vx);
@@ -475,6 +618,7 @@ export class Crab {
     ctx.translate(this.lean * 3, 0);
     ctx.scale(1, 1 + Math.sin(this.breathe) * 0.012);
     ctx.drawImage(rig.body.cv, -rig.body.ox, -rig.body.oy);
+    if (this.mossCv) ctx.drawImage(this.mossCv, -rig.body.ox, -rig.body.oy);
     ctx.restore();
 
     // ---- everything growing on the near half of the shell ------------------
@@ -778,7 +922,7 @@ export class Crab {
       // two catchlights - which is most of what makes it a face you like
       // a plain bead of pitch black on the end of each stalk, centred on a
       // whole pixel so it is a clean round dot
-      const r = Math.max(2, Math.round(art.r * 0.7));
+      const r = Math.max(1.6, art.r * 0.55);
       const ex = Math.round(e.x + Math.cos(a) * art.globe * st) + 0.5;
       const ey = Math.round(e.y + Math.sin(a) * art.globe * st) + 0.5;
       if (shrink > 0.55) {
@@ -807,31 +951,27 @@ export class Crab {
         const ang = Math.atan2(T.b * Math.cos(a) + T.d * Math.sin(a), T.a * Math.cos(a) + T.c * Math.sin(a));
         const ca = Math.cos(ang), sa2 = Math.sin(ang);
         const cell = Math.max(1, Math.round(Math.hypot(T.a, T.b) * 0.6));
-        const ra = sr * 1.2 / cell, rb = sr * 0.92 / cell;
-        const R = Math.ceil(ra) + 1;
+        // small, round and glossy: a thick black outline, a big dark pupil
+        // and a fat white catchlight - a bead you want to look back at
+        const rr = Math.max(2.2, sr * 0.62 / cell);
+        const R = Math.ceil(rr) + 1;
         for (let yy = -R; yy <= R; yy++) {
           for (let xx = -R; xx <= R; xx++) {
-            const u = (xx * ca + yy * sa2) / ra, w2 = (-xx * sa2 + yy * ca) / rb;
-            const d = u * u + w2 * w2;
+            const d = Math.hypot(xx, yy) / rr;
             if (d > 1) continue;
-            // a hermit crab's eye: a gold-green globe with a dark band of
-            // pupil across it, glassy at the top
-            const up = -yy / R;
             let c;
-            if (d > 0.80) c = '#1a1408';
-            else if (Math.abs(w2) < 0.28) c = '#10120c';
-            else if (up > 0.2) c = ((xx + yy) & 1) ? '#d9e3a0' : '#c4d08a';
-            else c = ((xx + yy) & 1) ? '#9fae62' : '#8a9a52';
+            if (d > 1 - 1.1 / rr) c = '#000000';
+            else if (yy > 0 && d > 0.45) c = '#3a3418';     // a warm glint in the lower rim
+            else c = '#0b0a10';
             ctx.fillStyle = c;
             ctx.fillRect(bx + xx * cell, by + yy * cell, cell, cell);
           }
         }
-        // the wet highlight, and its dim twin on the far side
-        const gs = Math.max(cell, Math.round(sr * 0.32 / cell) * cell);
-        ctx.fillStyle = '#f4f8f8';
-        ctx.fillRect(Math.round(bx - sr * 0.45), Math.round(by - sr * 0.55), gs, gs);
-        ctx.fillStyle = '#7f949a';
-        ctx.fillRect(Math.round(bx + sr * 0.35), Math.round(by + sr * 0.1), cell, cell);
+        const hs = Math.max(1, Math.round(rr * 0.55));
+        const hx = Math.round(-rr * 0.45) - Math.floor(hs / 2) + 1, hy = Math.round(-rr * 0.45) - Math.floor(hs / 2) + 1;
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(bx + hx * cell, by + hy * cell, hs * cell, hs * cell);
+        if (rr > 2.2) ctx.fillRect(bx + Math.round(rr * 0.35) * cell, by + Math.round(rr * 0.3) * cell, cell, cell);
         ctx.restore();
       } else {
         // shut: a happy little arc

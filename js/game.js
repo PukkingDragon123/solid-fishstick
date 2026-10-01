@@ -2878,7 +2878,7 @@ export class Game {
 
   save() {
     Save.writeSave({
-      v: 1, x: this.crab.x, stage: this.crab.stage, hp: this.crab.hp,
+      v: 1, x: this.crab.x, stage: this.crab.stage, hp: this.crab.hp, moss: this.crab.moss,
       hour: this.weather.hour, day: this.weather.day,
       economy: this.economy.toJSON(), garden: this.garden.toJSON(),
       wildlife: this.wildlife.toJSON(), seeds: this.seeds,
@@ -2901,6 +2901,7 @@ export class Game {
       // a save is loaded straight over a fresh run, which has already started
       // the opening - so the opening has to be torn down first
       this.clearCutscene();
+      this.crab.moss = d.moss ?? 0.06;
       this.crab.setStage(d.stage || 'hatchling');
       this.crab.x = d.x || 0;
       this.crab.snapToGround();
