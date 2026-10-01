@@ -544,7 +544,7 @@ export class Crab {
           let k = Math.floor(clamp01(l) * 6.99 + (b - 0.5) * 0.9);
           k = k < 1 ? 1 : k > 7 ? 7 : k;
           c = (seg.foot && t > 0.72 ? hpal : pal)[k];
-          if ((seg.gran || seg.mat === 'hermitRed' || seg.mat === 'hermitDark') && !(seg.foot && t > 0.72)) {
+          if (seg.gran && !(seg.foot && t > 0.72)) {
             // studs: a grid of round bumps along the limb, each tipped pale
             const gu = t * len / 2.6, gv = (uy + 1) * rr / 2.6 + (Math.floor(gu) & 1) * 0.5;
             const du = gu - Math.floor(gu) - 0.5, dv = gv - Math.floor(gv) - 0.5;
@@ -586,11 +586,14 @@ export class Crab {
       ctx.translate(so.x, so.y);
       // they hang down in front of the shell, the palm upright and the
       // fingers to the ground - lifted when it is busy
-      const a1 = 0.55 + sw - raise * 0.7 + this.crouch * 0.15;
+      // the whole limb swings up as one piece about the shoulder - lifting
+      // each joint by its own amount is what folded it into a knot
+      const lift = Math.min(1, raise) * 0.75;
+      const a1 = 0.40 + sw - lift + this.crouch * 0.12;
       const ex = Math.cos(a1) * art.arm.len, ey = Math.sin(a1) * art.arm.len;
-      const a2 = a1 + 0.75 - raise * 0.4;
+      const a2 = a1 + 0.50;
       const fx = ex + Math.cos(a2) * art.fore.len * k, fy = ey + Math.sin(a2) * art.fore.len * k;
-      const a3 = a2 + 0.25 - raise * 0.5 + Math.sin(this.clawT * 1.9 + (near ? 0 : 2)) * 0.04;
+      const a3 = a2 + 0.35 + Math.sin(this.clawT * 1.9 + (near ? 0 : 2)) * 0.04;
       this._limb(ctx, art.arm, 0, 0, ex, ey);
       this._limb(ctx, art.fore, ex, ey, fx, fy);
       const K = Math.max(8, this.m.shellW * this.m.clawScale) * k;

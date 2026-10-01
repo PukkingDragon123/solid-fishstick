@@ -491,13 +491,13 @@ export function buildCrab(stage = 'adult') {
 
   const seg = (len, r0, r1, far, extra) =>
     paintSegment(Math.max(3, len), Math.max(1, r0), Math.max(0.8, r1),
-      { mat: far ? 'hermitDark' : 'hermitRed', far, S, ...extra });
+      { mat: far || extra.legs ? 'hermitDark' : 'hermitRed', far, S, ...extra });
 
   const legArt = {};
   for (const far of [false, true]) {
     legArt[far ? 'far' : 'near'] = {
-      coxa: seg(m.legLen[0], 4.4 * S, 4.2 * S, far, { bow: 0 }),
-      femur: seg(m.legLen[1], 4.3 * S, 3.4 * S, far, { bow: 0.8 * S }),
+      coxa: seg(m.legLen[0], 4.0 * S, 3.8 * S, far, { bow: 0, legs: true }),
+      femur: seg(m.legLen[1], 3.8 * S, 3.0 * S, far, { bow: 0.8 * S, legs: true }),
       tibia: paintFoot(Math.max(3, m.legLen[2] * 1.1), Math.max(1.2, 3.2 * S), { far, S }),
     };
   }
@@ -537,8 +537,8 @@ export function buildCrab(stage = 'adult') {
     sockets: {
       legs,
       claws: [
-        { x: ap.x + ap.rx * 0.05, y: ap.y + ap.ry * 0.25, side: 1, near: false, k: 0.66 },
-        { x: ap.x + ap.rx * 0.50, y: ap.y + ap.ry * 0.40, side: 1, near: true, k: 1 },
+        { x: ap.x - ap.rx * 0.15, y: ap.y - ap.ry * 0.05, side: 1, near: false, k: 0.62 },
+        { x: ap.x + ap.rx * 0.55, y: ap.y + ap.ry * 0.45, side: 1, near: true, k: 1 },
       ],
       eyes: [
         { x: ap.x + ap.rx * 0.10, y: ap.y - ap.ry * 0.55, side: -1 },
