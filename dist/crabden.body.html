@@ -10349,8 +10349,9 @@ body {
       const bow = (seg2.bow || 0) * sc;
       const nx = -vy / len, ny = vx / len;
       const pad = Math.max(R0, R1) + Math.abs(bow) + 2;
-      const x0 = Math.floor(Math.min(p0x, p1x) - pad), x1 = Math.ceil(Math.max(p0x, p1x) + pad);
-      const y0 = Math.floor(Math.min(p0y, p1y) - pad), y1 = Math.ceil(Math.max(p0y, p1y) + pad);
+      const cell = Math.max(1, sc);
+      const x0 = Math.floor((Math.min(p0x, p1x) - pad) / cell), x1 = Math.ceil((Math.max(p0x, p1x) + pad) / cell);
+      const y0 = Math.floor((Math.min(p0y, p1y) - pad) / cell), y1 = Math.ceil((Math.max(p0y, p1y) + pad) / cell);
       const out = far ? OUT_FAR : OUT_NEAR;
       const rings = seg2.foot ? 1 : 2;
       const bw = x1 - x0 + 1, bh = y1 - y0 + 1;
@@ -10362,7 +10363,7 @@ body {
       for (let y = y0; y <= y1; y++) {
         const row2 = (y - y0) * LIMB;
         for (let x = x0; x <= x1; x++) {
-          const px = x + 0.5 - p0x, py = y + 0.5 - p0y;
+          const px = (x + 0.5) * cell - p0x, py = (y + 0.5) * cell - p0y;
           let t = (px * vx + py * vy) / len2;
           t = t < 0 ? 0 : t > 1 ? 1 : t;
           const off = bow * 4 * t * (1 - t);
@@ -10370,13 +10371,13 @@ body {
           const d2 = qx * qx + qy * qy;
           const r = seg2.foot ? lerp(R0, R1, Math.pow(t, 0.8)) : lerp(R0, R1, t);
           const rr = r + (!seg2.foot && t < 0.12 ? r * 0.12 : 0);
-          if (d2 > (rr + 0.35) * (rr + 0.35)) {
-            if (!seg2.foot && qy < 0 && d2 < (rr + 1.6) * (rr + 1.6) && Math.abs(qx) < rr * 0.5 && (Math.floor(t * len / 2.5) & 1) === 0 && t > 0.15 && t < 0.92) px32[row2 + (x - x0)] = out;
+          if (d2 > (rr + 0.35 * cell) * (rr + 0.35 * cell)) {
+            if (!seg2.foot && qy < 0 && d2 < (rr + 1.6 * cell) * (rr + 1.6 * cell) && Math.abs(qx) < rr * 0.5 && (Math.floor(t * len / (2.5 * cell)) & 1) === 0 && t > 0.15 && t < 0.92) px32[row2 + (x - x0)] = out;
             continue;
           }
           const d = Math.sqrt(d2);
           let c;
-          if (d > rr - 0.75) c = out;
+          if (d > rr - 0.75 * cell) c = out;
           else {
             const ux = qx / rr, uy = qy / rr;
             const z = Math.sqrt(Math.max(0, 1 - ux * ux - uy * uy));
@@ -10389,7 +10390,7 @@ body {
             k = k < 1 ? 1 : k > 7 ? 7 : k;
             c = (seg2.foot && t > 0.72 ? hpal : pal)[k];
             if (seg2.gran && !(seg2.foot && t > 0.72)) {
-              const gu = t * len / 2.6, gv = (uy + 1) * rr / 2.6 + (Math.floor(gu) & 1) * 0.5;
+              const gu = t * len / (2.6 * cell), gv = (uy + 1) * rr / (2.6 * cell) + (Math.floor(gu) & 1) * 0.5;
               const du = gu - Math.floor(gu) - 0.5, dv = gv - Math.floor(gv) - 0.5;
               const gd = du * du + dv * dv;
               if (gd < 0.05 && l > 0.3) c = GRAN_HI;
@@ -10403,7 +10404,8 @@ body {
       buf.g.putImageData(buf.img, 0, 0, 0, 0, bw, bh);
       ctx.save();
       ctx.setTransform(1, 0, 0, 1, 0, 0);
-      ctx.drawImage(buf.cv, 0, 0, bw, bh, x0, y0, bw, bh);
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(buf.cv, 0, 0, bw, bh, Math.round(x0 * cell), Math.round(y0 * cell), Math.round(bw * cell), Math.round(bh * cell));
       ctx.restore();
     }
     _seg(ctx, seg2, x, y, a) {
@@ -10495,15 +10497,16 @@ body {
             y += Math.sin(ang) * L / n;
           }
           ctx.setTransform(1, 0, 0, 1, 0, 0);
+          const ac = Math.max(1, Math.round(Math.hypot(T.a, T.b)));
           let px = null, py = null;
           for (let i = 0; i < pts.length; i++) {
             const q = pts[i];
-            const sx = Math.round(T.a * q.x + T.c * q.y + T.e), sy = Math.round(T.b * q.x + T.d * q.y + T.f);
+            const sx = Math.round((T.a * q.x + T.c * q.y + T.e) / ac), sy = Math.round((T.b * q.x + T.d * q.y + T.f) / ac);
             ctx.fillStyle = i >> 1 & 1 ? "#f0d8c4" : k ? "#8c2a16" : "#b0391c";
-            if (px === null) ctx.fillRect(sx, sy, 1, 1);
+            if (px === null) ctx.fillRect(sx * ac, sy * ac, ac, ac);
             else {
               const n2 = Math.max(Math.abs(sx - px), Math.abs(sy - py), 1);
-              for (let j = 1; j <= n2; j++) ctx.fillRect(Math.round(px + (sx - px) * j / n2), Math.round(py + (sy - py) * j / n2), 1, 1);
+              for (let j = 1; j <= n2; j++) ctx.fillRect(Math.round(px + (sx - px) * j / n2) * ac, Math.round(py + (sy - py) * j / n2) * ac, ac, ac);
             }
             px = sx;
             py = sy;
@@ -10545,7 +10548,8 @@ body {
           const bx = Math.round(sx), by = Math.round(sy);
           const ang = Math.atan2(T.b * Math.cos(a) + T.d * Math.sin(a), T.a * Math.cos(a) + T.c * Math.sin(a));
           const ca = Math.cos(ang), sa2 = Math.sin(ang);
-          const ra = sr * 1.2, rb = sr * 0.92;
+          const cell = Math.max(1, Math.round(Math.hypot(T.a, T.b)));
+          const ra = sr * 1.2 / cell, rb = sr * 0.92 / cell;
           const R2 = Math.ceil(ra) + 1;
           for (let yy = -R2; yy <= R2; yy++) {
             for (let xx = -R2; xx <= R2; xx++) {
@@ -10559,14 +10563,14 @@ body {
               else if (up > 0.2) c = xx + yy & 1 ? "#d9e3a0" : "#c4d08a";
               else c = xx + yy & 1 ? "#9fae62" : "#8a9a52";
               ctx.fillStyle = c;
-              ctx.fillRect(bx + xx, by + yy, 1, 1);
+              ctx.fillRect(bx + xx * cell, by + yy * cell, cell, cell);
             }
           }
-          const gs = Math.max(1, Math.round(sr * 0.32));
+          const gs = Math.max(cell, Math.round(sr * 0.32 / cell) * cell);
           ctx.fillStyle = "#f4f8f8";
           ctx.fillRect(Math.round(bx - sr * 0.45), Math.round(by - sr * 0.55), gs, gs);
           ctx.fillStyle = "#7f949a";
-          ctx.fillRect(Math.round(bx + sr * 0.35), Math.round(by + sr * 0.1), 1, 1);
+          ctx.fillRect(Math.round(bx + sr * 0.35), Math.round(by + sr * 0.1), cell, cell);
           ctx.restore();
         } else {
           ctx.fillStyle = "#000000";
