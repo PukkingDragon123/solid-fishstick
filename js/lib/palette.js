@@ -30,6 +30,16 @@ def('crabShellDark', ['#170a08', '#2b120d', '#421a12', '#5b2618', '#753520', '#8
   { rim: 0.34, spec: 0.3 });
 def('crabBelly', ['#3a261c', '#5c3e2c', '#7e5a40', '#9f7956', '#bc9870', '#d4b48c', '#e6cdaa', '#f4e4cc'],
   { rim: 0.3, spec: 0.2 });
+// a whelk shell: olive grey-green, glossy, with a pearly sheen where it is worn
+def('conch', ['#1d221d', '#30382f', '#465042', '#5d6956', '#76826b', '#909c82', '#aeb89c', '#cdd4bc'],
+  { rim: 0.36, spec: 0.55, ao: 0.14, normalScale: 0.7 });
+def('conchPearl', ['#36303a', '#524a55', '#706672', '#8e8590', '#aca4ac', '#c8c2c6', '#e0dcdc', '#f4f2ee'],
+  { rim: 0.5, spec: 0.75, ao: 0.08 });
+// the animal in it: orange-red, granular, every bump tipped pale
+def('hermitRed', ['#2a0c08', '#4a140c', '#6e1e10', '#932c16', '#b4401e', '#cf5a2a', '#e47c42', '#f3a466'],
+  { rim: 0.4, spec: 0.32, ao: 0.14 });
+def('hermitDark', ['#1e0806', '#360e09', '#52160d', '#701f12', '#8c2e18', '#a64220', '#bd5c30', '#d27e48'],
+  { rim: 0.34, spec: 0.26 });
 def('claw', ['#2a1a15', '#48291f', '#6b402c', '#8d5a3a', '#ab7650', '#c5946a', '#dcb289', '#efd2ae'],
   { rim: 0.45, spec: 0.45 });
 def('flesh', ['#3a1a18', '#5c2622', '#7e3730', '#9d4a40', '#b76054', '#cd7a6c', '#df9789', '#eeb5a8'],

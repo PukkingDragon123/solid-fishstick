@@ -939,19 +939,10 @@ export class Game {
   }
 
   /**
-   * A thousand years under the sand is a thousand years of growing. Whatever
-   * went down a hatchling comes up a grown animal - which is the size the
-   * game is played at, and the evolution is yours already.
+   * It wakes as it was buried: a hatchling in a shell the size of a thimble.
+   * Growing up is the game, so nothing here grows it for you.
    */
-  _wakeGrown() {
-    if (this.crab.stage !== 'hatchling') return;
-    const keep = this.crab.x;
-    this.crab.setStage('juvenile');
-    this.crab.x = keep;
-    this.crab.snapToGround();
-    this.economy.evolutions.add('juvenile');
-    this.economy.markDirty?.();
-  }
+  _wakeGrown() {}
 
   endIntro() {
     this._wakeGrown();

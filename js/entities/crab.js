@@ -17,7 +17,7 @@ const u32 = (hex) => {
   return (0xff << 24) | ((n & 0xff) << 16) | (n & 0xff00) | ((n >> 16) & 0xff);
 };
 const OUT_NEAR = u32('#171009'), OUT_FAR = u32('#100a06');
-const BARN_HI = u32('#e8e0cc'), BARN_LO = u32('#a89c84');
+const BARN_HI = u32('#e8e0cc'), BARN_LO = u32('#a89c84'), GRAN_HI = u32('#f6dcc0');
 const rampCache = new Map();
 function rampU32(ramp) {
   let r = rampCache.get(ramp);
@@ -103,7 +103,7 @@ export class Crab {
     this.rig = buildCrab(stage);
     this.m = this.rig.m;
     this.S = this.rig.S;
-    this.standH = this.m.faceH * 0.64 + this.m.shellW * 0.03;   // low and wide, the way a crab carries itself
+    this.standH = this.m.faceH * 0.45 + this.m.shellW * 0.025;   // the shell carried just clear of the sand
     this.speed = lerp(48, 100, this.m.t);
     this._buildLegs();
     if (snap && this.game && this.game.terrain) this.snapToGround();
@@ -127,6 +127,14 @@ export class Crab {
   /** Where this leg wants its foot: a little outboard of its own socket. */
   homeX(l, lead = 0) {
     const sp = Math.abs(l.def.spread || 0.6);
+    if (this.rig.hermit) {
+      // a hermit crab walks forward out of its shell: one pair reaches ahead
+      // of the aperture, the other plants back under it
+      const f = this.turnDir >= 0 ? 1 : -1;
+      const ap = this.m.ap || { x: this.m.rx * 0.66 };
+      const fx = l.def.side > 0 ? ap.x + this.m.rx * (0.80 + sp * 0.55) : ap.x - this.m.rx * (0.50 + sp * 0.50);
+      return this.x + f * fx + lead;
+    }
     return this.x + l.def.side * this.m.rx * (0.80 + sp * 0.80) + lead;
   }
 
@@ -435,14 +443,20 @@ export class Crab {
 
   _drawLegs(ctx, far) {
     const rig = this.rig;
-    const a = -(this.bodyAngle + this.roll);
+    // The body is drawn mirrored when it faces the other way, so the feet
+    // have to be taken into that mirrored frame too - the old crab was the
+    // same both ways round and got away without it; this one is not.
+    const tsx = this.turnScaleX;
+    const sg = tsx < 0 ? -1 : 1;
+    const a = -(this.bodyAngle + this.roll) * sg;
     const c = Math.cos(a), s = Math.sin(a);
+    const mx = Math.abs(tsx) < 0.2 ? 0.2 * sg : tsx;
 
     for (const leg of this.legs) {
       if (!!leg.def.far !== far) continue;
       const art = far ? rig.legArt.far : rig.legArt.near;
       const l1 = art.coxa.len, l2 = art.femur.len, l3 = art.tibia.len;
-      const wx = leg.foot.x - (this.x + this.lurch * 0.35);
+      const wx = (leg.foot.x - (this.x + this.lurch * 0.35)) / mx;
       const wy = leg.foot.y - (this.y + this.bob);
       const lx = wx * c - wy * s, ly = wx * s + wy * c;
       const hx = leg.def.x, hy = leg.def.y;
@@ -530,6 +544,13 @@ export class Crab {
           let k = Math.floor(clamp01(l) * 6.99 + (b - 0.5) * 0.9);
           k = k < 1 ? 1 : k > 7 ? 7 : k;
           c = (seg.foot && t > 0.72 ? hpal : pal)[k];
+          if ((seg.gran || seg.mat === 'hermitRed' || seg.mat === 'hermitDark') && !(seg.foot && t > 0.72)) {
+            // studs: a grid of round bumps along the limb, each tipped pale
+            const gu = t * len / 2.6, gv = (uy + 1) * rr / 2.6 + (Math.floor(gu) & 1) * 0.5;
+            const du = gu - Math.floor(gu) - 0.5, dv = gv - Math.floor(gv) - 0.5;
+            const gd = du * du + dv * dv;
+            if (gd < 0.05 && l > 0.3) c = GRAN_HI; else if (gd < 0.11) c = (seg.foot ? hpal : pal)[Math.min(7, k + 1)];
+          }
           if (seg.barn && uy < -0.35 && Math.abs(t - 0.5) < 0.06 && ux * ux < 0.15) c = uy < -0.7 ? BARN_HI : BARN_LO;
         }
         px32[row + (x - x0)] = c;
@@ -552,46 +573,44 @@ export class Crab {
 
   _drawClaws(ctx) {
     const rig = this.rig;
-    // the trailing claw is the one further from the direction of travel
-    const order = this.turnDir >= 0 ? [-1, 1] : [1, -1];
-    for (const side of order) {
-      const near = side === (this.turnDir >= 0 ? 1 : -1);
+    const tm = this.game.time || 0;
+    // the small claw behind, the big one in front
+    for (const so of rig.sockets.claws) {
+      const near = !!so.near;
       const art = near ? rig.claw.near : rig.claw.far;
-      const so = rig.sockets.claws.find((q) => q.side === side);
-      const sw = Math.sin(this.clawT * (near ? 1.07 : 0.83)) * 0.07;
+      const k = so.k || 1;
+      const sw = Math.sin(this.clawT * (near ? 1.07 : 0.83)) * 0.06;
       const raise = this.clawOpen * 0.5 + this.pumping * 0.6 + this.alarm * 0.5
-        + (side > 0 ? Math.sin(this.tapT * Math.PI) * (this.tapLong ? 0.85 : 0.5) : 0);
-      // mirrored: the left claw is the right claw drawn backwards
+        + (near ? Math.sin(this.tapT * Math.PI) * (this.tapLong ? 0.85 : 0.5) : 0);
       ctx.save();
       ctx.translate(so.x, so.y);
-      ctx.scale(side, 1);
-      const a1 = 0.92 + sw - raise * 0.62 + this.crouch * 0.2;
+      // they hang down in front of the shell, the palm upright and the
+      // fingers to the ground - lifted when it is busy
+      const a1 = 0.55 + sw - raise * 0.7 + this.crouch * 0.15;
       const ex = Math.cos(a1) * art.arm.len, ey = Math.sin(a1) * art.arm.len;
-      const a2 = a1 - 1.10 - raise * 0.34;
-      const fx = ex + Math.cos(a2) * art.fore.len, fy = ey + Math.sin(a2) * art.fore.len;
-      const a3 = a2 + 0.18 - raise * 0.22 + Math.sin(this.clawT * 1.9 + side) * 0.04;
+      const a2 = a1 + 0.75 - raise * 0.4;
+      const fx = ex + Math.cos(a2) * art.fore.len * k, fy = ey + Math.sin(a2) * art.fore.len * k;
+      const a3 = a2 + 0.25 - raise * 0.5 + Math.sin(this.clawT * 1.9 + (near ? 0 : 2)) * 0.04;
       this._limb(ctx, art.arm, 0, 0, ex, ey);
       this._limb(ctx, art.fore, ex, ey, fx, fy);
-      // the chela itself, drawn live like the legs: a heavy palm, the fixed
-      // finger running on from it, and the movable finger hinged over it
-      const K = Math.max(8, this.m.shellW * this.m.clawScale);
-      const PL = K * 0.50, PR = K * 0.22, FL = K * 0.50;
-      const mat = near ? 'crabShell' : 'crabShellDark';
+      const K = Math.max(8, this.m.shellW * this.m.clawScale) * k;
+      const PL = K * 0.46, PR = K * 0.26, FL = K * 0.40;
+      const mat = near ? 'hermitRed' : 'hermitDark';
       const cs = Math.cos(a3), sn = Math.sin(a3);
       const px1 = fx + cs * PL, py1 = fy + sn * PL;
-      this._limb(ctx, { r0: PR * 0.62, r1: PR, mat, far: !near, bow: -PR * 0.25 }, fx, fy, px1, py1);
-      // fixed finger, from the lower lip of the palm
+      // the palm: big, round-backed and studded
+      this._limb(ctx, { r0: PR * 0.7, r1: PR, mat, far: !near, bow: -PR * 0.3, gran: true }, fx, fy, px1, py1);
       const lx = px1 - sn * PR * 0.35, ly = py1 + cs * PR * 0.35;
-      this._limb(ctx, { r0: PR * 0.55, r1: Math.max(0.6, PR * 0.12), mat, far: !near, foot: true },
+      this._limb(ctx, { r0: PR * 0.55, r1: Math.max(0.6, PR * 0.15), mat, far: !near, foot: true, gran: true },
         lx, ly, lx + cs * FL, ly + sn * FL);
-      // the movable finger, opening up and away
-      const op = -0.25 - this.clawOpen * 0.6;
+      const op = -0.2 - this.clawOpen * 0.6;
       const hx = px1 + sn * PR * 0.45, hy = py1 - cs * PR * 0.45;
       const da = a3 + op;
-      this._limb(ctx, { r0: PR * 0.5, r1: Math.max(0.6, PR * 0.12), mat, far: !near, foot: true, bow: PR * 0.2 },
-        hx, hy, hx + Math.cos(da) * FL * 1.02, hy + Math.sin(da) * FL * 1.02);
+      this._limb(ctx, { r0: PR * 0.48, r1: Math.max(0.6, PR * 0.14), mat, far: !near, foot: true, bow: PR * 0.2, gran: true },
+        hx, hy, hx + Math.cos(da) * FL, hy + Math.sin(da) * FL);
       ctx.restore();
     }
+    void tm;
   }
 
   /** Mouthparts, then two small black beads on short stalks. */
@@ -608,6 +627,44 @@ export class Crab {
     }
 
     const art = rig.eye;
+    // two long antennae, banded red and white, sweeping forward and up and
+    // never still - feeling the air for water
+    {
+      const tm = this.game.time || 0;
+      const T = ctx.getTransform();
+      const E = rig.sockets.eyes;
+      ctx.save();
+      for (let k = 0; k < 2; k++) {
+        const e = E[k];
+        const L = this.m.rx * (1.5 + k * 0.2);
+        let x = e.x + 1, y = e.y + 1;
+        const base = -0.55 - k * 0.3 + Math.sin(tm * 1.3 + k * 2) * 0.12 + this.look.y * 0.1;
+        const n = 18;
+        const pts = [];
+        for (let i = 0; i <= n; i++) {
+          const f = i / n;
+          const ang = base + f * (0.9 + Math.sin(tm * 2.1 + k + f * 3) * 0.18);
+          pts.push({ x, y });
+          x += Math.cos(ang) * L / n; y += Math.sin(ang) * L / n;
+        }
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        let px = null, py = null;
+        for (let i = 0; i < pts.length; i++) {
+          const q = pts[i];
+          const sx = Math.round(T.a * q.x + T.c * q.y + T.e), sy = Math.round(T.b * q.x + T.d * q.y + T.f);
+          ctx.fillStyle = (i >> 1) & 1 ? '#f0d8c4' : (k ? '#8c2a16' : '#b0391c');
+          if (px === null) ctx.fillRect(sx, sy, 1, 1);
+          else {
+            // join the dots, a pixel at a time
+            const n2 = Math.max(Math.abs(sx - px), Math.abs(sy - py), 1);
+            for (let j = 1; j <= n2; j++) ctx.fillRect(Math.round(px + (sx - px) * j / n2), Math.round(py + (sy - py) * j / n2), 1, 1);
+          }
+          px = sx; py = sy;
+        }
+        ctx.setTransform(T);
+      }
+      ctx.restore();
+    }
     for (const e of rig.sockets.eyes) {
       // stalks splay out and up, and both lean the way the crab is looking
       // Stalks splay out and up and both lean the way the crab is looking.
@@ -667,12 +724,14 @@ export class Crab {
             const u = (xx * ca + yy * sa2) / ra, w2 = (-xx * sa2 + yy * ca) / rb;
             const d = u * u + w2 * w2;
             if (d > 1) continue;
-            // lit from above: the top of the bulb is the sheen
+            // a hermit crab's eye: a gold-green globe with a dark band of
+            // pupil across it, glassy at the top
             const up = -yy / R;
-            let c = '#111315';
-            if (d > 0.78) c = '#08090a';
-            else if (up > 0.25) c = ((xx + yy) & 1) ? '#3a4448' : '#2a3236';
-            else if (up > -0.2) c = ((xx + yy) & 1) ? '#22292c' : '#191e21';
+            let c;
+            if (d > 0.80) c = '#1a1408';
+            else if (Math.abs(w2) < 0.28) c = '#10120c';
+            else if (up > 0.2) c = ((xx + yy) & 1) ? '#d9e3a0' : '#c4d08a';
+            else c = ((xx + yy) & 1) ? '#9fae62' : '#8a9a52';
             ctx.fillStyle = c;
             ctx.fillRect(bx + xx, by + yy, 1, 1);
           }
