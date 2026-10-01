@@ -132,7 +132,7 @@ export class Crab {
       // of the aperture, the other plants back under it
       const f = this.turnDir >= 0 ? 1 : -1;
       const ap = this.m.ap || { x: this.m.rx * 0.66 };
-      const fx = l.def.side > 0 ? ap.x + this.m.rx * (1.00 + sp * 0.60) : ap.x - this.m.rx * (0.75 + sp * 0.55);
+      const fx = l.def.side > 0 ? ap.x + this.m.rx * (0.80 + sp * 0.50) : ap.x - this.m.rx * (0.60 + sp * 0.50);
       return this.x + f * fx + lead;
     }
     return this.x + l.def.side * this.m.rx * (0.80 + sp * 0.80) + lead;
@@ -247,6 +247,7 @@ export class Crab {
     this.lean = damp(this.lean, clamp(this.vx / this.speed, -1, 1) * 0.7, 0.0009, dt);
 
     this._stepLegs(dt, t);
+    this._reachGuard(t);
     this._rideFeet(dt, t);
 
     const spd = Math.abs(this.vx);
@@ -308,6 +309,37 @@ export class Crab {
     this.crouch = damp(this.crouch, this.pumping > 0 ? 1 : 0, 0.0009, dt);
   }
 
+  /**
+   * No foot is ever left further from its hip than the leg can reach. On a
+   * slow phone the body can travel a long way between two frames, and a foot
+   * planted where it was is then out of reach - drawn as a leg that stops
+   * short of the ground. Any foot that far behind steps at once.
+   */
+  _reachGuard(t) {
+    const rig = this.rig;
+    const tsx = this.turnScaleX;
+    for (const l of this.legs) {
+      const art = l.def.far ? rig.legArt.far : rig.legArt.near;
+      const reach = (art.coxa.len + art.femur.len + art.tibia.len) * 0.98;
+      const hx = this.x + l.def.x * tsx, hy = this.y + this.bob + l.def.y;
+      const dx = l.foot.x - hx, dy = l.foot.y - hy, d = Math.hypot(dx, dy);
+      if (d <= reach) continue;
+      // pulled along at full stretch, and kept on the sand rather than
+      // left hanging in the air
+      const gy0 = t.surfaceY(l.foot.x) - this.footLift(l);
+      const v = gy0 - hy;
+      if (Math.abs(v) < reach) {
+        const nx = hx + Math.sign(dx || 1) * Math.sqrt(reach * reach - v * v) * 0.97;
+        l.foot.x = nx; l.foot.y = t.surfaceY(nx) - this.footLift(l);
+      } else { l.foot.x = hx + dx / d * reach; l.foot.y = hy + dy / d * reach; }
+      if (l.stepping) continue;
+      const home = this.homeX(l);
+      l.stepping = true; l.t = 0; l.dur = 0.12;
+      l.from = { x: l.foot.x, y: l.foot.y };
+      l.to = { x: home, y: t.surfaceY(home) - this.footLift(l) };
+    }
+  }
+
   _stepLegs(dt, t) {
     const lead = this.vx * 0.20;
     const trigger = this.m.rx * 0.24 + Math.abs(this.vx) * 0.05;
@@ -317,6 +349,10 @@ export class Crab {
     for (const l of this.legs) {
       const home = this.homeX(l, lead);
       if (l.stepping) {
+        // the landing spot follows the body: on a slow frame rate the body
+        // can be well past where the step was aimed by the time it lands
+        l.to.x = home + Math.sign(home - l.from.x) * Math.min(trigger * 0.75, Math.abs(home - l.from.x));
+        l.to.y = t.surfaceY(l.to.x) - this.footLift(l);
         l.t += dt / l.dur;
         if (l.t >= 1) {
           l.t = 1; l.stepping = false;
@@ -494,7 +530,7 @@ export class Crab {
     const p1x = m.a * bx + m.c * by + m.e, p1y = m.b * bx + m.d * by + m.f;
     // never thinner than a couple of the sprite's own pixels, or a small
     // crab's legs dissolve into a tangle of one-pixel sticks
-    const cl = Math.max(1, sc);
+    const cl = Math.max(1, sc * 0.6);
     const R0 = Math.max(1.6 * cl, seg.r0 * sc), R1 = Math.max(seg.foot ? 0.9 * cl : 1.3 * cl, seg.r1 * sc);
     const ramp = MATERIALS[seg.mat]?.ramp || MATERIALS.chitin.ramp;
     const horn = MATERIALS.horn?.ramp || ramp;
@@ -508,7 +544,7 @@ export class Crab {
     const pad = Math.max(R0, R1) + Math.abs(bow) + 2;
     // the sprite's own pixel size on screen: limbs are laid on that grid so
     // they are exactly as chunky as the body they hang off
-    const cell = Math.max(1, sc);
+    const cell = Math.max(1, sc * 0.6);
     const x0 = Math.floor((Math.min(p0x, p1x) - pad) / cell), x1 = Math.ceil((Math.max(p0x, p1x) + pad) / cell);
     const y0 = Math.floor((Math.min(p0y, p1y) - pad) / cell), y1 = Math.ceil((Math.max(p0y, p1y) + pad) / cell);
     const out = far ? OUT_FAR : OUT_NEAR;
@@ -658,7 +694,7 @@ export class Crab {
           x += Math.cos(ang) * L / n; y += Math.sin(ang) * L / n;
         }
         ctx.setTransform(1, 0, 0, 1, 0, 0);
-        const ac = Math.max(1, Math.round(Math.hypot(T.a, T.b)));
+        const ac = Math.max(1, Math.round(Math.hypot(T.a, T.b) * 0.6));
         let px = null, py = null;
         for (let i = 0; i < pts.length; i++) {
           const q = pts[i];
@@ -728,7 +764,7 @@ export class Crab {
         // point and a dull sheen across its top. Drawn on the screen grid.
         const ang = Math.atan2(T.b * Math.cos(a) + T.d * Math.sin(a), T.a * Math.cos(a) + T.c * Math.sin(a));
         const ca = Math.cos(ang), sa2 = Math.sin(ang);
-        const cell = Math.max(1, Math.round(Math.hypot(T.a, T.b)));
+        const cell = Math.max(1, Math.round(Math.hypot(T.a, T.b) * 0.6));
         const ra = sr * 1.2 / cell, rb = sr * 0.92 / cell;
         const R = Math.ceil(ra) + 1;
         for (let yy = -R; yy <= R; yy++) {
