@@ -91,9 +91,10 @@ export class Digs {
    */
   dig(site, check = false) {
     const e = this.game.economy;
+    // Anybody with claws can dig a shallow one - digging is half of what you
+    // do out here. The deep ones want a claw grown for it.
     const power = e.stat('fossil');
-    if (!power) return { ok: false, msg: 'You would need a claw made for digging.' };
-    if (site.deep > 0.55 && power < 2) return { ok: false, msg: 'It is deeper than you can reach.' };
+    if (site.deep > 0.75 && power < 1) return { ok: false, msg: 'Too deep for these claws. Grow a digging claw in your genome.' };
     if (this.taken.has(site.id)) return { ok: false, msg: 'Already out.' };
     if (!check) this.taken.add(site.id);
     return { ok: true, relic: site.relic };

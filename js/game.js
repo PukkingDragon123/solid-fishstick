@@ -26,6 +26,8 @@ import { Sea } from './systems/sea.js';
 import { Green } from './systems/green.js';
 import { Digs, RELIC_BY_ID } from './systems/digs.js';
 import { Mining } from './systems/mining.js';
+import { Book } from './systems/book.js';
+import { Ranch } from './systems/ranch.js';
 import { Work } from './systems/work.js';
 import { Craft } from './systems/craft.js';
 import { Mind } from './systems/mind.js';
@@ -143,6 +145,8 @@ export class Game {
     this.green = new Green(this);
     this.digs = new Digs(this, this.seed);
     this.mining = new Mining(this, this.seed);
+    this.book = new Book(this);
+    this.ranch = new Ranch(this);
     this.work = new Work(this);
     this.craft = new Craft(this);
     this.mind = new Mind(this);
@@ -392,6 +396,7 @@ export class Game {
     beat(12.8, () => {
       this.hold('ONE THOUSAND YEARS', 'and nothing at all happens');
       this.sleep = 0.001;
+      this._wakeGrown();
       this.cam.cineCancel();
       this.cam.snapTo(this.crab.x, this.terrain.surfaceY(this.crab.x) - 12);
       this.cam.targetZoom = this.cam.zoom = this.autoZoom() * 1.9;
@@ -933,7 +938,23 @@ export class Game {
     };
   }
 
+  /**
+   * A thousand years under the sand is a thousand years of growing. Whatever
+   * went down a hatchling comes up a grown animal - which is the size the
+   * game is played at, and the evolution is yours already.
+   */
+  _wakeGrown() {
+    if (this.crab.stage !== 'hatchling') return;
+    const keep = this.crab.x;
+    this.crab.setStage('juvenile');
+    this.crab.x = keep;
+    this.crab.snapToGround();
+    this.economy.evolutions.add('juvenile');
+    this.economy.markDirty?.();
+  }
+
   endIntro() {
+    this._wakeGrown();
     this.cut = null;
     this.dialog = null;
     this.state = 'play';
@@ -945,6 +966,8 @@ export class Game {
     this.npc.keepAway = true;
     this.tutorial = 0;
     this.teach(1);
+    // the first job is not something you have to go and ask for
+    this.quests.autoTake();
   }
 
   /**
@@ -1209,6 +1232,35 @@ export class Game {
     this.talk.update(dt);
     this.puzzle.update(dt);
     this.ending.update(dt);
+    // The book holds the world still while you read it.
+    if (this.ui.bookOpen && this.state === 'play') {
+      this.npc.update(dt);
+      this.fx.update(dt, this.weather);
+      this.cam.update(dt);
+      this.input.endFrame();
+      return;
+    }
+    // The work popup holds the world still the same way: the needle is the
+    // only thing moving, and the only things you can do are strike or leave.
+    if (this.work.modal && this.state === 'play') {
+      this.work.update(dt);
+      if (i.justPressed('e') || i.justPressed(' ') || i.justPressed('Enter')) {
+        i.consumeKey('e'); i.consumeKey(' '); i.consumeKey('Enter');
+        this.work.strike();
+      }
+      if (i.justPressed('Escape')) {
+        i.consumeKey('Escape');
+        if (this.work.job) this.work.stop('closed'); else this.work.dismiss();
+      }
+      this.npc.update(dt);
+      this.crab.update(dt, { move: 0 });
+      this.fx.update(dt, this.weather);
+      this.critters.update(dt, this.weather);
+      this.terrain.update(dt, 1.1);
+      this.cam.update(dt);
+      this.input.endFrame();
+      return;
+    }
     if (this.talk.on || this.puzzle.on || this.ending.on) {
       this.npc.update(dt);
       this.crab.update(dt, { move: 0 });
@@ -1385,7 +1437,15 @@ export class Game {
     // a job is held with the same key that started it
     this.work.update(sdt, i.key('e') || !!this.ui.actHeld);
     this.quests.update(sdt);
+    this.ranch.update(sdt);
     this._checkUnlocks();
+    // a wild plant you walk past goes in the book as seen
+    this._seenT = (this._seenT || 0) - sdt;
+    if (this._seenT <= 0 && this.state === 'play') {
+      this._seenT = 0.5;
+      const wp = this.world.wildPlantAt(this.crab.x, 90);
+      if (wp && FLORA_BY_ID[wp.id]) this.book.record('plant', wp.id, 1);
+    }
     if (this.unlockCard) {
       this.unlockCard.t += dt;
       if (this.unlockCard.t > 4) this.unlockCard = null;
@@ -1681,6 +1741,8 @@ export class Game {
     if (this.fountains.reachable(c.x)) return 'BREAK';
     if (this.fishing.catchable()) return 'CATCH';
     if (this.world.mastAt(c.x + (c.facing || 1) * 16)) return 'CUT';
+    if (this.digs.reachable(c.x)) return 'DIG';
+    if (this.mining.outcropAt(c.x)) return 'MINE';
     const wild = this.world.wildPlantAt(c.x + (c.facing || 1) * 12, 22);
     if (wild && FLORA_BY_ID[wild.id]) return 'STUDY';
     if (this.encounters.hint) return this.encounters.hint;
@@ -1733,8 +1795,12 @@ export class Game {
 
   /** Pick one bed. Returns what it paid, which a clean pick improves. */
   harvestPlot(plot, quiet = false, quality = 1) {
+    const pid = plot.plant?.def?.id;
     const res = this.garden.harvest(plot);
     if (!res.ok) { if (!quiet) this.ui.say(res.msg); return 0; }
+    // grown and picked: the plant's page is as full as it gets
+    if (pid) { this.book.record('plant', pid, 2); this.book.record('plant', pid, 3); }
+    this.quests?.flag('harvest');
     res.amount = Math.max(1, Math.round(res.amount * (0.55 + quality * 0.55)));
     this.economy.nutrients += res.amount;
     if (res.parasite) {
@@ -1983,6 +2049,7 @@ export class Game {
 
   /** Something that has been extinct for a thousand years walks off your shell. */
   onHatched(relic) {
+    this.book.record('relic', relic.id, 3);
     const c = this.crab;
     const spot = c.shellWorldAB(0, 0.5);
     const made = this.wildlife.spawn(relic.hatch, c.x + 20);
@@ -2023,12 +2090,16 @@ export class Game {
       this.work.begin('study', {
         tag: 'study:' + wild.id + ':' + Math.round(wild.x),
         x: wild.x, y: this.terrain.surfaceY(wild.x),
-        label: `Study the ${def.name}`,
+        label: def.name, subject: 'flower',
         onDone: () => {
           const before = this.studied[wild.id] || 0;
           this.studied[wild.id] = before + 1;
           const seed = 1 + (Math.random() < 0.45 ? 1 : 0);
           this.seeds[wild.id] = (this.seeds[wild.id] || 0) + seed;
+          const fresh = !this.book?.has('plant', wild.id);
+          this.book?.record('plant', wild.id, 2);
+          this.work.reward({ icon: 'seed', name: `${def.name} seed`, count: seed,
+            note: fresh ? 'NEW - written into the book!' : 'Seeds for your back.', fresh });
           this.fx.spark(wild.x, this.terrain.surfaceY(wild.x) - 6, '#cfe89a', 12, 30);
           this.audio.play('discover');
           const u = def.unlock?.study;
@@ -2051,11 +2122,13 @@ export class Game {
       this.work.begin('fell', {
         tag: 'fell:' + mast.id,
         x: mast.x, y: this.terrain.surfaceY(mast.x),
-        label: 'Cut the mast',
+        label: 'Mast tree', subject: 'tree',
         onDone: () => {
           const got = this.world.fell(mast);
           this.craft.add('timber', got.timber);
           this.craft.add('fibre', got.fibre);
+          this.work.reward({ icon: 'timber', name: 'Mast Timber', count: got.timber,
+            note: `and ${got.fibre} fibre`, good: true });
           this.cam.shake(4);
           this.audio.play('hit', { pitch: 0.6 });
           this.fx.dust(mast.x, this.terrain.surfaceY(mast.x), 1.6);
@@ -2082,6 +2155,9 @@ export class Game {
     }
     const site = this.digs.reachable(c.x);
     if (site) { this.startDig(site); return; }
+    // an outcrop beside you: the seam is right there, so take it
+    const seam = this.mining.outcropAt(c.x);
+    if (seam) { this.startMine(seam); return; }
     if (this.garden.ripeCount) { this.harvestAll(); return; }
     const foe = this.wildlife.nearest(c.x, c.y, 44, (q) => q.hostile);
     if (foe) { this.attack(); return; }
@@ -2101,15 +2177,56 @@ export class Game {
       this.work.begin('search', {
         tag: 'search:' + (site.id ?? site.x ?? 0),
         x: site.x ?? c.x, y: this.terrain.surfaceY(site.x ?? c.x),
-        label: site.name || 'What is left of it',
+        label: site.name || 'What is left of it', subject: 'chest',
         onDone: () => {
           const line = this.encounters.interact();
           if (line) this.ui.say(line, 5);
+          this.work.reward({ icon: 'scroll', name: site.name || 'A ruin', count: 0,
+            note: line ? String(line).slice(0, 80) : 'Turned over.', good: true });
         },
       });
       return;
     }
     if (Math.abs(this.npc.x - c.x) < 46) this.talkToVess();
+  }
+
+  /**
+   * Mining an outcrop: the popup, a pickaxe, and the seam emptied into your
+   * pack when the last strike lands. A seam that wants a better pick says so
+   * instead of opening.
+   */
+  startMine(seam) {
+    const power = this.craft.pickPower;
+    const item = ITEM_BY_ID[seam.ore.id];
+    if (power < seam.ore.need) {
+      this.ui.say(`${item ? item.name : 'This'} needs a copper pick. Make one at the bench.`, 3.5);
+      this.audio.play('deny');
+      return;
+    }
+    const gy = this.terrain.surfaceY(seam.x);
+    this.work.begin('mine', {
+      tag: 'mine:' + seam.ci, x: seam.x, y: gy,
+      label: `${item ? item.name : 'Ore'} seam`,
+      subject: seam.ore.id,
+      strikes: Math.max(3, Math.min(6, seam.hits + 1)),
+      skill: 1 + power * 0.25,
+      onStroke: () => { this.terrain.deform(seam.x, 0.8, 9); this.shakeOutBugs?.(seam.x, 0.4); },
+      onDone: (r) => {
+        const got = this.mining.takeSeam(seam, power);
+        const n = got.n + (r.perfect >= 2 ? 1 : 0);
+        this.craft.add(got.id, n);
+        this.fx.spark(seam.x, gy - 6, seam.ore.colour, 16, 44);
+        this.fx.digBurst(seam.x, gy, 0.9, false);
+        const fresh = !this.book?.has('mineral', got.id);
+        this.book?.record('mineral', got.id, 2);
+        this.work.reward({
+          icon: got.id, name: item ? item.name : got.id, count: n,
+          note: fresh ? 'NEW - written into the book!' : r.perfect >= 2 ? 'Clean strikes: one extra.' : 'Into the pack.',
+          fresh, good: true,
+        });
+        this.economy.markDirty();
+      },
+    });
   }
 
   /**
@@ -2122,11 +2239,15 @@ export class Game {
     const can = this.digs.dig(site, true);
     if (!can.ok) { this.ui.say(can.msg); return; }
     const gy = this.terrain.surfaceY(site.x);
+    const RELIC_ICON = { trilobite: 'trilobite', ammonite: 'ammonite', amberfly: 'amberfly',
+      amberegg: 'amberchunk', vertebra: 'vertebra' };
     this.work.begin('dig', {
       tag: site.id, x: site.x, y: gy,
       by: this.mind?.owned ? this.npc : this.crab,
-      label: site.relic.kind === 'amber' ? 'Amber' : site.relic.name,
+      label: site.relic.kind === 'amber' ? 'Something golden, buried' : 'Something buried',
+      subject: site.relic.kind === 'amber' ? 'amberchunk' : 'fossil',
       skill: 0.8 + this.economy.stat('fossil') * 0.25,
+      strikes: site.deep > 0.55 ? 5 : 4,
       onStroke: () => { this.terrain.deform(site.x, 2, 5); },
       onDone: (r) => {
         const res = this.digs.dig(site);
@@ -2138,6 +2259,7 @@ export class Game {
         this.fx.spark(site.x, gy - 6,
           res.relic.kind === 'amber' ? '#eec66c' : '#c6bea7', 16, 40);
         const broken = r.quality < 0.55;
+        this.quests?.flag('dig');
         this.fx.popup(site.x, gy - 14,
           broken ? `${res.relic.name} (cracked)` : res.relic.name,
           broken ? '#d8a09a' : '#dcd6c3');
@@ -2150,7 +2272,13 @@ export class Game {
         } else {
           this.npc.say(res.relic.desc, 7);
         }
-        this.ui.say(`${res.relic.name}. K puts it in the basin.`, 6);
+        const fresh = !this.book?.has('relic', res.relic.id);
+        this.book?.record('relic', res.relic.id, 2);
+        this.work.reward({
+          icon: RELIC_ICON[res.relic.id] || 'fossil', name: res.relic.name, count: 1,
+          note: broken ? 'Cracked - it is worth less now.' : fresh ? 'NEW - written into the book!' : r.clean ? 'Not a mark on it.' : 'Into the basin with it.',
+          fresh, good: !broken,
+        });
       },
     });
   }
@@ -2613,6 +2741,8 @@ export class Game {
     const before = this.research[c.def.id] || 0;
     const after = before + dt;
     this.research[c.def.id] = after;
+    // the first note taken is the page written
+    if (before < OBSERVE_STEPS[0] && after >= OBSERVE_STEPS[0]) this.book.record('creature', c.def.id, 2);
     for (const step of OBSERVE_STEPS) {
       if (before < step && after >= step) {
         const n = OBSERVE_STEPS.indexOf(step);
@@ -2624,7 +2754,7 @@ export class Game {
   }
 
   onGene(g) { this.ui.say(g.name, 3); this.economy.markDirty(); }
-  onTamed(c) { this.economy.markDirty(); }
+  onTamed(c) { this.book.record('creature', c.def.id, 3); this.economy.markDirty(); }
   onBoard() {}
   onSkill(s) { this.economy.markDirty(); }
   onEvolve(e) { this.ui.say(e.name, 3.5); this.economy.markDirty(); }
@@ -2710,7 +2840,8 @@ export class Game {
   }
 
   onFirstSighting(def) {
-    if (!def.hostile) this.ui.say(`${def.name} - new`, 3);
+    this.book.record('creature', def.id, 1);
+    if (!def.hostile) this.ui.say(`${def.name} - new. Stand near it to study it.`, 3.5);
   }
   onAmbush(def, n) {
     this.ui.say(n > 1 ? `${def.name} x${n}!` : `${def.name}!`, 2.5);
@@ -2767,6 +2898,7 @@ export class Game {
       green: this.green.toJSON(), pump: this.pump.toJSON(),
       digs: this.digs.toJSON(), relics: this.relics,
       mining: this.mining.toJSON(), craft: this.craft.toJSON(), mind: this.mind.toJSON(),
+      book: this.book.toJSON(), ranch: this.ranch.toJSON(),
       combat: this.combat.toJSON(), quests: this.quests.save(),
       fountains: this.fountains.save(), unlocked: [...this.unlocked],
       fishing: this.fishing.save(),
@@ -2798,6 +2930,8 @@ export class Game {
       this.green.fromJSON(d.green);
       this.digs.fromJSON(d.digs);
       this.mining.fromJSON(d.mining);
+      this.book.fromJSON(d.book);
+      this.ranch.fromJSON(d.ranch);
       this.craft.fromJSON(d.craft);
       this.mind.fromJSON(d.mind);
       this.combat.fromJSON(d.combat);
@@ -2811,6 +2945,15 @@ export class Game {
       this.economy.recomputeGenes();
       this.economy.markDirty();
       this.cam.followEntity(this.crab, true);
+      // the animals kept working while you were gone
+      this.ranch.creditAway();
+      if (this.ranch.away) {
+        const a = this.ranch.away;
+        const mins = Math.round(a.secs / 60);
+        this.work.reward({ title: 'WELCOME BACK', icon: 'nest', name: 'While you were away', count: a.got,
+          note: `${mins >= 120 ? '2 hours' : mins + ' minutes'}: your animals filled the nest with ${a.got} growth.`, fresh: true });
+        this.ranch.away = null;
+      }
     } catch (err) { /* a corrupt save should not stop a new game */ }
   }
 
@@ -2836,15 +2979,18 @@ export class Game {
     // the ground coming up out of the basin, drawn before the terrain so the
     // dunes in front of it hide their feet
     if (this.uplift) this._drawUplift(ctx, cam);
-    this.world.drawProps(ctx, cam);
+    // a thousand years ago none of the desert had grown yet
+    const drySet = !(this.seaShowing && this.sea.flat === null && this.sea.wet > 0.35);
+    if (drySet) this.world.drawProps(ctx, cam);
     this.terrain.draw(ctx, cam);
     this.world.drawWater(ctx, cam);
     if (this.state === 'play') this.fishing.draw(ctx, cam);
     this.terrain.drawSand(ctx, cam);
+    if (this.seaShowing) this.sea.drawBed(ctx, cam, r.vw, r.vh);
     this.green.drawGround(ctx, cam, this.terrain);
-    this.world.drawProps2(ctx, cam, 'far');
+    if (drySet) this.world.drawProps2(ctx, cam, 'far');
     this.fountains.draw(ctx, cam);
-    this.world.drawScatter(ctx, cam, 'far');
+    if (drySet) this.world.drawScatter(ctx, cam, 'far');
     // the giants go behind even the far reef: they are thirty metres up and
     // several hundred metres off, and everything on the bottom is in front
     if (this.seaShowing) this.sea.drawDeep(ctx, cam, r.vw, r.vh);
@@ -2877,9 +3023,11 @@ export class Game {
     this.wildlife.draw(ctx, cam, 'shell');
     if (this.state === 'play') this.ui.drawCrop(ctx, cam);
     this.fx.draw(ctx, cam, 'near');
-    this.world.drawScatter(ctx, cam, 'near');
-    this.world.drawProps2(ctx, cam, 'near');
-    this.world.weeds.draw(ctx, cam);
+    if (drySet) {
+      this.world.drawScatter(ctx, cam, 'near');
+      this.world.drawProps2(ctx, cam, 'near');
+      this.world.weeds.draw(ctx, cam);
+    }
     if (this.state === 'play') this.shallows.draw(ctx, cam, r.vw, r.vh);
     this.ending.drawWorld(ctx, cam, r.vw, r.vh);
     this._drawGreenPlants(ctx, cam);
@@ -2897,7 +3045,8 @@ export class Game {
       });
     }
     r.underwater = this.seaShowing ? this.sea.wet : 0;
-    this.backdrop.drawForeground(ctx, cam, this.weather, this.terrain);
+    if (this.seaShowing && this.sea.wet > 0.5) this.sea.drawForeground(ctx, cam, r.vw, r.vh);
+    else this.backdrop.drawForeground(ctx, cam, this.weather, this.terrain);
 
     // lights
     r.beginLights(this.weather);
@@ -2943,13 +3092,13 @@ export class Game {
     if (this.talk.fade > 0.01) this.talk.draw(ui, r.vw, r.vh);
     if (this.puzzle.fade > 0.01) this.puzzle.draw(ui, r.vw, r.vh);
     this.ending.drawUI(ui, r.vw, r.vh);
-    this.fx.drawText(ui, cam, (c, t, x, y, o) => drawText(c, t, x, y, o));
+    if (!this.work.modal && !this.ui.bookOpen) this.fx.drawText(ui, cam, (c, t, x, y, o) => drawText(c, t, x, y, o));
     if (this.state === 'dead') this._drawDead(ui, r);
     // Anything that belongs to the WORLD stops at the edge of a screen. A
     // speech bubble floating over an open bench is the single thing that made
     // the panels read as an overlay somebody forgot to finish.
     const inside = this.ui.tree.dive > 0.4 || this.ui.drawer > 0.02
-      || this.ui.paused || !!this.unlockCard;
+      || this.ui.paused || !!this.unlockCard || this.work.modal || this.ui.bookOpen;
     if (this.npc.speech && this.state === 'play' && !inside && !this.talk.on && !this.puzzle.on
       && !(this.ending.on && this.ending.t > 3) && !this.quests.chapterCard) this._drawSpeech(ui, cam, this.npc);
     r.dctx.drawImage(r.uiC, 0, 0, r.vw, r.vh, 0, 0, r.vw * r.scale, r.vh * r.scale);
@@ -3109,7 +3258,7 @@ export class Game {
         // so the only thing worth writing over the hole is the bad news
         // (the prompt bar already says E, and the crab is standing on the
         // spot - words over it only land on the shell and cannot be read)
-        const label = power ? null : 'you would need a digging claw';
+        const label = power || site.deep <= 0.75 ? null : 'too deep for these claws';
         if (label) {
           const tw = textWidth(label), ly = Math.round(s.y + 6 * z);
           ctx.fillStyle = 'rgba(14,10,7,0.78)';

@@ -11,14 +11,14 @@
 // single source of truth for that surface: the art is painted from it and the
 // garden is planted on it, so a plant can never float off the rock.
 
-import { Painter } from '../render/pixel.js';
+import { fbmTex, Painter } from '../render/pixel.js';
 import { MATERIALS } from '../lib/palette.js';
 import { clamp, clamp01, lerp, TAU } from '../lib/math.js';
 
-const LIGHT = { lightX: -0.52, lightY: -0.70, lightZ: 0.44, ambient: 0.36, dither: 0.7 };
+const LIGHT = { lightX: -0.52, lightY: -0.70, lightZ: 0.44, ambient: 0.37, dither: 0.42 };
 
 export const CRAB_STAGES = ['hatchling', 'juvenile', 'adult', 'ancient'];
-const STAGE_T = { hatchling: 0, juvenile: 0.34, adult: 0.72, ancient: 1 };
+const STAGE_T = { hatchling: 0, juvenile: 0.5, adult: 0.76, ancient: 1 };
 
 const rnd = (n) => {
   let h = Math.imul(n | 0, 0x27d4eb2d);
@@ -38,7 +38,7 @@ export function crabMetrics(stage = 'adult') {
   const S = shellW / 92;
   const rx = shellW * 0.5;
   const ry = rx * lerp(0.54, 0.46, t);           // young shells are rounder
-  const domeH = rx * lerp(0.58, 0.52, t);
+  const domeH = rx * lerp(0.62, 0.62, t);
   const skirtH = rx * lerp(0.28, 0.33, t);       // a lip, not a cliff
   const faceH = rx * lerp(0.36, 0.30, t);
   const eyeRise = rx * lerp(0.30, 0.22, t);
@@ -124,6 +124,36 @@ function paintBody(m, seed = 3) {
   // which is what makes the silhouette read as one solid shell.
   const maxY = new Int32Array(p.w).fill(-1);
   const step = 1 / Math.max(14, Math.round(rx * 2.0));
+
+  // A shell a thousand years old is not one smooth dome. It is PLATES - scutes
+  // grown in rings, each one a little domed, with a groove of grit between
+  // them - and it has been cracked, and things have grown on it.
+  const plates = [];
+  const nPlates = Math.round(7 + m.t * 9);
+  for (let i = 0; i < nPlates; i++) {
+    const ang = rnd(seed * 31 + i * 17) * TAU;
+    const rad = Math.sqrt(rnd(seed * 59 + i * 23)) * 0.97;
+    plates.push({ a: Math.cos(ang) * rad, b: Math.sin(ang) * rad, t: (rnd(seed * 7 + i * 3) - 0.5) * 0.10 });
+  }
+  const cracks = [];
+  for (let c = 0; c < Math.round(3 + m.t * 4); c++) {
+    let a = -0.8 + rnd(seed * 3 + c * 41) * 1.6, b = -0.8 + rnd(seed * 5 + c * 43) * 1.6;
+    let ang = rnd(seed * 11 + c * 7) * TAU;
+    const n = 5 + Math.floor(rnd(seed + c * 19) * 5);
+    for (let k = 0; k < n; k++) {
+      ang += (rnd(seed * 13 + c * 29 + k) - 0.5) * 1.3;
+      const l = 0.05 + rnd(seed * 17 + c * 31 + k) * 0.07;
+      const a2 = a + Math.cos(ang) * l, b2 = b + Math.sin(ang) * l;
+      cracks.push([a, b, a2, b2]);
+      a = a2; b = b2;
+    }
+  }
+  const segD = (px, py, s0) => {
+    const [ax, ay, bx, by] = s0;
+    const vx = bx - ax, vy = by - ay;
+    const t2 = clamp01(((px - ax) * vx + (py - ay) * vy) / (vx * vx + vy * vy || 1));
+    return Math.hypot(px - (ax + vx * t2), py - (ay + vy * t2));
+  };
   for (let b2 = -1; b2 <= 1.0001; b2 += step) {
     for (let a2 = -1; a2 <= 1.0001; a2 += step) {
       const r2 = a2 * a2 + b2 * b2;
@@ -136,12 +166,42 @@ function paintBody(m, seed = 3) {
       let tint = 0.04 + q * 0.20 - Math.abs(a2 + 0.25) * 0.13 + b2 * 0.05;
       if (inBasin) tint -= 0.26;
       // bedding, read as rings because you are looking down on layered rock
-      tint += Math.sin(r2 * 9.5 + b2 * 1.2) * 0.045;
+      tint += Math.sin(r2 * 9.5 + b2 * 1.2) * 0.03;
+      let lift = domeH * 0.62 * q + (inBasin ? -2.4 : 0) + b2 * 1.2;
+      let mat = 'shellRock';
+      if (!inBasin) {
+        // the plates: nearest two seeds, and the groove where they meet
+        let d1 = 9, d2 = 9, pl = null;
+        for (const P of plates) {
+          const d = Math.hypot(a2 - P.a, (b2 - P.b) * 1.15);
+          if (d < d1) { d2 = d1; d1 = d; pl = P; } else if (d < d2) d2 = d;
+        }
+        const edge = d2 - d1;
+        if (edge < 0.055) {
+          const k = 1 - edge / 0.055;
+          tint -= 0.20 * k; lift -= 1.3 * S * k;
+        } else if (pl) {
+          tint += pl.t;
+          lift += Math.max(0, 1 - d1 / 0.42) * 1.1 * S;
+          // the lit lip of each plate, on the side toward the light
+          if (edge < 0.09 && (a2 - pl.a) + (b2 - pl.b) < 0) tint += 0.06;
+        }
+        // cracks: thin and dark, and the stone either side a little lifted
+        let cd = 9;
+        for (const c of cracks) { const d = segD(a2, b2, c); if (d < cd) cd = d; }
+        if (cd < 0.016) { tint -= 0.32; lift -= 0.9 * S; } else if (cd < 0.03) tint += 0.04;
+        // lichen and moss, out toward the edge where it is always damp
+        if (r2 > 0.36 && b2 < 0.25) {
+          // small crusts, not paint: a few patches high on the shell, broken
+          // up at the edges so they read as something growing
+          const n = fbmTex(a2 * 5.2 + 7.3, b2 * 5.2 - 2.1, seed + 5, 3);
+          const fleck = fbmTex(a2 * 19 + 1.1, b2 * 19 + 3.3, seed + 9, 1);
+          if (n > 0.70 && fleck > 0.35) { mat = 'lichen'; tint += (n - 0.70) * 0.6 - 0.12; lift += 0.3 * S; }
+          else if (n < 0.24 && r2 > 0.55 && fleck > 0.3) { mat = 'moss'; tint += 0.02; lift += 0.4 * S; }
+        }
+      }
       const px = Math.round(s.sx), py = Math.round(s.sy);
-      p.ellipse(s.sx, s.sy, 1.05, 1.05, {
-        mat: 'shellRock', dome: 0, addHeight: false, tint,
-        lift: domeH * 0.62 * q + (inBasin ? -2.4 : 0) + b2 * 1.2,
-      });
+      p.ellipse(s.sx, s.sy, 1.05, 1.05, { mat, dome: 0, addHeight: false, tint, lift });
       for (let dx = -1; dx <= 1; dx++) {
         const cx2 = px + dx;
         if (cx2 >= 0 && cx2 < p.w && py > maxY[cx2]) maxY[cx2] = py;
@@ -177,9 +237,11 @@ function paintBody(m, seed = 3) {
     }
   }
 
-  p.grain('shellRock', { freq: 0.055 / S, amp: 0.26, seed: seed + 77, oct: 2 });
-  p.grain('shellRock', { freq: 0.28 / S, amp: 0.16, seed, oct: 3, height: 0.5 * S });
-  p.speckle('shellRock', { density: 0.045, amp: 0.30, seed: seed + 13, size: 1 });
+  p.grain('shellRock', { freq: 0.055 / S, amp: 0.16, seed: seed + 77, oct: 2 });
+  p.grain('shellRock', { freq: 0.28 / S, amp: 0.09, seed, oct: 3, height: 0.4 * S });
+  p.speckle('shellRock', { density: 0.03, amp: 0.22, seed: seed + 13, size: 1 });
+  p.grain('lichen', { freq: 0.6 / S, amp: 0.10, seed: seed + 3 });
+  p.grain('moss', { freq: 0.7 / S, amp: 0.12, seed: seed + 4 });
 
   // -- desert varnish streaking down the wall -------------------------------
   {
@@ -224,18 +286,29 @@ function paintBody(m, seed = 3) {
       lift: domeH * 0.62 * Math.sqrt(Math.max(0, 1 - a2 * a2 - b2 * b2)) + 2.6 * S,
     });
   }
-  const spikeN = Math.round(lerp(3, 8, m.t));
+  // Along the far rim, where the old stone spikes were: CRYSTAL. The spring
+  // inside the animal has been leaching salts up through the shell for a
+  // thousand years, and they have come out the top as spires - pale teal,
+  // lit from inside, faceted like a geode.
+  const spikeN = Math.round(lerp(3, 7, m.t));
   for (let i = 0; i < spikeN; i++) {
-    const th = Math.PI * (1.10 + (i / Math.max(1, spikeN - 1)) * 0.80);
-    const a2 = Math.cos(th) * 0.88, b2 = Math.sin(th) * 0.88;
+    const th = Math.PI * (1.16 + (i / Math.max(1, spikeN - 1)) * 0.68);
+    const a2 = Math.cos(th) * 0.84, b2 = Math.sin(th) * 0.84;
     const s = shellSurface(m, a2, b2);
-    const hgt = (2.2 + rnd(seed * 7 + i * 13) * 3.2) * S;
-    const wid = Math.max(1, (1.8 + rnd(seed * 17 + i) * 1.3) * S);
+    const big = i === Math.floor(spikeN / 2) || i === 1;
+    const hgt = (big ? 6.5 : 3.6 + rnd(seed * 7 + i * 13) * 2.6) * S;
+    const wid = Math.max(1.2, (big ? 2.4 : 1.6 + rnd(seed * 17 + i) * 0.8) * S);
+    const lean = (a2 * 0.8 + (rnd(seed * 23 + i) - 0.5) * 0.6) * S * 2;
+    const base = s.sy + 1.2 * S;
+    // two facets: the lit one and the shaded one, meeting at the ridge
     p.poly([
-      { x: s.sx - wid, y: s.sy + 1.4 * S },
-      { x: s.sx + wid * 0.2, y: s.sy - hgt },
-      { x: s.sx + wid, y: s.sy + 1.4 * S },
-    ], { mat: 'shellRock', dome: wid, feather: 2, tint: 0.10 });
+      { x: s.sx - wid, y: base }, { x: s.sx + lean, y: base - hgt }, { x: s.sx, y: base + 0.5 },
+    ], { mat: 'crystal', dome: wid * 1.2, feather: 1.4, tint: 0.16 });
+    p.poly([
+      { x: s.sx, y: base + 0.5 }, { x: s.sx + lean, y: base - hgt }, { x: s.sx + wid, y: base },
+    ], { mat: 'crystal', dome: wid * 0.9, feather: 1.4, tint: -0.10 });
+    // a glint where the light comes through it
+    p.ellipse(s.sx + lean * 0.55 - 0.3, base - hgt * 0.62, 0.6, 0.9, { mat: 'glowTeal', dome: 0.4, emissive: 0.25 });
   }
 
   // -- the water organ, a chitin crater in the floor of the basin ----------
@@ -244,10 +317,28 @@ function paintBody(m, seed = 3) {
   p.ellipse(org.sx, org.sy, orr * 1.30, orr * 0.68, { mat: 'chitinDark', dome: orr * 0.5, tint: 0.02 });
   p.ellipse(org.sx, org.sy, orr * 0.82, orr * 0.40, { mat: 'chitinDark', dome: -orr * 0.5, tint: -0.30 });
   p.ellipse(org.sx, org.sy, orr * 0.50, orr * 0.24, { mat: 'flesh', dome: -0.4, tint: -0.36 });
+  // the spring breathes through pores in a ring round the basin: little
+  // vents of teal light, which is the one thing about you that is plainly
+  // not from this world
+  const poreN = Math.round(6 + m.t * 6);
+  for (let i = 0; i < poreN; i++) {
+    const th = (i / poreN) * TAU + 0.3;
+    const a2 = m.basin.a + Math.cos(th) * m.basin.r * 1.42;
+    const b2 = m.basin.b + Math.sin(th) * m.basin.r * 1.30;
+    if (a2 * a2 + b2 * b2 > 0.82) continue;
+    const s = shellSurface(m, a2, b2);
+    const pr = Math.max(0.7, (0.8 + rnd(seed * 3 + i * 5) * 0.6) * S);
+    const lift = domeH * 0.62 * Math.sqrt(Math.max(0, 1 - a2 * a2 - b2 * b2)) + 0.5 * S;
+    p.ellipse(s.sx, s.sy, pr * 1.5, pr * 1.1, { mat: 'chitinDark', dome: -pr, tint: -0.2, lift });
+    p.ellipse(s.sx, s.sy, pr * 0.8, pr * 0.6, { mat: 'glowTeal', dome: 0.3, tint: 0.1, emissive: 0.35, lift });
+  }
 
   // -- fossil barnacles on the wall ----------------------------------------
-  for (let i = 0; i < Math.round(3 + m.t * 7); i++) {
-    const sa = -0.8 + rnd(seed * 101 + i * 7) * 1.6;
+  for (let i = 0; i < Math.round(7 + m.t * 12); i++) {
+    // they come in clusters: every third one starts a new patch, the rest
+    // crowd round the last
+    const cl = Math.floor(i / 3);
+    const sa = clamp(-0.85 + rnd(seed * 101 + cl * 7) * 1.7 + (rnd(seed * 3 + i) - 0.5) * 0.16, -0.9, 0.9);
     const x = Math.round(ox + sa * rx);
     if (x < 0 || x >= p.w || maxY[x] < 0) continue;
     const y = maxY[x] + (0.2 + rnd(seed * 211 + i * 3) * 0.5) * skirtH;
@@ -324,13 +415,26 @@ function paintSegment(len, r0, r1, opts = {}) {
         { mat, dome: 1.1 * S, feather: 1.4, tint: ft + 0.08 });
     }
   }
-  p.grain(mat, { freq: 0.5 / S, amp: 0.13, seed: Math.round(len * 7) });
+  // the knuckle at the far end, so every joint reads as a joint
+  p.ellipse(x1, cy, r1 * 1.15, r1 * 1.1, { mat, dome: r1 * 1.0, tint: ft + 0.06 });
+  // a thousand years of sitting still: barnacles on the upper face
+  if (!far && len > 8 * S) {
+    const n = 1 + Math.floor(rnd(Math.round(len * 13)) * 2.2);
+    for (let i = 0; i < n; i++) {
+      const t = 0.25 + rnd(Math.round(len * 7) + i * 31) * 0.5;
+      const x = lerp(x0, x1, t), y = cy - bow * 4 * t * (1 - t) - lerp(r0, r1, t) * 0.55;
+      const br = Math.max(0.8, (0.9 + rnd(i * 17 + Math.round(len)) * 0.6) * S);
+      p.ellipse(x, y, br, br * 0.85, { mat: 'bone', dome: br, tint: 0.08 });
+      p.ellipse(x, y, br * 0.4, br * 0.34, { mat: 'bone', dome: -br * 0.5, tint: -0.32 });
+    }
+  }
+  p.grain(mat, { freq: 0.5 / S, amp: 0.08, seed: Math.round(len * 7) });
   p.smoothHeight(1, 0.4);
   const cv = p.resolve(MATERIALS, {
     ...LIGHT, ambient: far ? 0.27 : LIGHT.ambient,
     outline: 1, outlineColor: far ? '#100a06' : '#171009',
   });
-  return { cv, ox: pad, oy: cy, len };
+  return { cv, ox: pad, oy: cy, len, r0, r1, mat, far, bow, barn: !far && len > 8 * S };
 }
 
 function paintFoot(len, r0, opts = {}) {
@@ -345,17 +449,14 @@ function paintFoot(len, r0, opts = {}) {
   p.ellipse(x0, cy, r0 * 1.14, r0 * 1.08, { mat, dome: r0, tint: ft + 0.04 });
   p.capsule(x1 - len * 0.34, cy - r0 * 0.12, x1, cy + r0 * 0.25, r0 * 0.55, Math.max(0.5, 0.6 * S),
     { mat: 'horn', dome: r0 * 0.5, tint: ft + 0.02 });
-  for (let i = 0; i < 4; i++) {
-    const t = 0.2 + i * 0.2;
-    const x = lerp(x0, x1, t), y = cy + lerp(r0, 1 * S, t) * 0.85;
-    p.capsule(x, y, x - 1.1 * S, y + 1.4 * S, 0.55 * S, 0.32 * S,
-      { mat: 'chitinDark', dome: 0.4, tint: ft - 0.2 });
-  }
-  p.grain(mat, { freq: 0.6 / S, amp: 0.12, seed: 21 });
+  // a rounded, worn tip - a thousand years of walking has taken the point off
+  p.ellipse(x1 - 0.5, cy + r0 * 0.2, Math.max(0.9, r0 * 0.62), Math.max(0.8, r0 * 0.55),
+    { mat: 'horn', dome: r0 * 0.5, tint: ft + 0.04 });
+  p.grain(mat, { freq: 0.6 / S, amp: 0.07, seed: 21 });
   const cv = p.resolve(MATERIALS, {
     ...LIGHT, ambient: far ? 0.27 : LIGHT.ambient, outline: 1, outlineColor: far ? '#100a06' : '#171009',
   });
-  return { cv, ox: pad, oy: cy, len };
+  return { cv, ox: pad, oy: cy, len, r0, r1: Math.max(0.5, 0.7 * S), mat, far, foot: true };
 }
 
 function paintClaw(m, far = false) {
@@ -394,8 +495,8 @@ function paintClaw(m, far = false) {
       { mat: 'horn', dome: s, feather: 1.2, tint: ft + 0.05 });
   }
 
-  p.ridges(mat, { angle: 0.9, freq: 0.55 / S, amp: 0.12, height: 1.0 * S, seed: 5, warp: 1.1 });
-  p.grain(mat, { freq: 0.30 / S, amp: 0.17, seed: 29 });
+  p.ridges(mat, { angle: 0.9, freq: 0.55 / S, amp: 0.08, height: 0.8 * S, seed: 5, warp: 1.1 });
+  p.grain(mat, { freq: 0.30 / S, amp: 0.09, seed: 29 });
   p.smoothHeight(1, 0.45);
   const palm = p.resolve(MATERIALS, {
     ...LIGHT, ambient: far ? 0.27 : LIGHT.ambient, outline: 1, outlineColor: far ? '#100a06' : '#171009',

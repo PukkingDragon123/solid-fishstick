@@ -15,6 +15,8 @@
 import { mulberry32, hashStr, clamp, clamp01, lerp, TAU } from '../lib/math.js';
 import { ORES } from '../data/craft.js';
 import { pxEllipse } from '../render/pix.js';
+import { Painter } from '../render/pixel.js';
+import { MATERIALS } from '../lib/palette.js';
 
 const CELL = 46;              // one possible seam per cell of desert
 const REACH = 16;             // how far a swing carries, in world units
@@ -41,7 +43,7 @@ export class Mining {
   seamAt(ci) {
     if (this.spent.has(ci)) return null;
     const r = mulberry32((hashStr(this.seed + 'seam') ^ (ci * 374761393)) >>> 0);
-    if (r() > 0.62) return null;     // most of the desert is just desert
+    if (r() > 0.45) return null;     // most of the desert is just desert
     let roll = r() * TOTAL_W;
     let ore = ORES[0];
     for (const o of ORES) { roll -= o.weight; if (roll <= 0) { ore = o; break; } }
@@ -67,6 +69,26 @@ export class Mining {
       if (s && Math.abs(s.x - x) <= radius) out.push(s);
     }
     return out.sort((a, b) => Math.abs(a.x - x) - Math.abs(b.x - x));
+  }
+
+  /**
+   * The seam you are standing beside, if there is one you can see. Grit is
+   * not worth an outcrop - it is the whole desert - so it never shows.
+   */
+  outcropAt(x, reach = 24) {
+    for (const s of this.near(x, reach)) {
+      if (s.ore.id === 'grit') continue;
+      return s;
+    }
+    return null;
+  }
+
+  /** Mine a seam out completely: it is spent, and what was in it is yours. */
+  takeSeam(s, power = 0) {
+    this.spent.add(s.ci);
+    this.chipped.delete(s.ci);
+    const n = 2 + Math.floor(Math.random() * 3) + (power > s.ore.need ? 1 : 0);
+    return { id: s.ore.id, n };
   }
 
   /** How deep the hole at this point is, counting the ones either side of it. */
@@ -127,61 +149,47 @@ export class Mining {
   // -- drawing --------------------------------------------------------------
 
   /**
-   * Seams you have not reached yet show as a faint glint in the ground, so
-   * the desert tells you where to dig instead of making you guess. Once the
-   * hole reaches one it is drawn properly: lumps of ore in a bed of rock,
-   * cracked a little more with every hit it has taken.
+   * Every seam worth having shows on the surface as an OUTCROP - a knot of
+   * rock with the ore showing in it - so the desert tells you where the metal
+   * is instead of making you dig blind. Walk up to one and mine it.
    */
   draw(ctx, cam) {
     const b = cam.bounds(80);
     const z = cam.zoom;
+    const c = this.game.crab;
     for (const s of this.near((b.x0 + b.x1) / 2, (b.x1 - b.x0) / 2 + 60)) {
+      if (s.ore.id === 'grit') continue;
       const gy = this.game.terrain.surfaceY(s.x);
-      const hole = this.holeAt(s.x);
-      const open = hole >= s.depth - 2;
-      const top = cam.worldToScreen(s.x, gy + s.depth);
-      if (!open) {
-        // a glint: brighter the closer your hole is to it
-        const near = clamp01(1 - (s.depth - hole) / 34);
-        const a = (0.10 + near * 0.42) * (0.6 + 0.4 * Math.sin(this.shimmer * 2.4 + s.seed));
-        ctx.globalAlpha = a;
-        ctx.fillStyle = s.ore.colour;
-        for (let i = 0; i < 3; i++) {
-          const px = top.x + Math.cos(s.seed + i * 2.1) * 3 * z;
-          const py = top.y + Math.sin(s.seed + i * 2.1) * 2 * z;
-          ctx.fillRect(Math.round(px), Math.round(py), Math.max(1, Math.round(z)), Math.max(1, Math.round(z)));
-        }
-        ctx.globalAlpha = 1;
-        continue;
-      }
-
-      // exposed: a bed of dark rock with the ore sitting in it
-      const hit = this.chipped.get(s.ci) || 0;
+      const art = outcropArt(s.ore.id, s.ci);
+      const p = cam.worldToScreen(s.x, gy);
       ctx.save();
-      ctx.translate(Math.round(top.x), Math.round(top.y));
+      ctx.translate(Math.round(p.x), Math.round(p.y));
       ctx.scale(z, z);
-      pxEllipse(ctx, 0, 0, 7.5, 5, 'rgba(42,30,20,0.92)', { p: 1 });
-      for (let i = 0; i < s.lumps; i++) {
-        const a = s.seed + i * (TAU / s.lumps);
-        const lx = Math.cos(a) * 3.6, ly = Math.sin(a) * 2.4;
-        const r = 1.5 + ((i * 7) % 3) * 0.4;
-        pxEllipse(ctx, lx, ly, r, r * 0.85, s.ore.colour, { p: 1 });
-        ctx.fillStyle = 'rgba(255,255,255,0.34)';
-        ctx.fillRect(Math.round(lx - r * 0.4), Math.round(ly - r * 0.6), 1, 1);
-      }
-      // the cracks it has taken so far
-      if (hit > 0) {
-        ctx.strokeStyle = 'rgba(16,10,6,0.75)';
-        ctx.lineWidth = 0.6;
-        for (let i = 0; i < hit; i++) {
-          const a = s.seed * 2 + i * 1.7;
-          ctx.beginPath();
-          ctx.moveTo(Math.cos(a) * 1.2, Math.sin(a) * 0.8);
-          ctx.lineTo(Math.cos(a) * 6.5, Math.sin(a) * 4.2);
-          ctx.stroke();
-        }
+      ctx.drawImage(art.cv, -art.ox, -art.oy);
+      // a glint that walks across the ore, so it catches the eye
+      const tw = (this.shimmer * 0.5 + (s.seed % 1)) % 1;
+      if (tw < 0.25) {
+        const k = Math.sin((tw / 0.25) * Math.PI);
+        ctx.globalAlpha = k;
+        ctx.fillStyle = '#fffbe8';
+        const gx = Math.round(art.gx), gy2 = Math.round(art.gy);
+        ctx.fillRect(gx, gy2 - 1, 1, 3);
+        ctx.fillRect(gx - 1, gy2, 3, 1);
+        ctx.globalAlpha = 1;
       }
       ctx.restore();
+      // too hard for what you are carrying: a lock over it when you are close
+      if (c && Math.abs(c.x - s.x) < 60 && (this.game.craft?.pickPower ?? 0) < s.ore.need) {
+        const lp = cam.worldToScreen(s.x, gy - 16);
+        ctx.fillStyle = 'rgba(18,10,6,0.8)';
+        ctx.fillRect(Math.round(lp.x) - 5, Math.round(lp.y) - 6, 11, 11);
+        ctx.fillStyle = '#c9a24a';
+        ctx.fillRect(Math.round(lp.x) - 3, Math.round(lp.y) - 1, 7, 5);
+        ctx.fillStyle = '#8f6a2a';
+        ctx.fillRect(Math.round(lp.x) - 2, Math.round(lp.y) - 5, 1, 4);
+        ctx.fillRect(Math.round(lp.x) + 2, Math.round(lp.y) - 5, 1, 4);
+        ctx.fillRect(Math.round(lp.x) - 2, Math.round(lp.y) - 5, 5, 1);
+      }
     }
   }
 
@@ -195,4 +203,82 @@ export class Mining {
     this.dug = new Map(d.dug || []);
     this.chipped = new Map(d.chipped || []);
   }
+}
+
+// ---------------------------------------------------------------------------
+// outcrops
+
+const OUTCROP = new Map();
+const LIGHT = { lightX: -0.55, lightY: -0.72, lightZ: 0.46, ambient: 0.40, dither: 0.35, outline: 1, outlineColor: '#120a06' };
+
+/**
+ * A knot of rock with the ore showing in it, painted with the same lit
+ * painter as everything else in the desert. One look per ore, a little
+ * different per seam, cached.
+ */
+function outcropArt(oreId, ci) {
+  const v = ((ci % 3) + 3) % 3;
+  const key = oreId + ':' + v;
+  let art = OUTCROP.get(key);
+  if (art) return art;
+  const W = 30, H = 22, cx = 15, base = 18;
+  const p = new Painter(W, H);
+  const rr = mulberry32((hashStr(oreId) ^ (v * 977)) >>> 0);
+  let gx = cx, gy = base - 8;
+  const rockMat = oreId === 'ironore' ? 'rockRed' : 'rock';
+  const sandy = oreId === 'saltcake' || oreId === 'shellchip' || oreId === 'silica';
+  if (sandy) {
+    // a low pale mound with the stuff lying in and on it
+    p.ellipse(cx, base, 11, 5, { mat: 'sandPale', dome: 4, tint: 0.02 });
+  } else {
+    // the rocks: a big one and two shoulders, sunk into the sand
+    p.ellipse(cx - 6, base - 2, 5.5, 4.5, { mat: rockMat, dome: 4.5, tint: -0.06 });
+    p.ellipse(cx + 6, base - 1.5, 5, 4, { mat: rockMat, dome: 4, tint: -0.1 });
+    p.ellipse(cx, base - 4, 7.5, 6.5, { mat: rockMat, dome: 6.5, tint: 0.02 });
+    p.grain(rockMat, { freq: 0.5, amp: 0.10, seed: 3 + v });
+    p.ellipse(cx, base + 1, 12, 2.2, { mat: 'sandPale', dome: 1.2, tint: -0.05 });
+  }
+  const lump = (x, y, r, mat, t = 0) => p.ellipse(x, y, r, r * 0.86, { mat, dome: r * 1.1, tint: t });
+  if (oreId === 'copperore') {
+    lump(cx - 2.5, base - 6.5, 2.2, 'copper', 0.1);
+    lump(cx + 2.8, base - 4.5, 1.8, 'copper');
+    lump(cx - 6.5, base - 3, 1.5, 'copper', -0.05);
+    lump(cx + 6.5, base - 3.5, 1.3, 'verdigris');
+    lump(cx + 0.5, base - 9.5, 1.4, 'verdigris', 0.05);
+    gx = cx - 3; gy = base - 8;
+  } else if (oreId === 'ironore') {
+    lump(cx - 2, base - 6, 2, 'metal', 0.1);
+    lump(cx + 3, base - 7.5, 1.6, 'metal');
+    lump(cx + 5.5, base - 2.5, 1.4, 'rust');
+    lump(cx - 6, base - 3, 1.5, 'rust', 0.05);
+    gx = cx - 2.5; gy = base - 7.5;
+  } else if (oreId === 'amberchunk') {
+    lump(cx - 1, base - 6.5, 2.6, 'amber', 0.12);
+    lump(cx + 4.5, base - 4, 1.8, 'amber');
+    lump(cx - 6, base - 2.5, 1.4, 'amber', -0.05);
+    gx = cx - 2; gy = base - 8;
+  } else if (oreId === 'silica') {
+    // quartz: clear shards standing up out of the mound
+    const shard = (x, h, lean, r) => p.capsule(x, base - 1, x + lean, base - 1 - h, r, r * 0.35, { mat: 'glass', dome: r * 1.2, tint: 0.1 });
+    shard(cx - 3, 9, -1.5, 1.8);
+    shard(cx + 1, 11, 0.8, 2.0);
+    shard(cx + 4.5, 7, 2, 1.5);
+    shard(cx - 6.5, 5, -1.8, 1.2);
+    gx = cx + 1; gy = base - 9;
+  } else if (oreId === 'saltcake') {
+    // plates of salt crust, tipped up at angles
+    p.ellipse(cx - 4, base - 3, 4.5, 2.2, { mat: 'petalWhite', dome: 2, tint: 0.12, rot: -0.35 });
+    p.ellipse(cx + 3.5, base - 4, 5, 2.4, { mat: 'petalWhite', dome: 2.2, tint: 0.16, rot: 0.28 });
+    p.ellipse(cx, base - 6.5, 3.5, 1.8, { mat: 'ice', dome: 1.8, tint: 0.3, rot: -0.1 });
+    gx = cx + 2; gy = base - 6;
+  } else if (oreId === 'shellchip') {
+    p.ellipse(cx - 3.5, base - 3.5, 3.6, 2.6, { mat: 'nacre', dome: 2.4, tint: 0.2, rot: -0.4 });
+    p.ellipse(cx + 3.5, base - 3, 3, 2.2, { mat: 'bone', dome: 2.2, tint: 0.15, rot: 0.5 });
+    p.ellipse(cx, base - 6, 2.4, 1.8, { mat: 'nacre', dome: 2, tint: 0.3 });
+    gx = cx - 3; gy = base - 5;
+  }
+  const cv = p.resolve(MATERIALS, LIGHT);
+  art = { cv, ox: cx, oy: base + 2, gx: gx - cx, gy: gy - (base + 2) };
+  OUTCROP.set(key, art);
+  return art;
 }

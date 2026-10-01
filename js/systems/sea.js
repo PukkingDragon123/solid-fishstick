@@ -20,6 +20,7 @@ import { drawText, textWidth } from '../lib/font.js';
 import { reefArt, jellyArt, whaleArt, sharkArt, REEF_KINDS, FLOOR_KINDS } from '../art/seaart.js';
 import { fishFrame, FISH_FRAMES } from '../art/fishart.js';
 import { seaSpecies } from './fishing.js';
+import { wallTile, drawKelp, drawGrass, schoolFish, SCHOOL_KINDS, mantaArt, MANTA_FRAMES, turtleArt, TURTLE_FRAMES, foreCoral } from '../art/seascape.js';
 
 const CELL = 90;               // one cell of reef, in world units
 const DEPTH = 150;             // how far the surface is above the seabed
@@ -38,6 +39,9 @@ export class Sea {
     this.whales = [];          // the biggest animals that have ever lived
     this.sharks = [];          // and the ones that were already old when they arrived
     this.snow = [];            // marine snow: the sea is full of falling bits
+    this.schools = [];         // bait balls
+    this.mantas = [];
+    this.turtles = [];
     this.cells = new Map();
     this.yearShow = 0;
     // When the sea is the one that never left, its surface does not track the
@@ -60,6 +64,9 @@ export class Sea {
     this.whales.length = 0;
     this.sharks.length = 0;
     this.snow.length = 0;
+    this.schools = [];
+    this.mantas = [];
+    this.turtles = [];
     const cx = this.game.crab.x;
     for (let i = 0; i < 40; i++) this._spawnFish(cx + (Math.random() - 0.5) * 900);
     // two of them, a long way up, crossing in opposite directions - a mother
@@ -89,6 +96,15 @@ export class Sea {
         r: Math.random() < 0.18 ? 2 : 1,
       });
     }
+    // bait balls: a few hundred fish that turn as one, which is the thing that
+    // makes water look alive from across a room
+    for (let i = 0; i < 4; i++) this._spawnSchool(cx + (i - 1.5) * 260 + (Math.random() - 0.5) * 120, i);
+    // a manta going over, slow, high in the column
+    this.mantas.push({ x: cx + 380, y: deep(0.22), dir: -1, sp: 14, ph: 0, s: 1 });
+    // and a turtle or two, lower down, in no hurry at all
+    for (let i = 0; i < 2; i++) {
+      this.turtles.push({ x: cx - 260 + i * 620, y: deep(0.5 + i * 0.18), dir: i ? -1 : 1, sp: 9 + i * 3, ph: Math.random(), bob: Math.random() * TAU });
+    }
     for (let i = 0; i < 4; i++) {
       this.jellies.push({
         x: cx + (Math.random() - 0.5) * 800, y: -60 - Math.random() * 90,
@@ -103,7 +119,13 @@ export class Sea {
   /** Where the surface is, in world Y. It walks down as the sea goes. */
   level(x = this.game.crab.x) {
     if (this.flat !== null) return this.flat;
-    const g = this.game.terrain.surfaceY(x);
+    // A sea surface is level, whatever the bottom is doing: so it sits a
+    // depth above the bed averaged over a long way, not above the bed here.
+    const T = this.game.terrain;
+    const q = Math.round(x / 40) * 40;
+    let g = 0;
+    for (let k = -3; k <= 3; k++) g += T.surfaceY(q + k * 220);
+    g /= 7;
     return g - DEPTH * (1 - this.drain) + this.drain * 40;
   }
 
@@ -141,6 +163,99 @@ export class Sea {
     this.flat = level;
     this.draining = false;
     this.drain = 0;
+  }
+
+  /** Where the water is at x, as [top, bottom] in world Y. */
+  _band(x) {
+    const g = this.game.terrain.surfaceY(x);
+    const top = this.flat !== null ? this.level(x) : g - DEPTH;
+    return [top, g];
+  }
+
+  _spawnSchool(x, i = 0) {
+    const [top, bed] = this._band(x);
+    if (bed - top < 40) return;
+    const kind = SCHOOL_KINDS[i % SCHOOL_KINDS.length];
+    const n = kind === 'glass' ? 34 : kind === 'fusilier' ? 22 : 30;
+    const cy = top + (bed - top) * (0.3 + Math.random() * 0.4);
+    const sc = { kind, x, y: cy, vx: (Math.random() < 0.5 ? -1 : 1) * 16, vy: 0, tx: x, ty: cy, retarget: 0,
+      sp: kind === 'fusilier' ? 26 : 20, swirl: Math.random() < 0.5 ? 0.6 : -0.6, m: [] };
+    for (let k = 0; k < n; k++) {
+      sc.m.push({ x: x + (Math.random() - 0.5) * 40, y: cy + (Math.random() - 0.5) * 20,
+        vx: sc.vx, vy: 0, ph: Math.random() * 4, dir: sc.vx < 0 ? -1 : 1, flash: 0 });
+    }
+    this.schools.push(sc);
+  }
+
+  /**
+   * A bait ball is three rules and nothing else: stay with the others, swim
+   * the way they swim, do not touch. Add a slow swirl round the middle and
+   * a scatter when something big comes through, and it turns as one.
+   */
+  _updateSchools(dt, b) {
+    const crab = this.game.crab;
+    for (const sc of this.schools) {
+      const [top, bed] = this._band(sc.x);
+      sc.retarget -= dt;
+      if (sc.retarget <= 0 || Math.hypot(sc.tx - sc.x, sc.ty - sc.y) < 20) {
+        sc.retarget = 4 + Math.random() * 6;
+        sc.tx = clamp(sc.x + (Math.random() - 0.5) * 360, b.x0 - 100, b.x1 + 100);
+        const [t2, g2] = this._band(sc.tx);
+        sc.ty = t2 + (g2 - t2) * (0.18 + Math.random() * 0.6);
+      }
+      const dx = sc.tx - sc.x, dy = sc.ty - sc.y, d = Math.hypot(dx, dy) || 1;
+      sc.vx = damp(sc.vx, (dx / d) * sc.sp, 0.3, dt);
+      sc.vy = damp(sc.vy, (dy / d) * sc.sp * 0.5, 0.3, dt);
+      sc.x += sc.vx * dt; sc.y = clamp(sc.y + sc.vy * dt, top + 14, bed - 12);
+      const ms = sc.m;
+      for (let i = 0; i < ms.length; i++) {
+        const f = ms[i];
+        const ox = f.x - sc.x, oy = f.y - sc.y;
+        let ax = -ox * 0.9 + (sc.vx - f.vx) * 1.6 - oy * sc.swirl;
+        let ay = -oy * 1.4 + (sc.vy - f.vy) * 1.6 + ox * sc.swirl * 0.5;
+        for (let j = 0; j < ms.length; j++) {
+          if (j === i) continue;
+          const q = ms[j];
+          const ex = f.x - q.x, ey = f.y - q.y;
+          const e2 = ex * ex + ey * ey;
+          if (e2 < 25 && e2 > 0.01) { ax += ex / e2 * 60; ay += ey / e2 * 60; }
+        }
+        // the crab coming through makes a hole in it
+        const cx = f.x - crab.x, cy = f.y - (crab.y - 10);
+        const c2 = cx * cx + cy * cy;
+        if (c2 < 2500) { const k = 1600 / Math.max(60, c2); ax += cx * k * 0.05; ay += cy * k * 0.05; f.flash = 0.3; }
+        f.vx += ax * dt; f.vy += ay * dt;
+        const v = Math.hypot(f.vx, f.vy), vmax = sc.sp * 2.2;
+        if (v > vmax) { f.vx *= vmax / v; f.vy *= vmax / v; }
+        f.x += f.vx * dt; f.y = clamp(f.y + f.vy * dt, top + 6, bed - 4);
+        f.ph += dt * (6 + v * 0.2);
+        const want = f.vx < -2 ? -1 : f.vx > 2 ? 1 : f.dir;
+        if (want !== f.dir) { f.dir = want; f.flash = 0.18; }
+        f.flash = Math.max(0, f.flash - dt);
+      }
+      // a school that has wandered right off goes round the other way
+      if (sc.x < b.x0 - 500 || sc.x > b.x1 + 500) {
+        const nx = sc.x < b.x0 ? b.x1 + 200 : b.x0 - 200;
+        const shift = nx - sc.x;
+        sc.x = nx; sc.tx = nx;
+        for (const f of ms) f.x += shift;
+      }
+    }
+    for (const m of this.mantas) {
+      m.x += m.dir * m.sp * dt;
+      m.ph += dt * 0.55;
+      const [t2, g2] = this._band(m.x);
+      m.y = clamp(m.y + Math.sin(m.ph * 0.7) * 4 * dt, t2 + 24, g2 - 40);
+      if (m.x < b.x0 - 900 || m.x > b.x1 + 900) { m.dir *= -1; m.x = clamp(m.x, b.x0 - 880, b.x1 + 880); }
+    }
+    for (const tu of this.turtles) {
+      tu.x += tu.dir * tu.sp * dt;
+      tu.ph += dt * 0.32;
+      tu.bob += dt * 0.6;
+      const [t2, g2] = this._band(tu.x);
+      tu.y = clamp(tu.y + Math.sin(tu.bob) * 3 * dt, t2 + 20, g2 - 20);
+      if (tu.x < b.x0 - 600 || tu.x > b.x1 + 600) { tu.dir *= -1; tu.x = clamp(tu.x, b.x0 - 580, b.x1 + 580); }
+    }
   }
 
   _spawnFish(x) {
@@ -225,6 +340,9 @@ export class Sea {
       if (sn.y > ground - 2) { sn.y = this.level(sn.x) - 20 - Math.random() * 200; sn.x = b.x0 + Math.random() * (b.x1 - b.x0); }
     }
 
+    this._updateSchools(dt, b);
+    if (wet < 0.3) { this.schools.length = 0; this.mantas.length = 0; this.turtles.length = 0; }
+
     // fish: they cruise, they turn at the edge of where you can see, and as
     // the water goes they go with it
     for (let i = this.fish.length - 1; i >= 0; i--) {
@@ -303,6 +421,18 @@ export class Sea {
         far: size > 1.15 || rng() < 0.45,
       });
     }
+    // kelp, in stands, and seagrass round the feet of everything
+    if (rng() < 0.55) {
+      const kx = (ci + rng()) * CELL, n = 2 + Math.floor(rng() * 4);
+      for (let i = 0; i < n; i++) {
+        items.push({ x: kx + (i - n / 2) * (5 + rng() * 6), kind: 'kelp', h: 60 + rng() * 80,
+          seed: Math.floor(rng() * 9999), sway: rng() * TAU, far: true, live: true });
+      }
+    }
+    for (let i = 0; i < 2 + Math.floor(rng() * 3); i++) {
+      items.push({ x: (ci + rng()) * CELL, kind: 'grass', h: 7 + rng() * 9, n: 4 + Math.floor(rng() * 5),
+        seed: Math.floor(rng() * 9999), sway: rng() * TAU, far: rng() < 0.5, live: true });
+    }
     // and a crablet or two, walking about on the sand
     if (rng() < 0.5) {
       items.push({
@@ -334,6 +464,13 @@ export class Sea {
   drawDeep(ctx, cam, vw, vh) {
     const wet = this.wet;
     if (wet <= 0.02) return;
+    // the underside of the surface, when it is in shot - drawn here rather
+    // than with the column so it goes over the desert's far props too
+    if (this.flat === null) {
+      const surfAt = (x) => { const w = cam.screenToWorld(x, 0).x; return cam.worldToScreen(w, this.level(w)).y; };
+      const hi = Math.max(surfAt(0), surfAt(vw / 2), surfAt(vw));
+      if (hi > -4) this._drawCeiling(ctx, vw, surfAt, wet);
+    }
     const clipped = this._clipWater(ctx, cam, vw, vh);
     const z = cam.zoom;
 
@@ -365,6 +502,35 @@ export class Sea {
       ctx.restore();
       ctx.globalAlpha = 1;
     }
+
+    // the manta: far up, flying rather than swimming
+    for (const m of this.mantas) {
+      const s = cam.worldToScreen(m.x, m.y);
+      const art = mantaArt(Math.floor(m.ph * MANTA_FRAMES) % MANTA_FRAMES);
+      const k = Math.max(0.5, z * 0.9);
+      if (s.x < -120 || s.x > vw + 120) continue;
+      ctx.save();
+      ctx.globalAlpha = wet * 0.82;
+      ctx.translate(Math.round(s.x), Math.round(s.y));
+      ctx.scale(k * (m.dir < 0 ? 1 : -1), k);
+      ctx.drawImage(art.cv, -art.ox, -art.oy);
+      ctx.restore();
+    }
+    // turtles, nearer, in no hurry
+    for (const tu of this.turtles) {
+      const s = cam.worldToScreen(tu.x, tu.y);
+      if (s.x < -80 || s.x > vw + 80) continue;
+      const art = turtleArt(Math.floor(tu.ph * TURTLE_FRAMES) % TURTLE_FRAMES);
+      const k = Math.max(0.6, z);
+      ctx.save();
+      ctx.globalAlpha = wet * 0.94;
+      ctx.translate(Math.round(s.x), Math.round(s.y));
+      ctx.scale(k * (tu.dir < 0 ? 1 : -1), k);
+      ctx.rotate(Math.sin(tu.ph * TAU) * 0.05);
+      ctx.drawImage(art.cv, -art.ox, -art.oy);
+      ctx.restore();
+    }
+    ctx.globalAlpha = 1;
 
     for (const wh of this.whales) {
       const s = cam.worldToScreen(wh.x, wh.y);
@@ -401,6 +567,8 @@ export class Sea {
     if (wet <= 0.02) return;
     const b = cam.bounds(90);
     const z = cam.zoom;
+    const r = this.game.renderer;
+    const clipped = this._clipWater(ctx, cam, r.vw, r.vh);
     for (const it of this.near(b.x0, b.x1)) {
       if (!!it.far !== far) continue;
       let x = it.x;
@@ -410,6 +578,20 @@ export class Sea {
       // (In the prologue the whole world is under water and this is free.)
       if (this.flat !== null && y < this.level(x) + 3) continue;
       const s = cam.worldToScreen(x, y);
+      if (it.live) {
+        ctx.globalAlpha = wet;
+        if (it.kind === 'kelp') {
+          drawKelp(ctx, s.x, s.y + 1, it.h * z, this.t, it.sway, {
+            stipe: '#6b5a22', leafCol: '#a38f33', leaf2: '#8a7a2a', hi: '#d4c25e', float: '#d8c870',
+            lw: Math.max(1, Math.round(z * 1.4)), leaf: 6 * Math.max(0.7, z), bw: Math.max(2, Math.round(2.4 * z)),
+            every: 2, step: Math.max(3, 4 * z), amp: Math.max(0.7, z), crown: true });
+        } else {
+          drawGrass(ctx, s.x, s.y + 1, it.h * z, this.t, it.sway, {
+            n: it.n, gap: Math.max(1, Math.round(z)), w: Math.max(1, Math.round(z * 0.8)),
+            col: '#4f9a52', dark: '#2f6e3e', tip: '#8fd078', amp: z });
+        }
+        continue;
+      }
       const art = reefArt(it.kind, Math.max(0.35, it.s * (far ? 0.8 : 1)), it.seed);
       const sway = Math.sin(this.t * 0.8 + it.sway) * 0.05 * wet;
       ctx.save();
@@ -421,6 +603,7 @@ export class Sea {
       ctx.restore();
     }
     ctx.globalAlpha = 1;
+    if (clipped) ctx.restore();
   }
 
   /** The swimmers, and the bubbles going up past them. */
@@ -443,6 +626,19 @@ export class Sea {
       ctx.drawImage(art.cv, -art.ox, -art.oy);
       ctx.restore();
     }
+    // the bait balls, a pixel to a pixel whatever the zoom: they are small
+    const sk = z >= 1.7 ? 2 : 1;
+    for (const sc of this.schools) {
+      for (const f of sc.m) {
+        if (f.y < ceil) continue;
+        const s = cam.worldToScreen(f.x, f.y);
+        if (s.x < -10 || s.x > this.game.renderer.vw + 10) continue;
+        const art = schoolFish(sc.kind, Math.floor(f.ph) & 1, f.flash > 0);
+        ctx.globalAlpha = wet;
+        ctx.drawImage(f.dir < 0 ? art.l : art.r, Math.round(s.x - art.w * sk / 2), Math.round(s.y - art.h * sk / 2), art.w * sk, art.h * sk);
+      }
+    }
+    ctx.globalAlpha = 1;
     for (const j of this.jellies) {
       const s = cam.worldToScreen(j.x, j.y);
       const art = jellyArt(Math.max(0.4, j.s));
@@ -484,21 +680,32 @@ export class Sea {
     const wet = this.wet;
     if (wet <= 0.01) return;
     const terr = this.game.terrain;
+    const z = cam.zoom;
     const surfW = cam.worldToScreen(cam.x, this.level(cam.x)).y;
-
-    const col = ctx.createLinearGradient(0, Math.min(surfW, 0), 0, vh);
     const solid = this.flat === null;
-    col.addColorStop(0, `rgba(120,212,226,${(solid ? 0.94 : 0.50) * wet})`);
-    col.addColorStop(0.40, `rgba(38,140,168,${(solid ? 0.97 : 0.72) * wet})`);
-    col.addColorStop(1, `rgba(12,74,102,${(solid ? 0.99 : 0.90) * wet})`);
+
+    // The colour is pinned to depth, not to the screen: a metre down is the
+    // same turquoise wherever the camera is, and it goes to navy by the time
+    // you are three hundred down.
+    const col = ctx.createLinearGradient(0, surfW, 0, surfW + 330 * z);
+    const A = (solid ? 0.97 : 0.93) * wet;
+    col.addColorStop(0, `rgba(132,226,236,${A})`);
+    col.addColorStop(0.16, `rgba(72,192,222,${A})`);
+    col.addColorStop(0.42, `rgba(36,142,200,${A})`);
+    col.addColorStop(0.72, `rgba(22,98,164,${A})`);
+    col.addColorStop(1, `rgba(12,58,118,${A})`);
+
     ctx.save();
     ctx.beginPath();
     const topAt = (x) => {
       const w = cam.screenToWorld(x, 0).x;
-      return this.flat !== null ? cam.worldToScreen(w, this.level(w)).y : 0;
+      return cam.worldToScreen(w, this.level(w)).y;
     };
-    ctx.moveTo(0, topAt(0));
-    for (let x = 0; x <= vw; x += 6) ctx.lineTo(x, topAt(x));
+    // in the prologue the column runs all the way up: what is over the
+    // surface is the underside of the surface, which the reflection paints
+    ctx.moveTo(0, solid ? Math.min(0, surfW) : topAt(0));
+    if (solid) ctx.lineTo(vw, Math.min(0, surfW));
+    else for (let x = 0; x <= vw; x += 6) ctx.lineTo(x, topAt(x));
     for (let x = vw; x >= 0; x -= 6) {
       const w = cam.screenToWorld(x, 0).x;
       ctx.lineTo(x, cam.worldToScreen(w, terr.surfaceY(w)).y);
@@ -508,26 +715,228 @@ export class Sea {
     ctx.fillStyle = col;
     ctx.fillRect(0, 0, vw, vh);
 
-    // the light coming down through it, which only exists in the column
+    // the bed under the middle of the shot, which the far ranks stand on
+    const bedW = terr.surfaceY(cam.x);
+    const ranks = [
+      { layer: 0, p: 0.16, pv: 0.55, lift: 26, haze: 0.42 },
+      { layer: 1, p: 0.34, pv: 0.75, lift: 10, haze: 0.18 },
+    ];
+    for (const R of ranks) {
+      const tile = wallTile(R.layer);
+      // stand it on the bed, moving less than the bed does
+      const base = Math.round(vh / 2 + (bedW - cam.y) * z * R.pv + (cam.y - bedW) * 0 - R.lift);
+      const y0 = base - tile.H;
+      const off = ((cam.x * R.p) % tile.W + tile.W) % tile.W;
+      ctx.globalAlpha = wet;
+      for (let x = -Math.round(off); x < vw; x += tile.W) ctx.drawImage(tile.cv, x, y0);
+      ctx.fillStyle = tile.deep;
+      ctx.fillRect(0, base - 1, vw, vh - base + 1);
+      // kelp standing up out of this rank
+      this._drawKelpRank(ctx, cam, vw, base, R);
+      ctx.globalAlpha = 1;
+      // and the water between you and it
+      ctx.globalAlpha = R.haze;
+      ctx.fillStyle = col;
+      ctx.fillRect(0, 0, vw, vh);
+      ctx.globalAlpha = 1;
+      if (R.layer === 0) this._drawRays(ctx, vw, vh, surfW, wet, 0.8);
+    }
+    this._drawRays(ctx, vw, vh, surfW, wet, 0.45);
+
+    ctx.restore();
+  }
+
+  /** Shafts of light from the surface, behind everything on the bottom. */
+  _drawRays(ctx, vw, vh, surfW, wet, k) {
+    ctx.save();
     ctx.globalCompositeOperation = 'lighter';
+    const sy = Math.max(-20, surfW);
     for (let i = 0; i < 6; i++) {
-      const ph = i * 1.9;
-      const x = vw * ((i + 0.5) / 6) + Math.sin(this.t * 0.2 + ph) * vw * 0.04;
-      const lean = Math.sin(this.t * 0.15 + ph) * 0.12 + 0.06;
-      const a = (0.07 + 0.04 * (0.5 + 0.5 * Math.sin(this.t * 0.5 + ph))) * wet;
-      const g = ctx.createLinearGradient(x, surfW, x + vh * lean, vh);
-      g.addColorStop(0, `rgba(224,252,255,${a})`);
+      const ph = i * 1.9 + k * 3;
+      const x = vw * ((i + 0.5) / 6) + Math.sin(this.t * 0.2 + ph) * vw * 0.05 - (this.game.cam.x * 0.08) % (vw / 6);
+      const lean = Math.sin(this.t * 0.15 + ph) * 0.10 + 0.14;
+      const a = (0.06 + 0.05 * (0.5 + 0.5 * Math.sin(this.t * 0.5 + ph))) * wet * k;
+      const g = ctx.createLinearGradient(0, sy, 0, vh);
+      g.addColorStop(0, `rgba(230,255,255,${a})`);
+      g.addColorStop(0.6, `rgba(170,232,248,${a * 0.45})`);
       g.addColorStop(1, 'rgba(150,220,240,0)');
       ctx.fillStyle = g;
+      const w0 = vw * (0.010 + 0.008 * Math.sin(ph * 2)), w1 = vw * (0.045 + 0.02 * Math.sin(ph));
+      const len = vh - sy;
       ctx.beginPath();
-      ctx.moveTo(x - vw * 0.012, surfW);
-      ctx.lineTo(x + vw * 0.012, surfW);
-      ctx.lineTo(x + vh * lean + vw * 0.05, vh);
-      ctx.lineTo(x + vh * lean - vw * 0.05, vh);
+      ctx.moveTo(x - w0, sy);
+      ctx.lineTo(x + w0, sy);
+      ctx.lineTo(x + len * lean + w1, vh);
+      ctx.lineTo(x + len * lean - w1, vh);
       ctx.closePath();
       ctx.fill();
     }
-    ctx.globalCompositeOperation = 'source-over';
+    ctx.restore();
+  }
+
+  /**
+   * Looking up at the surface from under it: past the bright line the water
+   * is a mirror, and what it mirrors is wave after wave of itself, packed
+   * tighter the further off they are.
+   */
+  _drawCeiling(ctx, vw, surfAt, wet) {
+    const t = this.t;
+    const camX = this.game.cam.x * 0.4;
+    for (let x = 0; x < vw; x += 2) {
+      const sy = Math.round(surfAt(x));
+      if (sy <= 0) continue;
+      // the mirror: brightest at the line, deepening up the frame
+      for (let y = 0; y < sy; y += 1) {
+        const d = sy - y;
+        const k = Math.min(1, d / 120);
+        const r = Math.round(196 - 126 * k), gg = Math.round(246 - 68 * k), bb = Math.round(248 - 34 * k);
+        ctx.fillStyle = `rgb(${r},${gg},${bb})`;
+        // runs of one colour, not a pixel at a time
+        let run = 1;
+        while (y + run < sy && Math.floor(Math.min(1, (sy - y - run) / 120) * 24) === Math.floor(k * 24)) run++;
+        ctx.globalAlpha = 0.96 * wet;
+        ctx.fillRect(x, y, 2, run);
+        y += run - 1;
+      }
+      // wave after wave of it, packed tighter toward the line
+      for (let k = 0; k < 18; k++) {
+        const y0 = sy - 2 - Math.pow(k, 1.55) * 1.6;
+        if (y0 < -4) break;
+        const w = Math.sin((x + camX) * (0.07 - k * 0.002) + t * (1.4 + k * 0.05) + k * 1.7);
+        const y = Math.round(y0 + w * (0.6 + k * 0.18));
+        const fade = 1 - k / 18;
+        if (w > 0.55) { ctx.globalAlpha = wet * 0.55 * fade; ctx.fillStyle = '#f4ffff'; ctx.fillRect(x, y, 2, 1); }
+        else if (w < -0.6) { ctx.globalAlpha = wet * 0.22 * fade; ctx.fillStyle = '#2f93bd'; ctx.fillRect(x, y, 2, 1); }
+      }
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  /** A rank of kelp stood on one of the far walls. */
+  _drawKelpRank(ctx, cam, vw, base, R) {
+    const spacing = R.layer === 0 ? 38 : 54;
+    const px = cam.x * R.p;
+    const first = Math.floor((px - 40) / spacing), last = Math.ceil((px + vw + 40) / spacing);
+    const far = R.layer === 0;
+    const o = far
+      ? { stipe: '#2e6f74', leafCol: '#3a7f78', lw: 1, leaf: 4, every: 2, step: 3, amp: 0.7 }
+      : { stipe: '#3e6a3c', leafCol: '#5a8443', leaf2: '#4c7a3e', hi: '#7aa25a', lw: 1, leaf: 5, bw: 2, every: 2, step: 3, amp: 0.9, crown: true };
+    for (let i = first; i <= last; i++) {
+      const h1 = Math.sin(i * 12.9898 + R.layer * 7.1) * 43758.5453;
+      const r = h1 - Math.floor(h1);
+      if (r < (far ? 0.45 : 0.55)) continue;
+      const x = Math.round(i * spacing + r * spacing * 0.8 - px);
+      const len = (far ? 40 : 54) + r * (far ? 46 : 64);
+      drawKelp(ctx, x, base + 2, len, this.t, i * 1.37, o);
+    }
+  }
+
+  /**
+   * The seabed. The ground under the sea is the desert's ground, but a
+   * thousand years earlier it was pale sea sand, combed into ripples by the
+   * swell and lit from above: so it is recoloured where the water covers it,
+   * the lip catches the light, and the cut face below goes dark and blue.
+   */
+  drawBed(ctx, cam, vw, vh) {
+    const wet = this.wet;
+    if (wet <= 0.02) return;
+    const terr = this.game.terrain;
+    const z = cam.zoom;
+    const step = 3;
+    const ys = [];
+    for (let x = 0; x <= vw + step; x += step) {
+      const w = cam.screenToWorld(x, 0).x;
+      const gy = terr.surfaceY(w);
+      // a standing sea only owns the ground that is under it
+      const dry = this.flat !== null && gy < this.level(w) + 2;
+      ys.push(dry ? null : cam.worldToScreen(w, gy).y);
+    }
+    ctx.save();
+    ctx.beginPath();
+    let open = false;
+    for (let i = 0; i < ys.length; i++) {
+      const x = i * step;
+      if (ys[i] === null) {
+        if (open) { ctx.lineTo(x, vh); ctx.closePath(); open = false; }
+        continue;
+      }
+      if (!open) { ctx.moveTo(x, vh); open = true; }
+      ctx.lineTo(x, ys[i]);
+    }
+    if (open) { ctx.lineTo(vw + step, vh); ctx.closePath(); }
+    ctx.clip();
+    // pale sea sand going down to a cold, dark cut face
+    const top = Math.min(...ys.filter((v) => v !== null), vh);
+    const g = ctx.createLinearGradient(0, top, 0, top + 90 * z);
+    g.addColorStop(0, `rgba(226,214,170,${0.72 * wet})`);
+    g.addColorStop(0.12, `rgba(196,186,148,${0.70 * wet})`);
+    g.addColorStop(0.45, `rgba(120,132,124,${0.72 * wet})`);
+    g.addColorStop(1, `rgba(34,62,84,${0.86 * wet})`);
+    ctx.fillStyle = g;
+    ctx.fillRect(0, top - 2, vw, vh - top + 2);
+    ctx.restore();
+
+    // the lit lip, and the ripples combed into the top of it
+    const camX = cam.x;
+    for (let i = 0; i < ys.length - 1; i++) {
+      const y = ys[i];
+      if (y === null) continue;
+      const x = i * step;
+      ctx.globalAlpha = wet * 0.85;
+      ctx.fillStyle = '#f4ecc8';
+      ctx.fillRect(x, Math.round(y), step, 1);
+      ctx.globalAlpha = wet * 0.5;
+      ctx.fillStyle = '#fff8dc';
+      if (((x + Math.round(camX * z)) / step) % 4 === 0) ctx.fillRect(x, Math.round(y) - 1, 1, 1);
+      for (let r = 0; r < 3; r++) {
+        const wx = camX + (x - vw / 2) / z;
+        const ry = Math.round(y + (2 + r * 3) * Math.max(1, z * 0.9));
+        const w = Math.sin(wx * 0.32 + r * 2.1 + Math.sin(wx * 0.05 + r) * 1.4);
+        if (w > 0.45) { ctx.globalAlpha = wet * (0.5 - r * 0.12); ctx.fillStyle = '#efe4bc'; ctx.fillRect(x, ry, step, 1); }
+        else if (w < -0.55) { ctx.globalAlpha = wet * (0.35 - r * 0.08); ctx.fillStyle = '#7f7a64'; ctx.fillRect(x, ry, step, 1); }
+      }
+      // pebbles and shell grit
+      const h1 = Math.sin(Math.floor((camX + (x - vw / 2) / z) / 7) * 91.7) * 43758.5;
+      const r1 = h1 - Math.floor(h1);
+      if (r1 > 0.86) {
+        ctx.globalAlpha = wet * 0.8;
+        ctx.fillStyle = r1 > 0.95 ? '#f6f0e0' : r1 > 0.9 ? '#8c8270' : '#b9ad8a';
+        ctx.fillRect(x + 1, Math.round(y + 3 + r1 * 8 * z), Math.max(1, Math.round(z)), Math.max(1, Math.round(z)));
+      }
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  /**
+   * The front of the frame: dark, out-of-focus coral and fronds swaying
+   * across the bottom corners, so the shot has a foreground and the reef has
+   * a near side. Replaces the desert's grass tufts while you are under.
+   */
+  drawForeground(ctx, cam, vw, vh) {
+    const wet = this.wet;
+    if (wet <= 0.3) return;
+    const p = 1.6;
+    const px = cam.x * p;
+    const spacing = 120;
+    const first = Math.floor((px - 160) / spacing), last = Math.ceil((px + vw + 160) / spacing);
+    ctx.save();
+    ctx.globalAlpha = wet * 0.94;
+    for (let i = first; i <= last; i++) {
+      const h1 = Math.sin(i * 78.233 + 4.1) * 43758.5453;
+      const r = h1 - Math.floor(h1);
+      if (r < 0.35) continue;
+      const x = Math.round(i * spacing + r * 60 - px);
+      if (r > 0.62) {
+        const cv = foreCoral(Math.floor(r * 100) % 6);
+        ctx.drawImage(cv, x - (cv.width >> 1), vh - cv.height + 8 + Math.round(r * 10));
+      }
+      // fronds, thick and nearly black
+      const n = 2 + Math.floor(r * 3);
+      for (let k = 0; k < n; k++) {
+        drawKelp(ctx, x + (k - n / 2) * 7, vh + 4, 34 + r * 40 + k * 9, this.t * 0.8, i * 2.3 + k,
+          { stipe: '#041b25', leafCol: '#062430', leaf2: '#041b25', lw: 3, leaf: 9, bw: 4, every: 2, step: 4, amp: 1.2 });
+      }
+    }
     ctx.restore();
   }
 
@@ -545,8 +954,8 @@ export class Sea {
     const surfW = cam.worldToScreen(cam.x, this.level(cam.x)).y;
 
     // 1. the water you are looking through
-    ctx.globalAlpha = 0.20 * wet;
-    ctx.fillStyle = '#1c7a96';
+    ctx.globalAlpha = 0.08 * wet;
+    ctx.fillStyle = '#1c7aa6';
     ctx.fillRect(0, 0, vw, vh);
     ctx.globalAlpha = 1;
 
@@ -577,28 +986,21 @@ export class Sea {
     }
     ctx.globalAlpha = 1;
 
-    // 5. the surface, seen from below
+    // 5. the surface, seen from below: a bright wobbling line, and the
+    // glow hanging just under it
     if (surfW > -30 && surfW < vh) {
-      ctx.save();
-      ctx.beginPath();
-      ctx.moveTo(0, surfW - 40);
-      ctx.lineTo(vw, surfW - 40);
-      for (let x = vw; x >= 0; x -= 6) {
-        ctx.lineTo(x, surfW + Math.sin(x * 0.05 + this.t * 1.6) * 3 + Math.sin(x * 0.11 - this.t * 2.3) * 1.6);
-      }
-      ctx.closePath();
-      const g = ctx.createLinearGradient(0, surfW - 26, 0, surfW + 12);
-      g.addColorStop(0, `rgba(228,252,255,${0.9 * wet})`);
-      g.addColorStop(0.6, `rgba(150,226,240,${0.5 * wet})`);
-      g.addColorStop(1, 'rgba(110,200,220,0)');
-      ctx.fillStyle = g;
-      ctx.fill();
-      ctx.restore();
-      for (let x = 0; x < vw; x += 9) {
-        const y = surfW + Math.sin(x * 0.05 + this.t * 1.6) * 3 + Math.sin(x * 0.11 - this.t * 2.3) * 1.6;
-        ctx.globalAlpha = wet * (0.3 + 0.35 * Math.sin(x * 0.2 + this.t * 3));
-        ctx.fillStyle = '#f2ffff';
-        ctx.fillRect(x, Math.round(y) - 1, 5, 1);
+      for (let x = 0; x < vw; x += 2) {
+        const w = Math.sin(x * 0.05 + this.t * 1.6) * 2.2 + Math.sin(x * 0.11 - this.t * 2.3) * 1.2;
+        const wx = cam.screenToWorld(x, 0).x;
+        const y = Math.round(cam.worldToScreen(wx, this.level(wx)).y + w);
+        ctx.globalAlpha = wet * (0.55 + 0.35 * Math.sin(x * 0.2 + this.t * 3));
+        ctx.fillStyle = '#f4ffff';
+        ctx.fillRect(x, y, 2, 1);
+        ctx.globalAlpha = wet * 0.25;
+        ctx.fillStyle = '#bff2fa';
+        ctx.fillRect(x, y + 1, 2, 2);
+        ctx.globalAlpha = wet * 0.10;
+        ctx.fillRect(x, y + 3, 2, 5);
       }
       ctx.globalAlpha = 1;
     }

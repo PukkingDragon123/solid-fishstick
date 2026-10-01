@@ -26,70 +26,79 @@ import { clamp, clamp01, lerp, TAU } from '../lib/math.js';
  */
 export const JOBS = {
   dig: {
-    name: 'Digging', secs: 5.2, band: 0.30, sweep: 1.05, care: 0.7,
+    name: 'Digging', secs: 5.2, band: 0.26, sweep: 0.95, care: 0.7,
     verb: 'dig', pose: 'dig', sound: 'claw', icon: 'spade',
-    tint: '#c9a24a',
+    tint: '#c9a24a', popup: true, strikes: 4, tool: 'spade', chibi: 'dig',
     hint: 'Every stroke in the band is sand off it. Every stroke outside is a crack in it.',
   },
   pick: {
-    name: 'Picking', secs: 1.9, band: 0.42, sweep: 1.5, care: 0.25,
-    verb: 'pick', pose: 'reach', sound: 'pickup', icon: 'hand',
-    tint: '#8cc468',
-    hint: 'Take it off at the stem. Tearing it costs you the next one.',
+    name: 'Picking', secs: 0.8, band: 0.42, sweep: 1.5, care: 0.25,
+    verb: 'pick', pose: 'reach', sound: 'pickup', icon: 'fruit',
+    tint: '#8cc468', popup: false,
+    hint: 'Take it off at the stem.',
   },
   plant: {
     name: 'Planting', secs: 7.5, band: 0.34, sweep: 0.9, care: 0.35,
     verb: 'plant', pose: 'dig', sound: 'step', icon: 'seed',
-    tint: '#9ad86a',
+    tint: '#9ad86a', popup: false,
     hint: 'A hole, a seed, and the sand back over it. It is not quick.',
   },
   water: {
-    name: 'Watering', secs: 3.4, band: 0.26, sweep: 1.25, care: 0.15,
+    name: 'Watering', secs: 1.8, band: 0.26, sweep: 1.25, care: 0.15,
     verb: 'water', pose: 'pour', sound: 'water', icon: 'drop',
-    tint: '#5fc6d8',
-    hint: 'Pour it in the band. Too fast and it runs off the top.',
+    tint: '#5fc6d8', popup: false,
+    hint: 'Pour it in.',
   },
   mine: {
-    name: 'Mining', secs: 4.4, band: 0.28, sweep: 1.2, care: 0.5,
-    verb: 'mine', pose: 'swing', sound: 'hit', icon: 'bolt',
-    tint: '#c97a4a',
+    name: 'Mining', secs: 4.4, band: 0.24, sweep: 1.05, care: 0.3,
+    verb: 'mine', pose: 'swing', sound: 'hit', icon: 'pickaxe',
+    tint: '#e08a4a', popup: true, strikes: 4, tool: 'pickaxe', chibi: 'mine',
     hint: 'Hit the seam where it is already cracked.',
   },
   study: {
-    name: 'Studying', secs: 4.2, band: 0.34, sweep: 0.95, care: 0.2,
-    verb: 'study', pose: 'crouch', sound: 'step', icon: 'leaf',
-    tint: '#9ad86a',
+    name: 'Studying', secs: 4.2, band: 0.32, sweep: 0.85, care: 0.1,
+    verb: 'study', pose: 'crouch', sound: 'step', icon: 'magnifier',
+    tint: '#9ad86a', popup: true, strikes: 3, tool: 'magnifier', chibi: 'study',
     hint: 'Look at the whole thing. The root tells you more than the flower.',
   },
   fell: {
-    name: 'Cutting', secs: 6.4, band: 0.26, sweep: 1.15, care: 0.55,
-    verb: 'cut', pose: 'swing', sound: 'claw', icon: 'tree',
-    tint: '#9ad86a',
-    hint: 'The same notch, over and over, on the same side. It will tell you when.',
+    name: 'Cutting', secs: 6.4, band: 0.24, sweep: 1.0, care: 0.2,
+    verb: 'cut', pose: 'swing', sound: 'claw', icon: 'axe',
+    tint: '#9ad86a', popup: true, strikes: 5, tool: 'axe', chibi: 'cut',
+    hint: 'The same notch, over and over, on the same side.',
   },
   search: {
-    name: 'Searching', secs: 3.0, band: 0.38, sweep: 1.1, care: 0.1,
-    verb: 'search', pose: 'crouch', sound: 'step', icon: 'map',
-    tint: '#b49c70',
+    name: 'Searching', secs: 3.0, band: 0.34, sweep: 0.95, care: 0.05,
+    verb: 'search', pose: 'crouch', sound: 'step', icon: 'magnifier',
+    tint: '#b49c70', popup: true, strikes: 3, tool: 'magnifier', chibi: 'search',
     hint: 'Turn it over. Slowly.',
   },
 };
 
-const STROKE_GAIN = 0.24;     // how much of the job one good stroke takes off
+const STROKE_GAIN = 0.24;     // how much of an unpopped job one good stroke takes off
 const CORE = 0.32;            // the middle of the band, worth more
-// Just holding it gets the job done in a bit under twice the time - so
-// somebody who cannot hit the band still finishes, and somebody who can is
-// twice as fast. His doing it on his own is the slow number, and that is the
-// number you are meant to feel.
-const IDLE_RATE = 0.55;
+// A job you are kneeling at in the world (picking, watering) just runs: it is
+// a moment, not a game. A job that opens the popup is ALL game - the needle
+// runs on its own and nothing happens unless you strike.
+const AUTO_RATE = 1.0;
 
 export class Work {
   constructor(game) {
     this.game = game;
     this.job = null;
+    // what the last finished popup job turned up, shown on the popup's own
+    // reward card until it is tapped away or times out
+    this.result = null;
   }
 
   get live() { return !!this.job; }
+
+  /**
+   * True while the popup owns the screen: a job that opens it is running, or
+   * the card saying what it turned up is still showing. The world holds its
+   * breath for both.
+   */
+  get modal() { return !!(this.job && this.job.def.popup) || !!this.result; }
 
   /**
    * Start a job. `by` is whoever is doing it - you, or him while the spore has
@@ -101,7 +110,9 @@ export class Work {
     if (!def) return false;
     // starting the same job again is not a reason to lose the progress on it
     if (this.job && this.job.kind === kind && this.job.tag === opts.tag) return true;
+    if (this.result) this.result = null;
     const skill = opts.skill ?? 1;
+    const strikes = Math.max(2, Math.round(opts.strikes ?? def.strikes ?? 4));
     this.job = {
       kind, def, tag: opts.tag ?? null,
       x: opts.x ?? this.game.crab.x,
@@ -110,20 +121,27 @@ export class Work {
       onDone: opts.onDone || null,
       onStroke: opts.onStroke || null,
       label: opts.label || def.name,
-      secs: def.secs / clamp(skill, 0.4, 3),
+      subject: opts.subject || null,     // what the popup shows being worked: an icon name
+      sub: opts.sub || '',               // and a line under it
+      secs: def.secs / Math.max(0.4, Math.min(3, skill)),
+      strikes, gain: 1 / strikes,
       t: 0,                 // seconds spent
       done: 0,              // 0..1
       quality: 1,           // falls with every bad stroke
       strokes: 0,
       good: 0,
+      perfect: 0,
       needle: 0,            // 0..1 across the bar
       dir: 1,
+      speed: def.sweep * Math.max(0.8, Math.min(1.3, 1.08 / Math.max(0.6, skill))),
       centre: 0.5,
-      band: def.band,
+      band: def.band * Math.max(0.85, Math.min(1.35, skill)),
       flash: 0,             // +1 on a good stroke, -1 on a bad one
       shake: 0,
       held: true,
       idle: 0,              // how long since you last did anything
+      last: null,           // { kind, t } - what the last stroke was, for the popup
+      hits: [],             // little bits thrown off by each stroke, for the popup
     };
     this._reband();
     this.game.audio?.play('ui');
@@ -144,22 +162,37 @@ export class Work {
   }
 
   /**
+   * What the job turned up. Called from a job's onDone so the popup can show
+   * it on its card: `{ icon, name, count, note, good }`.
+   */
+  reward(r) {
+    this.result = { t: 0, ...r };
+  }
+
+  dismiss() { this.result = null; }
+
+  /**
    * One stroke. Where the needle is when you press is the whole of it.
    */
   strike() {
     const j = this.job;
-    if (!j) return { kind: 'none' };
+    if (!j) {
+      if (this.result && this.result.t > 0.35) this.dismiss();
+      return { kind: 'none' };
+    }
     const d = Math.abs(j.needle - j.centre);
     const half = j.band / 2;
     j.strokes++;
     const g = this.game;
     const w = j.by;
+    const popup = !!j.def.popup;
 
     if (d > half) {
       // a miss: the work does not move, and a fragile thing takes damage
       j.quality = clamp01(j.quality - j.def.care * 0.16);
       j.flash = -1;
       j.shake = 1;
+      j.last = { kind: 'miss', t: 0 };
       g.audio?.play('deny');
       g.fx?.dust(j.x, j.y, 0.5);
       this._swing(w, false);
@@ -169,9 +202,19 @@ export class Work {
 
     const core = d <= half * CORE;
     j.good++;
-    j.done = clamp01(j.done + STROKE_GAIN * (core ? 1.45 : 1));
+    if (core) j.perfect++;
+    const gain = popup ? j.gain : STROKE_GAIN;
+    j.done = clamp01(j.done + gain * (core ? 1.5 : 1));
     j.flash = 1;
+    j.shake = core ? 0.8 : 0.45;
     j.idle = 0;
+    j.last = { kind: core ? 'core' : 'hit', t: 0 };
+    // a few chips off the thing, for the popup to throw about
+    for (let i = 0; i < (core ? 7 : 4); i++) {
+      j.hits.push({ t: 0, a: -Math.PI / 2 + (Math.random() - 0.5) * 2.4, v: 40 + Math.random() * 60, core });
+    }
+    // and every good stroke the needle gets a little keener
+    if (popup) j.speed *= 1.07;
     g.audio?.play(j.def.sound, { pitch: core ? 1.25 : 1 });
     this._swing(w, true);
     j.onStroke?.(core);
@@ -192,7 +235,6 @@ export class Work {
   /** Whoever is doing it actually moves. */
   _swing(w, good) {
     if (!w) return;
-    const j = this.job;
     if (w === this.game.crab) {
       w.clawOpen = 1;
       w.lurch = (w.facing || 1) * (good ? 3 : 1.6);
@@ -215,42 +257,52 @@ export class Work {
       quality: j.quality,
       strokes: j.strokes,
       good: j.good,
+      perfect: j.perfect,
       clean: j.strokes > 0 && j.good === j.strokes,
     });
+    // a popup job always ends on a card, even if the job had nothing to say
+    if (j.def.popup && !this.result) {
+      this.reward({ icon: j.subject || j.def.icon, name: j.label, count: 0, note: 'Done.' });
+    }
   }
 
   update(dt, held) {
+    if (this.result) {
+      this.result.t += dt;
+      if (this.result.t > 2.6) this.result = null;
+    }
     const j = this.job;
     if (!j) return;
-    // somebody else doing the work does not need you holding a key down. The
-    // band is still there and your strokes still help - you are the one with
-    // the reach - but his hands keep moving whether you join in or not.
-    if (j.by && j.by !== this.game.crab) held = true;
+    const popup = !!j.def.popup;
+    // somebody else doing the work does not need you holding a key down
+    if (popup || (j.by && j.by !== this.game.crab)) held = true;
     j.held = held;
     j.t += dt;
     j.flash *= Math.pow(0.02, dt);
     j.shake = Math.max(0, j.shake - dt * 3);
+    if (j.last) j.last.t += dt;
+    for (let i = j.hits.length - 1; i >= 0; i--) {
+      j.hits[i].t += dt;
+      if (j.hits[i].t > 0.7) j.hits.splice(i, 1);
+    }
 
-    // the worker has to stay with the work
+    // the worker has to stay with the work (a popup job pauses the world, so
+    // nobody walks anywhere while it is open)
     const w = j.by;
-    if (w && Math.abs(w.x - j.x) > 70) { this.stop('walked off'); return; }
+    if (!popup && w && Math.abs(w.x - j.x) > 70) { this.stop('walked off'); return; }
     if (w && w.alive === false) { this.stop('died'); return; }
 
-    if (!held) {
-      // put down, not abandoned - it waits a while before it gives up
-      j.idle += dt;
-      if (j.idle > 6) this.stop('left it');
+    if (!popup) {
+      // a moment, not a game: it just runs
+      j.done = clamp01(j.done + (dt / j.secs) * AUTO_RATE);
+      if (j.done >= 1) this._finish();
       return;
     }
 
-    // the needle, bouncing off both ends
-    j.needle += j.dir * j.def.sweep * dt;
+    // the needle, bouncing off both ends - always moving, because the popup
+    // is the whole of your attention and there is nothing to hold down
+    j.needle += j.dir * j.speed * dt;
     if (j.needle > 1) { j.needle = 1; j.dir = -1; }
     if (j.needle < 0) { j.needle = 0; j.dir = 1; }
-
-    // holding it without striking still gets somewhere, slowly - a job should
-    // finish for somebody who cannot hit the band, just not quickly
-    j.done = clamp01(j.done + (dt / j.secs) * IDLE_RATE);
-    if (j.done >= 1) this._finish();
   }
 }

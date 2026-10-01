@@ -125,6 +125,18 @@ def('rope', ['#33270f', '#4c3a19', '#675024', '#816632', '#9a7d43', '#b09458', '
   { rim: 0.24, normalScale: 0.9 });
 def('cloth', ['#3c2418', '#573528', '#734a37', '#8d6048', '#a5785c', '#bb9174', '#cfab90', '#e2c6b0'],
   { rim: 0.3, ao: 0.1 });
+def('copper', ['#2e1206', '#4e200c', '#803818', '#a84c22', '#c0602c', '#e07a3c', '#f0904c', '#ffd8b0'],
+  { rim: 0.6, spec: 0.8, normalScale: 0.8 });
+def('verdigris', ['#0e2a22', '#164036', '#1e5a48', '#2e8a6a', '#43a882', '#5ec8a0', '#8ae0bc', '#b8f0d0'],
+  { rim: 0.3, ao: 0.12, normalScale: 0.6 });
+def('amber', ['#3a1a04', '#5e2a06', '#a04e0c', '#c86c12', '#e08a18', '#f4aa30', '#ffc840', '#fff3b0'],
+  { rim: 0.7, spec: 0.85, translucent: 0.5, diffuse: 0.45 });
+def('lichen', ['#3a2406', '#5e3a0a', '#8a5410', '#b27018', '#d08c24', '#e8aa3a', '#f4c860', '#fbe39a'],
+  { rim: 0.18, ao: 0.12, normalScale: 0.5 });
+def('crystal', ['#0e1f2c', '#163246', '#1f4a62', '#2a6880', '#3a8aa0', '#56aec0', '#86d4dc', '#d0f6f6'],
+  { rim: 0.75, spec: 0.9, translucent: 0.45, normalScale: 0.9 });
+def('glowTeal', ['#0e4044', '#1a7a72', '#2ec0a8', '#5fe0c8', '#7ff0d0', '#aaf8e4', '#d8fff4', '#ffffff'],
+  { rim: 0.3, diffuse: 0.35, noOutline: false });
 def('metal', ['#181a1e', '#282c33', '#3c424b', '#525a66', '#6b7480', '#87919d', '#a5aeb9', '#c6ccd4'],
   { rim: 0.6, spec: 0.75, normalScale: 0.8 });
 def('glass', ['#16282c', '#1f3b42', '#2c5259', '#3b6b73', '#4d868e', '#66a2aa', '#8bc0c6', '#bfe0e4'],

@@ -9,6 +9,35 @@
 import { clamp, clamp01, lerp, damp, TAU } from '../lib/math.js';
 import { pxDisc, pxGlow, pxEllipse } from '../render/pix.js';
 import { buildCrab, crabMetrics } from '../art/crabart.js';
+import { MATERIALS } from '../lib/palette.js';
+
+// colours as packed pixels, so a leg is written straight into a buffer
+const u32 = (hex) => {
+  const n = parseInt(hex.slice(1), 16);
+  return (0xff << 24) | ((n & 0xff) << 16) | (n & 0xff00) | ((n >> 16) & 0xff);
+};
+const OUT_NEAR = u32('#171009'), OUT_FAR = u32('#100a06');
+const BARN_HI = u32('#e8e0cc'), BARN_LO = u32('#a89c84');
+const rampCache = new Map();
+function rampU32(ramp) {
+  let r = rampCache.get(ramp);
+  if (!r) { r = ramp.map(u32); rampCache.set(ramp, r); }
+  return r;
+}
+const LIMB = 256;
+let limb = null;
+function limbBuf() {
+  if (!limb) {
+    const cv = document.createElement('canvas');
+    cv.width = LIMB; cv.height = LIMB;
+    const g = cv.getContext('2d');
+    const img = g.createImageData(LIMB, LIMB);
+    limb = { cv, g, img, u32: new Uint32Array(img.data.buffer) };
+  }
+  return limb;
+}
+
+const BAYER4 = [[0, 8, 2, 10], [12, 4, 14, 6], [3, 11, 1, 9], [15, 7, 13, 5]].map((r) => r.map((v) => (v + 0.5) / 16));
 
 /** Two-bone IK. `up` picks which side the joint folds toward. */
 export function ik2(hx, hy, tx, ty, l1, l2, up = 1) {
@@ -422,11 +451,83 @@ export class Crab {
       const ankY = ly - l3 * 0.80;
       const sol = ik2(hx, hy, ankX, ankY, l1, l2, side);
 
-      this._seg(ctx, art.coxa, hx, hy, sol.a1);
-      this._seg(ctx, art.femur, sol.kx, sol.ky, sol.a2);
       const fx = sol.kx + Math.cos(sol.a2) * l2, fy = sol.ky + Math.sin(sol.a2) * l2;
-      this._seg(ctx, art.tibia, fx, fy, Math.atan2(ly - fy, lx - fx));
+      // drawn live on the screen's own pixels rather than as rotated
+      // bitmaps: a rotated sprite resamples its pixels unevenly at every
+      // angle, which is what made the legs look chewed
+      this._limb(ctx, art.coxa, hx, hy, sol.kx, sol.ky);
+      this._limb(ctx, art.femur, sol.kx, sol.ky, fx, fy);
+      this._limb(ctx, art.tibia, fx, fy, lx, ly);
     }
+  }
+
+  /**
+   * One leg segment as a shaded capsule, painted pixel by pixel in screen
+   * space: a dark outline, lit from above along the top, a cool underside,
+   * a ring at each joint, a horn tip on the foot and the odd barnacle.
+   */
+  _limb(ctx, seg, ax, ay, bx, by) {
+    const m = ctx.getTransform();
+    const sc = Math.sqrt(Math.abs(m.a * m.d - m.b * m.c)) || 1;
+    const p0x = m.a * ax + m.c * ay + m.e, p0y = m.b * ax + m.d * ay + m.f;
+    const p1x = m.a * bx + m.c * by + m.e, p1y = m.b * bx + m.d * by + m.f;
+    const R0 = Math.max(1.2, seg.r0 * sc), R1 = Math.max(0.9, seg.r1 * sc);
+    const ramp = MATERIALS[seg.mat]?.ramp || MATERIALS.chitin.ramp;
+    const horn = MATERIALS.horn?.ramp || ramp;
+    const far = seg.far;
+    const vx = p1x - p0x, vy = p1y - p0y;
+    const len2 = vx * vx + vy * vy || 1;
+    const len = Math.sqrt(len2);
+    // a slight bow, the way the art had it
+    const bow = (seg.bow || 0) * sc;
+    const nx = -vy / len, ny = vx / len;
+    const pad = Math.max(R0, R1) + Math.abs(bow) + 2;
+    const x0 = Math.floor(Math.min(p0x, p1x) - pad), x1 = Math.ceil(Math.max(p0x, p1x) + pad);
+    const y0 = Math.floor(Math.min(p0y, p1y) - pad), y1 = Math.ceil(Math.max(p0y, p1y) + pad);
+    const out = far ? OUT_FAR : OUT_NEAR;
+    const rings = Math.max(1, Math.round(len / (5 * sc)));
+    const bw = x1 - x0 + 1, bh = y1 - y0 + 1;
+    if (bw <= 0 || bh <= 0 || bw > LIMB || bh > LIMB) return;
+    const buf = limbBuf();
+    const px32 = buf.u32;
+    for (let r = 0; r < bh; r++) px32.fill(0, r * LIMB, r * LIMB + bw);
+    const pal = rampU32(ramp), hpal = rampU32(horn);
+    for (let y = y0; y <= y1; y++) {
+      const row = (y - y0) * LIMB;
+      for (let x = x0; x <= x1; x++) {
+        const px = x + 0.5 - p0x, py = y + 0.5 - p0y;
+        let t = (px * vx + py * vy) / len2;
+        t = t < 0 ? 0 : t > 1 ? 1 : t;
+        const off = bow * 4 * t * (1 - t);
+        const qx = px - vx * t + nx * off, qy = py - vy * t + ny * off;
+        const d2 = qx * qx + qy * qy;
+        const r = seg.foot ? lerp(R0, R1, Math.pow(t, 0.8)) : lerp(R0, R1, t);
+        const rr = r + (!seg.foot && t < 0.12 ? r * 0.12 : 0);
+        if (d2 > (rr + 0.35) * (rr + 0.35)) continue;
+        const d = Math.sqrt(d2);
+        let c;
+        if (d > rr - 0.75) c = out;
+        else {
+          const ux = qx / rr, uy = qy / rr;
+          const z = Math.sqrt(Math.max(0, 1 - ux * ux - uy * uy));
+          let l = -uy * 0.55 - ux * 0.25 + z * 0.55 + 0.18;
+          if (far) l -= 0.22;
+          const ringT = (t * rings) % 1;
+          if (!seg.foot && rings > 1 && t > 0.15 && ringT < 0.12) l -= 0.25;
+          const b = BAYER4[y & 3][x & 3];
+          let k = Math.floor(clamp01(l) * 6.99 + (b - 0.5) * 0.9);
+          k = k < 1 ? 1 : k > 7 ? 7 : k;
+          c = (seg.foot && t > 0.72 ? hpal : pal)[k];
+          if (seg.barn && uy < -0.35 && Math.abs(t - 0.5) < 0.06 && ux * ux < 0.15) c = uy < -0.7 ? BARN_HI : BARN_LO;
+        }
+        px32[row + (x - x0)] = c;
+      }
+    }
+    buf.g.putImageData(buf.img, 0, 0, 0, 0, bw, bh);
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.drawImage(buf.cv, 0, 0, bw, bh, x0, y0, bw, bh);
+    ctx.restore();
   }
 
   _seg(ctx, seg, x, y, a) {
@@ -457,8 +558,8 @@ export class Crab {
       const a2 = a1 - 1.10 - raise * 0.34;
       const fx = ex + Math.cos(a2) * art.fore.len, fy = ey + Math.sin(a2) * art.fore.len;
       const a3 = a2 + 0.18 - raise * 0.22 + Math.sin(this.clawT * 1.9 + side) * 0.04;
-      this._seg(ctx, art.arm, 0, 0, a1);
-      this._seg(ctx, art.fore, ex, ey, a2);
+      this._limb(ctx, art.arm, 0, 0, ex, ey);
+      this._limb(ctx, art.fore, ex, ey, fx, fy);
       ctx.save();
       ctx.translate(fx, fy);
       ctx.rotate(a3);

@@ -88,9 +88,9 @@ export function drawWaterLight(ctx, vw, vh, opts) {
   // ---- 1. depth: everything further down is bluer and darker -------------
   const top = clamp(surf(vw / 2), -vh, vh);
   const fog = ctx.createLinearGradient(0, Math.max(0, top), 0, vh);
-  fog.addColorStop(0, `rgba(40,170,196,${0.10 * wet})`);
-  fog.addColorStop(0.55, `rgba(16,92,140,${0.26 * wet})`);
-  fog.addColorStop(1, `rgba(6,30,70,${0.46 * wet})`);
+  fog.addColorStop(0, `rgba(40,170,206,${0.04 * wet})`);
+  fog.addColorStop(0.55, `rgba(16,92,150,${0.10 * wet})`);
+  fog.addColorStop(1, `rgba(6,30,80,${0.20 * wet})`);
   ctx.fillStyle = fog;
   ctx.fillRect(0, Math.max(0, top), vw, vh - Math.max(0, top));
 

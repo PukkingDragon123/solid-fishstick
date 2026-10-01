@@ -52,7 +52,7 @@ const JOBS = [
     name: 'SOMETHING ALIVE',
     ask: 'Your back is soil. I want one living thing standing in it by tonight - I do not care what.',
     note: 'Get one plant growing on your shell',
-    how: 'Click yourself to open your back. Drag a seed onto a plot, then pour water on it.',
+    how: 'Tap your own shell to open your back. Drag a seed onto a bed, then water it.',
     done: (g) => g.garden.plots.some((p) => p.plant),
     count: (g) => ({ have: g.garden.plots.filter((p) => p.plant).length ? 1 : 0, need: 1 }),
     say: 'There. That is the first thing to grow on that shell since the sea left. Do not let it die.',
@@ -102,7 +102,7 @@ const JOBS = [
     name: 'MAKE CAMP',
     ask: 'I have been sleeping on sand for eleven years. You have a back the size of a cart. Build something on it - anything with a roof.',
     note: 'Build a structure on your back',
-    how: 'Click yourself, open BUILD, pick a structure and drop it on a free plot.',
+    how: 'Tap your own shell, open BUILD, pick a structure and drop it on a free bed.',
     done: (g) => baseRank(g.garden).i >= 1,
     count: (g) => ({ have: Math.min(1, baseRank(g.garden).built), need: 1 }),
     say: 'A roof. On a crab. My mother would be so confused.',
@@ -209,6 +209,30 @@ export function offerCards(job) {
   ];
 }
 
+/**
+ * THE LOOP. Under the story there is one cycle the whole game turns on, and
+ * the first ten minutes are for showing it to you once, step by step, with
+ * the crab doing each one: water your back, grow something, pick it, go out
+ * and dig, write it in the book, bring something home, and let it earn.
+ * After one turn round it, you know the game.
+ */
+export const LOOP = [
+  { id: 'water', chibi: 'pump', name: 'WATER', how: 'Work the valve: press in the green',
+    done: (g) => g.quests.done.has('water') },
+  { id: 'grow', chibi: 'pour', name: 'GROW', how: 'Tap your shell, plant a seed, water it',
+    done: (g) => g.garden.plots.some((p) => p.plant) },
+  { id: 'harvest', chibi: 'pick', name: 'HARVEST', how: 'Pick it when it is ripe: growth',
+    done: (g) => (g.quests.flags.harvest || 0) > 0 },
+  { id: 'dig', chibi: 'dig', name: 'DIG', how: 'Walk to a dig and time your strokes',
+    done: (g) => (g.quests.flags.dig || 0) > 0 },
+  { id: 'record', chibi: 'book', name: 'RECORD', how: 'Fill a page of the book (J)',
+    done: (g) => (g.book?.total.have || 0) > 0 },
+  { id: 'tame', chibi: 'tame', name: 'TAME', how: 'Sing to an animal until it is yours',
+    done: (g) => (g.wildlife?.fleet?.length || 0) > 0 },
+  { id: 'collect', chibi: 'collect', name: 'COLLECT', how: 'Your animals fill the nest: collect it',
+    done: (g) => (g.ranch?.earned || 0) > 0 },
+];
+
 export const QUESTS = JOBS;
 export const QUEST_BY_ID = Object.fromEntries(JOBS.map((j) => [j.id, j]));
 
@@ -225,6 +249,24 @@ export class Quests {
     this.chapterShown = 0;     // the last chapter whose title you have seen
     this.chapterCard = null;
     this.ended = false;        // the story is over and the sea is coming back
+    this.loopDone = new Set(); // steps of the loop you have been round once
+    this.loopPop = 0;          // a beat when one of them lands
+    this.autoT = 0;            // the next early job, handed over on its own
+  }
+
+  /** The step of the loop you are on, or null once you have been round it. */
+  get loopStep() { return LOOP.find((s) => !this.loopDone.has(s.id)) || null; }
+
+  /**
+   * The first chapters are handed to you. Asking a man with a clipboard for
+   * work is not something anyone does in their first five minutes, so until
+   * the loop has been shown he just tells you what is next.
+   */
+  autoTake() {
+    if (this.active) return;
+    const n = this.next();
+    if (!n || (n.chapter || 0) > 2) return;
+    this.take(n);
   }
 
   /** Which chapter you are in, for the corner card and the pause screen. */
@@ -264,6 +306,18 @@ export class Quests {
   flag(key, n = 1) { this.flags[key] = (this.flags[key] || 0) + n; }
 
   update(dt) {
+    this.loopPop = Math.max(0, this.loopPop - dt);
+    if (this.game.state === 'play') {
+      const st = this.loopStep;
+      let ok = false;
+      if (st) { try { ok = !!st.done(this.game); } catch { ok = false; } }
+      if (ok) {
+        this.loopDone.add(st.id);
+        this.loopPop = 1.6;
+        this.game.audio?.play('ui', { pitch: 1.4 });
+      }
+      if (this.autoT > 0) { this.autoT -= dt; if (this.autoT <= 0) this.autoTake(); }
+    }
     if (this.chapterCard) { this.chapterCard.t -= dt; if (this.chapterCard.t <= 0) this.chapterCard = null; }
     this.doneT = Math.max(0, this.doneT - dt);
     // the what-to-press line waits for the chapter title to finish
@@ -288,6 +342,8 @@ export class Quests {
     this.game.audio?.play('discover');
     this.game.npc?.say(a.say, 6);
     this.game.ui?.say(`${a.name} - ${a.gain}`, 4);
+    // and in the early chapters the next one follows on its own
+    this.autoT = 6.5;
     if (a.final && !this.ended) {
       this.ended = true;
       this.game.startEnding?.();
@@ -296,7 +352,7 @@ export class Quests {
 
   save() {
     return { active: this.active?.id || null, done: [...this.done], flags: this.flags,
-      chapter: this.chapterShown, ended: this.ended };
+      chapter: this.chapterShown, ended: this.ended, loop: [...this.loopDone] };
   }
   load(d) {
     if (!d) return;
@@ -305,5 +361,6 @@ export class Quests {
     this.flags = d.flags || {};
     this.chapterShown = d.chapter || 0;
     this.ended = !!d.ended;
+    this.loopDone = new Set(d.loop || []);
   }
 }

@@ -10,6 +10,7 @@ import { buildCreature } from '../art/faunaart.js';
 import { MATERIALS } from '../lib/palette.js';
 import { clamp, clamp01, lerp, mixHex, TAU } from '../lib/math.js';
 import { pxDisc, pxGlow } from '../render/pix.js';
+import { drawIcon, hasIcon } from './iconcore.js';
 
 const LIGHT = { lightX: -0.55, lightY: -0.68, lightZ: 0.42, ambient: 0.42, dither: 0.6 };
 
@@ -694,6 +695,13 @@ const NODE_ALIAS = {
  * cell and a `3` is a bright one, for the few that are worth cutting twice.
  */
 export function drawNodeIcon(ctx, name, cx, cy, color, scale = 1, opts = {}) {
+  // the painted icons win wherever one exists: full colour, lit, outlined.
+  // They are drawn on a 16-pixel grid, so the old scale 2 (an 18-pixel
+  // stencil) is a painted icon at 1x, and scale 1 asks for the small one.
+  if (opts.stencil !== true && hasIcon(name)) {
+    const s = Math.max(1, Math.round(scale / 2));
+    if (drawIcon(ctx, name, cx, cy, s, { gray: opts.gray, alpha: opts.alpha })) return;
+  }
   const rows = NODE[name] || NODE[NODE_ALIAS[name]];
   if (!rows) return;
   const lines = rows.split('/');

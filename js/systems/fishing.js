@@ -200,6 +200,7 @@ export class Fishing {
     g.audio?.play(first ? 'discover' : 'pickup');
     g.quests?.flag('fish');
     g.quests?.flag('fish:' + def.id);
+    g.book?.record('fish', def.id, 2);
     this.card = { id: def.id, cm, first, best: best && !first, t: 4.2, max: 4.2 };
     if (first && g.npc && !g.npc.hidden && Math.abs(g.npc.x - g.crab.x) < 260) {
       const line = def.id === 'coelacanth'

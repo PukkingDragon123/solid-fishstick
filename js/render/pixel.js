@@ -436,7 +436,7 @@ export class Painter {
         const cav = clamp((this.hgt[i] - blur[i]) * (spec.ao ?? 0.09), -0.45, 0.45);
         const spc = spec.spec ? Math.pow(diff, 14) * spec.spec : 0;
 
-        let v = ambient + diff * (spec.diffuse ?? 0.78) + rim + cav + spc + this.tint[i];
+        let v = ambient + diff * (spec.diffuse ?? 0.78) + rim + cav + spc + this.tint[i] + this.emis[i];
         if (spec.translucent) {
           // light bleeding through leaves and membranes
           const back = Math.max(0, -(nx * Lx + ny * Ly)) * spec.translucent;

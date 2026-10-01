@@ -18,8 +18,15 @@ import { buildPlant } from '../art/floraart.js';
 import { buildStructure } from '../art/buildart.js';
 import { drawShell, drawBloom, drawSprig, drawOrb, drawTab, drawPanel, drawGlyph, drawValve, drawGauge, drawNodeIcon, drawPlate, drawModeArt, drawGland, drawTame, drawNozzle } from './icons.js';
 import * as K from './kit.js';
+import { drawChibi } from './chibi.js';
+import { drawWorkPopup } from './workpop.js';
+import { drawBook } from './bookui.js';
+import { drawIcon } from './iconcore.js';
+import './iconart.js';
+import './iconart_items.js';
 import { TreeScreen } from './tree.js';
 import { WORLD_NOTES, ERAS } from '../data/lore.js';
+import { LOOP } from '../systems/quests.js';
 import { baseRank } from '../systems/economy.js';
 import { FISH, FISH_BY_ID } from '../data/fish.js';
 import { fishFrame } from '../art/fishart.js';
@@ -109,16 +116,53 @@ export class UI {
 
   say(text, secs = 3.6) { this.toast = text; this.toastT = secs; this.toastMax = secs; }
 
+  /** Open Vess's book, on a chapter if you name one. */
+  openBook(tab = null, pick = null) {
+    if (this.game.state !== 'play') return;
+    this.bookOpen = true;
+    const st = this.bookState || (this.bookState = { tab: 'creature', pick: null, scroll: 0, t: 0 });
+    st.t = 0;
+    if (tab) { st.tab = tab; st.pick = pick; st.scroll = 0; }
+    this.game.audio?.play('ui');
+  }
+
+  closeBook() {
+    this.bookOpen = false;
+    this.game.audio?.play('ui', { pitch: 0.8 });
+  }
+
+  /**
+   * A page has just been filled in: a little brass-edged card drops in at
+   * the top of the screen with the book on it, so you know where it went.
+   */
+  bookNote(text, pay, tab, id) {
+    this.note = { text, pay, tab, id };
+    this.noteT = 3.2;
+  }
+
   // -- on-screen controls ---------------------------------------------------
 
   _installTouch() {
     const i = this.game.input;
     this.holdKeys = new Set();
+    // A finger on an on-screen control is CLAIMED: it never becomes the
+    // pointer, so the control cannot find out it is being pressed by looking
+    // at where the pointer is. That was the whole of why DIG and every held
+    // job did nothing on a phone - the plates asked "is the cursor on me and
+    // is the button down?" and on a phone the answer was always no. So the
+    // claim says it out loud instead: which keys are under a finger right
+    // now, and which were tapped since anyone last asked.
+    this.touchKeys = new Map();     // pointer id -> key, while the finger is down
+    this.touchTaps = new Map();     // key -> when it was tapped
     i.claimHandler = (p) => {
       if (!this.touchEnabled) return null;
       for (const b of this.buttons) {
         if (p.x >= b.x - 6 && p.x <= b.x + b.w + 6 && p.y >= b.y - 6 && p.y <= b.y + b.h + 6) {
-          if (b.key) i.pulseVirtual(b.key);
+          if (b.key) {
+            i.pulseVirtual(b.key);
+            this.touchKeys.set(p.id, b.key);
+            this.touchTaps.set(b.key, performance.now());
+          }
           if (b.hold) i.setVirtual(b.hold, true);
           return { kind: 'btn', b };
         }
@@ -137,10 +181,17 @@ export class UI {
         this._applyStick(i);
       }
     };
-    i.releaseHandler = (p) => {
+    i.releaseHandler = (p, cancelled) => {
       if (!p.control) return;
       if (p.control.kind === 'stick') { this.stick = null; i.setVirtual('a', false); i.setVirtual('d', false); }
-      if (p.control.kind === 'btn' && p.control.b.hold) i.setVirtual(p.control.b.hold, false);
+      if (p.control.kind === 'btn') {
+        const b = p.control.b;
+        this.touchKeys.delete(p.id);
+        if (b.hold) i.setVirtual(b.hold, false);
+        // a control with no key of its own is answered by its own click test,
+        // so the tap has to arrive as a click where the finger was
+        if (!b.key && !cancelled && !p.moved) i.clickAt(p.x, p.y);
+      }
     };
   }
 
@@ -207,6 +258,13 @@ export class UI {
     // the conversation owns the keyboard while it is up
     if (this.game.talk && this.game.talk.on) { this.t += dt; return; }
     this.t += dt;
+    if (this.noteT > 0) this.noteT -= dt;
+    // the book owns everything while it is open
+    if (this.bookOpen) {
+      const i = this.game.input;
+      if (i.justPressed('Escape') || i.justPressed('j')) { i.consumeKey('Escape'); i.consumeKey('j'); this.closeBook(); }
+      return;
+    }
     if (this.modeT > 0) this.modeT = Math.max(0, this.modeT - dt);
     const i = this.game.input;
     if (this.toastT > 0) { this.toastT -= dt; if (this.toastT <= 0) this.toast = null; }
@@ -250,6 +308,7 @@ export class UI {
       this.scoopTap = true;
     } else this.scoopTap = false;
     if (i.justPressed('g')) { i.consumeKey('g'); this._openTree(); }
+    if (i.justPressed('j') && this.game.state === 'play') { i.consumeKey('j'); this.openBook(); }
     if (i.justPressed('m')) { i.consumeKey('m'); this.cycleMode(); }
     // B is the bench, because that is the one you reach for most once he is
     // yours, and it should not be a number you have to remember
@@ -525,16 +584,28 @@ export class UI {
       if (this.hover && !this.drag) this._tooltip(ctx, W, H);
       return;
     }
+    // A job that opens the popup owns the screen until it is done: the
+    // world dims, the popup is the only thing you can press, and it is one
+    // big target - see workpop.js.
+    if (this.game.work?.modal) {
+      drawWorkPopup(this, ctx, W, H);
+      return;
+    }
+    if (this.bookOpen) {
+      drawBook(this, ctx, W, H);
+      return;
+    }
     if (this.touchEnabled) this._touchControls(ctx, W, H);
 
-    // on touch the thumb band replaces the little tablet at the work: one
-    // control, thumb-sized, in the one place a thumb already is
-    if (this.game.work?.live && !this.touchEnabled) this._workBar(ctx, W, H);
+    // a quick job (picking, watering) gets a little bar at the thing itself
+    if (this.game.work?.live) this._workBar(ctx, W, H);
     this._thumbBand(ctx, W, H);
     this._questNote(ctx, W, H);
+    this._loopCard(ctx, W, H);
     this._catchCard(ctx, W, H);
     this._chapterCard(ctx, W, H);
     if (this.toast) this._toast(ctx, W, H);
+    if (this.noteT > 0 && this.note) this._bookNote(ctx, W, H);
     if (this.game.taming?.live) this._songCard(ctx, W, H);
     if (this.drag) this._drawCarried(ctx, W, H);
     this._unlockCard(ctx, W, H);
@@ -591,7 +662,9 @@ export class UI {
   _bandSpec() {
     const g = this.game;
     let band = null;
-    if (g.work?.live) {
+    // a popup job has its own window, and a quick job (picking, watering)
+    // just runs - neither of them wants a band across the bottom any more
+    if (g.work?.live && !g.work.job.def.popup && false) {
       const j = g.work.job;
       band = { kind: 'work', label: j.label.toUpperCase(), tint: j.def.tint,
         needle: j.needle, centre: j.centre, width: j.band,
@@ -697,6 +770,52 @@ export class UI {
       ctx.globalAlpha = 1;
     }
     ctx.restore();
+  }
+
+  /**
+   * The loop, shown once: the crab doing the step you are on, what it is,
+   * one line of how, and a pip for every step of the cycle so you can see
+   * where this one sits in it. It goes for good once you have been round.
+   */
+  _loopCard(ctx, W, H) {
+    const q = this.game.quests;
+    this._leftBottom = 0;
+    if (!q || this.build > 0.005 || this.game.state !== 'play') return;
+    const st = q.loopStep;
+    const pop = q.loopPop;
+    if (!st && pop <= 0) return;
+    // the what-to-press slab under a new job owns this spot while it shows
+    if (q.tookT > 0 && q.active?.how && !q.chapterCard) return;
+    const steps = LOOP;
+    const i = st ? steps.indexOf(st) : steps.length;
+    const x = 6, y = 56 + (q.active || q.doneT > 0 ? 27 : 0);
+    const narrow = W < 260;
+    const w = narrow ? Math.min(W - 52, 132) : Math.min(W - 12, 176), h = narrow ? 30 : 36;
+    const tint = pop > 0 ? K.C.good : '#c8a05a';
+    this._leftBottom = y + h;
+    K.plaque(ctx, x, y, w, h, { tint });
+    // the crab doing it
+    const sx = x + 3, sy = y + 3, sw = narrow ? 26 : 30, sh = narrow ? 24 : 30;
+    K.slot(ctx, sx, sy, sw, sh, { on: pop > 0 });
+    drawChibi(ctx, st ? st.chibi : 'collect', sx + sw / 2, sy + sh / 2 + 1, this.t, 1);
+    const tx = sx + sw + 5;
+    const name = st ? st.name : 'LOOP DONE';
+    drawText(ctx, `${Math.min(i + 1, steps.length)}/${steps.length}`, x + w - 5, y + 4,
+      { color: 'rgba(240,226,192,0.55)', align: 'right' });
+    drawText(ctx, name, tx, y + 4, { color: pop > 0 ? '#d6f0b8' : '#ffd648', outline: true, outlineColor: OUT });
+    if (st && !narrow) drawText(ctx, ellipsize(st.how, w - (tx - x) - 4), tx, y + 14, { color: '#f0e2c0' });
+    if (this._hit(x, y, w, h) && st) this.hover = { title: `${st.name} - step ${i + 1} of ${steps.length}`, body: st.how };
+    // the cycle, as pips
+    const pw = Math.floor((w - (tx - x) - 6) / steps.length);
+    for (let k = 0; k < steps.length; k++) {
+      const px = tx + k * pw, py = y + h - 8;
+      const done = q.loopDone.has(steps[k].id);
+      const cur = k === i;
+      ctx.fillStyle = '#120a06';
+      ctx.fillRect(px, py, pw - 2, 4);
+      ctx.fillStyle = done ? '#ffd648' : cur ? (Math.sin(this.t * 6) > 0 ? '#fff6c2' : '#e6a51c') : '#3a2414';
+      ctx.fillRect(px + 1, py + 1, pw - 4, 2);
+    }
   }
 
   /**
@@ -933,67 +1052,21 @@ export class UI {
   _workBar(ctx, W, H) {
     const wk = this.game.work;
     const j = wk && wk.job;
-    if (!j) return;
+    if (!j || j.def.popup) return;
+    // a quick job just runs: a little brass-bound bar over the thing itself,
+    // filling, with what is being done written on it
     const cam = this.game.cam;
     const s = cam.worldToScreen(j.x, j.y);
-    // wide enough for the whole name and the quality pips beside it
     const title = j.label.toUpperCase();
-    const w = Math.min(W - 12, Math.max(104, textWidth(title) + 18 + 24)), h = 30;
-    const sh = j.shake > 0 ? Math.round(Math.sin(this.t * 46) * j.shake * 2) : 0;
-    const x = Math.round(clamp(s.x - w / 2, 6, W - w - 6)) + sh;
-    const y = Math.round(clamp(s.y - 56 * cam.zoom, 20, H - h - 40));
-
-    drawPlate(ctx, x, y, w, h, { mat: 'stone', edge: 'none' });
-    // what is being done, and what it is being done to
-    drawNodeIcon(ctx, j.def.icon, x + 9, y + 8, j.def.tint, 1);
-    drawText(ctx, ellipsize(title, w - 42), x + 18, y + 4,
-      { color: '#e6dcc0' });
-
-    // the sunk bar
-    const bx = x + 5, by = y + 15, bw = w - 10, bh = 7;
-    ctx.fillStyle = 'rgba(14,11,7,0.92)';
-    ctx.fillRect(bx, by, bw, bh);
-    ctx.fillStyle = 'rgba(150,138,112,0.25)';
-    ctx.fillRect(bx, by + bh, bw, 1);
-    // the band, and the core of it
-    const half = j.band / 2;
-    const b0 = Math.round(bx + clamp01(j.centre - half) * bw);
-    const b1 = Math.round(bx + clamp01(j.centre + half) * bw);
-    ctx.fillStyle = j.def.tint;
-    ctx.globalAlpha = 0.30;
-    ctx.fillRect(b0, by, b1 - b0, bh);
-    const c0 = Math.round(bx + clamp01(j.centre - half * 0.32) * bw);
-    const c1 = Math.round(bx + clamp01(j.centre + half * 0.32) * bw);
-    ctx.globalAlpha = 0.62;
-    ctx.fillRect(c0, by, Math.max(1, c1 - c0), bh);
-    ctx.globalAlpha = 1;
-    // the needle
-    const nx = Math.round(bx + clamp01(j.needle) * bw);
-    ctx.fillStyle = j.flash > 0.05 ? '#fff2cf' : j.flash < -0.05 ? '#e2564f' : '#f2e4c2';
-    ctx.fillRect(nx, by - 2, 1, bh + 4);
-    ctx.fillRect(nx - 1, by - 3, 3, 1);
-
-    // how far through, as a line filling along the bottom of the tablet
-    ctx.fillStyle = 'rgba(14,11,7,0.8)';
-    ctx.fillRect(x + 5, y + h - 5, w - 10, 2);
-    ctx.fillStyle = j.def.tint;
-    ctx.fillRect(x + 5, y + h - 5, Math.round((w - 10) * clamp01(j.done)), 2);
-    // and how well, as pips lost off the right
-    const pips = 5;
-    for (let i = 0; i < pips; i++) {
-      const lost = j.quality < (pips - i) / pips;
-      ctx.fillStyle = lost ? 'rgba(226,86,79,0.7)' : '#e6dcc0';
-      ctx.fillRect(x + w - 8 - i * 3, y + 5, 2, 2);
-    }
-    // if it has been put down, say so rather than leaving it looking broken
-    if (!j.held) {
-      const b = 0.4 + 0.6 * (0.5 + 0.5 * Math.sin(this.t * 3));
-      ctx.globalAlpha = b;
-      drawText(ctx, 'HOLD E', x + w / 2, y + h + 3,
-        { color: FAINT, align: 'center', outline: true, outlineColor: OUT });
-      ctx.globalAlpha = 1;
-    }
+    const w = Math.min(W - 12, Math.max(64, textWidth(title) + 28)), h = 21;
+    const x = Math.round(clamp(s.x - w / 2, 6, W - w - 6));
+    const y = Math.round(clamp(s.y - 40 * cam.zoom, 20, H - h - 40));
+    K.plaque(ctx, x, y, w, h);
+    drawNodeIcon(ctx, j.def.icon, x + 9, y + 7, j.def.tint, 1);
+    drawText(ctx, ellipsize(title, w - 24), x + 18, y + 3, { color: K.C.ink });
+    K.gauge(ctx, x + 4, y + h - 8, w - 8, 5, clamp01(j.done), j.def.tint);
   }
+
 
   /**
    * The mode bar. Five of them down the left-hand edge - a glyph each, lit in
@@ -1525,6 +1598,10 @@ export class UI {
       this.hover = { title: 'Growth', body: `${Math.round(e.nutrients)} banked` };
     }
 
+    // THE NEST: what your animals have brought home. It fills on its own,
+    // and a tap empties it into your growth.
+    this._nest(ctx, bx + 36, 4, sh.h);
+
     // parasites, when you have any: a thing you keep, not a thing you spend
     if (e.parasites > 0) {
       const px2 = L + 1, py2 = 78;
@@ -1618,6 +1695,28 @@ export class UI {
       if (g.input.clicked) { g.input.clicked = false; this._openTree(); }
     }
 
+    // the book: Vess's encyclopedia, with how much of it you have filled in
+    if (g.book && g.state === 'play') {
+      const bx = W - 33, by = oy + 44, bs = 30;
+      const hot = this._hit(bx, by, bs, bs);
+      K.slot(ctx, bx, by, bs, bs, { hot });
+      const nf = g.book.fresh.length;
+      const bob = nf ? Math.round(Math.sin(this.t * 5) * 1) : 0;
+      drawIcon(ctx, 'book', bx + bs / 2, by + bs / 2 + bob, 1);
+      const tot = g.book.total;
+      drawText(ctx, `${Math.round(tot.f * 100)}%`, bx + bs / 2, by + bs + 2,
+        { color: '#ffd648', align: 'center', outline: true, outlineColor: OUT });
+      if (nf) {
+        ctx.fillStyle = '#b82a2a'; ctx.fillRect(bx + bs - 9, by + 1, 8, 8);
+        ctx.fillStyle = '#f05a48'; ctx.fillRect(bx + bs - 8, by + 2, 6, 6);
+        drawText(ctx, String(Math.min(9, nf)), bx + bs - 5, by + 2, { color: '#fff6dc', align: 'center' });
+      }
+      if (hot) {
+        this.hover = { title: 'The Book of the Old Sea', body: `${tot.have} of ${tot.total} pages. J opens it.` };
+        if (g.input.clicked) { g.input.clicked = false; this.openBook(); }
+      }
+    }
+
     // fleet, as a row of little tokens under the orb
     const fleet = g.wildlife.fleet;
     if (fleet.length) {
@@ -1680,8 +1779,18 @@ export class UI {
 
     const hint = g.actionHint();
     if (hint && !this.touchEnabled) {
-      drawText(ctx, `E   ${hint}`, W / 2, H - 30,
-        { color: INK, align: 'center', outline: true, outlineColor: OUT });
+      // the crab doing it, in a slot, with the key beside it
+      const CH = { CATCH: 'catch', STUDY: 'study', CUT: 'cut', BREAK: 'break', SING: 'sing', STRIKE: 'strike',
+        DIG: 'dig', MINE: 'mine', TALK: 'talk', SEARCH: 'search', DRINK: 'pump', PUMP: 'pump', PICK: 'pick' };
+      const key = hint === 'TALK' ? 'C' : 'E';
+      const lw = textWidth(hint);
+      const sw = 28, sh = 24, total = sw + 4 + 11 + 4 + lw;
+      const x = Math.round(W / 2 - total / 2), y = H - 44;
+      K.slot(ctx, x, y, sw, sh, { on: true });
+      drawChibi(ctx, CH[hint] || 'explore', x + sw / 2, y + sh / 2, this.t, 1);
+      K.slab(ctx, x + sw + 4, y + 6, 11, 11, {});
+      drawText(ctx, key, x + sw + 4 + 6, y + 8, { color: K.C.ink, align: 'center' });
+      drawText(ctx, hint, x + sw + 19, y + 8, { color: INK, outline: true, outlineColor: OUT });
     }
     if (!this.touchEnabled) this._keys(ctx, W, H);
   }
@@ -2313,7 +2422,9 @@ export class UI {
     const dir = Math.sign(d) || 1;
     const s = g.cam.worldToScreen(lm.x, g.terrain.surfaceY(lm.x));
     const onScreen = s.x > 8 && s.x < W - 8;
-    const y = clamp(onScreen ? s.y - 26 : H * 0.42, 30, H - 60);
+    let y = clamp(onScreen ? s.y - 26 : H * 0.42, 30, H - 60);
+    // keep clear of the cards stacked down the left edge
+    if (!onScreen && dir < 0 && this._leftBottom) y = Math.max(y, this._leftBottom + 12);
     const x = onScreen ? s.x : (dir > 0 ? W - 10 : 10);
     const pulse = 0.6 + Math.sin(this.t * 2.4) * 0.4;
     const col = lm.kind === 'oasis' ? '#7fd0dd' : '#e2b74a';
@@ -3502,24 +3613,28 @@ export class UI {
       // A duel has three verbs and the claw is the stick in the corner, so
       // the row is the other two. Nothing else belongs here - you are being
       // bitten.
-      wanted.push({ icon: 'shield', label: 'GUARD', key: 'zguard',
+      wanted.push({ icon: 'shield', chibi: 'guard', label: 'GUARD', key: 'zguard',
         colour: '#9de3ee', hold: true });
       const rollReady = g.combat && g.combat.dodgeCool <= 0 && g.combat.stam >= 25;
-      wanted.push({ icon: 'skate', label: 'ROLL', key: 'zroll',
+      wanted.push({ icon: 'skate', chibi: 'roll', label: 'ROLL', key: 'zroll',
         colour: '#e2b74a', dim: !rollReady });
     } else {
       // ONE contextual plate, not three. Talking, picking and acting never
       // happen at once and they were three plates fighting for the same
       // corner; whichever the world is offering, that is the plate.
       if (g.npc && g.talk && !g.talk.on && Math.abs(g.npc.x - g.crab.x) < 64) {
-        wanted.push({ icon: 'call', label: 'TALK', key: 'c', colour: '#e8c98a' });
+        wanted.push({ icon: 'call', chibi: 'talk', label: 'TALK', key: 'c', colour: '#e8c98a' });
       } else if (g.garden.ripeCount) {
-        wanted.push({ icon: 'fruit', label: `PICK ${g.garden.ripeCount}`, key: 'r',
+        wanted.push({ icon: 'fruit', chibi: 'pick', label: `PICK ${g.garden.ripeCount}`, key: 'r',
           colour: '#cfe89a' });
       } else if (hint) {
         // the plate says what it will actually do, with a picture of it
-        const HINT_ICON = { CATCH: 'fish', STUDY: 'leaf', CUT: 'saw', BREAK: 'hammer', SING: 'call', STRIKE: 'claw' };
-        wanted.push({ icon: HINT_ICON[hint] || 'hand', label: hint.length <= 6 ? hint : 'ACT', key: 'e',
+        const HINT_ICON = { CATCH: 'fish', STUDY: 'magnifier', CUT: 'axe', BREAK: 'hammer', SING: 'sing',
+          STRIKE: 'claw', DIG: 'spade', MINE: 'pickaxe', TALK: 'call', SEARCH: 'magnifier' };
+        const HINT_CHIBI = { CATCH: 'catch', STUDY: 'study', CUT: 'cut', BREAK: 'break', SING: 'sing',
+          STRIKE: 'strike', DIG: 'dig', MINE: 'mine', TALK: 'talk', SEARCH: 'search', DRINK: 'pump', PUMP: 'pump' };
+        wanted.push({ icon: HINT_ICON[hint] || 'hand', chibi: HINT_CHIBI[hint] || 'explore', label: hint.length <= 6 ? hint : 'ACT',
+          key: hint === 'TALK' ? 'c' : 'e', act: hint,
           colour: hint === 'CATCH' ? '#9de3ee' : '#e2b74a' });
       }
       // the sand: DIG always, and POUR only beside it - never in front of it,
@@ -3529,10 +3644,14 @@ export class UI {
       // There is no PLANT plate and no BUILT/GROWN/TAME strip. Everything you
       // do to your own back happens ON your own back: you touch the animal
       // and you are up there. One door, and it is the animal.
-      wanted.push({ icon: 'spade', label: 'DIG', key: 'zdig',
-        colour: '#e0c188', hold: true });
+      // SCOOP is the sand itself, held - not DIG, which is a dig site and is
+      // the plate above whenever there is one
+      if (!hint || (hint !== 'DIG' && hint !== 'MINE')) {
+        wanted.push({ icon: 'grit', chibi: 'dig', label: 'SCOOP', key: 'zdig',
+          colour: '#e0c188', hold: true });
+      }
       if ((g.sandHeld || 0) > 0.5) {
-        wanted.push({ icon: 'drop', label: 'POUR', key: 'zpour',
+        wanted.push({ icon: 'drop', chibi: 'pour', label: 'POUR', key: 'zpour',
           colour: '#cfe89a', hold: true });
       }
     }
@@ -3543,19 +3662,27 @@ export class UI {
     const gap = 5;
     const plate = (b, bx, by, bw, bh) => {
       this.buttons.push({ x: bx, y: by, w: bw, h: bh, key: b.key });
-      const hot = this._hit(bx, by, bw, bh);
-      const down = hot && this.game.input.down;
+      const hot = this._hit(bx, by, bw, bh) || this.touchHeld(b.key);
+      const down = (hot && this.game.input.down) || this.touchHeld(b.key);
       K.button(ctx, bx, by, bw, bh, null,
         { hot: hot && !b.dim, down: down && !b.dim, disabled: !!b.dim, tint: b.colour });
       const o = down && !b.dim ? 1 : 0;
       // THE PICTURE FIRST. A word under a picture is read once; a word on its
       // own is read every time.
+      // and the picture is the crab doing it, when there is room for him
+      const useChibi = b.chibi && bh >= 34 && bw >= 30;
+      const csc = bh >= 64 && bw >= 56 ? 2 : 1;
       const sc = bh >= 34 ? 2 : 1;
-      const ih = 9 * sc;
+      const ih = useChibi ? 20 * csc : 9 * sc;
       const tall = bh >= ih + 12;
       ctx.globalAlpha = b.dim ? 0.4 : 1;
-      drawNodeIcon(ctx, b.icon, bx + bw / 2 + o,
-        by + (tall ? 3 + ih / 2 : bh / 2) + o, b.dim ? '#8a8072' : (b.colour || INK), sc);
+      if (useChibi) {
+        drawChibi(ctx, b.chibi, bx + bw / 2 + o, by + (tall ? 3 + ih / 2 : bh / 2) + o,
+          down ? this.t * 2 : this.t, csc, { gray: !!b.dim });
+      } else {
+        drawNodeIcon(ctx, b.icon, bx + bw / 2 + o,
+          by + (tall ? 3 + ih / 2 : bh / 2) + o, b.dim ? '#8a8072' : (b.colour || INK), sc);
+      }
       if (tall) {
         drawText(ctx, b.label, bx + bw / 2 + o, by + bh - 9 + o,
           { color: b.dim ? 'rgba(240,226,192,0.34)' : INK, align: 'center' });
@@ -3567,7 +3694,10 @@ export class UI {
         if (b.key === 'zpour') this.pourHeld = down;
         if (b.key === 'zguard') this.guardHeld = down;
         if (down) this.game.input.clicked = false;
-      } else if (hot && this.game.input.clicked) {
+      } else if (b.key === 'zroll' && this.consumeTap('zroll')) {
+        // the claim already pulsed the real keys; this one is not a real key
+        this.rollWant = true;
+      } else if (hot && this.game.input.clicked && !this.touchHeld(b.key)) {
         this.game.input.clicked = false;
         if (b.key === 'zroll') this.rollWant = true;
         else if (b.key) this.game.input.pulseVirtual(b.key);
@@ -3610,6 +3740,99 @@ export class UI {
   _hit(x, y, w, h) {
     const i = this.game.input;
     return i.sx >= x && i.sx <= x + w && i.sy >= y && i.sy <= y + h;
+  }
+
+  /**
+   * The nest, beside the growth counter: a little woven basket with a count
+   * in it. It only appears once you have something tamed to fill it.
+   */
+  _nest(ctx, x, y, h) {
+    const g = this.game;
+    const r = g.ranch;
+    if (!r) return;
+    const rate = r.rate;
+    if (rate <= 0 && r.pending <= 0) return;
+    const w = 40, hh = Math.max(26, h - 4);
+    const hot = this._hit(x, y, w, hh);
+    const full = r.store >= r.cap - 0.5;
+    K.slot(ctx, x, y, w, hh, { hot, on: full });
+    const bob = r.pop > 0 ? Math.round(-Math.sin(r.pop * Math.PI) * 2) : 0;
+    drawIcon(ctx, 'nest', x + 11, y + hh / 2 + bob, 1);
+    const n = r.pending;
+    drawText(ctx, `${n}`, x + 29, y + 5, { color: n > 0 ? '#ffd648' : 'rgba(251,236,200,0.5)', align: 'center', outline: true, outlineColor: OUT });
+    // how full, as a thread along the bottom
+    const f = clamp01(r.store / r.cap);
+    ctx.fillStyle = 'rgba(18,10,6,0.85)'; ctx.fillRect(x + 4, y + hh - 6, w - 8, 2);
+    ctx.fillStyle = full ? '#ffd648' : '#8cd468'; ctx.fillRect(x + 4, y + hh - 6, Math.round((w - 8) * f), 2);
+    if (n > 0 && Math.sin(this.t * 4) > 0.6) {
+      drawIcon(ctx, 'sparkle', x + w - 6, y + 4, 1, { alpha: 0.8 });
+    }
+    // the upgrade, when you can afford it: a brass arrow riveted to the side
+    const ux = x + w + 2, us = 14;
+    const can = r.canUpgrade();
+    if (can) {
+      const uh = this._hit(ux, y + 2, us, us);
+      K.bezel(ctx, ux, y + 2, us, us, { rim: 1, curls: false, state: uh ? 'hot' : 'rest',
+        body: ['#a8e060', '#5eaa3a', '#2e6a26', '#163a18'] });
+      ctx.fillStyle = '#fff6dc';
+      for (let k = 0; k < 4; k++) ctx.fillRect(ux + 7 - k, y + 6 + k, 1 + k * 2, 1);
+      ctx.fillRect(ux + 6, y + 10, 3, 3);
+      if (uh) {
+        this.hover = { title: `Nest level ${r.level + 1}`, body: `${r.upgradeCost} growth: holds ${r.cap + 60}, and everything brings in a fifth more.` };
+        if (g.input.clicked) {
+          g.input.clicked = false;
+          if (r.upgrade()) {
+            g.fx?.spark?.(g.crab.x, g.crab.y - 20, '#ffd648', 18, 50);
+            this.say(`Nest level ${r.level}. More room, more coming in.`, 3);
+          }
+        }
+      }
+    }
+    if (hot) {
+      this.hover = {
+        title: `Nest - level ${r.level}`,
+        body: `Your animals bring in ${Math.round(rate)} growth a minute. Holds ${r.cap}. Tap to collect.`,
+      };
+      if (g.input.clicked) {
+        g.input.clicked = false;
+        const got = r.collect();
+        if (got) {
+          const extra = Object.entries(got.finds).map(([id, k]) => `${k} ${id}`).join(', ');
+          this.say(`+${got.growth} growth${extra ? `, ${extra}` : ''} from the nest`, 2.5);
+          this.bloomShown = Math.max(0, this.bloomShown);
+        }
+      }
+    }
+  }
+
+  /** The "into the book" card, sliding down from the top. */
+  _bookNote(ctx, W, H) {
+    const n = this.note;
+    const k = clamp01((3.2 - this.noteT) / 0.25) * clamp01(this.noteT / 0.4);
+    const text = n.text + (n.pay ? `  +${n.pay}` : '');
+    const w = Math.min(W - 20, textWidth(text) + 32), h = 20;
+    const x = Math.round((W - w) / 2), y = Math.round(-h + k * (h + 26));
+    K.bezel(ctx, x, y, w, h, { rim: 1, curls: false, body: ['#fffbe8', '#f2e2b4', '#d8c088', '#a88c58'] });
+    drawIcon(ctx, 'book', x + 11, y + h / 2, 1);
+    drawText(ctx, ellipsize(text, w - 28), x + 22, y + 6, { color: '#3a2210' });
+    const hot = this._hit(x, y, w, h);
+    if (hot && this.game.input.clicked) { this.game.input.clicked = false; this.openBook(n.tab, n.id); }
+  }
+
+  /** Is a finger on the control with this key right now? */
+  touchHeld(key) {
+    if (!key || !this.touchKeys) return false;
+    for (const k of this.touchKeys.values()) if (k === key) return true;
+    return false;
+  }
+
+  /** Was the control with this key tapped since the last time anyone asked? */
+  consumeTap(key) {
+    if (!key || !this.touchTaps) return false;
+    const t = this.touchTaps.get(key);
+    if (t === undefined) return false;
+    this.touchTaps.delete(key);
+    return performance.now() - t < 500;
   }
 
   _tooltip(ctx, W, H) {

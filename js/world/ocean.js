@@ -130,9 +130,13 @@ export class Ocean {
     ctx.closePath();
     const top = cam.worldToScreen(0, sy).y;
     const grd = ctx.createLinearGradient(0, top, 0, vh);
-    grd.addColorStop(0, 'rgba(96,186,204,0.62)');
-    grd.addColorStop(0.45, 'rgba(38,132,166,0.80)');
-    grd.addColorStop(1, 'rgba(10,58,88,0.92)');
+    // From under it the sea's own column is already behind everything; this
+    // is only a light veil in front, or it washes out whatever is down there
+    // with you - the crab included.
+    const k = this.on ? 0.16 : 1;
+    grd.addColorStop(0, `rgba(96,186,204,${0.62 * k})`);
+    grd.addColorStop(0.45, `rgba(38,132,166,${0.80 * k})`);
+    grd.addColorStop(1, `rgba(10,58,88,${0.92 * k})`);
     ctx.fillStyle = grd;
     ctx.fill();
     ctx.restore();
