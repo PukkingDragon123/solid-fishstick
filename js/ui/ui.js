@@ -734,7 +734,8 @@ export class UI {
     const count = prog && prog.need > 1 ? `${prog.have}/${prog.need}` : '';
     const w = Math.min(W - 16, Math.max(104, textWidth(label) + 26 + textWidth(count)));
     const h = prog ? 23 : 15;
-    const x = 6, y = this.build > 0.005 ? 6 : 56;
+    // up on your back the build rail has the left edge, so it moves over
+    const x = this.build > 0.005 ? this.railW(W) + 6 : 6, y = 56;
     // landing and finishing both get a beat where the card is bigger and lit
     const beat = done ? clamp01(q.doneT / 4) : took ? clamp01(q.tookT / 6) : 0;
     const pop = 1 + easeOutCubic(clamp01(beat * 1.6)) * 0.08;
@@ -911,7 +912,7 @@ export class UI {
     // Two words and an arrow. It used to be a whole sentence, and a sentence
     // that is always on the screen stops being read on the second day.
     const near = d < 90;
-    const x = 6, y = this.build > 0.005 ? 6 : 56;
+    const x = this.build > 0.005 ? this.railW(W) + 6 : 6, y = 56;
     const label = 'WORK';
     // laid out left to right so nothing can land on anything else:
     // [icon] WORK  12m >
@@ -2004,7 +2005,7 @@ export class UI {
     const tw = 9, th = size - 8;
     const tx = x - tw - 4, ty = y + 4;
     K.px(ctx, tx - 1, ty - 1, tw + 2, th + 2, 'rgba(10,7,4,0.85)');
-    K.px(ctx, tx, ty, tw, th, K.C.goldDim);
+    K.px(ctx, tx, ty, tw, th, K.C.stone[3]);
     K.px(ctx, tx + 1, ty + 1, tw - 2, th - 2, '#0d1a1f');
     const wh = Math.round((th - 2) * fill);
     if (wh > 0) {
@@ -2022,22 +2023,22 @@ export class UI {
     }
     // the gradations etched on the glass
     for (let k = 1; k < 4; k++) K.px(ctx, tx + tw - 3, Math.round(ty + (th * k) / 4), 2, 1, 'rgba(226,183,74,0.5)');
-    K.px(ctx, tx, ty - 2, tw, 2, K.C.gold);
+    K.px(ctx, tx, ty - 2, tw, 2, K.C.stone[1]);
 
     // ---- the dial ---------------------------------------------------------
     ctx.save();
     const glow = Math.max(g.pumpHold || 0, p.open * 0.35);
     if (glow > 0.02) pxGlow(ctx, cx, cy, R + 8, '#9fe8ee', 0.35 * glow, { p: 1, steps: 3 });
-    // brass rim, a dark bezel, the face
+    // a ring of worked stone, a dark lip, the face
     pxDisc(ctx, cx, cy, R + 1, 'rgba(10,7,4,0.9)');
-    pxDisc(ctx, cx, cy, R, hot ? '#f0d89a' : K.C.gold);
-    pxDisc(ctx, cx, cy, R - 1, K.C.goldDim);
+    pxDisc(ctx, cx, cy, R, hot ? K.C.stone[1] : K.C.stone[2]);
+    pxDisc(ctx, cx, cy, R - 1, K.C.stone[4]);
     pxDisc(ctx, cx, cy, R - 3, 'rgba(10,7,4,0.9)');
     pxDisc(ctx, cx, cy, R - 4, '#1b2226');
     // a lit crescent on the rim, top-left, so it is a thing and not a circle
     for (let k = 0; k < 10; k++) {
       const an = Math.PI * (1.05 + k * 0.05);
-      K.px(ctx, Math.round(cx + Math.cos(an) * (R - 0.5)), Math.round(cy + Math.sin(an) * (R - 0.5)), 1, 1, K.C.goldLit);
+      K.px(ctx, Math.round(cx + Math.cos(an) * (R - 0.5)), Math.round(cy + Math.sin(an) * (R - 0.5)), 1, 1, K.C.stone[0]);
     }
     // the sweep runs round the bottom-open three-quarters of the face
     const A0 = Math.PI * 0.75, A1 = Math.PI * 2.25;
@@ -2099,8 +2100,8 @@ export class UI {
         on ? (k >= 7 ? '#fff0a0' : '#d8f5a4') : 'rgba(40,30,18,0.9)');
     }
     // the throat at the top, where the water comes out
-    K.px(ctx, Math.round(cx) - 3, y - 1, 7, 3, K.C.goldDim);
-    K.px(ctx, Math.round(cx) - 2, y - 2, 5, 1, K.C.gold);
+    K.px(ctx, Math.round(cx) - 3, y - 1, 7, 3, K.C.stone[4]);
+    K.px(ctx, Math.round(cx) - 2, y - 2, 5, 1, K.C.stone[1]);
     K.px(ctx, Math.round(cx) - 1, y - 1, 3, 1, '#0d1a1f');
     ctx.restore();
 
@@ -2112,7 +2113,7 @@ export class UI {
     const lab = full ? 'FULL' : this.touchEnabled ? 'PUMP' : 'PUMP  SPC';
     const lw = textWidth(lab) + 10;
     const ly = y + size + 2;
-    K.px(ctx, Math.round(cx - lw / 2), ly, lw, 11, 'rgba(10,7,4,0.72)');
+    K.plaque(ctx, Math.round(cx - lw / 2) - 1, ly - 1, lw + 2, 12, { moss: false });
     drawText(ctx, lab, cx, ly + 2, { color: full ? '#9de3ee' : p.live ? '#d8f5a4' : INK, align: 'center' });
     if (p.combo > 1) {
       drawText(ctx, `x${p.mult.toFixed(1)}`, this.touchEnabled ? x - tw - 8 : x - tw - 6,
@@ -3051,10 +3052,8 @@ export class UI {
     const y = 0;
 
     ctx.globalAlpha = k;
-    K.slab(ctx, x - 12, y - 4, rw + 12, H + 8,
-      { face: K.C.frame, lit: K.C.frameLit, dim: K.C.frameDim });
-    K.px(ctx, x - 12, y + 1, rw + 8, H - 2, K.C.frameDeep);
-    K.px(ctx, x - 12, y + 2, rw + 7, H - 4, K.C.page);
+    // a slab of stone slid in from the edge, with a board cut into it
+    K.bezel(ctx, x - 12, y - 4, rw + 12, H + 8, { rim: 2, field: 'slab', seed: 31 });
 
     const inX = x + 6, inW = rw - 16;
     let ry = 5;
