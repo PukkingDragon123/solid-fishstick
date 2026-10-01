@@ -524,7 +524,12 @@ export class Crab {
    * a ring at each joint, a horn tip on the foot and the odd barnacle.
    */
   _limb(ctx, seg, ax, ay, bx, by) {
-    const m = ctx.getTransform();
+    // Rasterised in the crab's own space, scaled up by the zoom, and drawn
+    // back through the canvas's current transform. Nothing reads or resets
+    // the canvas transform, which some browsers (older Safari on iPad) do
+    // not support or get wrong - that is what left legs floating loose.
+    const Z = Math.max(0.05, this.game?.cam?.zoom || 1);
+    const m = { a: Z, b: 0, c: 0, d: Z, e: 0, f: 0 };
     const sc = Math.sqrt(Math.abs(m.a * m.d - m.b * m.c)) || 1;
     const p0x = m.a * ax + m.c * ay + m.e, p0y = m.b * ax + m.d * ay + m.f;
     const p1x = m.a * bx + m.c * by + m.e, p1y = m.b * bx + m.d * by + m.f;
@@ -600,9 +605,9 @@ export class Crab {
     }
     buf.g.putImageData(buf.img, 0, 0, 0, 0, bw, bh);
     ctx.save();
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.imageSmoothingEnabled = false;
-    ctx.drawImage(buf.cv, 0, 0, bw, bh, Math.round(x0 * cell), Math.round(y0 * cell), Math.round(bw * cell), Math.round(bh * cell));
+    const k = cell / Z;
+    ctx.drawImage(buf.cv, 0, 0, bw, bh, x0 * k, y0 * k, bw * k, bh * k);
     ctx.restore();
   }
 
@@ -677,7 +682,8 @@ export class Crab {
     // never still - feeling the air for water
     {
       const tm = this.game.time || 0;
-      const T = ctx.getTransform();
+      const Z = Math.max(0.05, this.game?.cam?.zoom || 1);
+      const T = { a: Z, b: 0, c: 0, d: Z, e: 0, f: 0 };
       const E = rig.sockets.eyes;
       ctx.save();
       for (let k = 0; k < 2; k++) {
@@ -693,7 +699,8 @@ export class Crab {
           pts.push({ x, y });
           x += Math.cos(ang) * L / n; y += Math.sin(ang) * L / n;
         }
-        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.save();
+        ctx.scale(1 / Z, 1 / Z);
         const ac = Math.max(1, Math.round(Math.hypot(T.a, T.b) * 0.6));
         let px = null, py = null;
         for (let i = 0; i < pts.length; i++) {
@@ -708,7 +715,7 @@ export class Crab {
           }
           px = sx; py = sy;
         }
-        ctx.setTransform(T);
+        ctx.restore();
       }
       ctx.restore();
     }
@@ -753,11 +760,12 @@ export class Crab {
         }
         // drawn on the screen's own grid: the body rocks and tilts, and a
         // disc laid out in its tilted space comes out furry
-        const T = ctx.getTransform();
+        const Z = Math.max(0.05, this.game?.cam?.zoom || 1);
+        const T = { a: Z, b: 0, c: 0, d: Z, e: 0, f: 0 };
         const sx = T.a * ex + T.c * ey + T.e, sy = T.b * ex + T.d * ey + T.f;
         const sr = r * Math.hypot(T.a, T.b);
         ctx.save();
-        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.scale(1 / Z, 1 / Z);
         const bx = Math.round(sx), by = Math.round(sy);
         // A crab's eye is a compound eye on the end of the stalk: a dark,
         // slightly long bulb, faceted, catching the light in one small wet
