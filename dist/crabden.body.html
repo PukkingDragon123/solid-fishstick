@@ -9965,6 +9965,23 @@ body {
     }
     return limb;
   }
+  var LIMB_RING = [];
+  var limbSlot = 0;
+  function limbOut(w, h) {
+    limbSlot = (limbSlot + 1) % 96;
+    let o = LIMB_RING[limbSlot];
+    if (!o) {
+      const cv = document.createElement("canvas");
+      cv.width = 8;
+      cv.height = 8;
+      o = LIMB_RING[limbSlot] = { cv, g: cv.getContext("2d") };
+    }
+    if (o.cv.width < w || o.cv.height < h) {
+      o.cv.width = Math.max(o.cv.width, w);
+      o.cv.height = Math.max(o.cv.height, h);
+    }
+    return o;
+  }
   var BAYER42 = [[0, 8, 2, 10], [12, 4, 14, 6], [3, 11, 1, 9], [15, 7, 13, 5]].map((r) => r.map((v) => (v + 0.5) / 16));
   function ik2(hx, hy, tx, ty, l1, l2, up = 1) {
     const dx = tx - hx, dy = ty - hy;
@@ -10361,7 +10378,10 @@ body {
         if (!!leg.def.far !== far) continue;
         const art4 = leg.def.art || (far ? rig.legArt.far : rig.legArt.near);
         const l1 = art4.coxa.len, l2 = art4.femur.len, l3 = art4.tibia.len;
-        const wx = (leg.foot.x - (this.x + this.lurch * 0.35)) / mx;
+        const rawX = (leg.foot.x - (this.x + this.lurch * 0.35)) / mx;
+        const homeL = leg.def.home ?? rawX;
+        const wq = clamp01((Math.abs(tsx) - 0.15) / 0.75);
+        const wx = lerp(homeL, rawX, wq);
         const wy = leg.foot.y - (this.y + this.bob);
         const lx = wx * c - wy * s, ly = wx * s + wy * c;
         const hx = leg.def.x, hy = leg.def.y;
@@ -10452,11 +10472,13 @@ body {
           px32[row2 + (x - x0)] = c;
         }
       }
-      buf.g.putImageData(buf.img, 0, 0, 0, 0, bw, bh);
+      const o = limbOut(bw, bh);
+      o.g.clearRect(0, 0, bw + 1, bh + 1);
+      o.g.putImageData(buf.img, 0, 0, 0, 0, bw, bh);
       ctx.save();
       ctx.imageSmoothingEnabled = false;
       const k = cell / Z;
-      ctx.drawImage(buf.cv, 0, 0, bw, bh, x0 * k, y0 * k, bw * k, bh * k);
+      ctx.drawImage(o.cv, 0, 0, bw, bh, x0 * k, y0 * k, bw * k, bh * k);
       ctx.restore();
     }
     _seg(ctx, seg2, x, y, a) {

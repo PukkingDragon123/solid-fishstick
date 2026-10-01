@@ -37,6 +37,27 @@ function limbBuf() {
   return limb;
 }
 
+// Every limb is handed to the screen on its own canvas. Safari can put off a
+// drawImage until the frame is flushed, so one shared canvas reused for
+// every limb came out as twenty copies of whichever limb was painted last
+// (the claw's tip) - that was the fan of spiky claws on the title screen.
+// A ring this long is never lapped within a frame.
+const LIMB_RING = [];
+let limbSlot = 0;
+function limbOut(w, h) {
+  limbSlot = (limbSlot + 1) % 96;
+  let o = LIMB_RING[limbSlot];
+  if (!o) {
+    const cv = document.createElement('canvas');
+    cv.width = 8; cv.height = 8;
+    o = LIMB_RING[limbSlot] = { cv, g: cv.getContext('2d') };
+  }
+  if (o.cv.width < w || o.cv.height < h) {
+    o.cv.width = Math.max(o.cv.width, w); o.cv.height = Math.max(o.cv.height, h);
+  }
+  return o;
+}
+
 const BAYER4 = [[0, 8, 2, 10], [12, 4, 14, 6], [3, 11, 1, 9], [15, 7, 13, 5]].map((r) => r.map((v) => (v + 0.5) / 16));
 
 /** Two-bone IK. `up` picks which side the joint folds toward. */
@@ -485,7 +506,14 @@ export class Crab {
       if (!!leg.def.far !== far) continue;
       const art = leg.def.art || (far ? rig.legArt.far : rig.legArt.near);
       const l1 = art.coxa.len, l2 = art.femur.len, l3 = art.tibia.len;
-      const wx = (leg.foot.x - (this.x + this.lurch * 0.35)) / mx;
+      // Mid-turn the body is squashed flat, and un-squashing the foot to
+      // match flung it far out - every leg shot out straight like a spike.
+      // As the squash deepens the foot eases over to where that leg stands
+      // at rest, in the body's own frame, so the legs fold with the turn.
+      const rawX = (leg.foot.x - (this.x + this.lurch * 0.35)) / mx;
+      const homeL = leg.def.home ?? rawX;
+      const wq = clamp01((Math.abs(tsx) - 0.15) / 0.75);
+      const wx = lerp(homeL, rawX, wq);
       const wy = leg.foot.y - (this.y + this.bob);
       const lx = wx * c - wy * s, ly = wx * s + wy * c;
       const hx = leg.def.x, hy = leg.def.y;
@@ -597,11 +625,13 @@ export class Crab {
         px32[row + (x - x0)] = c;
       }
     }
-    buf.g.putImageData(buf.img, 0, 0, 0, 0, bw, bh);
+    const o = limbOut(bw, bh);
+    o.g.clearRect(0, 0, bw + 1, bh + 1);
+    o.g.putImageData(buf.img, 0, 0, 0, 0, bw, bh);
     ctx.save();
     ctx.imageSmoothingEnabled = false;
     const k = cell / Z;
-    ctx.drawImage(buf.cv, 0, 0, bw, bh, x0 * k, y0 * k, bw * k, bh * k);
+    ctx.drawImage(o.cv, 0, 0, bw, bh, x0 * k, y0 * k, bw * k, bh * k);
     ctx.restore();
   }
 
