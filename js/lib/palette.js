@@ -21,8 +21,15 @@ def('chitinDark', ['#1d1210', '#33201b', '#4e3123', '#68432c', '#835a3a', '#9d72
   { rim: 0.34, spec: 0.28 });
 def('chitinPale', ['#3a2b22', '#5c4432', '#7d6044', '#9c7d58', '#b9996f', '#d2b48a', '#e6cca8', '#f6e4c8'],
   { rim: 0.42, spec: 0.3 });
-def('shellRock', ['#33291f', '#4d3d2c', '#6b563d', '#877051', '#a18a68', '#b9a382', '#cfbc9e', '#e4d5bd'],
+def('shellRock', ['#26221f', '#3a342e', '#524a42', '#6b6157', '#857a6d', '#9f9384', '#b8ad9c', '#d2c9b8'],
   { rim: 0.26, spec: 0.08, ao: 0.14, normalScale: 0.7 });
+// a real crab's shell: deep brick red, granular, going orange on the lit edge
+def('crabShell', ['#1f0d0a', '#3a1610', '#572116', '#77301d', '#954327', '#b05c33', '#c97c49', '#e0a36b'],
+  { rim: 0.42, spec: 0.38, ao: 0.14 });
+def('crabShellDark', ['#170a08', '#2b120d', '#421a12', '#5b2618', '#753520', '#8d4829', '#a6623a', '#bf8255'],
+  { rim: 0.34, spec: 0.3 });
+def('crabBelly', ['#3a261c', '#5c3e2c', '#7e5a40', '#9f7956', '#bc9870', '#d4b48c', '#e6cdaa', '#f4e4cc'],
+  { rim: 0.3, spec: 0.2 });
 def('claw', ['#2a1a15', '#48291f', '#6b402c', '#8d5a3a', '#ab7650', '#c5946a', '#dcb289', '#efd2ae'],
   { rim: 0.45, spec: 0.45 });
 def('flesh', ['#3a1a18', '#5c2622', '#7e3730', '#9d4a40', '#b76054', '#cd7a6c', '#df9789', '#eeb5a8'],

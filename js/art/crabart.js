@@ -39,9 +39,9 @@ export function crabMetrics(stage = 'adult') {
   const rx = shellW * 0.5;
   const ry = rx * lerp(0.54, 0.46, t);           // young shells are rounder
   const domeH = rx * lerp(0.62, 0.62, t);
-  const skirtH = rx * lerp(0.28, 0.33, t);       // a lip, not a cliff
-  const faceH = rx * lerp(0.36, 0.30, t);
-  const eyeRise = rx * lerp(0.30, 0.22, t);
+  const skirtH = rx * lerp(0.20, 0.24, t);       // the rock's own lip, short
+  const faceH = rx * lerp(0.50, 0.46, t);        // the crab itself, under the rock
+  const eyeRise = rx * lerp(0.20, 0.15, t);
 
   const pad = Math.round(6 + 8 * t);
   const crownLift = domeH * KZ;
@@ -51,10 +51,12 @@ export function crabMetrics(stage = 'adult') {
   const ox = Math.round(w / 2);
   const topCy = Math.round(pad + crownLift + ry);   // centre of the top ellipse
   const rimY = topCy + ry + skirtH;                 // the bottom edge of the shell
-  const oy = Math.round(rimY + faceH * 0.30);       // anchor: the hip line
+  const oy = Math.round(rimY + faceH * 0.52);       // anchor: the hip line
 
   const legN = t < 0.25 ? 3 : 4;
-  const legLen = [shellW * 0.120, shellW * 0.245, shellW * 0.190];   // short and sturdy
+  // a crab's walking leg: a short coxa, a long flat merus that rises to the
+  // knee, and the carpus-propodus-dactyl coming down to a point
+  const legLen = [shellW * 0.060, shellW * 0.200, shellW * 0.195];
 
   return {
     stage, t, S, w, h, ox, oy,
@@ -65,7 +67,7 @@ export function crabMetrics(stage = 'adult') {
     legN, legLen,
     reach: (legLen[0] + legLen[1] + legLen[2] * 1.1) * 0.88,
     clawLen: [shellW * 0.120, shellW * 0.100],
-    clawScale: lerp(0.26, 0.32, t),
+    clawScale: lerp(0.34, 0.40, t),
     basin: { a: 0, b: -0.30, r: 0.44 },
     organ: { a: 0, b: -0.30 },
   };
@@ -191,13 +193,13 @@ function paintBody(m, seed = 3) {
         for (const c of cracks) { const d = segD(a2, b2, c); if (d < cd) cd = d; }
         if (cd < 0.016) { tint -= 0.32; lift -= 0.9 * S; } else if (cd < 0.03) tint += 0.04;
         // lichen and moss, out toward the edge where it is always damp
-        if (r2 > 0.36 && b2 < 0.25) {
+        if (r2 > 0.30) {
           // small crusts, not paint: a few patches high on the shell, broken
           // up at the edges so they read as something growing
           const n = fbmTex(a2 * 5.2 + 7.3, b2 * 5.2 - 2.1, seed + 5, 3);
           const fleck = fbmTex(a2 * 19 + 1.1, b2 * 19 + 3.3, seed + 9, 1);
-          if (n > 0.70 && fleck > 0.35) { mat = 'lichen'; tint += (n - 0.70) * 0.6 - 0.12; lift += 0.3 * S; }
-          else if (n < 0.24 && r2 > 0.55 && fleck > 0.3) { mat = 'moss'; tint += 0.02; lift += 0.4 * S; }
+          if (n > 0.72 && fleck > 0.35) { mat = 'lichen'; tint += (n - 0.72) * 0.6 - 0.12; lift += 0.3 * S; }
+          else if (n < 0.40 && fleck > 0.22) { mat = 'moss'; tint += 0.04 + (0.40 - n) * 0.5; lift += 0.7 * S; }
         }
       }
       const px = Math.round(s.sx), py = Math.round(s.sy);
@@ -347,30 +349,86 @@ function paintBody(m, seed = 3) {
     p.ellipse(x, y, r * 0.40, r * 0.32, { mat: 'bone', mask: true, dome: -r * 0.6, tint: -0.34 });
   }
 
-  // -- the face, tucked under the front of the shell -----------------------
+  // -- moss hanging off the rock ------------------------------------------
+  // A rock that has sat on a seabed and then a desert for a thousand years
+  // is not clean: moss has crept over the rim and hangs down the face of it
+  // in beards, with the odd tuft standing proud on the lip.
+  for (let x = 0; x < p.w; x++) {
+    if (maxY[x] < 0) continue;
+    const sa = (x - ox) / rx;
+    const n = fbmTex(sa * 4.1 + 2.3, 1.7, seed + 21, 3);
+    if (n < 0.40) continue;
+    const len = (n - 0.40) * 2 * skirtH * 1.4 * (0.6 + 0.4 * fbmTex(x * 0.4, 9.1, seed + 3, 1));
+    const y0 = maxY[x] - 1;
+    for (let y = y0; y < y0 + len; y++) {
+      const k = (y - y0) / Math.max(1, len);
+      // beards thin out toward their ends
+      if (k > 0.55 && fbmTex(x * 0.9, y * 0.9, seed + 8, 1) > 1.2 - k) continue;
+      p.rect(x, y, 1, 1, { mat: 'moss', dome: 0, addHeight: false, tint: 0.12 - k * 0.3, lift: domeH * 0.3 + 1.2 * S });
+    }
+    if (n > 0.55) p.ellipse(x, y0 - 0.6, 1.0 * S + 0.4, 0.9 * S + 0.3, { mat: 'moss', dome: 1.0 * S, tint: 0.14, lift: domeH * 0.3 });
+  }
+  p.grain('moss', { freq: 0.8 / S, amp: 0.14, seed: seed + 6 });
+
+  // -- the crab under the rock ---------------------------------------------
+  // The rock is what it carries. This is the animal: a broad carapace held
+  // up under it, brick red and granular, with a row of teeth down each
+  // front edge, a notched brow with the eyes sitting in sockets either side
+  // of it, and the whole thing darker where the rock shades it.
   let frontY = 0;
   for (let x = Math.round(ox - rx * 0.4); x <= Math.round(ox + rx * 0.4); x++) {
     if (x >= 0 && x < p.w) frontY = Math.max(frontY, wallBase[x]);
   }
-  m.faceTop = frontY;
-  const faceW = rx * 0.34;
-  const faceMid = frontY - skirtH * 0.30;
-  p.field(ox - faceW - 2, faceMid - m.faceH, ox + faceW + 2, frontY + 2, (x, y) => {
-    const sa = (x - ox) / faceW;
-    if (Math.abs(sa) > 1) return null;
-    const half = m.faceH * 0.62 * (0.55 + 0.45 * Math.sqrt(1 - sa * sa));
-    const dy = (y - faceMid) / half;
-    if (Math.abs(dy) > 1) return null;
-    const dz = Math.sqrt(clamp01(1 - dy * dy)) * Math.sqrt(clamp01(1 - sa * sa * 0.8));
-    return { h: dz * m.faceH * 0.34, tint: -0.16 + dz * 0.14 };
-  }, { mat: 'chitin' });
-  // two shallow orbits for the eyes to sit in
-  for (const sgn of [-1, 1]) {
-    p.ellipse(ox + sgn * faceW * 0.46, faceMid - m.faceH * 0.30, faceW * 0.26, m.faceH * 0.18,
-      { mat: 'chitinDark', mask: true, dome: -1.6 * S, tint: -0.30 });
+  const carH = m.faceH;
+  const cw = rx * 0.88;
+  const cTop = frontY - carH * 0.30;            // tucked up under the rock
+  const cBot = cTop + carH;
+  m.carTop = cTop; m.carBot = cBot; m.carW = cw;
+  const granules = [];
+  for (let i = 0; i < Math.round(30 + m.t * 40); i++) {
+    granules.push({ a: rnd(seed * 71 + i * 13) * 2 - 1, v: rnd(seed * 37 + i * 7), r: (0.5 + rnd(i * 5 + seed) * 0.6) * S });
   }
+  p.field(ox - cw - 3, cTop - 2, ox + cw + 3, cBot + carH * 0.2, (x, y) => {
+    const sa = (x - ox) / cw;
+    const aa = Math.abs(sa);
+    if (aa > 1.04) return null;
+    // the outline: an arched top, sides that bulge out, and a front margin
+    // that sweeps up to the corners with teeth along it
+    const top = cTop + sa * sa * carH * 0.10;
+    let bot = cBot - Math.pow(aa, 1.6) * carH * 0.42;
+    if (aa > 0.38) bot += Math.max(0, Math.sin((aa - 0.38) * 26)) * carH * 0.10 * (1.1 - aa);
+    // the brow: two small lobes and a notch between them
+    if (aa < 0.12) bot -= (0.12 - aa) * carH * 0.9;
+    if (y < top || y > bot) return null;
+    const v = (y - top) / Math.max(1, bot - top);
+    const side = Math.sqrt(clamp01(1 - aa * aa));
+    let h = side * carH * 0.42 * (1 - v * 0.55);
+    let tint = 0.02 + side * 0.10 - v * 0.08;
+    let mat = 'crabShell';
+    // in the shadow of the rock
+    if (v < 0.18) tint -= (0.18 - v) * 1.6;
+    // the regions of a crab's back, as soft grooves
+    const gr = Math.abs(aa - 0.42);
+    if (gr < 0.03 && v < 0.7) { tint -= 0.16; h -= 0.8 * S; }
+    // the pale front margin and the teeth along it
+    if (v > 0.86) { mat = 'crabBelly'; tint -= 0.08; }
+    // granules, which is what makes it a crab and not a pebble
+    for (const gq of granules) {
+      const d = Math.hypot((sa - gq.a) * cw, (v - gq.v) * carH);
+      if (d < gq.r) { tint += 0.18 * (1 - d / gq.r); h += 0.5 * S; }
+    }
+    return { h, tint, mat };
+  }, { mat: 'crabShell' });
+  // the eye sockets either side of the brow
+  const faceMid = cTop + carH * 0.42;
+  for (const sgn of [-1, 1]) {
+    p.ellipse(ox + sgn * cw * 0.24, cTop + carH * 0.40, cw * 0.11, carH * 0.15,
+      { mat: 'crabShellDark', mask: true, dome: -1.4 * S, tint: -0.32 });
+  }
+  m.faceTop = frontY;
   m.faceMid = faceMid;
-  p.grain('chitin', { freq: 0.36 / S, amp: 0.14, seed: seed + 9 });
+  p.grain('crabShell', { freq: 0.45 / S, amp: 0.10, seed: seed + 9 });
+  p.speckle('crabShell', { density: 0.05, amp: 0.22, seed: seed + 15 });
 
   p.smoothHeight(1, 0.5);
   const cv = p.resolve(MATERIALS, { ...LIGHT, outline: 1, outlineColor: '#171009' });
@@ -439,7 +497,7 @@ function paintSegment(len, r0, r1, opts = {}) {
 
 function paintFoot(len, r0, opts = {}) {
   const far = !!opts.far, S = Math.max(0.4, opts.S ?? 1);
-  const mat = far ? 'chitinDark' : 'chitin';
+  const mat = far ? 'crabShellDark' : 'crabShell';
   const ft = far ? -0.17 : 0;
   const pad = Math.ceil(r0 + 4);
   const p = new Painter(Math.ceil(len) + pad * 2, pad * 2 + 2);
@@ -462,7 +520,7 @@ function paintFoot(len, r0, opts = {}) {
 function paintClaw(m, far = false) {
   const S = Math.max(0.4, m.S);
   const K = Math.max(8, m.shellW * m.clawScale);
-  const mat = far ? 'chitinDark' : 'claw';
+  const mat = far ? 'crabShellDark' : 'crabShell';
   const ft = far ? -0.17 : 0;
   const L = K * 0.52, Hh = K * 0.33, tip = K * 0.50;
   const pad = 5;
@@ -544,10 +602,10 @@ function paintEye(m) {
   const pad = Math.ceil(r + 4);
   const p = new Painter(Math.ceil(len + r) + pad * 2, pad * 2 + 2);
   const cy = p.h / 2, x0 = pad;
-  p.capsule(x0, cy, x0 + len - r * 0.2, cy, Math.max(0.8, 1.5 * S), Math.max(0.9, 1.7 * S),
-    { mat: 'chitin', dome: 1.4 * S, tint: 0 });
+  p.capsule(x0, cy, x0 + len - r * 0.2, cy, Math.max(1.0, 2.0 * S), Math.max(1.0, 1.8 * S),
+    { mat: 'crabShell', dome: 1.6 * S, tint: 0.02 });
   // only a nub: the eyeball itself is drawn over it, unrotated, by the crab
-  p.ellipse(x0 + len, cy, r * 0.4, r * 0.4, { mat: 'chitin', dome: r * 0.6, tint: 0 });
+  p.ellipse(x0 + len, cy, r * 0.45, r * 0.45, { mat: 'crabShell', dome: r * 0.6, tint: 0.06 });
   const cv = p.resolve(MATERIALS, { ...LIGHT, outline: 1, outlineColor: '#171009' });
   return { cv, ox: pad, oy: cy, len, r, globe: len };
 }
@@ -555,16 +613,28 @@ function paintEye(m) {
 /** The maxillipeds: the plates over the mouth, which never stop moving. */
 function paintMouth(m) {
   const S = Math.max(0.4, m.S);
-  const w = Math.ceil(9 * S) + 8, h = Math.ceil(8 * S) + 8;
+  const w = Math.ceil(14 * S) + 8, h = Math.ceil(11 * S) + 8;
   const p = new Painter(w, h);
-  const cx = w * 0.5, cy = h * 0.5;
-  p.ellipse(cx, cy, 3.2 * S, 2.6 * S, { mat: 'chitinDark', dome: 2.0 * S, tint: -0.04 });
+  const cx = w * 0.5, cy = h * 0.42;
+  // the frame of the mouth, and the third maxillipeds closed over it like a
+  // pair of doors - jointed, hairy along the edges, never quite still
+  p.ellipse(cx, cy + 1 * S, 5.6 * S, 4.2 * S, { mat: 'crabShellDark', dome: 1.6 * S, tint: -0.22 });
   for (const sgn of [-1, 1]) {
-    p.capsule(cx + sgn * 0.6 * S, cy - 1.4 * S, cx + sgn * 2.6 * S, cy + 1.6 * S,
-      1.1 * S, 0.7 * S, { mat: 'chitinPale', dome: 1.0 * S, tint: sgn > 0 ? 0.08 : -0.02 });
+    const x0 = cx + sgn * 2.5 * S;
+    p.capsule(x0, cy - 2.6 * S, x0 + sgn * 0.4 * S, cy + 0.6 * S, 2.3 * S, 2.1 * S,
+      { mat: 'crabShell', dome: 1.4 * S, tint: sgn > 0 ? 0.06 : -0.04 });
+    p.capsule(x0 + sgn * 0.4 * S, cy + 0.8 * S, x0 + sgn * 0.2 * S, cy + 3.6 * S, 2.0 * S, 1.5 * S,
+      { mat: 'crabShell', dome: 1.2 * S, tint: sgn > 0 ? 0.0 : -0.1 });
+    // the joint between the two plates
+    p.capsule(x0 - 2 * S, cy + 0.7 * S, x0 + 2 * S, cy + 0.7 * S, 0.45 * S, 0.45 * S,
+      { mat: 'crabShellDark', mask: true, dome: -0.4, tint: -0.3 });
+    // bristles along the inner edge
+    for (let k = 0; k < 4; k++) {
+      p.ellipse(cx + sgn * 0.5 * S, cy - 2 * S + k * 1.6 * S, 0.5 * S + 0.3, 0.5 * S + 0.3,
+        { mat: 'crabBelly', dome: 0.4, tint: 0.2 });
+    }
   }
-  p.ellipse(cx, cy + 1.0 * S, 1.5 * S, 1.0 * S, { mat: 'flesh', dome: 0.8 * S, tint: -0.2 });
-  const cv = p.resolve(MATERIALS, { ...LIGHT, outline: 1, outlineColor: '#171009' });
+  const cv = p.resolve(MATERIALS, { ...LIGHT, outline: 1, outlineColor: '#140806' });
   return { cv, ox: cx, oy: cy };
 }
 
@@ -580,14 +650,14 @@ export function buildCrab(stage = 'adult') {
 
   const seg = (len, r0, r1, far, extra) =>
     paintSegment(Math.max(3, len), Math.max(1, r0), Math.max(0.8, r1),
-      { mat: far ? 'chitinDark' : 'chitin', far, S, ...extra });
+      { mat: far ? 'crabShellDark' : 'crabShell', far, S, ...extra });
 
   const legArt = {};
   for (const far of [false, true]) {
     legArt[far ? 'far' : 'near'] = {
-      coxa: seg(m.legLen[0], 3.8 * S, 3.3 * S, far, { bow: -0.8 * S }),
-      femur: seg(m.legLen[1], 3.4 * S, 2.6 * S, far, { bow: 1.2 * S }),
-      tibia: paintFoot(Math.max(3, m.legLen[2] * 1.1), Math.max(1, 2.5 * S), { far, S }),
+      coxa: seg(m.legLen[0], 4.4 * S, 4.2 * S, far, { bow: 0 }),
+      femur: seg(m.legLen[1], 4.3 * S, 3.4 * S, far, { bow: 1.0 * S }),
+      tibia: paintFoot(Math.max(3, m.legLen[2] * 1.1), Math.max(1, 3.2 * S), { far, S }),
     };
   }
 
@@ -595,7 +665,8 @@ export function buildCrab(stage = 'adult') {
   // side; `side` is which way the limb points, not which layer it draws on
   const faceTop = body.faceTop || m.rimY;
   const faceMid = m.faceMid ?? (faceTop - m.skirtH * 0.30);
-  const hipY = faceTop - m.oy - m.skirtH * 0.18;
+  const carTop = m.carTop ?? (faceTop - m.faceH * 0.3), carH = m.faceH, cw = m.carW ?? m.rx * 0.88;
+  const hipY = carTop + carH * 0.62 - m.oy;
   const legs = [];
   for (const side of [-1, 1]) {
     for (let i = 0; i < m.legN; i++) {
@@ -607,8 +678,8 @@ export function buildCrab(stage = 'adult') {
       const back = i >= Math.floor(m.legN / 2);
       const depth = back ? 1 : 0;
       legs.push({
-        x: side * m.rx * spread * 0.80,
-        y: hipY - m.skirtH * (back ? 0.34 : 0.10) - depth * m.rx * 0.05,
+        x: side * cw * spread * 0.92,
+        y: hipY - carH * (back ? 0.22 : 0.0),
         side, depth,
         far: back,
         spread: side * spread,
@@ -635,14 +706,14 @@ export function buildCrab(stage = 'adult') {
     sockets: {
       legs,
       claws: [
-        { x: -m.rx * 0.40, y: hipY - m.skirtH * 0.10, side: -1 },
-        { x: m.rx * 0.40, y: hipY - m.skirtH * 0.10, side: 1 },
+        { x: -cw * 0.42, y: carTop + carH * 0.80 - m.oy, side: -1 },
+        { x: cw * 0.42, y: carTop + carH * 0.80 - m.oy, side: 1 },
       ],
       eyes: [
-        { x: -m.rx * 0.20, y: faceMid - m.oy - m.faceH * 0.26, side: -1 },
-        { x: m.rx * 0.20, y: faceMid - m.oy - m.faceH * 0.26, side: 1 },
+        { x: -cw * 0.24, y: carTop + carH * 0.40 - m.oy, side: -1 },
+        { x: cw * 0.24, y: carTop + carH * 0.40 - m.oy, side: 1 },
       ],
-      mouth: { x: 0, y: faceMid - m.oy + m.faceH * 0.16 },
+      mouth: { x: 0, y: carTop + carH * 0.92 - m.oy },
       organ: shellSurface(m, m.organ.a, m.organ.b),
     },
     shellSurface: (a, b) => shellSurface(m, a, b),

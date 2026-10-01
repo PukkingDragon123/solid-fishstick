@@ -103,7 +103,7 @@ export class Crab {
     this.rig = buildCrab(stage);
     this.m = this.rig.m;
     this.S = this.rig.S;
-    this.standH = this.m.faceH * 0.90 + this.m.shellW * 0.05;   // sits low: a squat, round animal
+    this.standH = this.m.faceH * 0.64 + this.m.shellW * 0.03;   // low and wide, the way a crab carries itself
     this.speed = lerp(48, 100, this.m.t);
     this._buildLegs();
     if (snap && this.game && this.game.terrain) this.snapToGround();
@@ -127,7 +127,7 @@ export class Crab {
   /** Where this leg wants its foot: a little outboard of its own socket. */
   homeX(l, lead = 0) {
     const sp = Math.abs(l.def.spread || 0.6);
-    return this.x + l.def.side * this.m.rx * (0.95 + sp * 0.58) + lead;
+    return this.x + l.def.side * this.m.rx * (0.80 + sp * 0.80) + lead;
   }
 
   /** Back legs contact further away, so their feet sit higher on screen. */
@@ -325,7 +325,10 @@ export class Crab {
         l.lift = damp(l.lift, 0, 0.0001, dt);
         const off = Math.abs(l.foot.x - home);
         const partnerBusy = this.legs.some((o) => o !== l && o.stepping && o.group === l.group);
-        if (off > trigger && lifting < 3 && !partnerBusy) {
+        // a foot left far behind steps whatever its partner is doing: a
+        // crab never drags a leg out to twice its length
+        const dragging = off > trigger * 1.9;
+        if (off > trigger && (lifting < 3 || dragging) && (!partnerBusy || dragging)) {
           l.stepping = true; l.t = 0;
           l.dur = clamp(0.30 - Math.abs(this.vx) * 0.0016, 0.13, 0.30);
           l.from = { x: l.foot.x, y: l.foot.y };
@@ -457,7 +460,11 @@ export class Crab {
       // angle, which is what made the legs look chewed
       this._limb(ctx, art.coxa, hx, hy, sol.kx, sol.ky);
       this._limb(ctx, art.femur, sol.kx, sol.ky, fx, fy);
-      this._limb(ctx, art.tibia, fx, fy, lx, ly);
+      // the last segment is a fixed length: it points at the foot, and if
+      // the foot has got away it stops short rather than stretching
+      const tdx = lx - fx, tdy = ly - fy, tl = Math.hypot(tdx, tdy) || 1;
+      const tk = Math.min(1, (l3 * 1.08) / tl);
+      this._limb(ctx, art.tibia, fx, fy, fx + tdx * tk, fy + tdy * tk);
     }
   }
 
@@ -485,7 +492,7 @@ export class Crab {
     const x0 = Math.floor(Math.min(p0x, p1x) - pad), x1 = Math.ceil(Math.max(p0x, p1x) + pad);
     const y0 = Math.floor(Math.min(p0y, p1y) - pad), y1 = Math.ceil(Math.max(p0y, p1y) + pad);
     const out = far ? OUT_FAR : OUT_NEAR;
-    const rings = Math.max(1, Math.round(len / (5 * sc)));
+    const rings = seg.foot ? 1 : 2;
     const bw = x1 - x0 + 1, bh = y1 - y0 + 1;
     if (bw <= 0 || bh <= 0 || bw > LIMB || bh > LIMB) return;
     const buf = limbBuf();
@@ -503,7 +510,12 @@ export class Crab {
         const d2 = qx * qx + qy * qy;
         const r = seg.foot ? lerp(R0, R1, Math.pow(t, 0.8)) : lerp(R0, R1, t);
         const rr = r + (!seg.foot && t < 0.12 ? r * 0.12 : 0);
-        if (d2 > (rr + 0.35) * (rr + 0.35)) continue;
+        if (d2 > (rr + 0.35) * (rr + 0.35)) {
+          // stiff bristles along the top edge of the leg, every few pixels
+          if (!seg.foot && qy < 0 && d2 < (rr + 1.6) * (rr + 1.6) && Math.abs(qx) < rr * 0.5
+            && ((Math.floor(t * len / 2.5)) & 1) === 0 && t > 0.15 && t < 0.92) px32[row + (x - x0)] = out;
+          continue;
+        }
         const d = Math.sqrt(d2);
         let c;
         if (d > rr - 0.75) c = out;
@@ -560,16 +572,24 @@ export class Crab {
       const a3 = a2 + 0.18 - raise * 0.22 + Math.sin(this.clawT * 1.9 + side) * 0.04;
       this._limb(ctx, art.arm, 0, 0, ex, ey);
       this._limb(ctx, art.fore, ex, ey, fx, fy);
-      ctx.save();
-      ctx.translate(fx, fy);
-      ctx.rotate(a3);
-      ctx.drawImage(art.palm.cv, -art.palm.ox, -art.palm.oy);
-      ctx.save();
-      ctx.translate(art.hinge.x, art.hinge.y);
-      ctx.rotate(-0.28 - this.clawOpen * 0.55);
-      ctx.drawImage(art.dactyl.cv, -art.dactyl.ox, -art.dactyl.oy);
-      ctx.restore();
-      ctx.restore();
+      // the chela itself, drawn live like the legs: a heavy palm, the fixed
+      // finger running on from it, and the movable finger hinged over it
+      const K = Math.max(8, this.m.shellW * this.m.clawScale);
+      const PL = K * 0.50, PR = K * 0.22, FL = K * 0.50;
+      const mat = near ? 'crabShell' : 'crabShellDark';
+      const cs = Math.cos(a3), sn = Math.sin(a3);
+      const px1 = fx + cs * PL, py1 = fy + sn * PL;
+      this._limb(ctx, { r0: PR * 0.62, r1: PR, mat, far: !near, bow: -PR * 0.25 }, fx, fy, px1, py1);
+      // fixed finger, from the lower lip of the palm
+      const lx = px1 - sn * PR * 0.35, ly = py1 + cs * PR * 0.35;
+      this._limb(ctx, { r0: PR * 0.55, r1: Math.max(0.6, PR * 0.12), mat, far: !near, foot: true },
+        lx, ly, lx + cs * FL, ly + sn * FL);
+      // the movable finger, opening up and away
+      const op = -0.25 - this.clawOpen * 0.6;
+      const hx = px1 + sn * PR * 0.45, hy = py1 - cs * PR * 0.45;
+      const da = a3 + op;
+      this._limb(ctx, { r0: PR * 0.5, r1: Math.max(0.6, PR * 0.12), mat, far: !near, foot: true, bow: PR * 0.2 },
+        hx, hy, hx + Math.cos(da) * FL * 1.02, hy + Math.sin(da) * FL * 1.02);
       ctx.restore();
     }
   }
@@ -635,27 +655,34 @@ export class Crab {
         ctx.save();
         ctx.setTransform(1, 0, 0, 1, 0, 0);
         const bx = Math.round(sx), by = Math.round(sy);
-        pxDisc(ctx, bx, by, sr, '#000000', { p: 1 });
-        // the sparkle in it: a bright glint up on the side the light comes
-        // from and a pinprick under it, so the bead looks wet and alive
-        const gs = Math.max(1, Math.round(sr * 0.38));
-        ctx.fillStyle = '#ffffff';
-        ctx.fillRect(Math.round(bx - sr * 0.45), Math.round(by - sr * 0.5), gs, gs);
-        ctx.fillRect(Math.round(bx + sr * 0.25), Math.round(by + sr * 0.2), Math.max(1, gs >> 1), Math.max(1, gs >> 1));
-        // and every so often a star twinkles off the top of it
-        const ph = (tm * 0.45 + (e.side > 0 ? 0.5 : 0)) % 1;
-        if (ph < 0.2) {
-          const k = Math.sin((ph / 0.2) * Math.PI);
-          const L = Math.round(1 + k * Math.max(2, sr * 0.8));
-          const cx = Math.round(bx + sr * 0.85), cy = Math.round(by - sr * 0.85);
-          ctx.globalAlpha = 0.35 + k * 0.65;
-          ctx.fillStyle = '#fff6d8';
-          ctx.fillRect(cx - L, cy, L * 2 + 1, 1);
-          ctx.fillRect(cx, cy - L, 1, L * 2 + 1);
-          ctx.fillStyle = '#ffffff';
-          ctx.fillRect(cx - 1, cy - 1, 3, 3);
-          ctx.globalAlpha = 1;
+        // A crab's eye is a compound eye on the end of the stalk: a dark,
+        // slightly long bulb, faceted, catching the light in one small wet
+        // point and a dull sheen across its top. Drawn on the screen grid.
+        const ang = Math.atan2(T.b * Math.cos(a) + T.d * Math.sin(a), T.a * Math.cos(a) + T.c * Math.sin(a));
+        const ca = Math.cos(ang), sa2 = Math.sin(ang);
+        const ra = sr * 1.2, rb = sr * 0.92;
+        const R = Math.ceil(ra) + 1;
+        for (let yy = -R; yy <= R; yy++) {
+          for (let xx = -R; xx <= R; xx++) {
+            const u = (xx * ca + yy * sa2) / ra, w2 = (-xx * sa2 + yy * ca) / rb;
+            const d = u * u + w2 * w2;
+            if (d > 1) continue;
+            // lit from above: the top of the bulb is the sheen
+            const up = -yy / R;
+            let c = '#111315';
+            if (d > 0.78) c = '#08090a';
+            else if (up > 0.25) c = ((xx + yy) & 1) ? '#3a4448' : '#2a3236';
+            else if (up > -0.2) c = ((xx + yy) & 1) ? '#22292c' : '#191e21';
+            ctx.fillStyle = c;
+            ctx.fillRect(bx + xx, by + yy, 1, 1);
+          }
         }
+        // the wet highlight, and its dim twin on the far side
+        const gs = Math.max(1, Math.round(sr * 0.32));
+        ctx.fillStyle = '#f4f8f8';
+        ctx.fillRect(Math.round(bx - sr * 0.45), Math.round(by - sr * 0.55), gs, gs);
+        ctx.fillStyle = '#7f949a';
+        ctx.fillRect(Math.round(bx + sr * 0.35), Math.round(by + sr * 0.1), 1, 1);
         ctx.restore();
       } else {
         // shut: a happy little arc
@@ -666,13 +693,6 @@ export class Crab {
       }
     }
 
-    // pink cheeks under the eyes
-    const E = rig.sockets.eyes;
-    const fy = E[0].y + 1.5 * S;
-    ctx.save();
-    ctx.globalAlpha = 0.55;
-    for (const e of E) pxEllipse(ctx, e.x + e.side * art.r * 1.1, fy + 0.5 * S, 2.6 * S, 1.5 * S, '#f07c86', { p: 1 });
-    ctx.restore();
   }
 
   _drawShadow(ctx, cam) {

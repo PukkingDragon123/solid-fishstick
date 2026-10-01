@@ -2316,8 +2316,23 @@ body {
   );
   def2(
     "shellRock",
-    ["#33291f", "#4d3d2c", "#6b563d", "#877051", "#a18a68", "#b9a382", "#cfbc9e", "#e4d5bd"],
+    ["#26221f", "#3a342e", "#524a42", "#6b6157", "#857a6d", "#9f9384", "#b8ad9c", "#d2c9b8"],
     { rim: 0.26, spec: 0.08, ao: 0.14, normalScale: 0.7 }
+  );
+  def2(
+    "crabShell",
+    ["#1f0d0a", "#3a1610", "#572116", "#77301d", "#954327", "#b05c33", "#c97c49", "#e0a36b"],
+    { rim: 0.42, spec: 0.38, ao: 0.14 }
+  );
+  def2(
+    "crabShellDark",
+    ["#170a08", "#2b120d", "#421a12", "#5b2618", "#753520", "#8d4829", "#a6623a", "#bf8255"],
+    { rim: 0.34, spec: 0.3 }
+  );
+  def2(
+    "crabBelly",
+    ["#3a261c", "#5c3e2c", "#7e5a40", "#9f7956", "#bc9870", "#d4b48c", "#e6cdaa", "#f4e4cc"],
+    { rim: 0.3, spec: 0.2 }
   );
   def2(
     "claw",
@@ -9444,9 +9459,9 @@ body {
     const rx = shellW * 0.5;
     const ry = rx * lerp(0.54, 0.46, t);
     const domeH = rx * lerp(0.62, 0.62, t);
-    const skirtH = rx * lerp(0.28, 0.33, t);
-    const faceH = rx * lerp(0.36, 0.3, t);
-    const eyeRise = rx * lerp(0.3, 0.22, t);
+    const skirtH = rx * lerp(0.2, 0.24, t);
+    const faceH = rx * lerp(0.5, 0.46, t);
+    const eyeRise = rx * lerp(0.2, 0.15, t);
     const pad = Math.round(6 + 8 * t);
     const crownLift = domeH * KZ;
     const w = Math.ceil(shellW + pad * 2);
@@ -9454,9 +9469,9 @@ body {
     const ox = Math.round(w / 2);
     const topCy = Math.round(pad + crownLift + ry);
     const rimY = topCy + ry + skirtH;
-    const oy = Math.round(rimY + faceH * 0.3);
+    const oy = Math.round(rimY + faceH * 0.52);
     const legN = t < 0.25 ? 3 : 4;
-    const legLen = [shellW * 0.12, shellW * 0.245, shellW * 0.19];
+    const legLen = [shellW * 0.06, shellW * 0.2, shellW * 0.195];
     return {
       stage,
       t,
@@ -9486,7 +9501,7 @@ body {
       legLen,
       reach: (legLen[0] + legLen[1] + legLen[2] * 1.1) * 0.88,
       clawLen: [shellW * 0.12, shellW * 0.1],
-      clawScale: lerp(0.26, 0.32, t),
+      clawScale: lerp(0.34, 0.4, t),
       basin: { a: 0, b: -0.3, r: 0.44 },
       organ: { a: 0, b: -0.3 }
     };
@@ -9599,17 +9614,17 @@ body {
             tint -= 0.32;
             lift -= 0.9 * S2;
           } else if (cd < 0.03) tint += 0.04;
-          if (r2 > 0.36 && b2 < 0.25) {
+          if (r2 > 0.3) {
             const n = fbmTex(a2 * 5.2 + 7.3, b2 * 5.2 - 2.1, seed + 5, 3);
             const fleck = fbmTex(a2 * 19 + 1.1, b2 * 19 + 3.3, seed + 9, 1);
-            if (n > 0.7 && fleck > 0.35) {
+            if (n > 0.72 && fleck > 0.35) {
               mat = "lichen";
-              tint += (n - 0.7) * 0.6 - 0.12;
+              tint += (n - 0.72) * 0.6 - 0.12;
               lift += 0.3 * S2;
-            } else if (n < 0.24 && r2 > 0.55 && fleck > 0.3) {
+            } else if (n < 0.4 && fleck > 0.22) {
               mat = "moss";
-              tint += 0.02;
-              lift += 0.4 * S2;
+              tint += 0.04 + (0.4 - n) * 0.5;
+              lift += 0.7 * S2;
             }
           }
         }
@@ -9754,33 +9769,83 @@ body {
       p.ellipse(x, y, r, r * 0.84, { mat: "bone", mask: true, dome: r * 0.9, tint: 0.06 });
       p.ellipse(x, y, r * 0.4, r * 0.32, { mat: "bone", mask: true, dome: -r * 0.6, tint: -0.34 });
     }
+    for (let x = 0; x < p.w; x++) {
+      if (maxY[x] < 0) continue;
+      const sa = (x - ox) / rx;
+      const n = fbmTex(sa * 4.1 + 2.3, 1.7, seed + 21, 3);
+      if (n < 0.4) continue;
+      const len = (n - 0.4) * 2 * skirtH * 1.4 * (0.6 + 0.4 * fbmTex(x * 0.4, 9.1, seed + 3, 1));
+      const y0 = maxY[x] - 1;
+      for (let y = y0; y < y0 + len; y++) {
+        const k = (y - y0) / Math.max(1, len);
+        if (k > 0.55 && fbmTex(x * 0.9, y * 0.9, seed + 8, 1) > 1.2 - k) continue;
+        p.rect(x, y, 1, 1, { mat: "moss", dome: 0, addHeight: false, tint: 0.12 - k * 0.3, lift: domeH * 0.3 + 1.2 * S2 });
+      }
+      if (n > 0.55) p.ellipse(x, y0 - 0.6, 1 * S2 + 0.4, 0.9 * S2 + 0.3, { mat: "moss", dome: 1 * S2, tint: 0.14, lift: domeH * 0.3 });
+    }
+    p.grain("moss", { freq: 0.8 / S2, amp: 0.14, seed: seed + 6 });
     let frontY = 0;
     for (let x = Math.round(ox - rx * 0.4); x <= Math.round(ox + rx * 0.4); x++) {
       if (x >= 0 && x < p.w) frontY = Math.max(frontY, wallBase[x]);
     }
-    m.faceTop = frontY;
-    const faceW = rx * 0.34;
-    const faceMid = frontY - skirtH * 0.3;
-    p.field(ox - faceW - 2, faceMid - m.faceH, ox + faceW + 2, frontY + 2, (x, y) => {
-      const sa = (x - ox) / faceW;
-      if (Math.abs(sa) > 1) return null;
-      const half = m.faceH * 0.62 * (0.55 + 0.45 * Math.sqrt(1 - sa * sa));
-      const dy = (y - faceMid) / half;
-      if (Math.abs(dy) > 1) return null;
-      const dz = Math.sqrt(clamp01(1 - dy * dy)) * Math.sqrt(clamp01(1 - sa * sa * 0.8));
-      return { h: dz * m.faceH * 0.34, tint: -0.16 + dz * 0.14 };
-    }, { mat: "chitin" });
+    const carH = m.faceH;
+    const cw = rx * 0.88;
+    const cTop = frontY - carH * 0.3;
+    const cBot = cTop + carH;
+    m.carTop = cTop;
+    m.carBot = cBot;
+    m.carW = cw;
+    const granules = [];
+    for (let i = 0; i < Math.round(30 + m.t * 40); i++) {
+      granules.push({ a: rnd(seed * 71 + i * 13) * 2 - 1, v: rnd(seed * 37 + i * 7), r: (0.5 + rnd(i * 5 + seed) * 0.6) * S2 });
+    }
+    p.field(ox - cw - 3, cTop - 2, ox + cw + 3, cBot + carH * 0.2, (x, y) => {
+      const sa = (x - ox) / cw;
+      const aa = Math.abs(sa);
+      if (aa > 1.04) return null;
+      const top = cTop + sa * sa * carH * 0.1;
+      let bot = cBot - Math.pow(aa, 1.6) * carH * 0.42;
+      if (aa > 0.38) bot += Math.max(0, Math.sin((aa - 0.38) * 26)) * carH * 0.1 * (1.1 - aa);
+      if (aa < 0.12) bot -= (0.12 - aa) * carH * 0.9;
+      if (y < top || y > bot) return null;
+      const v = (y - top) / Math.max(1, bot - top);
+      const side = Math.sqrt(clamp01(1 - aa * aa));
+      let h = side * carH * 0.42 * (1 - v * 0.55);
+      let tint = 0.02 + side * 0.1 - v * 0.08;
+      let mat = "crabShell";
+      if (v < 0.18) tint -= (0.18 - v) * 1.6;
+      const gr = Math.abs(aa - 0.42);
+      if (gr < 0.03 && v < 0.7) {
+        tint -= 0.16;
+        h -= 0.8 * S2;
+      }
+      if (v > 0.86) {
+        mat = "crabBelly";
+        tint -= 0.08;
+      }
+      for (const gq of granules) {
+        const d = Math.hypot((sa - gq.a) * cw, (v - gq.v) * carH);
+        if (d < gq.r) {
+          tint += 0.18 * (1 - d / gq.r);
+          h += 0.5 * S2;
+        }
+      }
+      return { h, tint, mat };
+    }, { mat: "crabShell" });
+    const faceMid = cTop + carH * 0.42;
     for (const sgn of [-1, 1]) {
       p.ellipse(
-        ox + sgn * faceW * 0.46,
-        faceMid - m.faceH * 0.3,
-        faceW * 0.26,
-        m.faceH * 0.18,
-        { mat: "chitinDark", mask: true, dome: -1.6 * S2, tint: -0.3 }
+        ox + sgn * cw * 0.24,
+        cTop + carH * 0.4,
+        cw * 0.11,
+        carH * 0.15,
+        { mat: "crabShellDark", mask: true, dome: -1.4 * S2, tint: -0.32 }
       );
     }
+    m.faceTop = frontY;
     m.faceMid = faceMid;
-    p.grain("chitin", { freq: 0.36 / S2, amp: 0.14, seed: seed + 9 });
+    p.grain("crabShell", { freq: 0.45 / S2, amp: 0.1, seed: seed + 9 });
+    p.speckle("crabShell", { density: 0.05, amp: 0.22, seed: seed + 15 });
     p.smoothHeight(1, 0.5);
     const cv = p.resolve(MATERIALS, { ...LIGHT3, outline: 1, outlineColor: "#171009" });
     return { cv, ox: m.ox, oy: m.oy, faceTop: frontY };
@@ -9847,7 +9912,7 @@ body {
   }
   function paintFoot(len, r0, opts = {}) {
     const far = !!opts.far, S2 = Math.max(0.4, opts.S ?? 1);
-    const mat = far ? "chitinDark" : "chitin";
+    const mat = far ? "crabShellDark" : "crabShell";
     const ft = far ? -0.17 : 0;
     const pad = Math.ceil(r0 + 4);
     const p = new Painter(Math.ceil(len) + pad * 2, pad * 2 + 2);
@@ -9887,7 +9952,7 @@ body {
   function paintClaw(m, far = false) {
     const S2 = Math.max(0.4, m.S);
     const K = Math.max(8, m.shellW * m.clawScale);
-    const mat = far ? "chitinDark" : "claw";
+    const mat = far ? "crabShellDark" : "crabShell";
     const ft = far ? -0.17 : 0;
     const L = K * 0.52, Hh = K * 0.33, tip = K * 0.5;
     const pad = 5;
@@ -9973,33 +10038,60 @@ body {
       cy,
       x0 + len - r * 0.2,
       cy,
-      Math.max(0.8, 1.5 * S2),
-      Math.max(0.9, 1.7 * S2),
-      { mat: "chitin", dome: 1.4 * S2, tint: 0 }
+      Math.max(1, 2 * S2),
+      Math.max(1, 1.8 * S2),
+      { mat: "crabShell", dome: 1.6 * S2, tint: 0.02 }
     );
-    p.ellipse(x0 + len, cy, r * 0.4, r * 0.4, { mat: "chitin", dome: r * 0.6, tint: 0 });
+    p.ellipse(x0 + len, cy, r * 0.45, r * 0.45, { mat: "crabShell", dome: r * 0.6, tint: 0.06 });
     const cv = p.resolve(MATERIALS, { ...LIGHT3, outline: 1, outlineColor: "#171009" });
     return { cv, ox: pad, oy: cy, len, r, globe: len };
   }
   function paintMouth(m) {
     const S2 = Math.max(0.4, m.S);
-    const w = Math.ceil(9 * S2) + 8, h = Math.ceil(8 * S2) + 8;
+    const w = Math.ceil(14 * S2) + 8, h = Math.ceil(11 * S2) + 8;
     const p = new Painter(w, h);
-    const cx = w * 0.5, cy = h * 0.5;
-    p.ellipse(cx, cy, 3.2 * S2, 2.6 * S2, { mat: "chitinDark", dome: 2 * S2, tint: -0.04 });
+    const cx = w * 0.5, cy = h * 0.42;
+    p.ellipse(cx, cy + 1 * S2, 5.6 * S2, 4.2 * S2, { mat: "crabShellDark", dome: 1.6 * S2, tint: -0.22 });
     for (const sgn of [-1, 1]) {
+      const x0 = cx + sgn * 2.5 * S2;
       p.capsule(
-        cx + sgn * 0.6 * S2,
-        cy - 1.4 * S2,
-        cx + sgn * 2.6 * S2,
-        cy + 1.6 * S2,
-        1.1 * S2,
-        0.7 * S2,
-        { mat: "chitinPale", dome: 1 * S2, tint: sgn > 0 ? 0.08 : -0.02 }
+        x0,
+        cy - 2.6 * S2,
+        x0 + sgn * 0.4 * S2,
+        cy + 0.6 * S2,
+        2.3 * S2,
+        2.1 * S2,
+        { mat: "crabShell", dome: 1.4 * S2, tint: sgn > 0 ? 0.06 : -0.04 }
       );
+      p.capsule(
+        x0 + sgn * 0.4 * S2,
+        cy + 0.8 * S2,
+        x0 + sgn * 0.2 * S2,
+        cy + 3.6 * S2,
+        2 * S2,
+        1.5 * S2,
+        { mat: "crabShell", dome: 1.2 * S2, tint: sgn > 0 ? 0 : -0.1 }
+      );
+      p.capsule(
+        x0 - 2 * S2,
+        cy + 0.7 * S2,
+        x0 + 2 * S2,
+        cy + 0.7 * S2,
+        0.45 * S2,
+        0.45 * S2,
+        { mat: "crabShellDark", mask: true, dome: -0.4, tint: -0.3 }
+      );
+      for (let k = 0; k < 4; k++) {
+        p.ellipse(
+          cx + sgn * 0.5 * S2,
+          cy - 2 * S2 + k * 1.6 * S2,
+          0.5 * S2 + 0.3,
+          0.5 * S2 + 0.3,
+          { mat: "crabBelly", dome: 0.4, tint: 0.2 }
+        );
+      }
     }
-    p.ellipse(cx, cy + 1 * S2, 1.5 * S2, 1 * S2, { mat: "flesh", dome: 0.8 * S2, tint: -0.2 });
-    const cv = p.resolve(MATERIALS, { ...LIGHT3, outline: 1, outlineColor: "#171009" });
+    const cv = p.resolve(MATERIALS, { ...LIGHT3, outline: 1, outlineColor: "#140806" });
     return { cv, ox: cx, oy: cy };
   }
   var cache8 = /* @__PURE__ */ new Map();
@@ -10012,19 +10104,20 @@ body {
       Math.max(3, len),
       Math.max(1, r0),
       Math.max(0.8, r1),
-      { mat: far ? "chitinDark" : "chitin", far, S: S2, ...extra }
+      { mat: far ? "crabShellDark" : "crabShell", far, S: S2, ...extra }
     );
     const legArt = {};
     for (const far of [false, true]) {
       legArt[far ? "far" : "near"] = {
-        coxa: seg2(m.legLen[0], 3.8 * S2, 3.3 * S2, far, { bow: -0.8 * S2 }),
-        femur: seg2(m.legLen[1], 3.4 * S2, 2.6 * S2, far, { bow: 1.2 * S2 }),
-        tibia: paintFoot(Math.max(3, m.legLen[2] * 1.1), Math.max(1, 2.5 * S2), { far, S: S2 })
+        coxa: seg2(m.legLen[0], 4.4 * S2, 4.2 * S2, far, { bow: 0 }),
+        femur: seg2(m.legLen[1], 4.3 * S2, 3.4 * S2, far, { bow: 1 * S2 }),
+        tibia: paintFoot(Math.max(3, m.legLen[2] * 1.1), Math.max(1, 3.2 * S2), { far, S: S2 })
       };
     }
     const faceTop = body.faceTop || m.rimY;
     const faceMid = m.faceMid ?? faceTop - m.skirtH * 0.3;
-    const hipY = faceTop - m.oy - m.skirtH * 0.18;
+    const carTop = m.carTop ?? faceTop - m.faceH * 0.3, carH = m.faceH, cw = m.carW ?? m.rx * 0.88;
+    const hipY = carTop + carH * 0.62 - m.oy;
     const legs = [];
     for (const side of [-1, 1]) {
       for (let i = 0; i < m.legN; i++) {
@@ -10033,8 +10126,8 @@ body {
         const back = i >= Math.floor(m.legN / 2);
         const depth = back ? 1 : 0;
         legs.push({
-          x: side * m.rx * spread * 0.8,
-          y: hipY - m.skirtH * (back ? 0.34 : 0.1) - depth * m.rx * 0.05,
+          x: side * cw * spread * 0.92,
+          y: hipY - carH * (back ? 0.22 : 0),
           side,
           depth,
           far: back,
@@ -10067,14 +10160,14 @@ body {
       sockets: {
         legs,
         claws: [
-          { x: -m.rx * 0.4, y: hipY - m.skirtH * 0.1, side: -1 },
-          { x: m.rx * 0.4, y: hipY - m.skirtH * 0.1, side: 1 }
+          { x: -cw * 0.42, y: carTop + carH * 0.8 - m.oy, side: -1 },
+          { x: cw * 0.42, y: carTop + carH * 0.8 - m.oy, side: 1 }
         ],
         eyes: [
-          { x: -m.rx * 0.2, y: faceMid - m.oy - m.faceH * 0.26, side: -1 },
-          { x: m.rx * 0.2, y: faceMid - m.oy - m.faceH * 0.26, side: 1 }
+          { x: -cw * 0.24, y: carTop + carH * 0.4 - m.oy, side: -1 },
+          { x: cw * 0.24, y: carTop + carH * 0.4 - m.oy, side: 1 }
         ],
-        mouth: { x: 0, y: faceMid - m.oy + m.faceH * 0.16 },
+        mouth: { x: 0, y: carTop + carH * 0.92 - m.oy },
         organ: shellSurface(m, m.organ.a, m.organ.b)
       },
       shellSurface: (a, b) => shellSurface(m, a, b),
@@ -10174,7 +10267,7 @@ body {
       this.rig = buildCrab(stage);
       this.m = this.rig.m;
       this.S = this.rig.S;
-      this.standH = this.m.faceH * 0.9 + this.m.shellW * 0.05;
+      this.standH = this.m.faceH * 0.64 + this.m.shellW * 0.03;
       this.speed = lerp(48, 100, this.m.t);
       this._buildLegs();
       if (snap && this.game && this.game.terrain) this.snapToGround();
@@ -10196,7 +10289,7 @@ body {
     /** Where this leg wants its foot: a little outboard of its own socket. */
     homeX(l, lead = 0) {
       const sp = Math.abs(l.def.spread || 0.6);
-      return this.x + l.def.side * this.m.rx * (0.95 + sp * 0.58) + lead;
+      return this.x + l.def.side * this.m.rx * (0.8 + sp * 0.8) + lead;
     }
     /** Back legs contact further away, so their feet sit higher on screen. */
     footLift(l) {
@@ -10375,7 +10468,8 @@ body {
           l.lift = damp(l.lift, 0, 1e-4, dt);
           const off = Math.abs(l.foot.x - home);
           const partnerBusy = this.legs.some((o) => o !== l && o.stepping && o.group === l.group);
-          if (off > trigger && lifting < 3 && !partnerBusy) {
+          const dragging = off > trigger * 1.9;
+          if (off > trigger && (lifting < 3 || dragging) && (!partnerBusy || dragging)) {
             l.stepping = true;
             l.t = 0;
             l.dur = clamp(0.3 - Math.abs(this.vx) * 16e-4, 0.13, 0.3);
@@ -10486,7 +10580,9 @@ body {
         const fx = sol.kx + Math.cos(sol.a2) * l2, fy = sol.ky + Math.sin(sol.a2) * l2;
         this._limb(ctx, art4.coxa, hx, hy, sol.kx, sol.ky);
         this._limb(ctx, art4.femur, sol.kx, sol.ky, fx, fy);
-        this._limb(ctx, art4.tibia, fx, fy, lx, ly);
+        const tdx = lx - fx, tdy = ly - fy, tl = Math.hypot(tdx, tdy) || 1;
+        const tk = Math.min(1, l3 * 1.08 / tl);
+        this._limb(ctx, art4.tibia, fx, fy, fx + tdx * tk, fy + tdy * tk);
       }
     }
     /**
@@ -10512,7 +10608,7 @@ body {
       const x0 = Math.floor(Math.min(p0x, p1x) - pad), x1 = Math.ceil(Math.max(p0x, p1x) + pad);
       const y0 = Math.floor(Math.min(p0y, p1y) - pad), y1 = Math.ceil(Math.max(p0y, p1y) + pad);
       const out = far ? OUT_FAR : OUT_NEAR;
-      const rings = Math.max(1, Math.round(len / (5 * sc)));
+      const rings = seg2.foot ? 1 : 2;
       const bw = x1 - x0 + 1, bh = y1 - y0 + 1;
       if (bw <= 0 || bh <= 0 || bw > LIMB || bh > LIMB) return;
       const buf = limbBuf();
@@ -10530,7 +10626,10 @@ body {
           const d2 = qx * qx + qy * qy;
           const r = seg2.foot ? lerp(R0, R1, Math.pow(t, 0.8)) : lerp(R0, R1, t);
           const rr = r + (!seg2.foot && t < 0.12 ? r * 0.12 : 0);
-          if (d2 > (rr + 0.35) * (rr + 0.35)) continue;
+          if (d2 > (rr + 0.35) * (rr + 0.35)) {
+            if (!seg2.foot && qy < 0 && d2 < (rr + 1.6) * (rr + 1.6) && Math.abs(qx) < rr * 0.5 && (Math.floor(t * len / 2.5) & 1) === 0 && t > 0.15 && t < 0.92) px32[row2 + (x - x0)] = out;
+            continue;
+          }
           const d = Math.sqrt(d2);
           let c;
           if (d > rr - 0.75) c = out;
@@ -10582,16 +10681,32 @@ body {
         const a3 = a2 + 0.18 - raise * 0.22 + Math.sin(this.clawT * 1.9 + side) * 0.04;
         this._limb(ctx, art4.arm, 0, 0, ex, ey);
         this._limb(ctx, art4.fore, ex, ey, fx, fy);
-        ctx.save();
-        ctx.translate(fx, fy);
-        ctx.rotate(a3);
-        ctx.drawImage(art4.palm.cv, -art4.palm.ox, -art4.palm.oy);
-        ctx.save();
-        ctx.translate(art4.hinge.x, art4.hinge.y);
-        ctx.rotate(-0.28 - this.clawOpen * 0.55);
-        ctx.drawImage(art4.dactyl.cv, -art4.dactyl.ox, -art4.dactyl.oy);
-        ctx.restore();
-        ctx.restore();
+        const K = Math.max(8, this.m.shellW * this.m.clawScale);
+        const PL = K * 0.5, PR = K * 0.22, FL = K * 0.5;
+        const mat = near ? "crabShell" : "crabShellDark";
+        const cs = Math.cos(a3), sn = Math.sin(a3);
+        const px1 = fx + cs * PL, py1 = fy + sn * PL;
+        this._limb(ctx, { r0: PR * 0.62, r1: PR, mat, far: !near, bow: -PR * 0.25 }, fx, fy, px1, py1);
+        const lx = px1 - sn * PR * 0.35, ly = py1 + cs * PR * 0.35;
+        this._limb(
+          ctx,
+          { r0: PR * 0.55, r1: Math.max(0.6, PR * 0.12), mat, far: !near, foot: true },
+          lx,
+          ly,
+          lx + cs * FL,
+          ly + sn * FL
+        );
+        const op = -0.25 - this.clawOpen * 0.6;
+        const hx = px1 + sn * PR * 0.45, hy = py1 - cs * PR * 0.45;
+        const da = a3 + op;
+        this._limb(
+          ctx,
+          { r0: PR * 0.5, r1: Math.max(0.6, PR * 0.12), mat, far: !near, foot: true, bow: PR * 0.2 },
+          hx,
+          hy,
+          hx + Math.cos(da) * FL * 1.02,
+          hy + Math.sin(da) * FL * 1.02
+        );
         ctx.restore();
       }
     }
@@ -10639,24 +10754,29 @@ body {
           ctx.save();
           ctx.setTransform(1, 0, 0, 1, 0, 0);
           const bx = Math.round(sx), by = Math.round(sy);
-          pxDisc(ctx, bx, by, sr, "#000000", { p: 1 });
-          const gs = Math.max(1, Math.round(sr * 0.38));
-          ctx.fillStyle = "#ffffff";
-          ctx.fillRect(Math.round(bx - sr * 0.45), Math.round(by - sr * 0.5), gs, gs);
-          ctx.fillRect(Math.round(bx + sr * 0.25), Math.round(by + sr * 0.2), Math.max(1, gs >> 1), Math.max(1, gs >> 1));
-          const ph = (tm * 0.45 + (e.side > 0 ? 0.5 : 0)) % 1;
-          if (ph < 0.2) {
-            const k = Math.sin(ph / 0.2 * Math.PI);
-            const L = Math.round(1 + k * Math.max(2, sr * 0.8));
-            const cx = Math.round(bx + sr * 0.85), cy = Math.round(by - sr * 0.85);
-            ctx.globalAlpha = 0.35 + k * 0.65;
-            ctx.fillStyle = "#fff6d8";
-            ctx.fillRect(cx - L, cy, L * 2 + 1, 1);
-            ctx.fillRect(cx, cy - L, 1, L * 2 + 1);
-            ctx.fillStyle = "#ffffff";
-            ctx.fillRect(cx - 1, cy - 1, 3, 3);
-            ctx.globalAlpha = 1;
+          const ang = Math.atan2(T.b * Math.cos(a) + T.d * Math.sin(a), T.a * Math.cos(a) + T.c * Math.sin(a));
+          const ca = Math.cos(ang), sa2 = Math.sin(ang);
+          const ra = sr * 1.2, rb = sr * 0.92;
+          const R2 = Math.ceil(ra) + 1;
+          for (let yy = -R2; yy <= R2; yy++) {
+            for (let xx = -R2; xx <= R2; xx++) {
+              const u = (xx * ca + yy * sa2) / ra, w2 = (-xx * sa2 + yy * ca) / rb;
+              const d = u * u + w2 * w2;
+              if (d > 1) continue;
+              const up = -yy / R2;
+              let c = "#111315";
+              if (d > 0.78) c = "#08090a";
+              else if (up > 0.25) c = xx + yy & 1 ? "#3a4448" : "#2a3236";
+              else if (up > -0.2) c = xx + yy & 1 ? "#22292c" : "#191e21";
+              ctx.fillStyle = c;
+              ctx.fillRect(bx + xx, by + yy, 1, 1);
+            }
           }
+          const gs = Math.max(1, Math.round(sr * 0.32));
+          ctx.fillStyle = "#f4f8f8";
+          ctx.fillRect(Math.round(bx - sr * 0.45), Math.round(by - sr * 0.55), gs, gs);
+          ctx.fillStyle = "#7f949a";
+          ctx.fillRect(Math.round(bx + sr * 0.35), Math.round(by + sr * 0.1), 1, 1);
           ctx.restore();
         } else {
           ctx.fillStyle = "#000000";
@@ -10665,12 +10785,6 @@ body {
           }
         }
       }
-      const E2 = rig.sockets.eyes;
-      const fy = E2[0].y + 1.5 * S2;
-      ctx.save();
-      ctx.globalAlpha = 0.55;
-      for (const e of E2) pxEllipse(ctx, e.x + e.side * art4.r * 1.1, fy + 0.5 * S2, 2.6 * S2, 1.5 * S2, "#f07c86", { p: 1 });
-      ctx.restore();
     }
     _drawShadow(ctx, cam) {
       const t = this.game.terrain;
