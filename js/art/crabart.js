@@ -52,7 +52,9 @@ export function crabMetrics(stage = 'adult') {
 
   const ox = Math.round(pad + spireLen + rx);
   const topCy = Math.round(pad + crownLift + ry);   // centre of the top ellipse
-  const rimY = topCy + ry + skirtH;                 // the bottom edge of the shell
+  // the bottom edge of the shell as it is drawn: the near lip of the top
+  // ellipse (foreshortened by KY) plus the flank hanging under it
+  const rimY = topCy + ry * KY + skirtH;
   const oy = Math.round(rimY + faceH * 0.15);       // anchor: the hip line
 
   const legN = 2;

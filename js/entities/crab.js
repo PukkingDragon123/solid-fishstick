@@ -103,7 +103,10 @@ export class Crab {
     this.rig = buildCrab(stage);
     this.m = this.rig.m;
     this.S = this.rig.S;
-    this.standH = this.m.faceH * 0.45 + this.m.shellW * 0.025;   // the shell carried just clear of the sand
+    // a hermit crab carries its shell just clear of the sand, not up on stilts
+    // measured from the shell's real bottom edge, so a shell of any size
+    // rests a hair above the ground
+    this.standH = Math.max(0.6, this.m.shellW * 0.015) - (this.m.oy - this.m.rimY);   // the shell carried just clear of the sand
     this.speed = lerp(48, 100, this.m.t);
     this._buildLegs();
     if (snap && this.game && this.game.terrain) this.snapToGround();
@@ -636,12 +639,22 @@ export class Crab {
       // fingers to the ground - lifted when it is busy
       // the whole limb swings up as one piece about the shoulder - lifting
       // each joint by its own amount is what folded it into a knot
-      const lift = Math.min(1, raise) * 0.75;
-      const a1 = 0.40 + sw - lift + this.crouch * 0.12;
-      const ex = Math.cos(a1) * art.arm.len, ey = Math.sin(a1) * art.arm.len;
-      const a2 = a1 + 0.50;
-      const fx = ex + Math.cos(a2) * art.fore.len * k, fy = ey + Math.sin(a2) * art.fore.len * k;
-      const a3 = a2 + 0.35 + Math.sin(this.clawT * 1.9 + (near ? 0 : 2)) * 0.04;
+      let lift = Math.min(1, raise) * 0.75;
+      const K0 = Math.max(8, this.m.shellW * this.m.clawScale) * k;
+      // the ground, in this frame: the claw swings up until it rests on it
+      // rather than sinking into the sand
+      const groundY = this.standH - so.y - 0.5;
+      let a1, ex, ey, a2, fx, fy, a3;
+      for (let it = 0; it < 10; it++) {
+        a1 = 0.40 + sw - lift + this.crouch * 0.12;
+        ex = Math.cos(a1) * art.arm.len; ey = Math.sin(a1) * art.arm.len;
+        a2 = a1 + 0.50;
+        fx = ex + Math.cos(a2) * art.fore.len * k; fy = ey + Math.sin(a2) * art.fore.len * k;
+        a3 = a2 + 0.35 + Math.sin(this.clawT * 1.9 + (near ? 0 : 2)) * 0.04;
+        const tipY = fy + Math.sin(a3) * K0 * 0.86 + K0 * 0.12;
+        if (tipY <= groundY) break;
+        lift += 0.12;
+      }
       this._limb(ctx, art.arm, 0, 0, ex, ey);
       this._limb(ctx, art.fore, ex, ey, fx, fy);
       const K = Math.max(8, this.m.shellW * this.m.clawScale) * k;
