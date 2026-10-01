@@ -10037,7 +10037,7 @@ body {
       if (this.rig.hermit) {
         const f = this.turnDir >= 0 ? 1 : -1;
         const ap = this.m.ap || { x: this.m.rx * 0.66 };
-        const fx = l.def.side > 0 ? ap.x + this.m.rx * (0.8 + sp * 0.5) : ap.x - this.m.rx * (0.6 + sp * 0.5);
+        const fx = l.def.side > 0 ? ap.x + this.m.rx * (0.7 + sp * 0.45) : ap.x - this.m.rx * (0.55 + sp * 0.45);
         return this.x + f * fx + lead;
       }
       return this.x + l.def.side * this.m.rx * (0.8 + sp * 0.8) + lead;
@@ -10133,8 +10133,7 @@ body {
       if (Math.abs(this.vx) < 0.6) this.vx = 0;
       this.x += this.vx * dt;
       this.lean = damp(this.lean, clamp(this.vx / this.speed, -1, 1) * 0.7, 9e-4, dt);
-      this._stepLegs(dt, t);
-      this._reachGuard(t);
+      this._gait(dt, t);
       this._rideFeet(dt, t);
       const spd = Math.abs(this.vx);
       const run = clamp01(spd / (this.speed * 0.85));
@@ -10195,81 +10194,71 @@ body {
       this.crouch = damp(this.crouch, this.pumping > 0 ? 1 : 0, 9e-4, dt);
     }
     /**
-     * No foot is ever left further from its hip than the leg can reach. On a
-     * slow phone the body can travel a long way between two frames, and a foot
-     * planted where it was is then out of reach - drawn as a leg that stops
-     * short of the ground. Any foot that far behind steps at once.
+     * THE GAIT. Every foot's position is worked out fresh each frame from one
+     * number - how far the crab has walked - rather than from a step that was
+     * started some frames ago and may not have finished. That is what makes it
+     * impossible for a foot to be left behind: it does not matter how long a
+     * frame was, or how slow the device is, the foot is exactly where the
+     * cycle says it is.
+     *
+     *   stance  (60% of the cycle) the foot is planted: it slides back
+     *           relative to the body at exactly the speed the body moves, so
+     *           in the world it does not move at all
+     *   swing   (40%) it lifts, travels forward over the stride, and lands
+     *
+     * Legs are spread round the cycle a quarter apart, so two are always down.
+     * Each foot ranges only half a stride either side of its home, which is
+     * always inside the leg's reach - and a final clamp holds it there anyway.
      */
-    _reachGuard(t) {
+    _gait(dt, t) {
+      const STANCE = 0.6;
+      const spd = Math.abs(this.vx);
+      const stride = this.m.rx * 0.4;
+      const cycle = stride / STANCE;
+      if (spd > 0.5) this.gaitDir = Math.sign(this.vx);
+      const dm = this.gaitDir || 1;
+      this.gaitP = ((this.gaitP || 0) + spd * dt / cycle) % 1;
+      const want = spd > 0.5 ? 1 : 0;
+      this.gaitAmp = damp(this.gaitAmp ?? 0, want, want ? 0.02 : 4e-3, dt);
+      const amp = this.gaitAmp;
+      const liftH = this.m.legLen[1] * 0.45;
+      const turning = this.turnP < 1;
       const rig = this.rig;
       const tsx = this.turnScaleX;
-      for (const l of this.legs) {
+      const OFF = [0, 0.5, 0.25, 0.75];
+      this.legs.forEach((l, i) => {
+        const p = (this.gaitP + OFF[i % 4]) % 1;
+        let u, lift = 0;
+        const swing = p >= STANCE;
+        if (!swing) u = 0.5 - p / STANCE;
+        else {
+          const q = (p - STANCE) / (1 - STANCE);
+          u = -0.5 + q;
+          lift = Math.sin(q * Math.PI) * liftH;
+        }
+        if (l.wasSwing && !swing && amp > 0.3) this._land(l, t);
+        l.wasSwing = swing;
+        l.stepping = swing && amp > 0.15;
+        l.lift = lift * amp;
+        const tx = this.homeX(l) + dm * u * stride * amp;
+        let ty = t.surfaceY(tx) - this.footLift(l) - l.lift;
+        if (turning) {
+          const k = Math.min(1, dt * 12);
+          l.foot.x += (tx - l.foot.x) * k;
+          l.foot.y += (ty - l.foot.y) * k;
+        } else {
+          l.foot.x = tx;
+          l.foot.y = ty;
+        }
         const art4 = l.def.far ? rig.legArt.far : rig.legArt.near;
-        const reach = (art4.coxa.len + art4.femur.len + art4.tibia.len) * 0.98;
+        const reach = (art4.coxa.len + art4.femur.len + art4.tibia.len) * 0.97;
         const hx = this.x + l.def.x * tsx, hy = this.y + this.bob + l.def.y;
         const dx = l.foot.x - hx, dy = l.foot.y - hy, d = Math.hypot(dx, dy);
-        if (d <= reach) continue;
-        const gy0 = t.surfaceY(l.foot.x) - this.footLift(l);
-        const v = gy0 - hy;
-        if (Math.abs(v) < reach) {
-          const nx = hx + Math.sign(dx || 1) * Math.sqrt(reach * reach - v * v) * 0.97;
-          l.foot.x = nx;
-          l.foot.y = t.surfaceY(nx) - this.footLift(l);
-        } else {
+        if (d > reach) {
           l.foot.x = hx + dx / d * reach;
           l.foot.y = hy + dy / d * reach;
         }
-        if (l.stepping) continue;
-        const home = this.homeX(l);
-        l.stepping = true;
-        l.t = 0;
-        l.dur = 0.12;
-        l.from = { x: l.foot.x, y: l.foot.y };
-        l.to = { x: home, y: t.surfaceY(home) - this.footLift(l) };
-      }
-    }
-    _stepLegs(dt, t) {
-      const lead = this.vx * 0.2;
-      const trigger = this.m.rx * 0.24 + Math.abs(this.vx) * 0.05;
-      let lifting = 0;
-      for (const l of this.legs) if (l.stepping) lifting++;
-      for (const l of this.legs) {
-        const home = this.homeX(l, lead);
-        if (l.stepping) {
-          l.to.x = home + Math.sign(home - l.from.x) * Math.min(trigger * 0.75, Math.abs(home - l.from.x));
-          l.to.y = t.surfaceY(l.to.x) - this.footLift(l);
-          l.t += dt / l.dur;
-          if (l.t >= 1) {
-            l.t = 1;
-            l.stepping = false;
-            l.foot.x = l.to.x;
-            l.foot.y = l.to.y;
-            this._land(l, t);
-          } else {
-            const k = l.t;
-            l.foot.x = lerp(l.from.x, l.to.x, k);
-            const base = lerp(l.from.y, l.to.y, k);
-            l.lift = Math.sin(k * Math.PI) * (this.m.legLen[1] * 0.5 + Math.abs(this.vx) * 0.04);
-            l.foot.y = base - l.lift;
-          }
-        } else {
-          l.lift = damp(l.lift, 0, 1e-4, dt);
-          const off = Math.abs(l.foot.x - home);
-          const partnerBusy = this.legs.some((o) => o !== l && o.stepping && o.group === l.group);
-          const dragging = off > trigger * 1.9;
-          if (off > trigger && (lifting < 3 || dragging) && (!partnerBusy || dragging)) {
-            l.stepping = true;
-            l.t = 0;
-            l.dur = clamp(0.3 - Math.abs(this.vx) * 16e-4, 0.13, 0.3);
-            l.from = { x: l.foot.x, y: l.foot.y };
-            const tx = home + Math.sign(home - l.foot.x) * trigger * 0.75;
-            l.to = { x: tx, y: t.surfaceY(tx) - this.footLift(l) };
-            lifting++;
-          } else {
-            l.foot.y = damp(l.foot.y, t.surfaceY(l.foot.x) - this.footLift(l), 5e-4, dt);
-          }
-        }
-      }
+      });
     }
     _land(l, t) {
       const w = Math.abs(this.vx);
@@ -10284,7 +10273,7 @@ body {
       for (const l of this.legs) {
         if (l.stepping) continue;
         const dx = l.foot.x - this.x;
-        const fy = l.foot.y + this.footLift(l);
+        const fy = l.foot.y + this.footLift(l) + (l.lift || 0);
         sx += dx;
         sy += fy;
         sxx += dx * dx;
