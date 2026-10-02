@@ -353,7 +353,7 @@ export class Renderer {
     s.drawImage(this._vignette, 0, 0);
     if ((this.underwater || 0) > 0.05) {
       // and underwater the edges go to deep blue rather than to brown
-      pxVignette(s, this.vw, this.vh, '#021a33', this.underwater * 0.55, { p: 2, steps: 5, inner: 0.30 });
+      pxVignette(s, this.vw, this.vh, '#021a33', this.underwater * 0.32, { p: 2, steps: 5, inner: 0.42 });
     }
 
     this._drawModeGrade(s);
