@@ -50,6 +50,7 @@ import { Garden } from './systems/garden.js';
 import { Economy } from './systems/economy.js';
 import { Wildlife } from './systems/wildlife.js';
 import { Encounters } from './systems/encounters.js';
+import { Camp } from './systems/camp.js';
 import { UI, MODES } from './ui/ui.js';
 import { FLORA_BY_ID } from './data/flora.js';
 import { buildPlant } from './art/floraart.js';
@@ -166,6 +167,8 @@ export class Game {
     this.fishing = new Fishing(this);
     this.puzzle = new VentPuzzle(this);
     this.ending = new Ending(this);
+    // -- camp: Vess's camps, and whatever you pitch yourself (systems/camp.js)
+    this.camp = new Camp(this);
     // What you have been given. You wake up able to walk and dig; everything
     // else arrives when the world first gives you a reason for it, and the
     // mode column in the corner grows as this set does.
@@ -1098,7 +1101,10 @@ export class Game {
     const slow = this.state === 'dead' ? 0.3 : 1;
     const sdt = dt * slow;
 
-    this.ui.update(dt);
+    // -- camp: its chest and kit read input first, and a chest or a night's
+    // sleep owns the screen while it is up
+    this.camp.input();
+    if (!this.camp.modal) this.ui.update(dt);
     if (this.state === 'intro') this._runCut(dt);
     if (this.state === 'prologue') this._runPrologue(dt);
     if (this.state === 'burying') this._runBury(dt);
@@ -1147,6 +1153,17 @@ export class Game {
       this.crab.update(dt, { move: 0 });
       this.fx.update(dt, this.weather);
       this.critters.update(dt, this.weather);
+      this.terrain.update(dt, 1.1);
+      this.cam.update(dt);
+      this.input.endFrame();
+      return;
+    }
+    // -- camp: a chest open or a night being slept through
+    if (this.camp.modal && this.state === 'play') {
+      this.camp.update(dt);
+      this.npc.update(dt);
+      this.crab.update(dt, { move: 0 });
+      this.fx.update(dt, this.weather);
       this.terrain.update(dt, 1.1);
       this.cam.update(dt);
       this.input.endFrame();
@@ -1410,6 +1427,7 @@ export class Game {
     else if (Math.abs(this.npc.x - this.crab.x) < 90) this.crab.alertTo(this.npc, 0.3 * sdt);
     this.encounters.update(sdt);
     this.world.update(sdt);
+    this.camp.update(sdt);
     this.shallows.update(sdt);
     this.fountains.update(sdt);
     this.npc.update(sdt);
@@ -1648,6 +1666,8 @@ export class Game {
   actionHint() {
     if (this.state !== 'play') return null;
     const c = this.crab;
+    const campHint = this.camp.hint();
+    if (campHint) return campHint;
     if (this.wildlife.nearest(c.x, c.y, 44, (q) => q.hostile)) return 'STRIKE';
     const wildOne = this.wildlife.nearest(c.x, c.y, 46, (q) => !q.hostile && !q.tamed);
     if (wildOne) return this.taming.why(wildOne) ? null : 'SING';
@@ -1991,6 +2011,8 @@ export class Game {
     if (this.work.live) { this.work.strike(); return; }
     // a fish in reach comes before anything on the ground: it will not wait
     if (!this.fountains.reachable(c.x) && this.fishing.tryCatch()) return;
+    // a chest, a bed, or the piece of camp you are holding
+    if (this.camp.act()) return;
 
     // something in the ground right under you comes first: it is the only
     // thing here you can lose by walking past
@@ -2864,6 +2886,7 @@ export class Game {
       combat: this.combat.toJSON(), quests: this.quests.save(),
       fountains: this.fountains.save(), unlocked: [...this.unlocked],
       fishing: this.fishing.save(),
+      camp: this.camp.toJSON(),
     });
   }
 
@@ -2903,6 +2926,7 @@ export class Game {
       this.relics = d.relics || {};
       this.fountains.load(d.fountains);
       this.fishing.load(d.fishing);
+      this.camp.fromJSON(d.camp);
       this.unlocked = new Set(d.unlocked || []);
       if (d.mode && this.ui.modeUnlocked(d.mode)) this.ui.mode = d.mode;
       else this.ui.mode = 'direct';
@@ -2958,6 +2982,8 @@ export class Game {
     if (drySet) this.world.drawProps2(ctx, cam, 'far');
     this.fountains.draw(ctx, cam);
     if (drySet) this.world.drawScatter(ctx, cam, 'far');
+    // -- camp: tents, crates and fires, behind everything that walks
+    if (drySet && this.state !== 'prologue' && this.state !== 'burying') this.camp.draw(ctx, cam);
     // the giants go behind even the far reef: they are thirty metres up and
     // several hundred metres off, and everything on the bottom is in front
     if (this.seaShowing) this.sea.drawDeep(ctx, cam, r.vw, r.vh);
@@ -3045,6 +3071,7 @@ export class Game {
       const s = cam.worldToScreen(o.x, o.y);
       r.addLight(s.x, s.y, 34 * cam.zoom, '#9de3ee', 0.25 * this.garden.pond);
     }
+    if (this.state !== 'prologue' && this.state !== 'burying') this.camp.lights(r, cam);
     r.endLights();
     r.drawWeatherOverlay(this.weather, this);
     r.composite(this.weather, this);
@@ -3069,20 +3096,21 @@ export class Game {
     else if (this.state === 'prologue') this._drawPrologue(ui, r);
     if (this.state === 'title') { /* the menu is its own chrome */ }
     else if (this.state !== 'play' && this.state !== 'dead') this._drawCine(ui, r);
-    else if (!this.talk.on && !this.puzzle.on && !this.ending.on) this.ui.draw(ui, r);
+    else if (!this.talk.on && !this.puzzle.on && !this.ending.on && !this.camp.modal) this.ui.draw(ui, r);
     this._drawSkip(ui, r);
     if (this.talk.fade > 0.01) this.talk.draw(ui, r.vw, r.vh);
     if (this.puzzle.fade > 0.01) this.puzzle.draw(ui, r.vw, r.vh);
     this.ending.drawUI(ui, r.vw, r.vh);
+    this.camp.drawUI(ui, r.vw, r.vh);
     // what a job turned up says so on its own scroll; nothing else floats over it
     const looting = !!(this.work.result && this.work.result.t < 2.2);
-    if (!this.ui.bookOpen && !this.ui.mapOpen && !looting) this.fx.drawText(ui, cam, (c, t, x, y, o) => drawText(c, t, x, y, o));
+    if (!this.ui.bookOpen && !this.ui.mapOpen && !looting && !this.camp.modal) this.fx.drawText(ui, cam, (c, t, x, y, o) => drawText(c, t, x, y, o));
     if (this.state === 'dead') this._drawDead(ui, r);
     // Anything that belongs to the WORLD stops at the edge of a screen. A
     // speech bubble floating over an open bench is the single thing that made
     // the panels read as an overlay somebody forgot to finish.
     const inside = this.ui.tree.dive > 0.4 || this.ui.drawer > 0.02
-      || this.ui.paused || !!this.unlockCard || this.work.modal || this.ui.bookOpen || this.ui.mapOpen;
+      || this.ui.paused || !!this.unlockCard || this.work.modal || this.ui.bookOpen || this.ui.mapOpen || this.camp.modal;
     if (this.npc.speech && this.state === 'play' && !inside && !this.talk.on && !this.puzzle.on
       && !(this.ending.on && this.ending.t > 3) && !this.quests.chapterCard && !this.work.timed && !looting) this._drawSpeech(ui, cam, this.npc);
     r.dctx.drawImage(r.uiC, 0, 0, r.vw, r.vh, 0, 0, r.vw * r.scale, r.vh * r.scale);

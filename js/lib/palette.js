@@ -299,6 +299,21 @@ def('cattail', ['#180c07', '#28140b', '#3b1e10', '#4f2916', '#64351c', '#794324'
 def('lilypad', ['#0a1d14', '#0f2a1c', '#153a26', '#1c4b30', '#245d3b', '#2e7047', '#3b8354', '#4c9763'],
   { rim: 0.3, spec: 0.3, normalScale: 0.4 });
 
+// -- the camp (js/art/campart.js) -------------------------------------------
+// tent canvas eleven summers in the sun: cream on the lit face, a dusty
+// khaki in the folds, never white
+def('campCanvas', ['#2e261c', '#4a3e2e', '#685a44', '#87775b', '#a39373', '#bcae8c', '#d2c6a6', '#e4dcc0',
+  '#f1ead4'], { rim: 0.22, ao: 0.12, normalScale: 0.6 });
+// the madder-red trim and patches, faded to brick
+def('campRed', ['#2a100c', '#441913', '#62241a', '#7e3222', '#97432c', '#ad5a3a', '#c0744e', '#d09068'],
+  { rim: 0.24, ao: 0.1 });
+// a wool blanket, deep oxblood
+def('campWool', ['#1e0a0a', '#341010', '#4c1816', '#64211c', '#7c2d24', '#94402e', '#a9573c', '#bd7050'],
+  { rim: 0.2, ao: 0.14, normalScale: 0.45 });
+// the bed of a fire that has been lit every night for years
+def('campAsh', ['#151210', '#221d1a', '#312b27', '#433b35', '#564d45', '#6b6157', '#81776b', '#988e80'],
+  { rim: 0.12, ao: 0.16, normalScale: 0.5 });
+
 def('default', ['#1a1a1a', '#333', '#4d4d4d', '#666', '#808080', '#999', '#b3b3b3', '#ccc']);
 
 export const MATERIALS = M;

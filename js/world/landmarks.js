@@ -15,7 +15,7 @@ import { FLORA_BY_ID } from '../data/flora.js';
 import { biomeAt } from './biomes.js';
 import {
   propsIn, propArt, decorIn, decorArt, Tumbleweeds, propBump, formNear, setPropGuard, beginPropFrame,
-  boulderSeat, boulderSand, bake,
+  boulderSeat, boulderSand, bake, extraGuarded,
 } from './props.js';
 import { Terrain } from './terrain.js';
 import { GROUND, gsx, gsy, lineY } from '../art/ground.js';
@@ -240,6 +240,8 @@ export function scatterAt(seed, terrain, x0, x1) {
       if (terrain && Math.abs(x - lm.x) < lm.size && terrain.baseY(x) > poolSurface(lm, terrain) - 2) inWater = true;
     }
     if (inWater) continue;
+    // and the ground somebody has cleared to camp on (systems/camp.js)
+    if (extraGuarded(seed, x)) continue;
     const b = biomeAt(x);
     const chance = 0.06 + wet * 0.85;
     if (r() > chance) continue;
