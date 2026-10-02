@@ -233,6 +233,21 @@ export class Audio {
         this.tone(196, { type: 'sine', dur: 2.2, vol: 0.08, verb: 0.9 });
         this.tone(233, { type: 'sine', dur: 2.4, vol: 0.06, delay: 0.3, verb: 0.9 });
         break;
+      case 'knock': {
+        // Steel on something hollow that is pretending to be stone: a hard
+        // click at the front, a dull wooden body under it, and a short ring
+        // off the pick head. `pitch` below 1 is the same knock from further
+        // inside - which is where you are hearing it from.
+        this.noiseBurst({ dur: 0.05, vol: 0.34, freq: 3400 * p, q: 1.6, sweep: 0.5 });
+        this.noiseBurst({ dur: 0.22, vol: 0.30, freq: 260 * p, q: 1.1, sweep: 0.55 });
+        this.tone(118 * p, { type: 'sine', dur: 0.32, vol: 0.34, slide: 0.62, verb: 0.55 });
+        this.tone(1760 * p, { type: 'triangle', dur: 0.24, vol: 0.05, slide: 0.98, delay: 0.004, verb: 0.4 });
+        break;
+      }
+      case 'rumble':
+        this.noiseBurst({ dur: 2.4, vol: 0.18, freq: 90, q: 0.5, sweep: 0.6 });
+        this.tone(38, { type: 'sine', dur: 2.2, vol: 0.16, slide: 0.8, verb: 0.5 });
+        break;
       case 'dawn':
         [0, 4, 7, 11].forEach((s, i) => this.tone(329.6 * Math.pow(2, s / 12), { type: 'sine', dur: 1.4, vol: 0.09, delay: i * 0.16, verb: 0.8 }));
         break;
@@ -244,8 +259,14 @@ export class Audio {
   // A slow modal loop. Mood swaps the scale and instrument colour.
   setMood(mood) { this._mood = mood; }
 
+  /**
+   * Silence, on purpose. While it is held the score stops picking notes, so
+   * the one sound that comes next has nothing else in the room with it.
+   */
+  hush(on) { this.quiet = !!on; }
+
   updateMusic(dt) {
-    if (!this.ctx || !this.enabled) return;
+    if (!this.ctx || !this.enabled || this.quiet) return;
     this._musicTimer -= dt;
     if (this._musicTimer > 0) return;
 

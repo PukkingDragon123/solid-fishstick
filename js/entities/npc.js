@@ -24,7 +24,7 @@ export const POSE = {
   WRITE: 'write', POINT: 'point', DRINK: 'drink', WAVE: 'wave',
   SIT: 'sit', TALK: 'talk', WANDER: 'wander', TIRED: 'tired',
   SURVEY: 'survey', MEASURE: 'measure', REST: 'rest', SHOCK: 'shock', BEER: 'beer',
-  DOWN: 'down',
+  DOWN: 'down', SWING: 'swing',
 };
 
 /**
@@ -65,7 +65,22 @@ const POSES = {
   // both arms straight up, spine back: the shape a person makes when the rock
   // they have been sitting on turns out to be an animal
   shock: { crouch: 0.16, lean: -0.14, armN: [-1.30, 0.26], armF: [-1.46, 0.22], swing: 0 },
+  // A pick, two-handed. The arms here are only the resting shape: while he
+  // is in this pose `swingK` (0 wound up over his head, 1 buried in the
+  // rock) is the whole of where they are, set by whoever is directing him,
+  // so the knock can land on exactly the frame the pick does.
+  swing: { crouch: 0.14, lean: 0.16, armN: [-1.9, 0.16], armF: [-1.8, 0.22], tool: 'pickUp', swing: 0 },
 };
+
+/** Arms, lean and crouch for a pick at `k` through its swing. */
+function swingShape(k) {
+  // most of the arc happens late: a slow lift, a fast drop
+  const e = k * k * (3 - 2 * k);
+  return {
+    a: lerp(-2.15, 0.62, e), f: lerp(0.10, 0.20, e),
+    lean: lerp(-0.06, 0.44, e), crouch: lerp(0.04, 0.34, e),
+  };
+}
 
 const CAMP_ITEMS = ['bedroll', 'canteen', 'lantern', 'peg', 'skull', 'spoil', 'pick', 'brush'];
 
@@ -416,6 +431,16 @@ export class Person {
   _settle(dt) {
     const P = POSES[this.pose] || POSES.idle;
     const b = this.b;
+    if (this.pose === POSE.SWING) {
+      // driven, not eased: a swing that lags its own knock is not a swing
+      const w = swingShape(clamp01(this.swingK || 0));
+      b.armN0 = w.a; b.armN1 = w.f;
+      b.armF0 = w.a + 0.1; b.armF1 = w.f + 0.08;
+      b.lean = damp(b.lean, w.lean, 0.00001, dt);
+      b.crouch = damp(b.crouch, w.crouch, 0.00001, dt);
+      b.look = damp(b.look, 0, 0.0012, dt);
+      return;
+    }
     const rate = 0.0006;
     b.crouch = damp(b.crouch, P.crouch, rate, dt);
     b.lean = damp(b.lean, P.lean, rate, dt);
@@ -674,7 +699,10 @@ export class Person {
       armF: this._armJoints({ x: shoulder.x - 1.2, y: shoulder.y }, this.b.armF0, this.b.armF1, lean, -1),
       legN: this._legJoints(this.feet[0], hipWorldY, dir, 1),
       legF: this._legJoints(this.feet[1], hipWorldY, dir, -1),
-      tool: P.tool, hold: P.hold,
+      tool: this.pose === POSE.SWING
+        ? ((this.swingK || 0) < 0.4 ? 'pickUp' : (this.swingK || 0) < 0.78 ? 'pickMid' : 'pickDown')
+        : P.tool,
+      hold: P.hold,
       face: this._faceState(),
       spore: (this.game.mind ? this.game.mind.blue : 0) > 0.35,
       nod: (P.work && Math.sin(this.animT * 4.0) > 0.55 ? 1 : 0)

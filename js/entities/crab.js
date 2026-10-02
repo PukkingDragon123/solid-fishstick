@@ -947,8 +947,10 @@ export class Crab {
       const tw = this.fidget && this.fidget.tw[ki] > 0 ? Math.pow(this.fidget.tw[ki] / 0.42, 1.6) : 0;
       const twA = tw ? this.fidget.twA[ki] * tw : 0;
       const st = (1 + Math.sin(tm * 3.3 + e.side * 2.2) * 0.07 + walk * Math.abs(Math.sin(tm * 9.0)) * 0.08) * (1 - tw * 0.14);
-      const shrink = this.blink > 0
-        ? 1 - Math.sin(clamp01(this.blink / 0.16) * Math.PI) * 0.7 : 1;
+      // `asleep` (0..1) folds the stalks down and shuts the beads for as long
+      // as it is held - a blink is a moment, sleep is a thousand years
+      const shrink = Math.min(this.blink > 0
+        ? 1 - Math.sin(clamp01(this.blink / 0.16) * Math.PI) * 0.7 : 1, 1 - clamp01(this.asleep || 0) * 0.62);
       ctx.save();
       ctx.translate(e.x, e.y);
       a += twA;
