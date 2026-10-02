@@ -873,7 +873,7 @@ export class Archaeologist extends Person {
       return;
     }
 
-    if (this.mode === 'follow' && crab) {
+    if (this.mode === 'follow' && crab && !this.campHeld) {
       const want = crab.x - Math.sign(crab.vx || 1) * (30 + crab.m.shellW * 0.5);
       if (Math.abs(want - this.x) > 12) this.moveTo = want;
     }
@@ -897,6 +897,9 @@ export class Archaeologist extends Person {
     if (this.mode === 'owned') return;
     this._chatter(dt);
 
+    // -- camp: after dark he goes back to his fire (systems/camp.js)
+    this.campHeld = !!this.game.camp?.holdVess(this);
+    if (this.campHeld) return;
     if (this.mode === 'follow') return;
     // He never just stands there. A rota of things an archaeologist alone in
     // a basin actually does, each one running for as long as it is worth.

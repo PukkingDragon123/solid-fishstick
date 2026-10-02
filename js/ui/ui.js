@@ -1787,7 +1787,8 @@ export class UI {
     if (hint && !this.touchEnabled) {
       // the crab doing it, in a slot, with the key beside it
       const CH = { CATCH: 'catch', STUDY: 'study', CUT: 'cut', BREAK: 'break', SING: 'sing', STRIKE: 'strike',
-        DIG: 'dig', MINE: 'mine', TALK: 'talk', SEARCH: 'search', DRINK: 'pump', PUMP: 'pump', PICK: 'pick' };
+        DIG: 'dig', MINE: 'mine', TALK: 'talk', SEARCH: 'search', DRINK: 'pump', PUMP: 'pump', PICK: 'pick',
+        OPEN: 'search', SLEEP: 'idle', PLACE: 'build' };
       const key = hint === 'TALK' ? 'C' : 'E';
       const lw = textWidth(hint);
       const sw = 28, sh = 24, total = sw + 4 + 11 + 4 + lw;
@@ -3627,7 +3628,9 @@ export class UI {
       // ONE contextual plate, not three. Talking, picking and acting never
       // happen at once and they were three plates fighting for the same
       // corner; whichever the world is offering, that is the plate.
-      if (g.npc && g.talk && !g.talk.on && Math.abs(g.npc.x - g.crab.x) < 64) {
+      // (a chest, a bed or a piece of camp in your hands beats talking to him)
+      const campAct = hint === 'OPEN' || hint === 'SLEEP' || hint === 'PLACE';
+      if (!campAct && g.npc && g.talk && !g.talk.on && Math.abs(g.npc.x - g.crab.x) < 64) {
         wanted.push({ icon: 'call', chibi: 'talk', label: 'TALK', key: 'c', colour: '#e8c98a' });
       } else if (g.garden.ripeCount) {
         wanted.push({ icon: 'fruit', chibi: 'pick', label: `PICK ${g.garden.ripeCount}`, key: 'r',
@@ -3635,9 +3638,11 @@ export class UI {
       } else if (hint) {
         // the plate says what it will actually do, with a picture of it
         const HINT_ICON = { CATCH: 'fish', STUDY: 'magnifier', CUT: 'axe', BREAK: 'hammer', SING: 'sing',
-          STRIKE: 'claw', DIG: 'spade', MINE: 'pickaxe', TALK: 'call', SEARCH: 'magnifier' };
+          STRIKE: 'claw', DIG: 'spade', MINE: 'pickaxe', TALK: 'call', SEARCH: 'magnifier',
+          OPEN: 'chest', SLEEP: 'moon', PLACE: 'build' };
         const HINT_CHIBI = { CATCH: 'catch', STUDY: 'study', CUT: 'cut', BREAK: 'break', SING: 'sing',
-          STRIKE: 'strike', DIG: 'dig', MINE: 'mine', TALK: 'talk', SEARCH: 'search', DRINK: 'pump', PUMP: 'pump' };
+          STRIKE: 'strike', DIG: 'dig', MINE: 'mine', TALK: 'talk', SEARCH: 'search', DRINK: 'pump', PUMP: 'pump',
+          OPEN: 'search', SLEEP: 'idle', PLACE: 'build' };
         wanted.push({ icon: HINT_ICON[hint] || 'hand', chibi: HINT_CHIBI[hint] || 'explore', label: hint.length <= 6 ? hint : 'ACT',
           key: hint === 'TALK' ? 'c' : 'e', act: hint,
           colour: hint === 'CATCH' ? '#9de3ee' : '#e2b74a' });

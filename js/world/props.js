@@ -48,6 +48,23 @@ let cacheSeed = null;
  */
 let guard = null;
 export function setPropGuard(fn) { guard = fn; cache.clear(); decorCache.clear(); }
+// More stretches to keep clear - a camp, say (systems/camp.js). Never asked
+// about boulders: a boulder is the ground itself, and moving one would move
+// the floor everything else was measured from.
+const extraGuards = [];
+export function addPropGuard(fn) { extraGuards.push(fn); cache.clear(); decorCache.clear(); }
+export function clearPropCaches() { cache.clear(); decorCache.clear(); }
+/** Is this spot kept clear by one of the extra guards (not the landmarks')? */
+export function extraGuarded(seed, x, hw = 6) {
+  for (const f of extraGuards) if (f(String(seed), x, hw, 'scatter')) return true;
+  return false;
+}
+function guarded(seed, x, hw, kind) {
+  if (guard && guard(seed, x, hw, kind)) return true;
+  if (kind === 'boulder') return false;
+  for (const f of extraGuards) if (f(seed, x, hw, kind)) return true;
+  return false;
+}
 
 /** Everything standing on this stretch of desert, generated once per cell. */
 export function propsIn(seed, ci) {
@@ -103,10 +120,10 @@ export function propsIn(seed, ci) {
     });
   }
   // nothing stands in the water of an oasis or on the floor of a ruin
-  if (guard) {
+  if (guard || extraGuards.length) {
     for (let i = out.length - 1; i >= 0; i--) {
       const p = out[i];
-      if (guard(String(seed), p.x, p.kind === 'boulder' ? p.w : 6, p.kind)) out.splice(i, 1);
+      if (guarded(String(seed), p.x, p.kind === 'boulder' ? p.w : 6, p.kind)) out.splice(i, 1);
     }
   }
   cache.set(ci, out);
@@ -339,11 +356,11 @@ export function decorIn(seed, ci) {
     out.push({ kind: 'plant', plant, x: x0 + r() * CELL, s, seed: sid(), flip: r() < 0.5,
       layer: tall || r() < 0.6 ? 'far' : 'near' });
   }
-  if (guard) {
+  if (guard || extraGuards.length) {
     for (let i = out.length - 1; i >= 0; i--) {
       const d = out[i];
       const hw = d.kind === 'rock' ? d.w * 0.5 : 8;
-      if (guard(String(seed), d.x, hw, d.kind)) { out.splice(i, 1); continue; }
+      if (guarded(String(seed), d.x, hw, d.kind)) { out.splice(i, 1); continue; }
       // and nothing big inside a butte: the rock would poke out of its side
       if (d.layer === 'far' && (formDepth(seed, d.x) > 2 || formDepth(seed, d.x - hw) > 2 || formDepth(seed, d.x + hw) > 2)) {
         out.splice(i, 1);

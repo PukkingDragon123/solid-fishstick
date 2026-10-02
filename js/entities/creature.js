@@ -276,6 +276,15 @@ export class Creature {
     const ad = Math.abs(d);
 
     if (this.hostile) {
+      // -- camp: nothing that hunts comes into firelight after dark
+      const ward = this.game.camp?.wardFor(this, crab);
+      if (ward) {
+        this.mood = ward.flee ? MOOD.FLEE : MOOD.HUNT;
+        this.moveTo = ward.x;
+        this.wind = 0;
+        this.pounceT = 0;
+        return;
+      }
       if (this.recoil > 0) {
         this.recoil -= dt;
         this.mood = MOOD.HUNT;
