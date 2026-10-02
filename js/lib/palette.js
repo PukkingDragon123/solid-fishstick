@@ -180,6 +180,43 @@ def('spore', ['#1b0c25', '#2d1339', '#431b52', '#5b256c', '#763687', '#9450a4', 
 def('sporeSac', ['#241228', '#3a1c3e', '#532a55', '#6d3a6c', '#874f84', '#a2699c', '#bc8ab5', '#d6b0cd'],
   { rim: 0.45, spec: 0.3, translucent: 0.5 });
 
+// -- the wasteland backdrop -------------------------------------------------
+// Distant rock, ruin and wreck. They are seen through a lot of air, so the
+// ramps are a little wider than the near ones - the haze takes contrast off
+// them on the way to the eye, and what is left still has to read.
+def('wlMesaRed', ['#2a1420', '#432029', '#5e2b2b', '#7e3a2c', '#9d4f31', '#b9693d', '#d08a52', '#e4b077'],
+  { rim: 0.12, ao: 0.1, normalScale: 0.75 });
+// distant sands, with the shadows pulled toward violet the way shade out
+// here is lit by the sky rather than by the ground
+def('wlDune', ['#41282c', '#5e3a35', '#7d5040', '#9c6a4c', '#b8865a', '#cfa26c', '#e2bf86', '#f0d9a8'],
+  { rim: 0.08, ao: 0.06, diffuse: 0.7, normalScale: 0.4 });
+def('wlDunePale', ['#5a4642', '#776058', '#937b6c', '#ad9680', '#c4af94', '#d8c6aa', '#e8dac2', '#f5eedc'],
+  { rim: 0.08, ao: 0.06, diffuse: 0.68, normalScale: 0.4 });
+def('wlMesaBand', ['#3a2016', '#5a3322', '#7a4a32', '#9a6444', '#b67f58', '#cc9a70', '#ddb68c', '#ecd2ae'],
+  { rim: 0.12, ao: 0.1, normalScale: 0.75 });
+def('wlSalt', ['#4c463f', '#665e54', '#81786b', '#9b9283', '#b4ab9b', '#cac2b3', '#ddd7ca', '#efebe2'],
+  { rim: 0.1, ao: 0.08, normalScale: 0.7 });
+def('wlMesaGrey', ['#1d1b20', '#2d2a31', '#403c45', '#55505b', '#6b6672', '#837e8a', '#9e99a5', '#bcb8c2'],
+  { rim: 0.12, ao: 0.1, normalScale: 0.8 });
+def('wlMesaAsh', ['#1a1518', '#291f25', '#3a2d35', '#4d3d47', '#62505b', '#796571', '#927e8a', '#ae9ba6'],
+  { rim: 0.12, ao: 0.1, normalScale: 0.8 });
+def('wlMesaDeep', ['#0c1317', '#142025', '#1d2f36', '#284048', '#34535c', '#436872', '#58808a', '#769ea5'],
+  { rim: 0.12, ao: 0.1, normalScale: 0.8 });
+def('wlRust', ['#1c0c07', '#33160c', '#4f2212', '#6b2f19', '#874022', '#a0552d', '#b86f3e', '#cc8f58'],
+  { rim: 0.2, ao: 0.12, normalScale: 0.85 });
+def('wlConcrete', ['#211f1d', '#33302c', '#46423d', '#5b5650', '#716b64', '#88827a', '#a19b92', '#bab5ac'],
+  { rim: 0.14, ao: 0.1, normalScale: 0.8 });
+def('wlDeadwood', ['#1b1613', '#2c241f', '#3e332b', '#524439', '#665749', '#7c6c5c', '#958572', '#b0a18d'],
+  { rim: 0.2, ao: 0.1, normalScale: 0.7 });
+def('wlCharcoal', ['#0b090a', '#141112', '#1d191a', '#272223', '#332d2e', '#403939', '#4f4747', '#615858'],
+  { rim: 0.2, ao: 0.1, normalScale: 0.7 });
+def('wlSaltCrust', ['#655e55', '#7f776c', '#999185', '#b1aa9d', '#c7c1b5', '#d9d4ca', '#e8e5de', '#f6f4ef'],
+  { rim: 0.08, ao: 0.05, diffuse: 0.66, normalScale: 0.4 });
+def('wlAshSand', ['#201a1a', '#312827', '#433836', '#574a46', '#6c5d57', '#82726a', '#9a8a80', '#b4a49a'],
+  { rim: 0.1, ao: 0.06, diffuse: 0.68, normalScale: 0.4 });
+def('wlHardpan', ['#3e2a1a', '#523823', '#67482e', '#7c5a3a', '#906b47', '#a37d56', '#b59068', '#c6a47e'],
+  { rim: 0.08, ao: 0.08, diffuse: 0.66, normalScale: 0.5 });
+
 def('default', ['#1a1a1a', '#333', '#4d4d4d', '#666', '#808080', '#999', '#b3b3b3', '#ccc']);
 
 export const MATERIALS = M;

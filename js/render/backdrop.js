@@ -1,232 +1,257 @@
 // CRABDEN - sky and parallax scenery.
 //
-// Five depths: sky, far mesas, mid buttes, near dunes, and a foreground band
-// drawn over everything. Each is separated by a wash of the biome's haze
-// colour, which is what actually sells the distance - the sprites themselves
-// are painted once and reused.
+// Behind the ground you walk on there are six depths of country, and in front
+// of it one more. Each depth is a long strip of painted wasteland (see
+// art/wasteland.js), baked a tile at a time as the camera comes up on it.
+//
+// What makes it read as distance rather than as stacked cardboard:
+//
+//   - The strips move at the rate a real camera would move them. One over the
+//     scale of a strip is how far away it is; the camera's zoom is a dolly,
+//     so zooming in grows the near strips and leaves the far ones where they
+//     were (`stripScale`).
+//   - They sit on a horizon, not on the ground. The horizon is a fixed height
+//     above the line the camera keeps the animal on, and every strip's ground
+//     line falls toward it with distance - so when you climb a dune the near
+//     ridges sink and the far ones do not move.
+//   - Each strip is pulled toward the colour of the air at the horizon by how
+//     far off it is (aerial perspective), and a band of dust lies along the
+//     foot of each one.
+//
+// Nothing is painted per frame. Tiles are painted once, tinted when the light
+// changes enough to notice, and drawn with drawImage.
 
-import { clamp, clamp01, lerp, mixHex, rgba, hashStr } from '../lib/math.js';
+import { clamp, clamp01, lerp, mixHex, hexToRgb, rgbToHex, hashStr } from '../lib/math.js';
 import { Painter, makeCanvas, fbmTex, hash2i } from './pixel.js';
-import { pxDisc, pxGlow, pxLine } from './pix.js';
 import { MATERIALS } from '../lib/palette.js';
 import { biomeAt, biomeMix } from '../world/biomes.js';
+import { Sky, ambientMul, comp, quantHex, B4 } from './sky.js';
+import { DEPTHS, DEPTH, TILE_W, TILE_MARGIN, paintTile, styleOf, biomeOnStrip } from '../art/wasteland.js';
+import { Life } from '../art/beasts.js';
 
-// fogTint: how far each layer is pulled toward the sky, and toward what.
-// This is aerial perspective - distance reads as *colour shift*, not as a
-// grey veil over the whole screen, so the sky stays blue.
-const LAYERS = {
-  far: { p: 0.09, scale: 1.05, fog: 0.72, cool: 0.62, yOff: 26, spacing: 190 },
-  mid: { p: 0.24, scale: 0.82, fog: 0.42, cool: 0.34, yOff: 40, spacing: 138 },
-  near: { p: 0.5, scale: 0.55, fog: 0.17, cool: 0.12, yOff: 54, spacing: 104 },
+const Z_REF = 1.6;
+const CALLS = { far: ['skyline', 'range', 'buttes'], mid: ['mesas', 'wrecks'], near: ['ridge', 'dunes', 'foot'] };
+const MAX_TILES = 18;
+// the dust along the foot of each strip: how tall the fade is (strip px) and
+// how thick it gets at the bottom
+const BAND = {
+  skyline: { h: 8, a: 0.86 }, range: { h: 12, a: 0.8 }, buttes: { h: 16, a: 0.72 },
+  mesas: { h: 22, a: 0.6 }, wrecks: { h: 22, a: 0.46 }, ridge: { h: 24, a: 0.3 }, dunes: { h: 22, a: 0.18 },
+  foot: { h: 18, a: 0.08 },
 };
+
+for (const d of DEPTHS) d.e = 1 / d.s - 1 / Z_REF;
+
+/** How big a strip is drawn, relative to how it was painted, at this zoom. */
+function stripScale(d, z) {
+  const s = 1 / (1 / Math.max(0.05, z) + d.e);
+  const g = s / d.s;
+  // a little either way is drawn at 1:1 so the pixel art stays crisp
+  const gd = g > 1.1 ? g - 0.1 : g < 0.9 ? g + 0.1 : 1;
+  return { s, g: gd };
+}
 
 export class Backdrop {
   constructor(seed = 'sky') {
     this.seed = hashStr(String(seed));
-    this.mesas = new Map();     // mat -> [canvas]
-    this.dunes = new Map();
-    this.clouds = null;
+    this.sky = new Sky(this.seed);
+    this.tiles = DEPTHS.map(() => new Map());
+    this.bands = new Map();
     this.tufts = new Map();
-    this.stars = null;
+    this.life = new Life(this.seed);
+    this.frames = 0;
+    this._geo = null;
+    this._budget = 0;
+    this._t0 = performance.now();
   }
 
-  // -- baked pieces --------------------------------------------------------
+  /** Seconds since the backdrop was made: the clock everything alive runs on. */
+  get t() { return (performance.now() - this._t0) / 1000; }
 
-  mesaSet(mat) {
-    let set = this.mesas.get(mat);
-    if (set) return set;
-    set = [];
-    for (let i = 0; i < 5; i++) set.push(paintMesa(mat, this.seed + i * 313, i));
-    this.mesas.set(mat, set);
-    return set;
-  }
+  // -- per-frame geometry -------------------------------------------------
 
-  duneSet(mat) {
-    let set = this.dunes.get(mat);
-    if (set) return set;
-    set = [];
-    for (let i = 0; i < 4; i++) set.push(paintDune(mat, this.seed + i * 71));
-    this.dunes.set(mat, set);
-    return set;
-  }
-
-  tuftSet(mat) {
-    let set = this.tufts.get(mat);
-    if (set) return set;
-    set = [];
-    for (let i = 0; i < 5; i++) set.push(paintTuft(mat, this.seed + i * 199));
-    this.tufts.set(mat, set);
-    return set;
-  }
-
-  cloudSet() {
-    if (this.clouds) return this.clouds;
-    this.clouds = [];
-    for (let i = 0; i < 4; i++) this.clouds.push(paintCloud(this.seed + i * 617));
-    return this.clouds;
+  geometry(cam) {
+    const vw = cam.vw, vh = cam.vh, z = cam.zoom;
+    const yb = cam.yBias ?? 0.16;
+    const key = `${cam.x}|${cam.y}|${z}|${vw}|${vh}|${yb}`;
+    if (this._geo && this._geo.key === key) return this._geo;
+    // where the camera keeps the animal's feet, and the horizon above that
+    const R = vh / 2 + vh * yb;
+    // on a tall phone the eye height follows the width, or the horizon ends
+    // up at the top of the screen and there is no sky left
+    const lift = clamp(Math.round(Math.min(vh, vw * 0.75) * 0.24), 40, 140);
+    const H = Math.round(R - lift);
+    // how far the ground under the camera's subject is above world y=0
+    const dY = (0 - cam.y) - vh * yb / z;
+    const strips = DEPTHS.map((d) => {
+      const { s, g } = stripScale(d, z);
+      const base = H + s * (lift / z + dY);
+      return { d, s, g, base, uCam: cam.x * d.s };
+    });
+    this._geo = { key, R, H, lift, dY, strips, vw, vh, z };
+    return this._geo;
   }
 
   // -- sky -----------------------------------------------------------------
 
   drawSky(ctx, cam, weather) {
-    const vw = cam.vw, vh = cam.vh;
-    const { a, b, t } = biomeMix(cam.x);
-    const sky = a.sky.map((c, i) => mixHex(c, b.sky[i], t));
-    const night = weather.nightMix;
-
-    // night colours pull the whole gradient down and blue
-    const grad = ctx.createLinearGradient(0, 0, 0, vh);
-    const zen = mixHex(sky[0], '#080d1c', night * 0.85);
-    const upper = mixHex(sky[1], '#111a30', night * 0.8);
-    const lower = mixHex(sky[2], '#1d2338', night * 0.72);
-    const horiz = mixHex(sky[3], '#2b2c3e', night * 0.6);
-    grad.addColorStop(0, zen);
-    grad.addColorStop(0.38, upper);
-    grad.addColorStop(0.72, lower);
-    grad.addColorStop(1, horiz);
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, vw, vh);
-
-    if (night > 0.25) this._drawStars(ctx, cam, night);
-    this._drawSun(ctx, cam, weather, vw, vh);
-    this._drawClouds(ctx, cam, weather, vw, vh);
+    this.frames++;
+    // A frame's worth of painting time. The first frames paint everything;
+    // after that a few milliseconds a frame keeps ahead of walking, and if
+    // the last frame had holes in it (a cut, a teleport) it gets more.
+    this._budget = this.frames < 4 ? 400 : this._missing ? 22 : 6;
+    this._missing = false;
+    this._frameStart = performance.now();
+    const geo = this.geometry(cam);
+    this.sky.draw(ctx, cam, weather, geo.H, this.t);
+    this._air(cam, weather);
+    this.life.drawSky(ctx, cam, weather, geo, this);
   }
 
-  _drawStars(ctx, cam, night) {
-    if (!this.stars) {
-      this.stars = [];
-      for (let i = 0; i < 130; i++) {
-        this.stars.push({
-          x: hash2i(i, 3, this.seed) * 2000,
-          y: hash2i(i, 91, this.seed) * 0.62,
-          b: 0.3 + hash2i(i, 17, this.seed) * 0.7,
-        });
+  /** The colour of the air this frame, and how much of it each strip gets. */
+  _air(cam, weather) {
+    const sc = this.sky.last;
+    const amb = ambientMul(weather);
+    // What the strips fade into. Near the ground the air is dust, the colour
+    // of the horizon; the further off a strip is, the more of the sky above
+    // the horizon it takes on - which is why distant ranges go blue.
+    const hz = mixHex(sc.col[4], sc.col[3], 0.35);
+    const cool = mixHex(sc.col[1], sc.col[2], 0.6);
+    const dust = sc.dust;
+    const haze = clamp01(weather.haze ?? 0.5);
+    this.air = {
+      amb, hz, sc,
+      tints: DEPTHS.map((d) => quantHex(comp(mixHex(hz, cool, d.cool * (1 - dust * 0.8)), amb), 4)),
+      k: (d) => clamp01(d.fog * (0.86 + haze * 0.18) + dust * (0.25 + (6 - d.index) * 0.07) + (weather.fog || 0) * 0.2),
+      night: sc.night,
+    };
+  }
+
+  // -- strips --------------------------------------------------------------
+
+  _tile(di, k) {
+    const map = this.tiles[di];
+    let t = map.get(k);
+    if (t) { t.used = this.frames; return t; }
+    const left = this._budget - (performance.now() - this._frameStart);
+    if (left <= 0) return null;
+    const cv = paintTile(DEPTHS[di], k, this.seed);
+    t = { cv, tinted: null, key: '', used: this.frames };
+    map.set(k, t);
+    if (map.size > MAX_TILES) {
+      let oldK = null, oldU = Infinity;
+      for (const [kk, v] of map) if (v.used < oldU) { oldU = v.used; oldK = kk; }
+      if (oldK !== null) map.delete(oldK);
+    }
+    return t;
+  }
+
+  _tinted(t, d, tint, a) {
+    const key = tint + '|' + a.toFixed(2);
+    if (t.key === key && t.tinted) return t.tinted;
+    // re-tinting is cheap but not free; a stale tint for a frame is invisible
+    if (t.tinted && this._tints-- <= 0) return t.tinted;
+    if (!t.tinted) t.tinted = makeCanvas(TILE_W, d.th);
+    const g = t.tinted.getContext('2d');
+    g.globalCompositeOperation = 'source-over';
+    g.clearRect(0, 0, TILE_W, d.th);
+    g.drawImage(t.cv, TILE_MARGIN, 0, TILE_W, d.th, 0, 0, TILE_W, d.th);
+    g.globalCompositeOperation = 'source-atop';
+    g.globalAlpha = a;
+    g.fillStyle = tint;
+    g.fillRect(0, 0, TILE_W, d.th);
+    g.globalAlpha = 1;
+    g.globalCompositeOperation = 'source-over';
+    t.key = key;
+    return t.tinted;
+  }
+
+  _band(id, vw, h, col, a) {
+    const key = `${id}|${vw}|${h}|${col}|${a.toFixed(2)}`;
+    let cv = this.bands.get(key);
+    if (cv) return cv;
+    cv = makeCanvas(vw, h);
+    const g = cv.getContext('2d');
+    const img = g.createImageData(vw, h);
+    const dd = img.data;
+    const [r, gg, b] = hexToRgb(col);
+    const steps = 4;
+    for (let y = 0; y < h; y++) {
+      const k = Math.pow((y + 1) / h, 1.6) * steps;
+      for (let x = 0; x < vw; x++) {
+        const band = Math.floor(k + (B4[y & 3][x & 3] - 0.5) * 0.95);
+        if (band <= 0) continue;
+        const o = (y * vw + x) * 4;
+        dd[o] = r; dd[o + 1] = gg; dd[o + 2] = b;
+        dd[o + 3] = Math.round(255 * a * Math.min(1, band / steps));
       }
     }
-    const a = clamp01((night - 0.25) / 0.5);
-    for (const s of this.stars) {
-      const x = ((s.x - cam.x * 0.02) % 2000 + 2000) % 2000;
-      if (x > cam.vw) continue;
-      const tw = 0.7 + Math.sin(performance.now() * 0.001 + s.x) * 0.3;
-      ctx.fillStyle = rgba('#dce6ff', a * s.b * tw);
-      ctx.fillRect(Math.round(x), Math.round(s.y * cam.vh), 1, 1);
-    }
-  }
-
-  _drawSun(ctx, cam, weather, vw, vh) {
-    const h = weather.hour;
-    const day = h > 5.5 && h < 18.6;
-    const t = day ? (h - 5.5) / 13.1 : ((h + 24 - 18.6) % 24) / 10.9;
-    const x = vw * (0.08 + t * 0.84);
-    const arc = Math.sin(Math.PI * clamp01(t));
-    const y = vh * (0.86 - arc * 0.72);
-
-    // The sun and the moon are the two biggest round things on the screen, so
-    // they are the two that most needed to stop being anti-aliased discs with
-    // a gradient behind them. Both are dithered pixel discs on a 2px grid now,
-    // with the corona in flat bands instead of a ramp.
-    if (day) {
-      const warm = arc < 0.35 ? mixHex('#ff9a4a', '#ffd98a', arc / 0.35) : '#fff3cf';
-      pxGlow(ctx, x, y, 58, warm, 0.5, { p: 2, steps: 4 });
-      pxDisc(ctx, x, y, 7, warm, { p: 2 });
-      pxDisc(ctx, x, y, 4.5, '#fffdf2', { p: 2 });
-      // and a couple of rays, which is how the sun is drawn rather than lit
-      ctx.globalAlpha = 0.18 + arc * 0.14;
-      for (let k = 0; k < 4; k++) {
-        const a = k * Math.PI / 2 + 0.4;
-        pxLine(ctx, x + Math.cos(a) * 10, y + Math.sin(a) * 10,
-          x + Math.cos(a) * 20, y + Math.sin(a) * 20, warm, { p: 2 });
-      }
-      ctx.globalAlpha = 1;
-    } else {
-      pxGlow(ctx, x, y, 40, '#cfe0ff', 0.3, { p: 2, steps: 3 });
-      pxDisc(ctx, x, y, 6, '#e8eeff', { p: 2 });
-      // the moon's dark side is a bite out of it, not a translucent overlay
-      pxDisc(ctx, x + 3, y - 1, 4.6, rgba('#b9c6e0', 0.7), { p: 2 });
-      // two seas, so it has a face
-      pxDisc(ctx, x - 2, y + 1, 1.4, rgba('#9fb0cc', 0.8), { p: 2 });
-      pxDisc(ctx, x - 1, y - 3, 1, rgba('#9fb0cc', 0.6), { p: 2 });
-    }
-  }
-
-  _drawClouds(ctx, cam, weather, vw, vh) {
-    const set = this.cloudSet();
-    const day = 1 - weather.nightMix;
-    const cover = weather.cloudCover;
-    if (cover < 0.02) return;
-    const drift = cam.x * 0.035 + weather.time * 3.2;
-    ctx.save();
-    ctx.globalAlpha = clamp01(cover) * (0.5 + day * 0.45);
-    for (let i = 0; i < 14; i++) {
-      const sprite = set[i % set.length];
-      const span = 620;
-      const bx = ((i * 197 + hash2i(i, 5, this.seed) * 400) - drift) % span;
-      const x = ((bx % span) + span) % span - 120;
-      if (x > vw + 40) continue;
-      const y = vh * (0.06 + hash2i(i, 41, this.seed) * 0.34);
-      const s = 0.7 + hash2i(i, 77, this.seed) * 0.9;
-      ctx.drawImage(sprite, Math.round(x), Math.round(y),
-        Math.round(sprite.width * s), Math.round(sprite.height * s));
-    }
-    ctx.restore();
-  }
-
-  // -- parallax scenery ----------------------------------------------------
-
-  _scratch(w, h) {
-    if (!this._tmp || this._tmp.width !== w || this._tmp.height !== h) {
-      this._tmp = makeCanvas(w, h);
-      this._tmpCtx = this._tmp.getContext('2d');
-      this._tmpCtx.imageSmoothingEnabled = false;
-    }
-    return this._tmpCtx;
+    g.putImageData(img, 0, 0);
+    if (this.bands.size > 24) this.bands.delete(this.bands.keys().next().value);
+    this.bands.set(key, cv);
+    return cv;
   }
 
   drawLayer(ctx, cam, weather, name, terrain) {
-    const L = LAYERS[name];
-    const vw = cam.vw, vh = cam.vh;
-    const px = cam.x * L.p;
-    const horizon = (terrain ? terrain.baseY(cam.x) : 0 - cam.y) * 0 + (0 - cam.y) * cam.zoom + vh / 2;
-
-    // Layers are painted into a scratch buffer so the haze can be applied to
-    // the silhouettes only - source-atop - instead of over the whole sky.
-    const t = this._scratch(vw, vh);
-    t.clearRect(0, 0, vw, vh);
-
-    const first = Math.floor((px - vw) / L.spacing) - 1;
-    const last = Math.ceil((px + vw) / L.spacing) + 1;
-    for (let i = first; i <= last; i++) {
-      const wx = i * L.spacing + (hash2i(i, name.length * 7, this.seed) - 0.5) * L.spacing * 0.6;
-      const screenX = Math.round(wx - px);
-      if (screenX < -300 || screenX > vw + 300) continue;
-      const worldX = cam.x + (screenX - vw / 2) / Math.max(0.05, L.p);
-      const biome = biomeAt(worldX);
-
-      const r = hash2i(i, 31, this.seed);
-      const useDune = name === 'near' ? r < 0.62 : r < 0.2;
-      const set = useDune ? this.duneSet(biome.groundMat) : this.mesaSet(biome.mesaMat);
-      const sprite = set[Math.floor(hash2i(i, 63, this.seed) * set.length)];
-      const s = L.scale * (0.7 + hash2i(i, 11, this.seed) * 0.7);
-      const w = Math.round(sprite.width * s);
-      const h = Math.round(sprite.height * s);
-      const y = Math.round(horizon + L.yOff + hash2i(i, 89, this.seed) * 16 - h);
-      t.drawImage(sprite, screenX - Math.round(w / 2), y, w, h);
+    const ids = CALLS[name];
+    if (!ids) return;
+    const geo = this.geometry(cam);
+    if (!this.air) this._air(cam, weather);
+    this._tints = 6;
+    for (const id of ids) {
+      const di = DEPTH[id].index;
+      this._drawStrip(ctx, geo, di);
+      this.life.drawAfter(ctx, cam, weather, geo, id, this);
     }
+  }
 
-    // aerial perspective: pull the silhouettes toward the sky near the horizon
-    const biome = biomeAt(cam.x);
-    const skyLow = mixHex(biome.sky[3], biome.sky[2], 0.35);
-    const cool = mixHex(skyLow, '#9db4cc', L.cool);
-    const fogCol = mixHex(cool, '#1b2338', weather.nightMix * 0.8);
-    const amount = clamp01(L.fog * (0.75 + weather.haze * 0.3) + weather.fog * 0.35);
-    t.save();
-    t.globalCompositeOperation = 'source-atop';
-    t.globalAlpha = amount;
-    t.fillStyle = fogCol;
-    t.fillRect(0, 0, vw, vh);
-    t.restore();
+  _drawStrip(ctx, geo, di) {
+    const st = geo.strips[di];
+    const d = st.d;
+    const vw = geo.vw, vh = geo.vh;
+    const g = st.g;
+    const air = this.air;
+    const a = Math.round(air.k(d) * 50) / 50;
+    const half = vw / 2 / g;
+    const k0 = Math.floor((st.uCam - half) / TILE_W), k1 = Math.floor((st.uCam + half) / TILE_W);
+    const top = Math.round(st.base - d.base * g);
+    const th = Math.ceil(d.th * g);
+    const tint = air.tints[di];
+    for (let k = k0; k <= k1; k++) {
+      const t = this._tile(di, k);
+      if (!t) { this._missing = true; continue; }
+      const cv = this._tinted(t, d, tint, a);
+      const x0 = Math.round(vw / 2 + (k * TILE_W - st.uCam) * g);
+      const x1 = Math.round(vw / 2 + ((k + 1) * TILE_W - st.uCam) * g);
+      ctx.drawImage(cv, 0, 0, TILE_W, d.th, x0, top, x1 - x0, th);
+    }
+    // and one tile ahead either side, if there is time, so walking never
+    // waits on the painter
+    this._tile(di, k0 - 1); this._tile(di, k1 + 1);
 
-    ctx.drawImage(this._tmp, 0, 0);
+    // the dust along its foot, and the ground under it down to the next strip
+    const B = BAND[d.id];
+    const bh = Math.max(2, Math.round(B.h * g));
+    const by = Math.round(st.base) - bh + 2;
+    const ba = clamp01(B.a * (0.7 + air.k(d) * 0.5));
+    const band = this._band(d.id, vw, bh, tint, Math.round(ba * 20) / 20);
+    ctx.drawImage(band, 0, by);
+    const next = geo.strips[di + 1];
+    const bottom = next ? Math.round(next.base) + 3 : vh;
+    const tileBottom = top + th;
+    if (bottom > by + bh) {
+      // below the tile there is only ground; under the dust, ground and air
+      const sand = MATERIALS[styleOf(biomeOnStrip(d, st.uCam)).sand] || MATERIALS.sand;
+      const ground = mixHex(sand.ramp[4], tint, a);
+      if (bottom > tileBottom) {
+        ctx.fillStyle = ground;
+        ctx.fillRect(0, tileBottom, vw, bottom - tileBottom);
+      }
+      ctx.globalAlpha = Math.round(ba * 20) / 20;
+      ctx.fillStyle = tint;
+      ctx.fillRect(0, by + bh, vw, bottom - by - bh);
+      ctx.globalAlpha = 1;
+    }
   }
 
   /** Grass and rubble silhouettes in front of everything. */
@@ -253,104 +278,44 @@ export class Backdrop {
       ctx.drawImage(sprite, screenX, y, w, h);
     }
     ctx.restore();
-    // foreground sits in its own shade
-    ctx.save();
-    ctx.globalCompositeOperation = 'multiply';
-    ctx.globalAlpha = 0.22;
-    ctx.fillStyle = '#3a2c34';
-    ctx.fillRect(0, vh - 26, vw, 26);
-    ctx.restore();
+  }
+
+  tuftSet(mat) {
+    let set = this.tufts.get(mat);
+    if (set) return set;
+    set = [];
+    for (let i = 0; i < 5; i++) set.push(paintTuft(mat, this.seed + i * 199));
+    this.tufts.set(mat, set);
+    return set;
   }
 }
 
 // ---------------------------------------------------------------------------
-// baked sprites
-// ---------------------------------------------------------------------------
+// baked sprites kept for anything that still wants them
 
 function paintMesa(mat, seed, variant) {
-  // Five archetypes so a ridgeline never reads as the same trapezoid twice.
   const kind = variant % 5;
   const w = [168, 132, 96, 200, 236][kind];
   const h = [150, 176, 196, 120, 104][kind];
   const p = new Painter(w, h);
   const r = (k) => hash2i(variant, k, seed);
-
-  // --- silhouette --------------------------------------------------------
   const capY = h * (0.10 + r(1) * 0.14);
   const shoulderL = w * (0.10 + r(2) * 0.14);
   const shoulderR = w * (0.86 - r(3) * 0.14);
-  const notchX = w * (0.3 + r(4) * 0.4);
-  const notchW = w * (0.05 + r(5) * 0.1);
-  const notchD = h * (0.05 + r(6) * 0.16);
-  const tier2 = h * (0.30 + r(7) * 0.2);
-
   const profile = (x) => {
-    let top;
-    if (x < shoulderL) {
-      const t = clamp01(x / shoulderL);
-      top = lerp(h * 0.98, capY + 8, Math.pow(t, kind === 2 ? 0.8 : 0.42));
-    } else if (x > shoulderR) {
-      const t = clamp01((w - x) / (w - shoulderR));
-      top = lerp(h * 0.98, capY + 8, Math.pow(t, kind === 2 ? 0.8 : 0.42));
-    } else {
-      top = capY + fbmTex(x * 0.05, 3, seed, 2) * 5;
-      // a stepped second tier on some silhouettes
-      if (kind === 1 && x > w * 0.52) top = tier2;
-      if (kind === 3) top += Math.sin(x * 0.13 + r(8) * 6) * 7 + fbmTex(x * 0.12, 9, seed + 4, 2) * 9;
-    }
-    // a cleft cut down through the cap
-    if (kind !== 2 && x > notchX && x < notchX + notchW) {
-      const t = (x - notchX) / notchW;
-      top += Math.sin(t * Math.PI) * notchD;
-    }
-    return top;
+    if (x < shoulderL) return lerp(h * 0.98, capY + 8, Math.pow(clamp01(x / shoulderL), 0.42));
+    if (x > shoulderR) return lerp(h * 0.98, capY + 8, Math.pow(clamp01((w - x) / (w - shoulderR)), 0.42));
+    return capY + fbmTex(x * 0.05, 3, seed, 2) * 5;
   };
-
-  // --- body --------------------------------------------------------------
   p.field(0, 0, w - 1, h - 1, (fx, fy) => {
     const top = profile(fx);
     if (fy < top) return null;
     const depth = fy - top;
-    // vertical erosion channels dominate; that is what makes a cliff a cliff
     const gully = fbmTex(fx * 0.16, fy * 0.008, seed + 5, 3);
-    const gully2 = fbmTex(fx * 0.42, fy * 0.02, seed + 15, 2);
-    // strata sit under them, subtle
     const strat = Math.sin((fy + fbmTex(fx * 0.02, 1, seed + 9, 2) * 16) * 0.17);
-    let tint = (gully - 0.5) * 0.5 + (gully2 - 0.5) * 0.2 + strat * 0.08;
-    tint -= clamp01(depth / (h * 0.85)) * 0.3;
-    const dome = depth < 3 ? (3 - depth) * 2.2 : 0;
-    return { h: dome + (gully - 0.5) * 5 + (gully2 - 0.5) * 2, tint };
+    let tint = (gully - 0.5) * 0.5 + strat * 0.08 - clamp01(depth / (h * 0.85)) * 0.3;
+    return { h: (depth < 3 ? (3 - depth) * 2.2 : 0) + (gully - 0.5) * 5, tint };
   }, { mat });
-
-  // --- cap rock, lighter and slightly proud ------------------------------
-  const capH = 5 + r(11) * 7;
-  p.field(0, 0, w - 1, h - 1, (fx, fy) => {
-    const top = profile(fx);
-    const depth = fy - top;
-    if (depth < 0 || depth > capH) return null;
-    const n = fbmTex(fx * 0.2, fy * 0.2, seed + 27, 2);
-    return { h: 6 - depth * 0.5, tint: 0.2 - depth * 0.02 + (n - 0.5) * 0.16 };
-  }, { mat, mask: true });
-
-  // --- talus skirt -------------------------------------------------------
-  const skirtTop = h * (0.72 + r(12) * 0.1);
-  p.field(0, 0, w - 1, h - 1, (fx, fy) => {
-    const edge = Math.min(fx, w - fx) / (w * 0.5);
-    const sk = skirtTop + (1 - Math.pow(edge, 0.6)) * -h * 0.18
-      + fbmTex(fx * 0.05, 9, seed + 21, 2) * 12;
-    if (fy < sk) return null;
-    const n = fbmTex(fx * 0.28, fy * 0.28, seed + 33, 2);
-    return { h: n * 3.2, tint: (n - 0.5) * 0.34 - 0.1 };
-  }, { mat });
-
-  // --- boulders at the foot ---------------------------------------------
-  for (let i = 0; i < 7; i++) {
-    const bx = r(40 + i) * w;
-    const by = h - 4 - r(60 + i) * 12;
-    const br = 2 + r(80 + i) * 5;
-    p.ellipse(bx, by, br, br * 0.78, { mat, dome: br * 1.2, tint: (r(90 + i) - 0.5) * 0.3 });
-  }
-
   p.smoothHeight(1, 0.45);
   return p.resolve(MATERIALS, { ambient: 0.4, lightX: -0.66, lightY: -0.5, lightZ: 0.35, dither: 0.62, outline: 0 });
 }
@@ -360,8 +325,7 @@ function paintDune(mat, seed) {
   const p = new Painter(w, h);
   p.field(0, 0, w - 1, h - 1, (fx, fy) => {
     const t = fx / w;
-    const crest = h * 0.34 + Math.sin(t * Math.PI) * -h * 0.24
-      + fbmTex(fx * 0.02, 2, seed, 2) * 10;
+    const crest = h * 0.34 + Math.sin(t * Math.PI) * -h * 0.24 + fbmTex(fx * 0.02, 2, seed, 2) * 10;
     if (fy < crest) return null;
     const d = fy - crest;
     const n = fbmTex(fx * 0.05, fy * 0.08, seed + 7, 2);
@@ -369,33 +333,6 @@ function paintDune(mat, seed) {
   }, { mat });
   p.smoothHeight(1, 0.7);
   return p.resolve(MATERIALS, { ambient: 0.48, dither: 0.55, outline: 0 });
-}
-
-function paintCloud(seed) {
-  const w = 110, h = 46;
-  const p = new Painter(w, h);
-  const baseY = h * 0.78;
-  const puffs = 6 + Math.floor(hash2i(1, 2, seed) * 5);
-  // a flat underside with piled tops reads as cumulus rather than cotton wool
-  for (let i = 0; i < puffs; i++) {
-    const t = i / (puffs - 1);
-    const bell = Math.sin(t * Math.PI);
-    const x = 12 + t * (w - 24) + (hash2i(i, 3, seed) - 0.5) * 10;
-    const r = 7 + bell * 11 + hash2i(i, 21, seed) * 5;
-    const y = baseY - r * (0.45 + bell * 0.3);
-    p.ellipse(x, y, r, r * 0.86, { mat: 'petalWhite', dome: r * 1.15 });
-  }
-  // shave the bottom flat
-  for (let y = Math.ceil(baseY); y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      const i = y * w + x;
-      p.mat[i] = 0; p.hgt[i] = 0;
-    }
-  }
-  p.smoothHeight(2, 0.85);
-  return p.resolve(MATERIALS, {
-    ambient: 0.62, lightX: -0.35, lightY: -0.85, lightZ: 0.4, dither: 0.45, outline: 0,
-  });
 }
 
 function paintTuft(mat, seed) {

@@ -8,7 +8,8 @@
 import { clamp, clamp01, lerp, fbm2, valueNoise2, hashStr } from '../lib/math.js';
 import { Painter, makeCanvas, fbmTex, hash2i } from '../render/pixel.js';
 import { MATERIALS } from '../lib/palette.js';
-import { BIOMES, biomeAt, biomeBlend } from './biomes.js';
+import { BIOMES, biomeAt, biomeBlend, biomeMix } from './biomes.js';
+import { shade, BAYER8 } from '../art/wasteland.js';
 import { groundOffset } from './landmarks.js';
 import { propBump, cliffOffset, formDepth } from './props.js';
 import { shelfOffset } from './ocean.js';
@@ -153,94 +154,114 @@ export class Terrain {
     const top = Math.floor(minY) - 6;
     const H = Math.min(CHUNK_MAX, Math.ceil(maxY - top) + CHUNK_DEPTH);
     const p = new Painter(CHUNK_W, H);
+    // Everything below is a function of WORLD position and one seed, never of
+    // the chunk: a chunk-seeded texture is what used to draw a vertical seam
+    // down the ground every 256 pixels.
+    const S = this.seed;
+    const W = CHUNK_W;
+    for (let i = 0; i < W; i++) {
+      const wx = x0 + i + 0.5;
+      const surf = heights[i] - top;
+      const rk = rock[i];
+      // between biomes the sands interleave on the dither instead of cutting
+      const { a, b, t } = biomeMix(wx);
+      const bodyA = p._mid(a.groundMat), bodyB = t > 0 ? p._mid(b.groundMat) : bodyA;
+      const crustA = p._mid(a.crustMat), crustB = t > 0 ? p._mid(b.crustMat) : crustA;
+      const rockM = p._mid(a.mesaMat);
+      const hardM = p._mid(a.id === 'saltpan' || a.id === 'theshallows' ? 'wlSaltCrust' : 'wlHardpan');
+      const slope = (heights[Math.min(W, i + 2)] - heights[Math.max(0, i - 2)]) * 0.25;
+      // the lip faces the sun on a rise and turns away on a fall
+      const face = slope < 0 ? Math.min(0.12, -slope * 0.4) : -Math.min(0.16, slope * 0.35);
+      // patches of cracked hardpan where the old water stood longest
+      const hp = fbmTex(wx * 0.0045, 3.7, S + 5, 2);
+      const hardD = rk < 1.5 && hp > 0.6 ? clamp((hp - 0.6) * 60, 2, 8) : 0;
+      const warp = fbmTex(wx * 0.01, 5, S + 9, 2) * 9;
+      const sw = fbmTex(wx * 0.0035, 1, S + 3, 2) * 16;        // strata undulate
+      const set = Math.floor(wx / 70) + Math.floor(fbmTex(wx * 0.01, 9, S, 1) * 3);
+      const lean = hash2i(set, 3, S) < 0.5 ? 0.5 : -0.5;      // cross-bedding direction
+      for (let yy = Math.max(0, Math.floor(surf)); yy < H; yy++) {
+        const y = yy + 0.5;
+        const depth = y - surf;
+        if (depth < 0) continue;
+        const wy = yy + top;
+        const k = yy * W + i;
+        const dth = BAYER8[yy & 7][i & 7];
+        if (depth < rk) {
+          // THE ROCK. Beds run level, not parallel to the surface, because a
+          // bed was laid down flat and then the wind took the soft stuff off
+          // the top of it - which is exactly why the terraces are where they are.
+          const bed = fbmTex(wx * 0.006, wy * 0.09, S + 61, 2);
+          const course = Math.sin((wy + bed * 5) * 0.33) * 0.5 + 0.5;
+          const hard = Math.sin((wy + bed * 3) * 0.075) * 0.5 + 0.5;
+          const grit = hash2i(Math.floor(wx), wy, S + 83);
+          const lip = depth < 2.2 ? 3.2 - depth : 0;
+          p.mat[k] = rockM; p.cov[k] = 1;
+          p.hgt[k] = lip + hard * 2.4 + course * 1.1 + grit * 0.6;
+          p.tint[k] = (course - 0.5) * 0.22 + (hard - 0.5) * 0.16 + (grit - 0.5) * 0.1 + (depth < 1 ? 0.1 : 0);
+          continue;
+        }
+        let m = t > 0 && dth < t ? bodyB : bodyA;
+        let tint = 0, h = 0.5;
+        const fade = clamp01(1 - depth / 14);
+        if (depth < 1) { m = t > 0 && dth < t ? crustB : crustA; tint = 0.2 + face; h = 5; }
+        else if (depth < 2.3) { m = t > 0 && dth < t ? crustB : crustA; tint = 0.04 + face * 0.6; h = 3.5; }
+        else if (depth < 3.2) { tint = -0.1; h = 1.5; }        // the shadow under the lip
+        else if (hardD && depth < hardD + 3) {
+          // hardpan: dark plates with pale cracks between them
+          m = hardM;
+          const cx2 = Math.floor((wx + yy * 0.35) / 7), cy2 = Math.floor((wy + hash2i(cx2, 1, S) * 4) / 4);
+          const fx = (wx + yy * 0.35) / 7 - cx2;
+          const edge = fx < 0.13 || ((wy + hash2i(cx2, 1, S) * 4) / 4 - cy2) < 0.2;
+          tint = edge ? 0.16 : (hash2i(cx2, cy2, S + 7) - 0.5) * 0.12 - 0.04;
+          h = edge ? 0 : 1.2;
+        } else {
+          // ripples: lines along the slope a few pixels apart, under the crust
+          if (depth < 16) {
+            const r = (depth + Math.sin(wx * 0.09 + warp) * 1.4) / 3.4;
+            const fr = r - Math.floor(r);
+            if (fr < 0.2) tint += 0.07 * fade; else if (fr > 0.55 && fr < 0.7) tint -= 0.035 * fade;
+          }
+          tint += face * fade * 0.7;
+        }
+        if (depth >= 3.2) {
+          // strata: broad bands, a few thin dark seams and pale ones
+          const sy = wy + sw;
+          tint += (Math.sin(sy * 0.19) * 0.6 + Math.sin(sy * 0.071 + 1.3) * 0.4) * 0.05;
+          const s1 = sy / 23 - Math.floor(sy / 23), s2 = sy / 37 - Math.floor(sy / 37);
+          if (s1 < 0.05) tint -= 0.1; else if (s2 > 0.5 && s2 < 0.54) tint += 0.07;
+          // cross-bedding: fine diagonal laminae inside each set of beds
+          if (depth > 18 && Math.floor(sy / 26) % 2 === 0) {
+            const l = (sy + wx * lean) / 5;
+            if (l - Math.floor(l) < 0.16) tint -= 0.045;
+          }
+          tint -= Math.pow(clamp01(depth / 200), 0.8) * 0.4;
+        }
+        tint += (hash2i(Math.floor(wx), wy, S + 11) - 0.5) * 0.05;
+        p.mat[k] = m; p.cov[k] = 1; p.hgt[k] = h; p.tint[k] = tint;
+      }
+    }
+
+    // pebbles: some sunk in the face, some lying on the sand - placed on a
+    // world grid so the same stone is in the same place from either chunk
     const b = biomeAt(x0 + CHUNK_W / 2);
-    const bodyMat = b.groundMat;
-    const crustMat = b.crustMat;
-    const seed = this.seed + cx * 977;
-
-    // body of the ground, with strata that follow the surface loosely
-    p.field(0, 0, CHUNK_W - 1, H - 1, (fx, fy) => {
-      const gx = Math.floor(fx);
-      const surf = heights[clamp(gx, 0, CHUNK_W)] - top;
-      if (fy < surf) return null;
-      const depth = fy - surf;
-      if (depth < rock[clamp(gx, 0, CHUNK_W)]) return null;   // the rock owns it
-      // crust catches the light, so give the first few pixels real height
-      const dome = depth < 3 ? 4 - depth : 0;
-      const strat = fbmTex((x0 + fx) * 0.02, fy * 0.11, seed + 3, 3);
-      const band = Math.sin((fy + strat * 9) * 0.22) * 0.5 + 0.5;
-      let tint = (strat - 0.5) * 0.22 + (band - 0.5) * 0.1;
-      tint -= Math.pow(clamp01(depth / 190), 0.75) * 0.42;   // darker as it goes down
-      return { h: dome + strat * 1.2, tint };
-    }, { mat: bodyMat });
-
-    // THE ROCK. Beds run level, not parallel to the surface, because a bed
-    // was laid down flat and then the wind took the soft stuff off the top of
-    // it - which is exactly why the terraces are where they are.
-    if (anyRock) {
-      p.field(0, 0, CHUNK_W - 1, H - 1, (fx, fy) => {
-        const gx = clamp(Math.floor(fx), 0, CHUNK_W);
-        const surf = heights[gx] - top;
-        const depth = fy - surf;
-        if (depth < 0 || depth >= rock[gx]) return null;
-        const wy = fy + top;
-        // the courses, and a harder band every few of them that stands proud
-        const bed = fbmTex((x0 + fx) * 0.006, wy * 0.09, seed + 61, 2);
-        const course = Math.sin((wy + bed * 5) * 0.33) * 0.5 + 0.5;
-        const hard = Math.sin((wy + bed * 3) * 0.075) * 0.5 + 0.5;
-        const grit = fbmTex((x0 + fx) * 0.11, wy * 0.13, seed + 83, 3);
-        // the face is lit, the shoulder of each course is not
-        const lip = depth < 2.2 ? 3.2 - depth : 0;
-        return {
-          h: lip + hard * 2.4 + course * 1.1 + grit * 1.1,
-          tint: (course - 0.5) * 0.22 + (hard - 0.5) * 0.16 + (grit - 0.5) * 0.18,
-        };
-      }, { mat: b.mesaMat });
+    const cell = Math.max(10, Math.round(320 / Math.max(1, b.pebbles)));
+    for (let c = Math.floor((x0 - 8) / cell); c <= Math.floor((x0 + W + 8) / cell); c++) {
+      for (let j = 0; j < 2; j++) {
+        const wx = c * cell + hash2i(c, 11 + j, S) * cell;
+        const lx = wx - x0;
+        if (lx < -6 || lx > W + 6) continue;
+        const gi = clamp(Math.floor(lx), 0, W);
+        if (rock[gi] > 1.5) continue;
+        const onTop = j === 0 && hash2i(c, 21, S) < 0.6;
+        const r = onTop ? 0.9 + hash2i(c, 31 + j, S) * 1.6 : 0.8 + hash2i(c, 31 + j, S) * 2.2;
+        const py = heights[gi] - top + (onTop ? -r * 0.35 : 4 + hash2i(c, 41 + j, S) * 44);
+        const pm = biomeAt(wx).pebbleMat;
+        p.ellipse(lx, py, r * 1.25, r * 0.85, { mat: pm, dome: r * 1.3, tint: (hash2i(c, 51 + j, S) - 0.5) * 0.3 });
+      }
     }
 
-    // sunlit crust
-    p.field(0, 0, CHUNK_W - 1, H - 1, (fx, fy) => {
-      const gx = Math.floor(fx);
-      const surf = heights[clamp(gx, 0, CHUNK_W)] - top;
-      const depth = fy - surf;
-      if (depth < 0 || depth > 2.4) return null;
-      if (rock[clamp(gx, 0, CHUNK_W)] > 1.5) return null;
-      const n = fbmTex((x0 + fx) * 0.16, fy * 0.3, seed + 41, 2);
-      return { h: 5 - depth * 1.4, tint: (n - 0.4) * 0.3 + 0.1 };
-    }, { mat: crustMat });
-
-    // wind ripples running across the surface
-    p.field(0, 0, CHUNK_W - 1, H - 1, (fx, fy) => {
-      const gx = Math.floor(fx);
-      const surf = heights[clamp(gx, 0, CHUNK_W)] - top;
-      const depth = fy - surf;
-      if (depth < 1 || depth > 16) return null;
-      if (rock[clamp(gx, 0, CHUNK_W)] > 1.5) return null;    // wind does not ripple rock
-      // ripples drift in spacing and fade with depth, so they read as
-      // wind-blown sand rather than a repeated stamp
-      const w = fbmTex((x0 + fx) * 0.009, 5, seed + 9, 2) * 40;
-      const freq = 0.055 + fbmTex((x0 + fx) * 0.004, 2, seed + 29, 2) * 0.05;
-      const r = Math.sin(((x0 + fx) * freq) + w + depth * 0.08);
-      if (r < 0.6) return null;
-      const fade = 1 - clamp01((depth - 2) / 12);
-      return { h: (r - 0.6) * 1.9 * fade, tint: (r - 0.6) * 0.14 * fade };
-    }, { mat: crustMat, mask: true });
-
-    // pebbles and mineral flecks
-    for (let i = 0; i < b.pebbles; i++) {
-      const px = hash2i(cx, i, seed) * CHUNK_W;
-      const gx = clamp(Math.floor(px), 0, CHUNK_W);
-      const surf = heights[gx] - top;
-      const py = surf + hash2i(cx, i + 500, seed) * 30 + 1;
-      const r = 1 + hash2i(cx, i + 900, seed) * 2.4;
-      p.ellipse(px, py, r, r * 0.75, { mat: b.pebbleMat, dome: r * 1.1, tint: (hash2i(cx, i + 71, seed) - 0.5) * 0.3 });
-    }
-
-    p.smoothHeight(1, 0.6);
-    const canvas = p.resolve(MATERIALS, {
-      lightX: -0.5, lightY: -0.78, lightZ: 0.38,
-      ambient: 0.42, dither: 0.7, outline: 0,
-    });
+    p.smoothHeight(1, 0.5);
+    const canvas = shade(p, { ambient: 0.4, dither: 0.7 });
     return { canvas, top, h: H, cx };
   }
 
