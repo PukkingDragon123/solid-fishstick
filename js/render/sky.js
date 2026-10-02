@@ -128,6 +128,29 @@ export class Sky {
     if (nightK > 0.05) this._drawStars(ctx, vw, H, nightK * (1 - sc.dust * 0.9), t, amb);
     this._drawSunMoon(ctx, cam, weather, H, sc, amb, t);
     this._drawClouds(ctx, cam, weather, H, sc, amb, t);
+    this._drawBolt(ctx, cam, weather, H, amb);
+  }
+
+  // -- lightning ------------------------------------------------------------
+
+  /**
+   * The bolt itself, in the sky and behind everything on the ground, so the
+   * ranges stand black against it. A new one is grown the frame a strike
+   * lands; it hangs for as long as the flash does.
+   */
+  _drawBolt(ctx, cam, weather, H, amb) {
+    const f = weather.lightningFlash || 0;
+    if (f - (this._boltPrev ?? 0) > 0.3) this.bolt = growBolt(cam.vw, H, Math.random);
+    this._boltPrev = f;
+    if (!this.bolt || f < 0.25) return;
+    const a = clamp01((f - 0.25) / 0.5);
+    ctx.globalAlpha = a * 0.45;
+    ctx.fillStyle = comp('#8ea6ff', amb);
+    for (const [x, y] of this.bolt) ctx.fillRect(x - 1, y - 1, 3, 3);
+    ctx.globalAlpha = a;
+    ctx.fillStyle = comp('#f4f6ff', amb);
+    for (const [x, y] of this.bolt) ctx.fillRect(x, y, 1, 1);
+    ctx.globalAlpha = 1;
   }
 
   // -- the gradient -------------------------------------------------------
@@ -206,6 +229,8 @@ export class Sky {
     const h = weather.hour;
     const rise = 5.55, set = 18.95;
     const dusty = sc.dust;
+    this.sunPos = null;
+    this.moonPos = null;
     if (h > rise && h < set) {
       const k = (h - rise) / (set - rise);
       const arc = Math.sin(Math.PI * k);
@@ -218,6 +243,9 @@ export class Sky {
       const halo = mixHex('#ffe2a0', '#ff8048', low);
       const q = (c) => quantHex(comp(c, amb), 12);
       const vis = 1 - dusty * 0.75;
+      // where the sun is, for the lens: the renderer throws its shafts and
+      // leans its warm wash from here
+      this.sunPos = { x, y, low, vis: vis * (1 - clamp01(((weather.cloudCover || 0) - 0.55) / 0.35) * 0.8) };
       ctx.globalAlpha = vis;
       // the wide glow: the sky is brighter for a long way round the sun
       const wide = this.glow(150, 150, q(halo), 0.2 + low * 0.14, 5, 1.8);
@@ -243,6 +271,7 @@ export class Sky {
       const y = Math.round(H + 4 - arc * (H - 30) * 0.85);
       const a = clamp01(sc.night * 1.4) * (1 - dusty * 0.8);
       if (a > 0.02) {
+        this.moonPos = { x, y, vis: a };
         ctx.globalAlpha = a;
         const halo = this.glow(46, 46, quantHex(comp('#9fb4e0', amb), 10), 0.22, 3, 1.6);
         ctx.drawImage(halo, x - 46, y - 46);
@@ -418,6 +447,29 @@ export function bakeGlow(rx, ry, color, alpha, steps, fall) {
   }
   g.putImageData(img, 0, 0);
   return cv;
+}
+
+/** A forked path of pixels from the top of the sky to just past the horizon. */
+function growBolt(vw, H, rnd) {
+  const pts = [];
+  const line = (x0, y0, x1, y1) => {
+    const n = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0));
+    for (let i = 0; i <= n; i++) {
+      pts.push([Math.round(x0 + (x1 - x0) * i / n), Math.round(y0 + (y1 - y0) * i / n)]);
+    }
+  };
+  const walk = (x, y, yEnd, spread, depth) => {
+    while (y < yEnd) {
+      const nx = x + Math.round((rnd() - 0.5) * spread), ny = y + 3 + Math.round(rnd() * 6);
+      line(x, y, nx, ny);
+      if (depth < 2 && rnd() < 0.09) {
+        walk(nx, ny, Math.min(yEnd, ny + (yEnd - ny) * (0.3 + rnd() * 0.4)), spread * 1.3, depth + 1);
+      }
+      x = nx; y = ny;
+    }
+  };
+  walk(Math.round(vw * (0.12 + rnd() * 0.76)), -2, H + 12, 9, 0);
+  return pts;
 }
 
 function moonPhase(h) {

@@ -2,10 +2,16 @@
 //   scene  the world at low resolution
 //   light  ambient tint plus additive lights, multiplied over the scene
 //   ui     HUD and dialogue, blitted last so the heat haze never wobbles text
+//
+// Point lights live in light.js (dithered discs, queued, flickering); the
+// lens - grade of the hour, sun wash, shafts, glow, vignette, storm - lives
+// in post.js, with the frame-rate governor that sheds the expensive passes.
 
-import { clamp, clamp01, lerp, mixHex, rgba } from '../lib/math.js';
+import { clamp, clamp01, lerp, mixHex } from '../lib/math.js';
 import { hash2i } from './pixel.js';
 import { pxVignette } from './pix.js';
+import { LightPool } from './light.js';
+import { Post } from './post.js';
 
 const BASE_W = 460;
 const BASE_H = 258;
@@ -36,6 +42,8 @@ export class Renderer {
     this.modePulse = 0;     // rises on a hit or a release, decays on its own
     this.motes = [];        // spore motes drifting over the frame
     this._vignette = null;
+    this.lights = new LightPool();
+    this.post = new Post(this);
     this._makeLayers();
     this.resize();
   }
@@ -85,6 +93,7 @@ export class Renderer {
 
   beginFrame(dt) {
     this.time += dt;
+    this._overlaid = false;
     this.scene.clearRect(0, 0, this.vw, this.vh);
     this.ui.clearRect(0, 0, this.vw, this.vh);
   }
@@ -100,16 +109,24 @@ export class Renderer {
   }
   endLights() { this.light.globalCompositeOperation = 'source-over'; }
 
-  addLight(x, y, r, color, alpha = 1) {
-    if (r <= 0 || alpha <= 0.004) return;
-    const l = this.light;
-    const g = l.createRadialGradient(x, y, 0, x, y, r);
-    g.addColorStop(0, rgba(color, alpha));
-    g.addColorStop(0.5, rgba(color, alpha * 0.4));
-    g.addColorStop(1, rgba(color, 0));
-    l.fillStyle = g;
-    l.fillRect(x - r, y - r, r * 2, r * 2);
+  /**
+   * A light. Screen pixels by default, as it always was:
+   *   addLight(x, y, r, color, alpha)
+   * and for anything that burns, glows or lives in the world:
+   *   addLight(wx, wy, r, '#ffb060', 0.9, { world: true, flicker: true, glow: 0.8 })
+   * world   x, y and r are world units; the camera puts them on screen
+   * flicker true or 0..2: a flame's unsteadiness (seed: keep two apart)
+   * glow    0..1: how much it lights the air too, not just the ground
+   * It can be called at any point while the frame is drawn; every light is
+   * laid down together when the frame is composited.
+   */
+  addLight(x, y, r, color, alpha = 1, opts = null) {
+    this.lights.push(x, y, r, color, alpha, opts);
   }
+
+  /** The quality the lens is running at (0-2), and a way to pin it. */
+  get fxQuality() { return this.post.gov.level; }
+  set fxQuality(q) { this.post.gov.force = q == null ? null : clamp(Math.round(q), 0, 2); }
 
   _buildVignette() {
     const c = newCanvas(this.vw, this.vh);
@@ -125,7 +142,10 @@ export class Renderer {
   }
 
   update(dt, weather) {
-    this._dtAvg = (this._dtAvg || dt) * 0.95 + dt * 0.05;
+    // the clock the shimmer, the flames and the grades run on: the game
+    // begins each frame with beginFrame(0), so it has to advance here
+    this.time += dt;
+    this.post.updateStrike(dt, weather);
     this.haze = lerp(this.haze, weather.haze * 1.7, 1 - Math.pow(0.06, dt));
     this.flash = Math.max(0, this.flash - dt * 2.6);
     const want = this.mode ? 1 : 0;
@@ -164,6 +184,11 @@ export class Renderer {
 
   /** Weather that lives in front of the world: rain, blown sand, lightning. */
   drawWeatherOverlay(weather, game) {
+    // once a frame: the game draws it before the light goes on, so the rain
+    // is lit by the hour like everything else, and composite's own call is
+    // only there for a caller that never made one
+    if (this._overlaid) return;
+    this._overlaid = true;
     const s = this.scene;
     const vw = this.vw, vh = this.vh;
     if (weather.sand > 0.02) {
@@ -189,14 +214,9 @@ export class Renderer {
       }
       s.globalAlpha = 1;
     }
-    if (weather.lightningFlash > 0.01) {
-      s.globalCompositeOperation = 'lighter';
-      s.globalAlpha = weather.lightningFlash * 0.75;
-      s.fillStyle = '#dde6ff';
-      s.fillRect(0, 0, vw, vh);
-      s.globalAlpha = 1;
-      s.globalCompositeOperation = 'source-over';
-    }
+    // lightning is not drawn here any more: the strike lights the world
+    // through the light layer, and the bolt is in the sky (see post.js and
+    // Sky._drawBolt)
   }
 
   /**
@@ -287,70 +307,88 @@ export class Renderer {
     }
   }
 
-  /**
-   * BLOOM. The bright things glow: the sun, fire, the lit edge of the water,
-   * a spark. The frame is taken down to a quarter, pushed so only its
-   * brightest parts survive, blurred, and laid back over the top as light.
-   * Cheap, because a quarter of this frame is a few thousand pixels.
-   */
-  _bloom(s, amt) {
-    // a device that cannot hold its frame rate loses the glow first
-    const dt = this._dtAvg || 0.016;
-    if (dt > 1 / 38) this._slow = (this._slow || 0) + dt; else this._slow = Math.max(0, (this._slow || 0) - dt * 0.5);
-    if (this._slow > 2.5) this.bloomOff = true;
-    if (amt <= 0.01 || this.bloomOff) return;
-    const bw = Math.max(8, Math.ceil(this.vw / 4)), bh = Math.max(8, Math.ceil(this.vh / 4));
-    if (!this._bl || this._bl.width !== bw || this._bl.height !== bh) {
-      this._bl = newCanvas(bw, bh); this._bl2 = newCanvas(bw, bh);
-    }
-    const a = this._bl.getContext('2d'), b = this._bl2.getContext('2d');
-    a.clearRect(0, 0, bw, bh);
-    a.filter = 'brightness(0.9) contrast(3.2) saturate(1.3)';
-    a.drawImage(this.sceneC, 0, 0, bw, bh);
-    a.filter = 'none';
-    b.clearRect(0, 0, bw, bh);
-    b.filter = 'blur(2px)';
-    b.drawImage(this._bl, 0, 0);
-    b.filter = 'none';
-    s.save();
-    s.globalCompositeOperation = 'lighter';
-    s.globalAlpha = amt;
-    s.imageSmoothingEnabled = true;
-    s.drawImage(this._bl2, 0, 0, this.vw, this.vh);
-    s.restore();
-    s.imageSmoothingEnabled = false;
-  }
-
-  /**
-   * The grade. A soft-light wash that pushes the day warm and gold, the
-   * night blue, and the water teal - the difference between a picture that
-   * has been lit and one that has been coloured in.
-   */
-  _grade(s, weather) {
-    const day = clamp01(weather.daylight ?? 1);
+  /** Underwater the water itself is the grade: teal, soft-lit. */
+  _gradeWet(s) {
     const wet = this.underwater || 0;
+    if (wet < 0.02) return;
     s.save();
     s.globalCompositeOperation = 'soft-light';
-    s.globalAlpha = 0.16 + wet * 0.14;
-    s.fillStyle = wet > 0.3 ? '#3ec8d8' : day > 0.45 ? '#ffc070' : '#4a64b0';
+    s.globalAlpha = (0.16 + wet * 0.14) * clamp01(wet * 2);
+    s.fillStyle = '#3ec8d8';
     s.fillRect(0, 0, this.vw, this.vh);
     s.restore();
   }
 
+  /** What the lens needs to know about the world this frame. */
+  _frameInfo(weather, game) {
+    const sky = game?.backdrop?.sky;
+    const geo = game?.backdrop?._geo;
+    return {
+      wet: this.underwater || 0,
+      sun: sky?.sunPos || null,
+      moon: sky?.moonPos || null,
+      horizon: geo ? geo.H : this.vh * 0.5,
+    };
+  }
+
+  /**
+   * The lights the world has without anybody asking: at night a broad, cool
+   * pool where the animal is, so the dark is dark but you never lose it.
+   */
+  _autoLights(weather, game, out) {
+    const night = clamp01(weather.nightMix ?? 0);
+    const dry = 1 - clamp01((this.underwater || 0) * 2);
+    if (night < 0.05 || dry < 0.05 || !game?.crab || !game.cam) return;
+    if (game.state !== 'play' && game.state !== 'title' && game.state !== 'dead') return;
+    const c = game.crab, cam = game.cam;
+    const p = cam.worldToScreen(c.x, c.y - 14);
+    const r = 96 * cam.zoom;
+    out.push({ x: p.x, y: p.y, r, a: 0.24 * night * dry, color: '#8ea8e0', o: { glow: 0 } });
+    out.push({ x: p.x, y: p.y - 4, r: r * 0.45, a: 0.14 * night * dry, color: '#c8d6ff', o: { glow: 0 } });
+  }
+
   composite(weather, game) {
+    // the governor is fed real frame time from here, not from update(),
+    // which the title screen and the menus never call
+    const now = performance.now();
+    if (this._lastC) this.post.gov.tick((now - this._lastC) / 1000);
+    this._lastC = now;
     const s = this.scene;
+    const info = this._frameInfo(weather, game);
+
+    // the lights, all at once, then the storm lighting everything cold
+    const lights = this.lights.resolve(game?.cam, this.time);
+    this._autoLights(weather, game, lights);
+    const l = this.light;
+    l.globalCompositeOperation = 'lighter';
+    this.lights.drawInto(l, lights, this.vw, this.vh);
+    this.post.strikeLight(l, this.vw, this.vh, info.horizon);
+    l.globalCompositeOperation = 'source-over';
+
+    this.drawWeatherOverlay(weather, game);
+
     s.globalCompositeOperation = 'multiply';
     s.drawImage(this.lightC, 0, 0);
     s.globalCompositeOperation = 'source-over';
 
-    this.drawWeatherOverlay(weather, game);
+    // the air around a fire is lit too
+    this.lights.drawGlow(s, lights, this.vw, this.vh, clamp01(weather.nightMix ?? 0), 0.2);
+    this.lights.clear();
 
     // the grade and the glow, before the vignette closes the frame
-    this._grade(s, weather);
-    this._bloom(s, 0.16 + (this.underwater || 0) * 0.26 + (weather.daylight < 0.3 ? 0.08 : 0));
+    this._gradeWet(s);
+    this.post.apply(s, weather, info);
 
-    if (!this._vignette) this._buildVignette();
-    s.drawImage(this._vignette, 0, 0);
+    const dryK = 1 - clamp01(info.wet * 1.5);
+    if (dryK > 0.01) {
+      this.post.vignette(s, this.vw, this.vh, this.post.G, this.post.strike.env * -0.3, dryK);
+    }
+    if (dryK < 0.99) {
+      if (!this._vignette) this._buildVignette();
+      s.globalAlpha = 1 - dryK;
+      s.drawImage(this._vignette, 0, 0);
+      s.globalAlpha = 1;
+    }
     if ((this.underwater || 0) > 0.05) {
       // and underwater the edges go to deep blue rather than to brown
       pxVignette(s, this.vw, this.vh, '#021a33', this.underwater * 0.32, { p: 2, steps: 5, inner: 0.42 });
@@ -383,11 +421,12 @@ export class Renderer {
       d.drawImage(this.sceneC, 0, 0, this.vw, this.vh, 0, 0, this.vw * sc, this.vh * sc);
       const band = 2;
       const t = this.time;
-      const horizon = this.vh * 0.5;
+      // the mirage sits on the far horizon, where you look through the
+      // most hot air; close to you the ground barely moves
+      const horizon = info.horizon + 6;
       for (let y = 0; y < this.vh; y += band) {
-        // shimmer is strongest just above the ground, where the air is hottest
-        const depth = clamp01(1 - Math.abs(y - horizon) / (this.vh * 0.55));
-        const amp = haze * (0.35 + depth * 1.5);
+        const depth = clamp01(1 - Math.abs(y - horizon) / (this.vh * 0.3));
+        const amp = haze * (0.18 + depth * depth * 1.9);
         let off = (Math.sin(y * 0.23 + t * 2.4) * 0.7 + Math.sin(y * 0.08 - t * 1.4) * 0.5) * amp;
         if (dream > 0.02) {
           // long, low-frequency, slightly out of phase top to bottom
