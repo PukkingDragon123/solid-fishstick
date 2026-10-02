@@ -26,7 +26,7 @@ import { Pump } from './systems/pump.js';
 import { Sea } from './systems/sea.js';
 import { Green } from './systems/green.js';
 import { Digs, RELIC_BY_ID } from './systems/digs.js';
-import { Mining } from './systems/mining.js';
+import { Mining, outcropArt } from './systems/mining.js';
 import { Book } from './systems/book.js';
 import { Ranch } from './systems/ranch.js';
 import { Work } from './systems/work.js';
@@ -2263,7 +2263,9 @@ export class Game {
     this._faceWork(seam.x);
     this.work.begin('mine', {
       tag: 'mine:' + seam.ci, x: seam.x, y: gy, by: this.crab,
-      top: gy - (this.mining.outcropHeight?.(seam) ?? 20),
+      // the bar stands just over the deposit, however big it is
+      top: gy - (outcropArt(seam.ore.id, seam.ci)?.top ?? 20),
+      halfW: outcropArt(seam.ore.id, seam.ci)?.foot ?? 8,
       chip: seam.ore.colour || '#c9a24a',
       label: `${item ? item.name : 'Ore'} seam`,
       subject: seam.ore.id,
