@@ -10,6 +10,7 @@
 // of the art has to know it is wet.
 
 import { clamp, clamp01 } from '../lib/math.js';
+import { raySprite, RAY_KINDS, surfaceStrip, SURF_FRAMES } from '../art/seascape.js';
 
 // ---------------------------------------------------------------------------
 // caustics: a tileable, animated web, baked once
@@ -63,113 +64,92 @@ function bakeCaustics() {
   return out;
 }
 
-let scratch = null;
-function scratchFor(vw, vh) {
-  if (!scratch || scratch.width !== vw || scratch.height !== vh) {
-    scratch = document.createElement('canvas');
-    scratch.width = vw; scratch.height = vh;
-  }
-  return scratch;
+/** The caustic web for this moment, as a tile CTILE pixels square. */
+export const CTILE = TILE;
+export function causticFrame(t) {
+  if (!tiles) tiles = bakeCaustics();
+  return tiles[Math.floor(t * 9) % FRAMES];
 }
 
 /**
  * The water pass, over the world and under the interface.
  *
- * `surf(x)` is the screen Y of the surface at a screen X (or -Infinity for a
- * sea with no surface in view), `bed(x)` the screen Y of the bottom there.
+ * `surf(x)` is the screen Y of the surface at a screen X, `bed(x)` the
+ * screen Y of the bottom there.
  */
 export function drawWaterLight(ctx, vw, vh, opts) {
   const { t, wet, surf, bed, camX, camY, zoom } = opts;
   if (wet <= 0.02) return;
-  if (!tiles) tiles = bakeCaustics();
-  const frame = tiles[Math.floor(t * 9) % FRAMES];
+  const frame = causticFrame(t);
   const z = zoom;
 
   // ---- 1. depth: everything further down is bluer and darker -------------
   const top = clamp(surf(vw / 2), -vh, vh);
-  const fog = ctx.createLinearGradient(0, Math.max(0, top), 0, vh);
-  fog.addColorStop(0, `rgba(40,170,206,${0.04 * wet})`);
-  fog.addColorStop(0.55, `rgba(16,92,150,${0.10 * wet})`);
-  fog.addColorStop(1, `rgba(6,30,80,${0.20 * wet})`);
+  const y0 = Math.max(0, Math.round(top));
+  const fog = ctx.createLinearGradient(0, y0, 0, vh);
+  fog.addColorStop(0, `rgba(60,190,220,${0.03 * wet})`);
+  fog.addColorStop(0.6, `rgba(20,100,160,${0.08 * wet})`);
+  fog.addColorStop(1, `rgba(8,36,90,${0.18 * wet})`);
   ctx.fillStyle = fog;
-  ctx.fillRect(0, Math.max(0, top), vw, vh - Math.max(0, top));
+  ctx.fillRect(0, y0, vw, vh - y0);
 
   ctx.save();
-  ctx.globalCompositeOperation = 'lighter';
-
-  // ---- 2. caustics, projected onto the sand -------------------------------
-  // The tile is pinned to the world, not the screen, so the web stays on the
-  // ground as the camera moves; it is laid down a strip at a time, a band a
-  // few pixels deep following the seabed, and faintly up the water column.
+  // ---- 2. caustics, crawling over the sand ---------------------------------
+  // The web is pinned to the world, so it stays on the ground as the camera
+  // moves; it is laid into a band following the seabed, cut out with a path.
   const sc = Math.max(1, Math.round(z * 0.9));
-  const T = TILE * sc;
-  const offX = ((-camX * z) % T + T) % T, offY = ((-camY * z) % T + T) % T;
-  const layer = scratchFor(vw, vh);
-  const lg = layer.getContext('2d');
-  lg.clearRect(0, 0, vw, vh);
-  lg.imageSmoothingEnabled = false;
-  for (let y = offY - T; y < vh; y += T) {
-    for (let x = offX - T; x < vw; x += T) lg.drawImage(frame, Math.round(x), Math.round(y), T, T);
-  }
-  const step = 3;
-  for (let x = 0; x < vw; x += step) {
+  const T = CTILE * sc;
+  const band = Math.max(10, Math.round(22 * z));
+  const step = 6;
+  ctx.beginPath();
+  let any = false, ymin = vh, ymax = 0;
+  for (let x = 0; x <= vw + step; x += step) {
     const by = bed(x);
-    if (!isFinite(by)) continue;
-    const s0 = surf(x);
-    // brighter in the shallows, where the waves are close enough to focus
-    const depth = clamp01((by - s0) / (vh * 1.1));
-    const k = wet * (0.95 - depth * 0.55);
-    if (k <= 0.02) continue;
-    const band = Math.round(10 * z);
-    ctx.globalAlpha = k * 0.85;
-    ctx.drawImage(layer, x, Math.round(by - 2), step, band, x, Math.round(by - 2), step, band);
-    // and a faint echo of it hanging in the water above the sand
-    ctx.globalAlpha = k * 0.06;
-    const up = Math.round(Math.min(by - Math.max(s0, 0), 70 * z));
-    if (up > 2) ctx.drawImage(layer, x, Math.round(by - up), step, up, x, Math.round(by - up), step, up);
+    const yy = isFinite(by) ? by - 1 : vh + 50;
+    if (isFinite(by)) any = true;
+    if (x === 0) ctx.moveTo(x, yy); else ctx.lineTo(x, yy);
+    ymin = Math.min(ymin, yy); ymax = Math.max(ymax, yy);
   }
-
-  // ---- 3. light shafts in FRONT of everything -------------------------------
-  // The column already puts soft shafts behind the reef; these are the few
-  // bright ones that cross in front of the animal, which is what makes the
-  // light feel like it is between you and it.
-  const sy = Math.max(-10, top);
-  for (let i = 0; i < 5; i++) {
-    const ph = i * 2.3;
-    const x = vw * ((i + 0.3) / 5) + Math.sin(t * 0.13 + ph) * vw * 0.06 - (camX * z * 0.05) % (vw / 5);
-    const lean = 0.30 + Math.sin(t * 0.11 + ph) * 0.06;
-    const w0 = vw * 0.018, w1 = vw * (0.06 + 0.03 * Math.sin(ph));
-    const a = (0.05 + 0.05 * Math.pow(0.5 + 0.5 * Math.sin(t * 0.7 + ph * 1.7), 2)) * wet;
-    const len = vh * 0.95;
-    const g = ctx.createLinearGradient(x, sy, x + len * lean, sy + len);
-    g.addColorStop(0, `rgba(230,255,255,${a * 1.6})`);
-    g.addColorStop(0.5, `rgba(180,236,248,${a * 0.6})`);
-    g.addColorStop(1, 'rgba(120,200,230,0)');
-    ctx.globalAlpha = 1;
-    ctx.fillStyle = g;
-    ctx.beginPath();
-    ctx.moveTo(x - w0, sy);
-    ctx.lineTo(x + w0, sy);
-    ctx.lineTo(x + len * lean + w1, sy + len);
-    ctx.lineTo(x + len * lean - w1, sy + len);
-    ctx.closePath();
-    ctx.fill();
+  for (let x = vw + step; x >= 0; x -= step) {
+    const by = bed(x);
+    ctx.lineTo(x, isFinite(by) ? by + band : vh + 50);
   }
-
-  // ---- 4. the surface from underneath: a bright, rippling ceiling ---------
-  if (top > -vh && top < vh) {
-    for (let x = 0; x < vw; x += 2) {
-      const yy = surf(x);
-      if (!isFinite(yy) || yy < -4 || yy > vh) continue;
-      const r = 0.5 + 0.5 * Math.sin(x * 0.09 + t * 2.1) * Math.sin(x * 0.031 - t * 1.3);
-      ctx.globalAlpha = wet * (0.25 + r * 0.55);
-      ctx.fillStyle = '#e8fdff';
-      ctx.fillRect(x, Math.round(yy), 2, Math.max(1, Math.round(z)));
-      // the glow hanging just under it
-      ctx.globalAlpha = wet * 0.10 * (0.5 + r);
-      ctx.fillStyle = '#7fe0f0';
-      ctx.fillRect(x, Math.round(yy) + Math.round(z), 2, Math.round(6 * z));
+  ctx.closePath();
+  if (any && ymin < vh) {
+    ctx.clip();
+    ctx.globalCompositeOperation = 'lighter';
+    const depth = clamp01((bed(vw / 2) - top) / (vh * 1.6));
+    ctx.globalAlpha = wet * (0.42 - depth * 0.2);
+    const offX = ((-camX * z) % T + T) % T, offY = ((-camY * z) % T + T) % T;
+    const ya = Math.floor((ymin - offY) / T) * T + offY, yb = Math.min(vh, ymax + band);
+    for (let y = ya; y < yb; y += T) {
+      for (let x = offX - T; x < vw; x += T) ctx.drawImage(frame, Math.round(x), Math.round(y), T, T);
     }
   }
   ctx.restore();
+
+  // ---- 3. a couple of shafts of light in FRONT of everything ---------------
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  const sy = Math.max(-30, Math.round(top) - 4);
+  const span = vw + 300;
+  for (let i = 0; i < 2; i++) {
+    const r = raySprite((i * 2 + 1) % RAY_KINDS);
+    const ph = i * 3.3;
+    let x = (i / 2) * span + 90 + Math.sin(t * 0.1 + ph) * 26 - camX * z * 0.12;
+    x = ((x % span) + span) % span - 200;
+    ctx.globalAlpha = wet * (0.06 + 0.05 * (0.5 + 0.5 * Math.sin(t * 0.3 + ph)));
+    ctx.drawImage(r.cv, Math.round(x), sy);
+  }
+  ctx.restore();
+
+  // ---- 4. the surface from underneath: a bright, rippling ceiling ---------
+  if (top > -12 && top < vh) {
+    const s = surfaceStrip(Math.floor(t * 5) % SURF_FRAMES);
+    const off = ((Math.round(camX * z * 0.4) % s.W) + s.W) % s.W;
+    ctx.save();
+    ctx.globalAlpha = wet * 0.7;
+    for (let x = -off; x < vw; x += s.W) ctx.drawImage(s.cv, x, Math.round(top) - s.line);
+    ctx.restore();
+  }
 }

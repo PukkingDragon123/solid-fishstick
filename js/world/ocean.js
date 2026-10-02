@@ -15,7 +15,7 @@ import { clamp, clamp01, smoothstep, TAU } from '../lib/math.js';
 /** Where the sand stops being sand. */
 export const SHORE_X = -14200;
 const RAMP = 3200;            // how far out the shelf takes to reach the bottom
-const MAX_DEPTH = 300;        // and how deep the bottom is
+const MAX_DEPTH = 440;        // and how deep the bottom is
 const WAVE = 2.2;
 
 /**
@@ -89,7 +89,7 @@ export class Ocean {
         g.audio?.play('splash');
         // pull back when you go under: the sea is wide and full of things,
         // and you should see them coming
-        if (g.cam && g.autoZoom) g.cam.targetZoom = Math.max(g.cam.minZoom, g.autoZoom() * 0.72);
+        if (g.cam && g.autoZoom) g.cam.targetZoom = Math.max(g.cam.minZoom, g.autoZoom() * 0.64);
       } else {
         g.sea.stop();
         g.audio?.play('splash', { pitch: 1.4 });

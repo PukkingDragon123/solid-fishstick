@@ -77,7 +77,7 @@ export class Game {
     // underneath the stick and the band. The interface says how much room it
     // is taking and the camera answers, which means starting a job lifts the
     // shot rather than burying the hole under the band.
-    let bias = this.renderer.tall ? -0.10 : 0.16;
+    let bias = this.renderer.tall ? (this.state === 'prologue' ? 0.1 : -0.10) : 0.16;
     if (this.ui?.touchEnabled) {
       const top = this.ui.furnitureTop(this.renderer.vw, this.renderer.vh);
       const want = clamp((top - 42) / this.renderer.vh, 0.3, 0.66) - 0.5;
@@ -103,7 +103,7 @@ export class Game {
     // underneath the stick and the band. The interface says how much room it
     // is taking and the camera answers, which means starting a job lifts the
     // shot rather than burying the hole under the band.
-    let bias = this.renderer.tall ? -0.10 : 0.16;
+    let bias = this.renderer.tall ? (this.state === 'prologue' ? 0.1 : -0.10) : 0.16;
     if (this.ui?.touchEnabled) {
       const top = this.ui.furnitureTop(this.renderer.vw, this.renderer.vh);
       const want = clamp((top - 42) / this.renderer.vh, 0.3, 0.66) - 0.5;
@@ -266,7 +266,7 @@ export class Game {
     this.npc.x = this.crab.x + 900;
     this.cam.followEntity(this.crab, true);
     // wide: the sea is the point of this scene, not the animal in it
-    this.cam.targetZoom = this.cam.zoom = clamp(this.autoZoom() * 0.72, 0.6, this.cam.maxZoom);
+    this.cam.targetZoom = this.cam.zoom = clamp(this.autoZoom() * 0.62, 0.6, this.cam.maxZoom);
     this.say('narrator', 'Thirty metres of water. Every one of them warm.');
     this._proT = 0;
     this._whaleShot = 0;
@@ -304,7 +304,7 @@ export class Game {
         wh.dir = 1;
         wh.sp = 62;
       }
-      this.cam.cineTo(c.x + 60, c.y - 170, Math.max(0.4, this.autoZoom() * 0.36), 4.2);
+      this.cam.cineTo(c.x + 60, c.y - 150, Math.max(0.4, this.autoZoom() * 0.36), 4.2);
     }
     if (t > 20 && !this._pro2b) {
       this._pro2b = 1;
@@ -315,7 +315,7 @@ export class Game {
       this._whaleShot = 0;
       for (const wh of this.sea.whales) wh.sp = 26;
       this.cam.followEntity(this.crab);
-      this.cam.targetZoom = clamp(this.autoZoom() * 0.72, 0.6, this.cam.maxZoom);
+      this.cam.targetZoom = clamp(this.autoZoom() * 0.62, 0.6, this.cam.maxZoom);
       N('You will never see one again. Nothing here will.');
     }
     // the other thing that is bigger than you, and the only one that has
@@ -1184,7 +1184,7 @@ export class Game {
     // underneath the stick and the band. The interface says how much room it
     // is taking and the camera answers, which means starting a job lifts the
     // shot rather than burying the hole under the band.
-    let bias = this.renderer.tall ? -0.10 : 0.16;
+    let bias = this.renderer.tall ? (this.state === 'prologue' ? 0.1 : -0.10) : 0.16;
     if (this.ui?.touchEnabled) {
       const top = this.ui.furnitureTop(this.renderer.vw, this.renderer.vh);
       const want = clamp((top - 42) / this.renderer.vh, 0.3, 0.66) - 0.5;
