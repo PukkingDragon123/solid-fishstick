@@ -18,7 +18,7 @@ import { clamp, clamp01, lerp, damp, TAU } from '../lib/math.js';
 import { drawText, textWidth, wrapText, ellipsize, LINE_H } from '../lib/font.js';
 import { drawNodeIcon } from './icons.js';
 import * as Kit from './kit.js';
-import { facePortrait } from '../art/faces.js';
+import { facePortrait, FaceLife } from '../art/faces.js';
 import { TOPICS, nextLesson } from '../systems/talk.js';
 import { QUEST_BY_ID, offerCards } from '../systems/quests.js';
 
@@ -28,19 +28,6 @@ const FAINT = 'rgba(240,226,192,0.34)';
 const OUT = 'rgba(12,8,5,0.72)';
 const TAP = '#8fe0cc';
 
-/**
- * Two frames make a jaw. Whatever face he is wearing, talking flips between
- * it and its opposite number - a shut mouth opens, an open one closes - so he
- * is never a still picture with words appearing beside it.
- */
-const JAW = {
-  flat: 'talk', talk: 'flat', grin: 'laugh', laugh: 'grin', joy: 'grin',
-  smug: 'talk', squint: 'talk', frown: 'gasp', gasp: 'frown', glare: 'scowl',
-  scowl: 'glare', shout: 'flat', peer: 'talk', blank: 'talk', dull: 'talk',
-  sad: 'talk', tired: 'talk', drink: 'flat', spore: 'gasp',
-};
-/** The frames that already have his eyes shut, which must not blink again. */
-const EYES_SHUT = new Set(['shut', 'sleep', 'laugh', 'joy']);
 
 /** How far he has to be for the conversation to be possible at all. */
 export const TALK_RANGE = 64;
@@ -446,14 +433,15 @@ export class TalkScreen {
       K = Math.max(1, Math.min(4, Math.floor(Math.min(W * 0.30 / 59, H * 0.58 / 64, room / 64))));
     }
     const spore = (g.mind?.blue || 0) > 0.35 ? 1 : 0;
-    // the face he is actually wearing this frame: his mood, with a jaw on it
-    // while the line is arriving and a blink over the top of both
-    let face = g.npc.mood || 'flat';
-    const saying = this.topic && this.think <= 0 && this.type < 1 && this.hold <= 0;
-    if (saying && Math.floor(this.mouth * 9) % 2 === 1) face = JAW[face] || 'talk';
-    if (this.blink < 0 && !EYES_SHUT.has(face)) face = 'shut';
+    // the face he is actually wearing this frame: his mood, and on top of it
+    // his own clock - blinks, glances, breath, and a mouth that moves through
+    // the syllables for as long as the line is still arriving
+    const face = g.npc.mood || 'flat';
+    const saying = !!(this.topic && this.think <= 0 && this.type < 1 && this.hold <= 0);
+    const life = this.faceLife || (this.faceLife = new FaceLife());
+    life.tick(this.t, saying);
     let port = null;
-    try { port = facePortrait(face, K, spore); } catch { port = null; }
+    try { port = facePortrait(face, K, spore, { life, talking: saying, slot: 'talk' }); } catch { port = null; }
 
     // He sits in a frame, the way a photograph pinned in a field notebook
     // does: a leather board, a stone mount cut into it, his face in the
@@ -478,9 +466,7 @@ export class TalkScreen {
       // a breath, so he is not a still image while he is talking, and a clip
       // so the breath never pushes his hat out through the frame
       // breathing, plus the settle he makes when he starts a new sentence
-      const br = Math.sin(this.t * 1.4) * 0.6
-        + (saying ? Math.sin(this.t * 17) * 0.45 : 0)
-        - this.lean * this.lean * 3;
+      const br = -this.lean * this.lean * 3;
       ctx.save();
       ctx.beginPath();
       ctx.rect(cardX + PAD, cardY + PAD, pw, ph);

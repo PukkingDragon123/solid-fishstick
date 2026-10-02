@@ -16,7 +16,7 @@ import { pxEllipse, pxSize } from '../render/pix.js';
 import { ik2 } from './crab.js';
 import { buildPerson, portrait } from '../art/personart.js';
 import { PixelFigure, FIGURE_SOCKETS, hatSprite, WALK, WALK_BOB, WALK_CYCLE, ARM } from '../art/pixelperson.js';
-import { facePortrait, faceFor } from '../art/faces.js';
+import { facePortrait, faceFor, FaceLife } from '../art/faces.js';
 
 export const POSE = {
   IDLE: 'idle', IDLE_FRONT: 'idleFront', IDLE_BACK: 'idleBack',
@@ -72,14 +72,6 @@ const CAMP_ITEMS = ['bedroll', 'canteen', 'lantern', 'peg', 'skull', 'spoil', 'p
 /** How long a pivot takes, and how narrow he gets halfway through it. */
 const TURN_SECS = 0.26;
 const TURN_MIN = 0.58;
-
-/** Two frames make a jaw: whatever he is wearing, and its opposite number. */
-const JAW_FRAME = {
-  flat: 'talk', talk: 'flat', grin: 'laugh', laugh: 'grin', joy: 'grin',
-  smug: 'talk', squint: 'talk', frown: 'gasp', gasp: 'frown', glare: 'scowl',
-  scowl: 'glare', shout: 'flat', peer: 'talk', blank: 'talk', dull: 'talk',
-  sad: 'talk', tired: 'talk', drink: 'flat', spore: 'gasp',
-};
 
 export class Person {
   constructor(game, kind, x, opts = {}) {
@@ -283,9 +275,12 @@ export class Person {
    * to some text and a man saying it.
    */
   portrait(scale = 1, talking = false) {
-    let f = this.mood || 'flat';
-    if (talking && Math.floor((this.game.time || 0) * 9) % 2 === 1) f = JAW_FRAME[f] || 'talk';
-    return facePortrait(f, scale, (this.game.mind?.blue || 0) > 0.35 ? 1 : 0);
+    // his face is painted by code and kept alive by its own clock: he blinks,
+    // glances about, breathes, and talks through the syllables
+    const life = this.faceLife || (this.faceLife = new FaceLife());
+    life.tick(this.game.time || 0, talking);
+    return facePortrait(this.mood || 'flat', scale, (this.game.mind?.blue || 0) > 0.35 ? 1 : 0,
+      { life, talking, slot: 'card:' + this.kind });
   }
 
   setPose(p) { if (this.pose !== p) { this.pose = p; this.animT = 0; } this.poseT = 0; }
