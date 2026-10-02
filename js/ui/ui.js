@@ -20,7 +20,8 @@ import { drawShell, drawBloom, drawSprig, drawOrb, drawTab, drawPanel, drawGlyph
 import * as K from './kit.js';
 import { drawChibi } from './chibi.js';
 import { drawWorldWork } from './workbar.js';
-import { drawBook } from './bookui.js';
+import { drawBook, bookUpdate, bookOpening } from './bookui.js';
+import { drawMap, mapUpdate, mapOpening } from './mapui.js';
 import { drawIcon } from './iconcore.js';
 import './iconart.js';
 import './iconart_items.js';
@@ -120,15 +121,26 @@ export class UI {
   openBook(tab = null, pick = null) {
     if (this.game.state !== 'play') return;
     this.bookOpen = true;
-    const st = this.bookState || (this.bookState = { tab: 'creature', pick: null, scroll: 0, t: 0 });
-    st.t = 0;
-    if (tab) { st.tab = tab; st.pick = pick; st.scroll = 0; }
+    bookOpening(this, tab, pick);
     this.game.audio?.play('ui');
   }
 
   closeBook() {
     this.bookOpen = false;
     this.game.audio?.play('ui', { pitch: 0.8 });
+  }
+
+  /** Unroll Vess's chart of the basin. */
+  openMap() {
+    if (this.game.state !== 'play' || this.bookOpen) return;
+    this.mapOpen = true;
+    mapOpening(this);
+    this.game.audio?.play('ui', { pitch: 0.9 });
+  }
+
+  closeMap() {
+    this.mapOpen = false;
+    this.game.audio?.play('ui', { pitch: 0.75 });
   }
 
   /**
@@ -260,11 +272,10 @@ export class UI {
     this.t += dt;
     if (this.noteT > 0) this.noteT -= dt;
     // the book owns everything while it is open
-    if (this.bookOpen) {
-      const i = this.game.input;
-      if (i.justPressed('Escape') || i.justPressed('j')) { i.consumeKey('Escape'); i.consumeKey('j'); this.closeBook(); }
-      return;
-    }
+    if (this.bookOpen) { bookUpdate(this, dt); return; }
+    // and so does the map
+    if (this.mapOpen) { mapUpdate(this, dt); return; }
+    this.game.atlas?.track(dt);
     if (this.modeT > 0) this.modeT = Math.max(0, this.modeT - dt);
     const i = this.game.input;
     if (this.toastT > 0) { this.toastT -= dt; if (this.toastT <= 0) this.toast = null; }
@@ -309,6 +320,8 @@ export class UI {
     } else this.scoopTap = false;
     if (i.justPressed('g')) { i.consumeKey('g'); this._openTree(); }
     if (i.justPressed('j') && this.game.state === 'play') { i.consumeKey('j'); this.openBook(); }
+    // N for the chart (M was already the mode)
+    if (i.justPressed('n') && this.game.state === 'play') { i.consumeKey('n'); this.openMap(); }
     if (i.justPressed('m')) { i.consumeKey('m'); this.cycleMode(); }
     // B is the bench, because that is the one you reach for most once he is
     // yours, and it should not be a number you have to remember
@@ -570,6 +583,9 @@ export class UI {
       if (this.tree.dive > 0.14) { this._exitChip(ctx, W, H); return; }
     }
 
+    // the book is a screen of its own: nothing of the HUD shows round it
+    if (this.bookOpen) { drawBook(this, ctx, W, H); return; }
+    if (this.mapOpen) { drawMap(this, ctx, W, H); return; }
     this._hud(ctx, W, H);
     if (this.build > 0.005) this._buildRail(ctx, W, H);
     if (this.placing) this._placingHud(ctx, W, H);
@@ -1720,6 +1736,15 @@ export class UI {
       if (hot) {
         this.hover = { title: 'The Book of the Old Sea', body: `${tot.have} of ${tot.total} pages. J opens it.` };
         if (g.input.clicked) { g.input.clicked = false; this.openBook(); }
+      }
+      // and under it, the chart
+      const my = by + bs + 14;
+      const mhot = this._hit(bx, my, bs, bs);
+      K.slot(ctx, bx, my, bs, bs, { hot: mhot });
+      drawIcon(ctx, 'map', bx + bs / 2, my + bs / 2, 1);
+      if (mhot) {
+        this.hover = { title: 'The chart', body: `${Math.round((g.atlas?.fraction || 0) * 100)}% of the basin charted. N opens it.` };
+        if (g.input.clicked) { g.input.clicked = false; this.openMap(); }
       }
     }
 
