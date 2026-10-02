@@ -16,7 +16,7 @@ import { pxEllipse, pxSize } from '../render/pix.js';
 import { ik2 } from './crab.js';
 import { buildPerson, portrait } from '../art/personart.js';
 import { PixelFigure, FIGURE_SOCKETS, hatSprite, WALK, WALK_BOB, WALK_CYCLE, ARM } from '../art/pixelperson.js';
-import { facePortrait, faceFor } from '../art/faces.js';
+import { facePortrait, faceFor, FaceLife } from '../art/faces.js';
 
 export const POSE = {
   IDLE: 'idle', IDLE_FRONT: 'idleFront', IDLE_BACK: 'idleBack',
@@ -72,14 +72,6 @@ const CAMP_ITEMS = ['bedroll', 'canteen', 'lantern', 'peg', 'skull', 'spoil', 'p
 /** How long a pivot takes, and how narrow he gets halfway through it. */
 const TURN_SECS = 0.26;
 const TURN_MIN = 0.58;
-
-/** Two frames make a jaw: whatever he is wearing, and its opposite number. */
-const JAW_FRAME = {
-  flat: 'talk', talk: 'flat', grin: 'laugh', laugh: 'grin', joy: 'grin',
-  smug: 'talk', squint: 'talk', frown: 'gasp', gasp: 'frown', glare: 'scowl',
-  scowl: 'glare', shout: 'flat', peer: 'talk', blank: 'talk', dull: 'talk',
-  sad: 'talk', tired: 'talk', drink: 'flat', spore: 'gasp',
-};
 
 export class Person {
   constructor(game, kind, x, opts = {}) {
@@ -283,12 +275,56 @@ export class Person {
    * to some text and a man saying it.
    */
   portrait(scale = 1, talking = false) {
-    let f = this.mood || 'flat';
-    if (talking && Math.floor((this.game.time || 0) * 9) % 2 === 1) f = JAW_FRAME[f] || 'talk';
-    return facePortrait(f, scale, (this.game.mind?.blue || 0) > 0.35 ? 1 : 0);
+    // his face is painted by code and kept alive by its own clock: he blinks,
+    // glances about, breathes, and talks through the syllables
+    const life = this.faceLife || (this.faceLife = new FaceLife());
+    life.tick(this.game.time || 0, talking);
+    return facePortrait(this.mood || 'flat', scale, (this.game.mind?.blue || 0) > 0.35 ? 1 : 0,
+      { life, talking, slot: 'card:' + this.kind });
   }
 
   setPose(p) { if (this.pose !== p) { this.pose = p; this.animT = 0; } this.poseT = 0; }
+
+  /**
+   * The small things a person standing still does without deciding to: a
+   * blink every few seconds (sometimes two), the weight going from one leg to
+   * the other, a glance over the shoulder at nothing, and now and then a tug
+   * at the hat brim. None of them line up with each other, so it never reads
+   * as a loop.
+   */
+  _life(dt) {
+    const L = this.life || (this.life = {
+      blinkIn: 1 + Math.random() * 2, blinkT: -1, shift: Math.random() * TAU,
+      glanceIn: 3 + Math.random() * 3, glanceT: 0, home: this.facing,
+      hatIn: 6 + Math.random() * 8, hatT: 0,
+    });
+    if (L.blinkT >= 0) {
+      L.blinkT += dt;
+      if (L.blinkT > 0.14) { L.blinkT = -1; L.blinkIn = Math.random() < 0.16 ? 0.16 : 2 + Math.random() * 3.6; }
+    } else if ((L.blinkIn -= dt) <= 0) L.blinkT = 0;
+    L.shift += dt * 0.55;
+    if (L.hatT > 0) L.hatT = Math.max(0, L.hatT - dt);
+    const idle = this.isIdle();
+    if (L.glanceT > 0) {
+      L.glanceT -= dt;
+      if (L.glanceT <= 0 && idle && !this.speech) { this._quietTurn = true; this.setFacing(L.home); }
+    }
+    if (!idle || this.speech || this.game.state !== 'play') { L.glanceIn = Math.max(L.glanceIn, 1.5); return; }
+    if ((L.glanceIn -= dt) <= 0 && L.glanceT <= 0) {
+      L.glanceIn = 4 + Math.random() * 5;
+      L.home = this.facing;
+      L.glanceT = 0.9 + Math.random() * 1.3;
+      this._quietTurn = true;
+      this.setFacing(-this.facing);
+    }
+    if ((L.hatIn -= dt) <= 0) { L.hatIn = 9 + Math.random() * 12; L.hatT = 1.1; }
+  }
+
+  /** Standing about with nothing in his hands. */
+  isIdle() {
+    return (this.pose === POSE.IDLE || this.pose === POSE.IDLE_FRONT || this.pose === POSE.IDLE_BACK)
+      && Math.abs(this.vx) < 5 && this.moveTo === undefined && !this.driveX && !(this.jz > 0);
+  }
 
   // -------------------------------------------------------------------------
 
@@ -304,6 +340,7 @@ export class Person {
       if (this.speechT <= 0) { this.speech = null; this.shout = 0; }
     }
     this._watch(dt);
+    this._life(dt);
 
     const crab = this.game.crab;
     if (this.keepAway && crab && this.game.state === 'play') {
@@ -370,9 +407,9 @@ export class Person {
     // a scuff of dust halfway through, which is where the weight goes over
     if (!this.turnPuffed && k > 0.5) {
       this.turnPuffed = true;
-      this.game.fx?.dust(this.x, this.y, 0.5);
+      if (!this._quietTurn) this.game.fx?.dust(this.x, this.y, 0.5);
     }
-    if (k >= 1) this.turnPuffed = false;
+    if (k >= 1) { this.turnPuffed = false; this._quietTurn = false; }
   }
 
   /** Ease the body towards whatever the current pose asks for. */
@@ -384,8 +421,12 @@ export class Person {
     b.lean = damp(b.lean, P.lean, rate, dt);
     // a bit of life in the arms while he is working or talking
     const w = (P.work || 0) * Math.sin(this.animT * (this.pose === POSE.DIG ? 7.5 : 4.2));
-    b.armN0 = damp(b.armN0, P.armN[0] + w * 0.34, rate, dt);
-    b.armN1 = damp(b.armN1, P.armN[1] - w * 0.28, rate, dt);
+    // the tug at the hat brim: the near hand goes up to the front of it
+    const ht = this.life && this.life.hatT > 0 && this.isIdle() ? this.life.hatT / 1.1 : 0;
+    const hk = ht > 0 ? clamp01(Math.sin(ht * Math.PI) * 1.8) : 0;
+    const tug = hk > 0.9 ? Math.sin(this.t * 14) * 0.08 : 0;
+    b.armN0 = damp(b.armN0, lerp(P.armN[0] + w * 0.34, -1.04 + tug, hk), hk > 0 ? 0.00005 : rate, dt);
+    b.armN1 = damp(b.armN1, lerp(P.armN[1] - w * 0.28, 0.86, hk), hk > 0 ? 0.00005 : rate, dt);
     b.armF0 = damp(b.armF0, P.armF[0] + w * 0.12, rate, dt);
     b.armF1 = damp(b.armF1, P.armF[1] - w * 0.10, rate, dt);
     b.look = damp(b.look, P.face || 0, 0.0012, dt);
@@ -597,10 +638,15 @@ export class Person {
 
     // hips: the root of everything, dropped by the crouch and bobbed by the gait
     const drop = this.b.crouch * rig.standH * 0.62;
-    const bob = this.walkFrame >= 0 ? WALK_BOB[this.walkFrame] * rig.K : 0;
-    const breath = this.walkFrame >= 0 ? 0 : Math.round(Math.sin(this.breathe) * 1.2) * 0.25;
-    const hipWorldY = this.y - rig.standH + drop + bob - this.jz;
-    const s = cam.worldToScreen(this.x, hipWorldY);
+    const walking = this.walkFrame >= 0;
+    const bob = walking ? WALK_BOB[this.walkFrame] * rig.K : 0;
+    // breathing: the chest and shoulders lift a whole pixel on the breath in
+    const breath = walking ? 0 : Math.sin(this.breathe) > 0.3 ? -1 : 0;
+    // and standing, the weight drifts from one leg to the other
+    const idle = this.isIdle();
+    this._sx = idle ? Math.sin(this.life ? this.life.shift : 0) * 0.9 : 0;
+    const hipWorldY = this.y - rig.standH + drop + bob - this.jz + Math.abs(this._sx) * 0.35;
+    const s = cam.worldToScreen(this.x + this._sx * dir, hipWorldY);
 
     // ---- the skeleton, solved in body space -----------------------------
     // Nothing below is drawn here: this only works out where every joint is,
@@ -614,6 +660,12 @@ export class Person {
     const bag = rot(SO.bag.x, SO.bag.y, lean);
     const sway = Math.abs(this.vx) > 6 ? Math.sin(this.step * TAU * 2 + 0.9) * 0.7 : 0;
     bag.y += sway;
+    // the pack is heavy and loose on its straps: it arrives a frame late
+    if (walking) {
+      const fi = this.walkFrame;
+      bag.y += (WALK_BOB[(fi + 7) % 8] - WALK_BOB[fi]) * 1.1 * rig.K;
+      bag.x -= 0.4;
+    }
     const chest = rot(SO.chest.x, SO.chest.y, lean);
     const spec = {
       lean, breath,
@@ -625,7 +677,12 @@ export class Person {
       tool: P.tool, hold: P.hold,
       face: this._faceState(),
       spore: (this.game.mind ? this.game.mind.blue : 0) > 0.35,
-      nod: P.work && Math.sin(this.animT * 4.0) > 0.55 ? 1 : 0,
+      nod: (P.work && Math.sin(this.animT * 4.0) > 0.55 ? 1 : 0)
+        + (walking && WALK_BOB[this.walkFrame] > 0.9 ? 1 : 0)
+        + (this.life && this.life.hatT > 0.3 && this.life.hatT < 0.75 && idle ? 1 : 0),
+      // the tail of the neckerchief: streaming behind him on the walk, hanging
+      // and stirring when he stands
+      scarf: { stream: walking ? clamp01(Math.abs(this.vx) / 40) : 0, phase: this.t * (walking ? 11 : 2.2) },
     };
     this.fig = this.fig || new PixelFigure(this.kind);
     const cv = this.fig.render(spec);
@@ -664,7 +721,7 @@ export class Person {
     const rig = this.rig;
     const hx = side > 0 ? 0.8 : -1.0;
     const hy = -1;
-    const fx = (foot.x - this.x) * dir + hx * 0.2;
+    const fx = (foot.x - this.x) * dir - (this._sx || 0) + hx * 0.2;
     const fy = (foot.y - hipWorldY);
     const l1 = rig.leg.near.upper.len, l2 = rig.leg.near.lower.len;
     const sol = ik2(hx, hy, fx - 0.6 * rig.K, fy - 1.8 * rig.K, l1, l2, 1);
@@ -680,7 +737,7 @@ export class Person {
   _faceState() {
     const saying = !!this.speech && (this.speechAge || 0) * 34 < (this.speech.length + 4);
     const jaw = saying && Math.floor(this.t * 8.5) % 2 === 1;
-    const blink = (this.t % 4.3) < 0.13;
+    const blink = this.life ? this.life.blinkT >= 0 : (this.t % 4.3) < 0.13;
     // the same face his portrait card is pulling, so the man in the desert
     // and the man on the card say a line with the same expression
     return { mood: this.mood || 'flat', shut: blink, open: jaw, bare: !!this.hatOff };

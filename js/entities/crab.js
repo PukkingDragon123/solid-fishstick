@@ -467,10 +467,26 @@ export class Crab {
     this.mouthT += dt * (5.5 + (this.pumping > 0 ? 9 : 0));
 
     this.clawT += dt;
-    const wantOpen = ctrl.grab ? 1
+    let wantOpen = ctrl.grab ? 1
       : this.alarm > 0.2 ? 0.85 + Math.sin(this.clawT * 9) * 0.15
         : this.pumping > 0 ? 0.7 : 0.34 + Math.sin(this.clawT * 1.3) * 0.10;
-    this.clawOpen = damp(this.clawOpen, wantOpen, 0.001, dt);
+    // Fidgets, while it has nothing to do: an eye stalk snaps round to
+    // something and eases back, an antenna flicks, the big claw goes
+    // snip-snip at the air. Each on its own clock.
+    const L = this.fidget || (this.fidget = { tw: [0, 0], twA: [0, 0], twIn: [1.2, 2.3], ant: [0, 0], antA: [0, 0], antIn: [1.8, 3.1], fid: 0, fidIn: 3 });
+    const still = spd < 6 && this.alarm < 0.1 && !ctrl.grab && !(this.pumping > 0);
+    for (let k = 0; k < 2; k++) {
+      L.tw[k] = Math.max(0, L.tw[k] - dt);
+      L.ant[k] = Math.max(0, L.ant[k] - dt);
+      L.twIn[k] -= dt * (still ? 1 : 0.35);
+      if (L.twIn[k] <= 0) { L.twIn[k] = 1.4 + Math.random() * 3.2; L.tw[k] = 0.42; L.twA[k] = (Math.random() < 0.5 ? -1 : 1) * (0.22 + Math.random() * 0.22); }
+      L.antIn[k] -= dt;
+      if (L.antIn[k] <= 0) { L.antIn[k] = 1.6 + Math.random() * 3.4; L.ant[k] = 0.36; L.antA[k] = -(0.25 + Math.random() * 0.35); }
+    }
+    L.fid = Math.max(0, L.fid - dt);
+    if (still) { L.fidIn -= dt; if (L.fidIn <= 0) { L.fidIn = 3.5 + Math.random() * 5; L.fid = 0.72; } } else L.fid = 0;
+    if (L.fid > 0) wantOpen = Math.sin((1 - L.fid / 0.72) * Math.PI * 4) > 0 ? 0.92 : 0.18;
+    this.clawOpen = damp(this.clawOpen, wantOpen, L.fid > 0 ? 0.00002 : 0.001, dt);
 
     this.pumping = Math.max(0, this.pumping - dt);
     this.tapT = Math.max(0, this.tapT - dt * 3.2);
@@ -813,7 +829,8 @@ export class Crab {
       const sw = Math.sin(this.clawT * (near ? 1.07 : 0.83)) * 0.06;
       const raise = this.clawOpen * 0.5 + this.pumping * 0.6 + this.alarm * 0.5
         + (near ? Math.sin(this.tapT * Math.PI) * (this.tapLong ? 0.85 : 0.5) : 0)
-        + (near ? this._smashRaise() : 0);
+        + (near ? this._smashRaise() : 0)
+        + (near && this.fidget && this.fidget.fid > 0 ? Math.sin(this.fidget.fid / 0.72 * Math.PI) * 0.3 : 0);
       ctx.save();
       ctx.translate(so.x, so.y);
       // they hang down in front of the shell, the palm upright and the
@@ -884,7 +901,8 @@ export class Crab {
         const e = E[k];
         const L = this.m.rx * (1.5 + k * 0.2);
         let x = e.x + 1, y = e.y + 1;
-        const base = -0.55 - k * 0.3 + Math.sin(tm * 1.3 + k * 2) * 0.12 + this.look.y * 0.1;
+        const fl = this.fidget && this.fidget.ant[k] > 0 ? this.fidget.antA[k] * Math.sin(this.fidget.ant[k] / 0.36 * Math.PI) : 0;
+        const base = -0.55 - k * 0.3 + Math.sin(tm * 1.3 + k * 2) * 0.12 + this.look.y * 0.1 + fl;
         const n = 18;
         const pts = [];
         for (let i = 0; i <= n; i++) {
@@ -921,14 +939,19 @@ export class Crab {
       const tm = this.game.time || 0;
       const walk = clamp01(Math.abs(this.vx) / Math.max(1, this.speed));
       const base = -Math.PI / 2 + e.side * 0.34;
-      const a = base + this.look.x * 0.45 + this.look.y * 0.12 * e.side
+      let a = base + this.look.x * 0.45 + this.look.y * 0.12 * e.side
         + Math.sin(tm * 2.1 + e.side * 1.7) * 0.10
         + Math.sin(tm * 9.0 + e.side) * 0.14 * walk;
-      const st = 1 + Math.sin(tm * 3.3 + e.side * 2.2) * 0.07 + walk * Math.abs(Math.sin(tm * 9.0)) * 0.08;
+      // a twitch: the stalk snaps round and pulls in a touch, then eases back
+      const ki = e.side > 0 ? 1 : 0;
+      const tw = this.fidget && this.fidget.tw[ki] > 0 ? Math.pow(this.fidget.tw[ki] / 0.42, 1.6) : 0;
+      const twA = tw ? this.fidget.twA[ki] * tw : 0;
+      const st = (1 + Math.sin(tm * 3.3 + e.side * 2.2) * 0.07 + walk * Math.abs(Math.sin(tm * 9.0)) * 0.08) * (1 - tw * 0.14);
       const shrink = this.blink > 0
         ? 1 - Math.sin(clamp01(this.blink / 0.16) * Math.PI) * 0.7 : 1;
       ctx.save();
       ctx.translate(e.x, e.y);
+      a += twA;
       ctx.rotate(a);
       ctx.scale(st, shrink);
       ctx.drawImage(art.cv, -art.ox, -art.oy);

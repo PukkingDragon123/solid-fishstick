@@ -393,6 +393,24 @@ export class PixelFigure {
     }
   }
 
+  /**
+   * The tail of the neckerchief, knotted at the back of his neck: it streams
+   * out behind him and flutters when he walks, and hangs and stirs when he
+   * does not.
+   */
+  _scarf(s, pal, br, id) {
+    const { stream, phase } = s.scarf;
+    const nx = OX + (s.neck.x - 3.2) * HR, ny = OY + (s.neck.y + 1.6 + br) * HR;
+    for (let k = 0; k < 4; k++) {
+      const out = k * (0.35 + stream * 0.75);
+      const down = k * (1 - stream * 0.75) * 0.9;
+      const wave = Math.sin(phase - k * 1.3) * (0.25 + stream * 0.55) * k * 0.5;
+      const x = nx - out - (k > 0 ? 0.5 : 0), y = ny + down + wave;
+      this._put(x, y, k === 0 ? pal.scarfD : k % 2 ? pal.scarf : pal.scarfD, id);
+      if (k > 0 && k < 3 && stream > 0.3) this._put(x, y + 1, pal.scarfD, id);
+    }
+  }
+
   _finish(pal) {
     const { col, pid, img } = this;
     const d = img.data;
@@ -474,6 +492,7 @@ export class PixelFigure {
     if (f.open) e.mouth = 'open';
     this._sprite(buildHead(e, !!f.bare), HEAD_KEY, pal, s.neck.x, s.neck.y + br + (s.nod || 0) / HR, HEAD_NECK, id++, 0);
     this._sprite(buildTorso(), TORSO_KEY, pal, 0, br, TORSO_HIP, id++, L);
+    if (s.scarf) this._scarf(s, pal, br, id++);
 
     leg(s.legN, false, id); id += 2;
     if (s.hold && PROPS[s.hold]) {
