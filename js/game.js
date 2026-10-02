@@ -29,6 +29,7 @@ import { Green } from './systems/green.js';
 import { Digs, RELIC_BY_ID } from './systems/digs.js';
 import { Mining, outcropArt } from './systems/mining.js';
 import { Book } from './systems/book.js';
+import { Atlas } from './systems/atlas.js';
 import { Ranch } from './systems/ranch.js';
 import { Work } from './systems/work.js';
 import { Craft } from './systems/craft.js';
@@ -152,6 +153,7 @@ export class Game {
     this.digs = new Digs(this, this.seed);
     this.mining = new Mining(this, this.seed);
     this.book = new Book(this);
+    this.atlas = new Atlas(this);   // what has been walked, for the map
     this.ranch = new Ranch(this);
     this.work = new Work(this);
     this.craft = new Craft(this);
@@ -1122,7 +1124,7 @@ export class Game {
     this.puzzle.update(dt);
     this.ending.update(dt);
     // The book holds the world still while you read it.
-    if (this.ui.bookOpen && this.state === 'play') {
+    if ((this.ui.bookOpen || this.ui.mapOpen) && this.state === 'play') {
       this.npc.update(dt);
       this.fx.update(dt, this.weather);
       this.cam.update(dt);
@@ -2858,7 +2860,7 @@ export class Game {
       green: this.green.toJSON(), pump: this.pump.toJSON(),
       digs: this.digs.toJSON(), relics: this.relics,
       mining: this.mining.toJSON(), craft: this.craft.toJSON(), mind: this.mind.toJSON(),
-      book: this.book.toJSON(), ranch: this.ranch.toJSON(),
+      book: this.book.toJSON(), ranch: this.ranch.toJSON(), atlas: this.atlas.toJSON(),
       combat: this.combat.toJSON(), quests: this.quests.save(),
       fountains: this.fountains.save(), unlocked: [...this.unlocked],
       fishing: this.fishing.save(),
@@ -2892,6 +2894,7 @@ export class Game {
       this.digs.fromJSON(d.digs);
       this.mining.fromJSON(d.mining);
       this.book.fromJSON(d.book);
+      this.atlas.fromJSON(d.atlas);
       this.ranch.fromJSON(d.ranch);
       this.craft.fromJSON(d.craft);
       this.mind.fromJSON(d.mind);
@@ -3073,13 +3076,13 @@ export class Game {
     this.ending.drawUI(ui, r.vw, r.vh);
     // what a job turned up says so on its own scroll; nothing else floats over it
     const looting = !!(this.work.result && this.work.result.t < 2.2);
-    if (!this.ui.bookOpen && !looting) this.fx.drawText(ui, cam, (c, t, x, y, o) => drawText(c, t, x, y, o));
+    if (!this.ui.bookOpen && !this.ui.mapOpen && !looting) this.fx.drawText(ui, cam, (c, t, x, y, o) => drawText(c, t, x, y, o));
     if (this.state === 'dead') this._drawDead(ui, r);
     // Anything that belongs to the WORLD stops at the edge of a screen. A
     // speech bubble floating over an open bench is the single thing that made
     // the panels read as an overlay somebody forgot to finish.
     const inside = this.ui.tree.dive > 0.4 || this.ui.drawer > 0.02
-      || this.ui.paused || !!this.unlockCard || this.work.modal || this.ui.bookOpen;
+      || this.ui.paused || !!this.unlockCard || this.work.modal || this.ui.bookOpen || this.ui.mapOpen;
     if (this.npc.speech && this.state === 'play' && !inside && !this.talk.on && !this.puzzle.on
       && !(this.ending.on && this.ending.t > 3) && !this.quests.chapterCard && !this.work.timed && !looting) this._drawSpeech(ui, cam, this.npc);
     r.dctx.drawImage(r.uiC, 0, 0, r.vw, r.vh, 0, 0, r.vw * r.scale, r.vh * r.scale);
