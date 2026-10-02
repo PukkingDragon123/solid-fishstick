@@ -133,6 +133,14 @@ export class Creature {
     this._air(dt, t);
     this.blink = Math.max(0, this.blink - dt);
     if (Math.random() < dt * 0.22) this.blink = 0.13;
+    // Idle life, cheap: a breath that lifts the body, a quick bird-like tilt
+    // of the head at something, a flick of the tail. Each on its own clock.
+    const F = this.fid || (this.fid = { ph: Math.random() * 6.3, hIn: 1 + Math.random() * 3, hT: 0, hA: 0, tIn: 2 + Math.random() * 3, tT: 0 });
+    F.ph += dt * (2.1 + Math.abs(this.vx || 0) * 0.02);
+    F.hT = Math.max(0, F.hT - dt);
+    F.tT = Math.max(0, F.tT - dt);
+    if ((F.hIn -= dt) <= 0) { F.hIn = 1.4 + Math.random() * 3.6; F.hT = 0.55; F.hA = (Math.random() - 0.5) * 0.5; }
+    if ((F.tIn -= dt) <= 0) { F.tIn = 2 + Math.random() * 4; F.tT = 0.42; }
 
     // staggered by a heavy hit, it does not get to do anything for a moment
     if (this.stagger > 0) {
@@ -580,7 +588,9 @@ export class Creature {
 
     ctx.save();
     ctx.rotate(this.sway * 0.5);
-    ctx.translate(0, this.legless ? Math.sin(this.gait * 2.4) * 1.2 : 0);
+    const F = this.alive ? this.fid : null;
+    const br = F ? Math.sin(F.ph) * 0.3 * (this.S || 1) : 0;
+    ctx.translate(0, (this.legless ? Math.sin(this.gait * 2.4) * 1.2 : 0) + br);
     ctx.drawImage(rig.body.cv, -rig.body.ox, -rig.body.oy);
     ctx.restore();
 
@@ -598,8 +608,9 @@ export class Creature {
       hy += Math.sin(na) * rig.neck.len * 0.86;
     }
     ctx.save();
-    ctx.translate(hx, hy + this.sway * 3);
-    ctx.rotate(this.headA + (rig.neck ? 0.42 : 0) + this.sway * 0.6);
+    const tilt = F && F.hT > 0 ? F.hA * Math.sin(F.hT / 0.55 * Math.PI) : 0;
+    ctx.translate(hx, hy + this.sway * 3 + br * 0.6);
+    ctx.rotate(this.headA + (rig.neck ? 0.42 : 0) + this.sway * 0.6 + tilt);
     ctx.drawImage(rig.head.cv, -rig.head.ox, -rig.head.oy);
     ctx.restore();
 
@@ -668,7 +679,8 @@ export class Creature {
     if (side > 0 && (kind === 'plume' || kind === 'sting')) return;
     ctx.save();
     ctx.translate(so.tail.x, so.tail.y);
-    ctx.rotate(Math.PI + this.tailA * 0.5 + this.sway * 1.2);
+    const flick = this.alive && this.fid && this.fid.tT > 0 ? Math.sin(this.fid.tT / 0.42 * Math.PI * 2) * 0.3 : 0;
+    ctx.rotate(Math.PI + this.tailA * 0.5 + this.sway * 1.2 + flick);
     ctx.drawImage(this.rig.tail.cv, -this.rig.tail.ox, -this.rig.tail.oy);
     ctx.restore();
   }

@@ -100,9 +100,14 @@ function smoothPoly(pts, steps = 6) {
       ]);
     }
   }
+  let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
+  for (const [x, y] of out) { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); }
+  out.bb = [x0, y0, x1, y1];
   return out;
 }
 function inPoly(P, x, y) {
+  const bb = P.bb;
+  if (bb && (x < bb[0] || x > bb[2] || y < bb[1] || y > bb[3])) return false;
   let c = false;
   for (let i = 0, j = P.length - 1; i < P.length; j = i++) {
     const [xi, yi] = P[i], [xj, yj] = P[j];
@@ -171,9 +176,9 @@ const HAIR_MASS = smoothPoly([
   [32.6, 14.0], [40, 13.2], [46, 14.8], [49.6, 17.2], [51.4, 20.0], [52.6, 22.4], [50.6, 22.6], [50.2, 24.8],
   [51.0, 27.8], [48.6, 27.6], [47.2, 30.2], [47.6, 33.0], [45.2, 32.2], [43.0, 34.0], [42.4, 37.2],
   [40.4, 35.4], [38.2, 36.2], [36.6, 34.6], [34.6, 31.0], [33.4, 25.0],
-].map(([x, y]) => [36 + (x - 36) * 0.9, y]), 5);
+].map(([x, y]) => [35 + (x - 35) * 0.84, 15 + (y - 15) * 0.96]), 5);
 function massLvl(u, v) {
-  const cx = 38.5, cy = 21.5, r = 13.5;
+  const cx = 37.5, cy = 21.0, r = 12;
   const nx = (u - cx) / r, ny = (v - cy) / r;
   const q = 1 - nx * nx - ny * ny;
   const nz = Math.sqrt(Math.max(0.04, q));
@@ -182,7 +187,7 @@ function massLvl(u, v) {
   // strands: grooves that follow the way it is brushed, back and down
   const flow = Math.atan2(v - 12, u - 30) * 9 + Math.hypot(u - 30, v - 12) * 0.12 + Math.sin(v * 0.5) * 0.5;
   const f = ((flow / 3.4) % 1 + 1) % 1;
-  if (f < 0.14) s -= 0.18;
+  if (f < 0.12) s -= 0.12;
   else if (f > 0.55 && f < 0.75) s += 0.08;
   // the ring of sheen across the crown of it
   const rr = Math.hypot(nx, ny);
@@ -406,7 +411,7 @@ function headBase(rot, oy) {
         if (v > line || lip) {
           const jaw = gLine(u, v, 34.2, 31.5, 30.6, 40.0, 1.0) + gLine(u, v, 30.6, 40.0, 22, 43.0, 0.9) + g2(u, v, 24.0, 42.0, 1.3);
           const z = 0.34 + jaw * 0.42 + (lip ? 0.3 : 0) + sstep(line, line + 2.4, v) * 0.16 - g2(u, v, 23.8, 39.0, 1.0) * 0.2;
-          if (z > 0.6 || (z > 0.42 && bayer(x, y) < 0.5)) C.mat[i] = M.STUB;
+          if (z > 0.62 || (z > 0.5 && bayer(x, y) < 0.5)) C.mat[i] = M.STUB;
         }
       }
       // the front layer
@@ -466,7 +471,7 @@ function paintHead(st) {
   paintBrow(C, E[0], E[1], st.brow[0], lift, false);
   paintBrow(C, Fy[0], Fy[1], st.brow[1], lift, true);
 
-  if (!globalThis.__NOGLASS) paintGlasses(C, E, Fy, st, toCv);
+  paintGlasses(C, E, Fy, st, toCv);
   if (st.prop === 'bottle') paintBottle(C, Mo[0], Mo[1]);
   if (st.wisps) paintWisps(C);
   return C;
@@ -650,7 +655,7 @@ function paintBrow(C, x, y, [di, dout], lift, far) {
       [x + 1, y - 3.9 + (di + dout * 2) / 3], [x + 2, y - 3.6 + dout], [x + 3, y - 3.0 + dout]];
   pts.forEach(([px, py], k) => {
     const yy = Math.round(py + lift);
-    const thick = far ? k < 3 : k < 5;
+    const thick = far ? k < 4 : k < 6;
     C.set(px, yy, M.HAIR, far ? 1 : 0, P.FACE);
     if (thick) C.set(px, yy - 1, M.HAIR, far ? 2 : k < 2 ? 3 : 2, P.FACE);
   });
@@ -817,7 +822,6 @@ function paintBody() {
   const VNECK = smoothPoly([[23.6, 47.4], [34.2, 46.6], [30.8, 54.6], [27.6, 56.2]], 4);
   const COLL_F = smoothPoly([[22.6, 46.6], [15.6, 50.2], [17.6, 55.0], [23.4, 52.4]], 4);
   const COLL_N = smoothPoly([[35.0, 46.2], [41.6, 49.6], [39.6, 54.6], [33.6, 51.8]], 4);
-  const ROLL = { on: false, x: 51.5, y: 47.8, rx: 7, ry: 3.6 };
   const strap = (x0, y0, x1, y1, w, x, y) => {
     const dx = x1 - x0, dy = y1 - y0, l2 = dx * dx + dy * dy;
     const t = clamp(((x - x0) * dx + (y - y0) * dy) / l2, 0, 1);
@@ -828,14 +832,6 @@ function paintBody() {
   for (let y = 0; y < H; y++) {
     for (let x = 0; x < W; x++) {
       const u = x + 0.5, v = y + 0.5 - BODY_DY, i = y * W + x;
-      // the bedroll strapped across the top of his pack, behind the near shoulder
-      const rx = (u - ROLL.x) / ROLL.rx, ry = (v - ROLL.y) / ROLL.ry;
-      if (ROLL.on && rx * rx + ry * ry < 1) {
-        let s = 0.55 - ry * 0.35 - rx * 0.15;
-        if (Math.abs(u - 49) < 0.6 || Math.abs(u - 55) < 0.6) { C.mat[i] = M.LEATHER; C.lvl[i] = 2; C.part[i] = 1; continue; }
-        if (Math.abs(rx) > 0.82) s -= 0.2;
-        C.mat[i] = M.ROLL; C.lvl[i] = toLvl(M.ROLL, s); C.part[i] = 1;
-      }
       if (!inPoly(SH, u, v)) continue;
       let s = 0.66 - (u - 8) / 50 * 0.42 - sstep(56, 64, v) * 0.1;
       // creases running in from the shoulders
@@ -1070,6 +1066,22 @@ export class FaceLife {
 }
 
 const outCache = new Map();
+
+// Every way he holds his head is worked out ahead of time, a pose per idle
+// moment, so the first time he pulls a face it is already there.
+(function prewarm() {
+  if (typeof window === 'undefined') return;
+  const poses = [...new Set(Object.values(EXPR).map((e) => `${e.tilt || 0}|${e.dy || 0}`))];
+  const idle = window.requestIdleCallback || ((f) => setTimeout(() => f({ timeRemaining: () => 8 }), 200));
+  let i = 0;
+  const step = () => {
+    if (i >= poses.length) { bodyCanvas(0); return; }
+    const [t, d] = poses[i++].split('|').map(Number);
+    try { headBase(t, d); } catch (e) { return; }
+    idle(step, { timeout: 4000 });
+  };
+  setTimeout(() => idle(step, { timeout: 4000 }), 1500);
+})();
 
 /**
  * His face this frame. `life` is a FaceLife (one per viewer) already ticked;
