@@ -8,12 +8,19 @@
 // you found yesterday is exactly where you left it.
 
 import { clamp, clamp01, lerp, smoothstep, mulberry32, hashStr, TAU } from '../lib/math.js';
-import { Painter, makeCanvas } from '../render/pixel.js';
+import { Painter, makeCanvas, hash2i } from '../render/pixel.js';
 import { MATERIALS } from '../lib/palette.js';
 import { buildPlant } from '../art/floraart.js';
 import { FLORA_BY_ID } from '../data/flora.js';
 import { biomeAt } from './biomes.js';
-import { propsIn, propArt, Tumbleweeds } from './props.js';
+import {
+  propsIn, propArt, decorIn, decorArt, Tumbleweeds, propBump, formNear, setPropGuard, beginPropFrame,
+  boulderSeat, boulderSand, bake,
+} from './props.js';
+import { Terrain } from './terrain.js';
+import { GROUND, gsx, gsy, lineY } from '../art/ground.js';
+import { paintRocks } from '../art/rockart.js';
+import * as FL from '../art/desertflora.js';
 
 const CELL = 2400;               // one landmark per stretch of desert
 
@@ -38,6 +45,11 @@ const NAME_B = ['Well', 'Mouth', 'Cistern', 'Basin', 'Rest', 'Seep', 'Spring', '
 let cacheSeed = null;
 let cache = new Map();
 
+/** How far either side of its centre a landmark reshapes the ground. */
+function zoneOf(lm) {
+  return lm.kind === 'oasis' ? lm.size * 1.45 : lm.kind === 'spire' ? 0 : lm.size * 0.95;
+}
+
 /** The landmark that owns this stretch, or null. */
 export function landmarkAt(seed, ci) {
   if (seed !== cacheSeed) { cacheSeed = seed; cache = new Map(); }
@@ -46,15 +58,30 @@ export function landmarkAt(seed, ci) {
   const r = mulberry32((hashStr(String(seed) + 'lm') ^ (ci * 2654435761)) >>> 0);
   if (ci === 0) { cache.set(ci, null); return null; }
   const kind = KINDS[Math.floor(r() * KINDS.length)];
-  const x = ci * CELL + CELL * (0.22 + r() * 0.56);
+  let x = ci * CELL + CELL * (0.22 + r() * 0.56);
   const size = kind === 'oasis' ? 90 + r() * 110 : 60 + r() * 60;
+  const depthRoll = r();
   v = {
     id: 'lm' + ci, ci, kind, x, size,
-    depth: kind === 'oasis' ? 16 + r() * 22 : 0,
+    depth: kind === 'oasis' ? 22 + depthRoll * 18 : 0,
     name: `${NAME_A[Math.floor(r() * NAME_A.length)]} ${NAME_B[Math.floor(r() * NAME_B.length)]}`,
     seed: (hashStr(String(seed)) ^ (ci * 40503)) >>> 0,
-    biome: biomeAt(x).id,
+    biome: null,
   };
+  // Water does not stand on top of a butte, and nobody builds a house up the
+  // side of one. If a rock formation is in the way, the place moves along its
+  // stretch of desert until it is clear.
+  const reach = Math.max(zoneOf(v), v.size) + 30;
+  const clear = (px) => !formNear(String(seed), px, reach).some((f) => Math.abs(f.x - px) < f.w + reach);
+  if (!clear(x)) {
+    const lo = ci * CELL + reach, hi = (ci + 1) * CELL - reach;
+    for (let k = 1; k < 40; k++) {
+      const c1 = x + 40 * Math.ceil(k / 2) * (k % 2 ? 1 : -1);
+      if (c1 >= lo && c1 <= hi && clear(c1)) { x = c1; break; }
+    }
+  }
+  v.x = x;
+  v.biome = biomeAt(x).id;
   cache.set(ci, v);
   return v;
 }
@@ -69,19 +96,76 @@ export function landmarksNear(seed, x, radius = CELL) {
   return out;
 }
 
+// ---------------------------------------------------------------------------
+// the ground under a landmark
+//
+// An oasis on the flank of a dune was a notch with a puddle in it: the dunes
+// rise and fall sixty pixels across the width of a bowl. Water lies in LOW,
+// LEVEL ground, and people build on level ground, so each place now flattens
+// the dunes under it before the bowl is cut. To know how high the dunes are
+// there it reads them off a private terrain with every landmark switched off
+// (RAW), once per place, into a table.
+
+let RAW = 0;
+let rawT = null;
+function rawGround(seed, x) {
+  if (!rawT || rawT.seedKey !== seed) rawT = new Terrain(seed);
+  RAW++;
+  try { return rawT.baseY(x) - propBump(seed, x); } finally { RAW--; }
+}
+
+function levelTable(seed, lm) {
+  if (lm.level) return lm.level;
+  const Z = zoneOf(lm);
+  const step = 2;
+  const n = Math.ceil((Z * 2) / step) + 1;
+  const raw = new Float32Array(n);
+  for (let i = 0; i < n; i++) raw[i] = rawGround(seed, lm.x - Z + i * step);
+  // the level to bring it to: an oasis sits low, a building sits on the mean
+  let sum = 0, cnt = 0, low = -Infinity;
+  for (let i = 0; i < n; i++) {
+    const dx = Math.abs(-Z + i * step);
+    if (dx > lm.size * 0.8) continue;
+    sum += raw[i]; cnt++; low = Math.max(low, raw[i]);
+  }
+  const mean = cnt ? sum / cnt : raw[n >> 1];
+  const L = lm.kind === 'oasis' ? mean * 0.5 + low * 0.5 : mean;
+  const k = lm.kind === 'oasis' ? 0.86 : lm.kind === 'bonefield' ? 0.6 : 0.9;
+  const off = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    const dx = Math.abs(-Z + i * step);
+    const w = 1 - smoothstep((dx - Z * 0.62) / (Z * 0.38));
+    off[i] = w * k * (L - raw[i]);
+  }
+  lm.level = { x0: lm.x - Z, step, off, n };
+  return lm.level;
+}
+
+function levelAt(seed, lm, x) {
+  const t = levelTable(seed, lm);
+  const f = (x - t.x0) / t.step;
+  const i = Math.floor(f);
+  if (i < 0 || i >= t.n - 1) return 0;
+  return lerp(t.off[i], t.off[i + 1], f - i);
+}
+
 /**
  * How much the ground drops here because of a landmark. The terrain bakes this
  * in, so an oasis is a real bowl you walk down into rather than a decal.
  */
 export function groundOffset(seed, x) {
+  if (RAW) return 0;
   // only the cell you are in and its neighbours can reach this far
   const c = Math.floor(x / CELL);
   let d = 0;
   for (let ci = c - 1; ci <= c + 1; ci++) {
     const lm = landmarkAt(seed, ci);
-    if (!lm || !lm.depth) continue;
+    if (!lm) continue;
+    const Z = zoneOf(lm);
     const dx = x - lm.x;
-    if (dx < -lm.size || dx > lm.size) continue;
+    if (!Z || dx < -Z || dx > Z) continue;
+    d += levelAt(seed, lm, x);
+    if (!lm.depth || dx < -lm.size || dx > lm.size) continue;
     const k = 1 - Math.abs(dx) / lm.size;
     const sk = k * k * (3 - 2 * k);
     d += lm.depth * sk * sk;
@@ -92,11 +176,9 @@ export function groundOffset(seed, x) {
 /**
  * Where the water stands in a bowl.
  *
- * This used to be measured off the ground at the oasis's exact centre, which
- * worked right up until a boulder or a rock bench could land in the bowl and
- * LIFT that one sample - and then the whole pool rose with it and hung in the
- * air above the sand. A body of water finds the lowest point, so that is what
- * it is measured from now: the deepest ground anywhere in the bowl.
+ * Measured off the deepest ground anywhere in the bowl, because a body of
+ * water finds the lowest point - not off one sample at the centre, which a
+ * boulder could lift and leave the pool hanging in the air.
  */
 export function poolSurface(lm, terrain) {
   if (lm.surface !== undefined) return lm.surface;
@@ -106,7 +188,7 @@ export function poolSurface(lm, terrain) {
     const y = terrain.baseY(x);
     if (y > deep) deep = y;
   }
-  lm.surface = deep - lm.depth * 0.42;
+  lm.surface = Math.round(deep - lm.depth * 0.7);
   return lm.surface;
 }
 
@@ -121,6 +203,22 @@ export function poolAt(seed, x, terrain) {
   return null;
 }
 
+// Nothing stands in the water of an oasis, and the floor of a ruin is clear.
+setPropGuard((seed, x, hw, kind) => {
+  const c = Math.floor(x / CELL);
+  for (let ci = c - 1; ci <= c + 1; ci++) {
+    const lm = landmarkAt(seed, ci);
+    if (!lm) continue;
+    const dx = Math.abs(x - lm.x);
+    if (lm.kind === 'oasis') {
+      // the pool and its fringe belong to the oasis's own planting
+      if (dx < lm.size * 0.62 + hw) return true;
+      if (kind !== 'boulder' && kind !== 'mast' && dx < lm.size * 1.1 + hw) return kind === 'rock' && hw > 20;
+    } else if (lm.kind !== 'spire' && dx < lm.size * 0.85 + hw) return true;
+  }
+  return false;
+});
+
 // ---------------------------------------------------------------------------
 // vegetation scattered across the world, thicker where the water is
 
@@ -134,11 +232,14 @@ export function scatterAt(seed, terrain, x0, x1) {
     const r = mulberry32((hashStr(String(seed) + 'veg') ^ (i * 374761393)) >>> 0);
     const x = i * SCATTER_CELL + r() * SCATTER_CELL;
     // wetness: near an oasis things actually grow
-    let wet = 0;
+    let wet = 0, inWater = false;
     for (const lm of landmarksNear(seed, x, CELL)) {
       if (lm.kind !== 'oasis') continue;
       wet = Math.max(wet, clamp01(1.35 - Math.abs(x - lm.x) / lm.size));
+      // nothing that grows on land stands in the pool itself
+      if (terrain && Math.abs(x - lm.x) < lm.size && terrain.baseY(x) > poolSurface(lm, terrain) - 2) inWater = true;
     }
+    if (inWater) continue;
     const b = biomeAt(x);
     const chance = 0.06 + wet * 0.85;
     if (r() > chance) continue;
@@ -492,204 +593,518 @@ export class World {
   }
 
   // -- drawing ------------------------------------------------------------
+  //
+  // Order, as the game calls it:
+  //   drawProps        BEFORE the terrain: everything that stands behind the
+  //                    walking line - big rock, tall plants, masts, palms,
+  //                    the ruins. The ground in front hides their feet, which
+  //                    is what makes them stand in it.
+  //   drawWater        the oasis pools, reflecting what is above them
+  //   drawProps2 far   the boulders you walk over, and the sand drifts and
+  //                    shadows for everything behind the line
+  //   drawScatter      the wild plants you can study
+  //   drawProps2 near  small things in front of you, cut at the ground line
 
-  /** Big props: drawn behind the ground vegetation. */
+  _sun() {
+    const w = this.game.weather;
+    return w ? clamp01((w.daylight ?? 1) * (1 - (w.haze || 0) * 0.5)) : 1;
+  }
+
+  _wind() {
+    const w = this.game.weather;
+    return { dir: w?.windDir || 1, k: 0.4 + (w?.windSpeed ?? 0.4) };
+  }
+
+  /** Draw a sprite with its foot at world (x, y), optionally sheared and swaying. */
+  _blit(ctx, cam, a, x, y, slope = 0, flip = false, sway = 0, alpha = 1) {
+    const z = cam.zoom;
+    const s = flip ? -1 : 1;
+    ctx.save();
+    ctx.transform(z * s, z * slope * s, z * sway, z * (1 + slope * sway),
+      Math.round(gsx(cam, x)), Math.round(gsy(cam, y)));
+    if (alpha < 1) ctx.globalAlpha = alpha;
+    ctx.drawImage(a.cv, -a.ox, -a.oy);
+    ctx.restore();
+  }
+
+  /**
+   * Where a sprite sits: on the lowest ground under its whole foot (it carries
+   * buried pixels below its anchor for this), and, for a plant, sheared to
+   * the slope so its base runs along the ground instead of across it.
+   */
+  _seat(x, a, shear) {
+    const foot = Math.max(2, a.foot || 4);
+    const bury = a.bury ?? 2;
+    const st = GROUND.seat(x, a.footL ?? foot, a.footR ?? foot, bury);
+    if (!shear) return { y: st.y, slope: 0 };
+    const slope = clamp(st.slope, -0.3, 0.3);
+    // what the shear does not account for, the bury has to
+    let worst = 0;
+    for (const f of [-1, -0.5, 0.5, 1]) {
+      const wx = x + f * foot;
+      worst = Math.max(worst, GROUND.at(wx) - (st.c + slope * (wx - x)));
+    }
+    return { y: st.c + Math.max(0, worst - bury + 1), slope };
+  }
+
+  _swayOf(x, a, rate = 1.7) {
+    if (!a.sway) return 0;
+    const w = this._wind();
+    const g = Math.sin(this.t * rate + x * 0.071) * 0.6 + Math.sin(this.t * rate * 2.3 + x * 0.13) * 0.25;
+    return (g * 0.045 + 0.02) * a.sway * w.k * w.dir;
+  }
+
+  /** Everything scenic in view, by layer: [{d, x, art, kind}]. */
+  _scene(cam) {
+    const b = cam.bounds(140);
+    const c0 = Math.floor(b.x0 / 128) - 1, c1 = Math.floor(b.x1 / 128) + 1;
+    const out = { back: [], boulders: [], near: [] };
+    for (let ci = c0; ci <= c1; ci++) {
+      for (const p of propsIn(this.seed, ci)) {
+        if (p.x < b.x0 - 80 || p.x > b.x1 + 80) continue;
+        if (p.kind === 'boulder') { out.boulders.push(p); continue; }
+        const big = p.kind === 'mast' || (p.s || 0) > 1.05;
+        (big ? out.back : out.near).push({ p, x: p.x, prop: true });
+      }
+      for (const d of decorIn(this.seed, ci)) {
+        if (d.x < b.x0 - 80 || d.x > b.x1 + 80) continue;
+        (d.layer === 'near' ? out.near : out.back).push({ d, x: d.x });
+      }
+    }
+    return out;
+  }
+
+  _artOf(e) {
+    if (e.prop) return propArt(e.p, e.p.kind === 'mast' && this.felled.has(e.p.id));
+    return decorArt(e.d);
+  }
+
+  /** Things behind the walking line, and the landmarks. Before the terrain. */
   drawProps(ctx, cam) {
+    beginPropFrame(7);
     const t = this.game.terrain;
-    for (const lm of landmarksNear(this.seed, cam.rx, cam.vw / cam.zoom + CELL * 0.5)) {
+    GROUND.frame(cam, t);
+    this._frameScene = this._scene(cam);
+    // the oases' own planting goes in first, furthest back
+    for (const lm of landmarksNear(this.seed, cam.x, cam.vw / cam.zoom / 2 + 400)) {
+      if (lm.kind === 'oasis') this._drawOasisBack(ctx, cam, lm);
+    }
+    for (const e of this._frameScene.back) {
+      const a = this._artOf(e);
+      if (!a) continue;
+      e.art = a;
+      const plant = !!(e.d?.kind === 'plant' || (e.prop && e.p.kind !== 'mast'));
+      const st = this._seat(e.x, a, plant);
+      e.seatY = st.y;
+      const flip = e.prop ? e.p.flip : e.d?.flip;
+      let sway = this._swayOf(e.x, a);
+      if (e.prop && e.p.kind === 'mast') sway = Math.sin(this.t * 0.9 + e.x * 0.05) * 0.01 * this._wind().k * this._wind().dir;
+      this._blit(ctx, cam, a, e.x, st.y, st.slope, flip, sway);
+    }
+    for (const lm of landmarksNear(this.seed, cam.x, cam.vw / cam.zoom + CELL * 0.5)) {
       const art = landmarkArt(lm);
       if (!art) continue;
-      const gy = t.surfaceY(lm.x);
-      const s = cam.worldToScreen(lm.x, gy);
+      const st = GROUND.seat(lm.x, art.w * 0.42, art.w * 0.42, 2);
       ctx.save();
-      ctx.translate(Math.round(s.x), Math.round(s.y));
+      ctx.translate(Math.round(gsx(cam, lm.x)), Math.round(gsy(cam, st.y)));
       ctx.scale(cam.zoom, cam.zoom);
-      ctx.drawImage(art.cv, -art.w / 2, -art.h);
+      ctx.drawImage(art.cv, -Math.round(art.w / 2), -art.h);
       ctx.restore();
     }
   }
 
-  /**
-   * THE THING THAT MAKES A SPRITE STAND ON THE GROUND.
-   *
-   * Not the position - the position was always right. It is the shadow. A
-   * sprite drawn at exactly the correct height with nothing under it reads as
-   * floating, because in the real world the one cue your eye uses for contact
-   * is the dark patch where the light cannot get. So everything that stands on
-   * the sand gets one: a squashed smear on the surface, wider and fainter for
-   * a taller thing, and it follows the ground rather than being a flat ellipse.
-   */
+  /** Back-compat: a contact shadow on the crust. */
   _contact(ctx, cam, x, halfW, strength = 1) {
-    const t = this.game.terrain;
-    const z = cam.zoom;
-    const step = Math.max(1, Math.round(2 / z));
-    const sun = this.game.weather ? clamp01(1 - (this.game.weather.haze || 0) * 0.5) : 1;
-    ctx.globalAlpha = 0.34 * strength * (0.45 + sun * 0.55);
-    ctx.fillStyle = '#2a1d13';
-    for (let dx = -halfW; dx <= halfW; dx += step) {
-      const k = 1 - Math.abs(dx) / halfW;
-      if (k <= 0) continue;
-      const wx = x + dx;
-      const s = cam.worldToScreen(wx, t.surfaceY(wx));
-      const h = Math.max(1, Math.round(k * k * 2.2 * z));
-      ctx.fillRect(Math.round(s.x), Math.round(s.y - h * 0.35), Math.max(1, Math.round(step * z)), h);
-    }
-    ctx.globalAlpha = 1;
+    GROUND.frame(cam, this.game.terrain);
+    GROUND.shadow(ctx, cam, x, halfW, strength, this._sun(), this.game.weather?.shadowDir || 1);
   }
 
   /**
-   * Rock and scrub. Boulders go down first because the ground is already
-   * shaped like them - the sprite only has to sit in the dent it makes - and
-   * the dry stuff goes on top, leaning with the wind.
+   * After the terrain: the boulders you climb (they ARE the ground there, so
+   * they go over it), and the drifts and shadows that seat everything from
+   * drawProps into the sand.
    */
   drawProps2(ctx, cam, layer) {
     const t = this.game.terrain;
-    const z = cam.zoom;
-    const b = cam.bounds(80);
-    const w = this.game.weather;
-    const c0 = Math.floor(b.x0 / 128) - 1, c1 = Math.floor(b.x1 / 128) + 1;
-    for (let ci = c0; ci <= c1; ci++) {
-      for (const p of propsIn(this.seed, ci)) {
-        if (p.x < b.x0 - 60 || p.x > b.x1 + 60) continue;
-        const big = p.kind === 'boulder' || p.kind === 'mast' || (p.s || 0) > 1.05;
-        if ((big ? 'far' : 'near') !== layer) continue;
-        const art = propArt(p, p.kind === 'mast' && this.felled.has(p.id));
-        if (!art) continue;
-        // the shadow goes down first, under everything
-        if (p.kind !== 'boulder') {
-          const hw = p.kind === 'mast' ? 7 + p.h * 0.05 : 5 + (p.s || 1) * 5;
-          this._contact(ctx, cam, p.x, hw, p.kind === 'mast' ? 1.1 : 0.8);
-        }
-        // A boulder is drawn against the sand AROUND it, not the ground on
-        // top of it - the ground on top of it is the boulder. baseY already
-        // has the bump subtracted, so adding the bump back gets the level the
-        // rock is sitting in.
-        const gy = p.kind === 'boulder'
-          ? t.baseY(p.x) + (art.top || 0) : t.surfaceY(p.x);
-        const s = cam.worldToScreen(p.x, gy);
+    GROUND.frame(cam, t);
+    const sc = this._frameScene || this._scene(cam);
+    const sun = this._sun(), sdir = this.game.weather?.shadowDir || 1;
+    const wind = this._wind().dir;
+    if (layer === 'far') {
+      for (const e of sc.back) {
+        const a = e.art;
+        if (!a) continue;
+        const foot = a.foot || 4;
+        const rock = e.d?.kind === 'rock';
+        GROUND.shadow(ctx, cam, e.x, foot * (rock ? 1.05 : 0.9), rock ? 1 : 0.7, sun, sdir);
+        const dh = rock ? clamp(1.2 + (a.top || 8) * 0.05, 1.2, 4.5) : 1.4;
+        GROUND.drift(ctx, cam, e.x, foot * (rock ? 1.15 : 1.25) + 2, dh, wind, e.x | 0);
+      }
+      for (const p of sc.boulders) {
+        const a = propArt(p, false, true);
+        if (!a) continue;
+        // its own bump taken back out is the sand it sits in; the slope of
+        // the sand either side shears it, the same way the bump is sheared
+        const y = boulderSeat(t, p);
+        const slope = clamp((t.baseY(p.x + p.w) - t.baseY(p.x - p.w)) / (2 * p.w), -0.6, 0.6);
+        GROUND.shadow(ctx, cam, p.x, p.w * 0.95, 1, sun, sdir);
+        // cut at the sand it is sitting in, so no part of it hangs below
         ctx.save();
-        ctx.translate(Math.round(s.x), Math.round(s.y));
-        ctx.scale(z, z);
-        if (p.kind === 'mast') {
-          // it sways, but only just: there is nothing on it to catch the wind
-          const sway = Math.sin(this.t * 0.9 + p.x * 0.05) * 0.012
-            * (0.4 + (w?.windSpeed || 0.4)) * (w?.windDir || 1);
-          ctx.rotate(sway);
-          if (p.flip) ctx.scale(-1, 1);
-          ctx.globalAlpha = p.shade;
-        } else if (p.kind !== 'boulder') {
-          // dry things move; rock does not
-          const sway = Math.sin(this.t * 1.9 + p.x * 0.07) * 0.045
-            * (0.4 + (w?.windSpeed || 0.4)) * (w?.windDir || 1);
-          ctx.rotate(sway);
-          if (p.flip) ctx.scale(-1, 1);
-          ctx.globalAlpha = p.shade;
+        ctx.beginPath();
+        for (let x = Math.floor(p.x - p.w - 3); x <= p.x + p.w + 3; x++) {
+          const sa = Math.round(gsx(cam, x)), sb = Math.round(gsx(cam, x + 1));
+          const sy = Math.round(gsy(cam, Math.ceil(boulderSand(t, p, x) - 0.5))) + 1;
+          ctx.rect(sa, -4, sb - sa, sy + 4);
         }
-        ctx.drawImage(art.cv, -art.ox, -art.oy);
+        ctx.clip();
+        this._blit(ctx, cam, a, p.x, y, slope, false, 0);
         ctx.restore();
+        GROUND.drift(ctx, cam, p.x - p.w * 0.92, p.w * 0.3, 1.6 + p.h * 0.08, wind, p.seed & 255);
+        GROUND.drift(ctx, cam, p.x + p.w * 0.92, p.w * 0.3, 1.4 + p.h * 0.06, wind, (p.seed >> 8) & 255);
+      }
+      return;
+    }
+    // near: shadows first, then the things themselves cut at the ground line,
+    // then the sand over their feet
+    const list = [];
+    for (const e of sc.near) {
+      const a = this._artOf(e);
+      if (!a) continue;
+      list.push([e, a]);
+      GROUND.shadow(ctx, cam, e.x, (a.foot || 4) * 0.9, 0.75, sun, sdir);
+    }
+    for (const lm of landmarksNear(this.seed, cam.x, cam.vw / cam.zoom / 2 + 300)) {
+      if (lm.kind === 'oasis') for (const k of this._oasisKit(lm).front) {
+        const a = k.art();
+        list.push([{ x: k.x, flip: k.flip, oasis: true }, a]);
+        GROUND.shadow(ctx, cam, k.x, (a.foot || 4) * 0.8, 0.5, sun, sdir);
       }
     }
-    ctx.globalAlpha = 1;
+    ctx.save();
+    GROUND.clipAbove(ctx, cam, 1);
+    for (const [e, a] of list) {
+      const plant = !(e.d?.kind === 'rock');
+      const st = this._seat(e.x, a, plant);
+      const flip = e.prop ? e.p.flip : e.d ? e.d.flip : e.flip;
+      this._blit(ctx, cam, a, e.x, st.y, st.slope, flip, this._swayOf(e.x, a, 2.1));
+    }
+    ctx.restore();
+    for (const [e, a] of list) {
+      const rock = e.d?.kind === 'rock';
+      GROUND.drift(ctx, cam, e.x, (a.foot || 4) * 1.1 + 1.5, rock ? 1.2 + (a.top || 4) * 0.05 : 1, wind, e.x | 0);
+    }
   }
 
-  /** Standing water sunk into the ground, with a lip of wet sand. */
+  // -- the oasis ------------------------------------------------------------
+
+  /** The planting round a pool, generated once: palms, reeds, rocks, lilies. */
+  _oasisKit(lm) {
+    if (lm.kit) return lm.kit;
+    const t = this.game.terrain;
+    const S = poolSurface(lm, t);
+    const r = mulberry32(lm.seed ^ 0x0a515);
+    // the actual edges of the water
+    let xl = Infinity, xr = -Infinity;
+    for (let x = Math.floor(lm.x - lm.size); x <= lm.x + lm.size; x++) {
+      if (lineY(t, x) > S) { xl = Math.min(xl, x); xr = Math.max(xr, x); }
+    }
+    if (!isFinite(xl)) { xl = lm.x - 10; xr = lm.x + 10; }
+    const kit = { S, xl, xr, palms: [], back: [], front: [], lilies: [], rocks: [] };
+    const seed = () => (r() * 4294967296) >>> 0;
+    // date palms on the banks, leaning out over the water
+    const np = 2 + Math.floor(r() * 2) + (lm.size > 160 ? 1 : 0);
+    for (let i = 0; i < np; i++) {
+      const left = i % 2 === 0;
+      const x = left ? xl - 4 - r() * 42 : xr + 4 + r() * 42;
+      const h = 58 + r() * 46;
+      const sd = seed();
+      kit.palms.push({ x, h, sd, toward: left ? 1 : -1 });
+    }
+    kit.palms.sort((a, b) => b.h - a.h);
+    // the fringe: reeds, cattails and papyrus right at the waterline, the
+    // tall stuff behind, low lush grass in front
+    const fringe = [FL.cattails, FL.papyrus, FL.reeds, FL.cattails, FL.lushgrass];
+    for (const side of [-1, 1]) {
+      const edge = side < 0 ? xl : xr;
+      const n = 3 + Math.floor(r() * 3);
+      for (let i = 0; i < n; i++) {
+        const fn = fringe[Math.floor(r() * fringe.length)];
+        const sd = seed(), s = 0.7 + r() * 0.5;
+        const x = edge - side * (2 - r() * 4) + side * i * (5 + r() * 6);
+        kit.back.push({ x, flip: r() < 0.5, art: () => bake(`ob${sd}`, () => ({ bury: 2, ...fn(sd, s) }), true) });
+      }
+      const m = 2 + Math.floor(r() * 3);
+      for (let i = 0; i < m; i++) {
+        const sd = seed(), s = 0.6 + r() * 0.5;
+        const x = edge + side * (6 + r() * 34);
+        kit.front.push({ x, flip: r() < 0.5, art: () => bake(`of${sd}`, () => ({ bury: 2, ...FL.lushgrass(sd, s) }), true) });
+      }
+    }
+    // a few rocks on the banks, the way they always are
+    const nr = 1 + Math.floor(r() * 2);
+    for (let i = 0; i < nr; i++) {
+      const side = r() < 0.5 ? -1 : 1;
+      const x = (side < 0 ? xl : xr) + side * (14 + r() * 40);
+      const sd = seed(), h = 7 + r() * 10;
+      const stone = lm.biome === 'ashwood' || lm.biome === 'deepwell' ? 'basalt'
+        : lm.biome === 'dunes' || lm.biome === 'rustlands' ? 'sandstone' : 'limestone';
+      kit.back.push({ x, rock: true, art: () => bake(`or${sd}`, () => ({ bury: 4, ...paintRocks({ seed: sd,
+        kind: r() < 0.5 ? 'cluster' : 'boulder', w: h * 2.4, h, stone }) }), true) });
+    }
+    // lily pads, never too near the edge
+    const nl = Math.max(2, Math.round((xr - xl) / 26));
+    for (let i = 0; i < nl; i++) {
+      if (xr - xl < 30) break;
+      const x = lerp(xl + 12, xr - 12, r());
+      const sd = seed(), s = 0.8 + r() * 0.5;
+      kit.lilies.push({ x, ph: r() * TAU, art: () => bake(`ol${sd}`, () => FL.lilypad(sd, s), true) });
+    }
+    lm.kit = kit;
+    return kit;
+  }
+
+  _palmArt(p) {
+    return bake(`op${p.sd}:${Math.round(p.h)}`, () => FL.datePalm(p.sd, p.h, 7), true);
+  }
+
+  /** Palms, the tall fringe and the bank rocks: behind the ground line. */
+  _drawOasisBack(ctx, cam, lm) {
+    const kit = this._oasisKit(lm);
+    const w = this._wind();
+    for (const p of kit.palms) {
+      if (!cam.isVisible(p.x, kit.S, 160)) continue;
+      const P = this._palmArt(p);
+      const flip = Math.sign(P.lean) !== p.toward;
+      const st = GROUND.seat(p.x, 4, 4, 5);
+      this._blit(ctx, cam, P.trunk, p.x, st.y, 0, flip);
+      // the crown sways through its baked poses with the wind
+      const sw = Math.sin(this.t * 0.75 + p.x * 0.013) * 0.7 + Math.sin(this.t * 1.9 + p.x) * 0.2;
+      const bias = clamp(w.dir * (w.k - 0.4) * 0.8, -0.6, 0.6) * (flip ? -1 : 1);
+      const k = clamp(Math.round(((sw * 0.45 * w.k + bias) * 0.5 + 0.5) * (P.crowns.length - 1)), 0, P.crowns.length - 1);
+      const crown = P.crowns[k];
+      const cx = p.x + (flip ? -P.crown.x : P.crown.x), cy = st.y + P.crown.y;
+      this._blit(ctx, cam, crown, cx, cy, 0, flip);
+    }
+    for (const k of kit.back) {
+      if (!cam.isVisible(k.x, kit.S, 80)) continue;
+      const a = k.art();
+      const st = this._seat(k.x, a, !k.rock);
+      this._blit(ctx, cam, a, k.x, st.y, st.slope, k.flip, k.rock ? 0 : this._swayOf(k.x, { sway: a.sway || 1 }));
+    }
+  }
+
+  /**
+   * The pool, baked once at world scale: clear blue-green water, pale where
+   * it is shallow enough to see the sand through, deepening to teal; a floor
+   * of green silt; and a ring of dark wet sand up the banks.
+   */
+  _poolArt(lm) {
+    if (lm.poolArt) return lm.poolArt;
+    const t = this.game.terrain;
+    const S = poolSurface(lm, t);
+    const x0 = Math.floor(lm.x - lm.size), x1 = Math.ceil(lm.x + lm.size);
+    const W = x1 - x0 + 1;
+    const floors = new Int32Array(W);
+    let deep = S;
+    for (let i = 0; i < W; i++) { floors[i] = lineY(t, x0 + i); deep = Math.max(deep, floors[i]); }
+    const bank = 14;
+    const y0 = S - bank;
+    const H = deep - y0 + 5;
+    const cv = makeCanvas(W, H);
+    const g = cv.getContext('2d');
+    const img = g.createImageData(W, H);
+    const d = img.data;
+    const WATER = [[168, 226, 204], [122, 208, 194], [80, 184, 182], [52, 152, 162], [34, 118, 138], [24, 88, 112], [16, 62, 86]];
+    const B4 = [[0, 8, 2, 10], [12, 4, 14, 6], [3, 11, 1, 9], [15, 7, 13, 5]];
+    const put = (x, y, c, a = 255) => {
+      if (x < 0 || y < 0 || x >= W || y >= H) return;
+      const o = (y * W + x) * 4;
+      const k = a / 255;
+      d[o] = d[o] * (1 - k) + c[0] * k; d[o + 1] = d[o + 1] * (1 - k) + c[1] * k;
+      d[o + 2] = d[o + 2] * (1 - k) + c[2] * k; d[o + 3] = Math.max(d[o + 3], a);
+    };
+    for (let i = 0; i < W; i++) {
+      const gy = floors[i];
+      const D = gy - S;
+      if (D > 0) {
+        for (let y = S; y < gy; y++) {
+          const dd = y - S;
+          // shallow water shows the sand through it; deep water goes teal
+          let v = dd / 7 + clamp01(D / 16) * 1.6 + (dd > D - 2 ? -0.4 : 0);
+          v += (B4[y & 3][(x0 + i) & 3] / 16 - 0.5) * 0.9;
+          const c = WATER[clamp(Math.floor(v), 0, WATER.length - 1)];
+          put(i, y - y0, c);
+        }
+        // the silt on the floor, and weed in the deep part
+        put(i, gy - 1 - y0, [46, 92, 70], 200);
+        if (D > 7 && hash2i(x0 + i, 3, lm.seed) < 0.22) {
+          const hh = 2 + Math.floor(hash2i(x0 + i, 5, lm.seed) * Math.min(7, D - 4));
+          for (let k = 1; k <= hh; k++) put(i + (k > hh / 2 && hash2i(i, k, 7) < 0.5 ? 1 : 0), gy - 1 - k - y0, [38, 96, 58], 230);
+        }
+        // the floor itself is wet sand, darker
+        for (let k = 0; k < 3; k++) put(i, gy + k - y0, [70, 50, 30], 120 - k * 30);
+      } else if (D > -bank) {
+        // the bank: wet and dark at the waterline, drying upwards
+        const wet = 1 - (-D) / bank;
+        for (let k = 0; k < 3; k++) {
+          if ((-D) > 2 && B4[(gy + k) & 3][(x0 + i) & 3] / 16 > wet) continue;
+          put(i, gy + k - y0, k === 0 && -D < 3 ? [64, 96, 52] : [62, 42, 24], Math.round((150 - k * 35) * wet));
+        }
+      }
+    }
+    g.putImageData(img, 0, 0);
+    lm.poolArt = { cv, x0, y0, W, H, S, floors, deep };
+    return lm.poolArt;
+  }
+
+  /** Standing water sunk into the ground. */
   drawWater(ctx, cam) {
     const t = this.game.terrain;
     const z = cam.zoom;
-    const b = cam.bounds(80);
-    for (const lm of landmarksNear(this.seed, cam.rx, cam.vw / cam.zoom + 400)) {
+    GROUND.frame(cam, t);
+    for (const lm of landmarksNear(this.seed, cam.x, cam.vw / z / 2 + 400)) {
       if (lm.kind !== 'oasis') continue;
-      poolSurface(lm, t);
-      const x0 = Math.max(b.x0, lm.x - lm.size), x1 = Math.min(b.x1, lm.x + lm.size);
-      if (x1 <= x0) continue;
-      const step = Math.max(1, Math.round(2 / z));
-      // the pool is every contiguous run of ground that sits below the
-      // waterline, each closed on its own, or the fill leaks between them
-      const runs = [];
-      let cur = null;
-      for (let x = x0; x <= x1; x += step) {
-        const gy = t.baseY(x);
-        if (gy > lm.surface) {
-          if (!cur) { cur = []; runs.push(cur); }
-          cur.push({ x, gy });
-        } else cur = null;
-      }
-      ctx.beginPath();
-      for (const run of runs) {
-        if (run.length < 2) continue;
-        const first = cam.worldToScreen(run[0].x, lm.surface);
-        ctx.moveTo(first.x, first.y);
-        for (const q of run) {
-          const s2 = cam.worldToScreen(q.x, q.gy);
-          ctx.lineTo(s2.x, s2.y);
+      const P = this._poolArt(lm);
+      const kit = this._oasisKit(lm);
+      const sx0 = Math.round(gsx(cam, P.x0)), sy0 = Math.round(gsy(cam, P.y0));
+      if (sx0 > cam.vw || sx0 + P.W * z < 0) continue;
+      ctx.drawImage(P.cv, sx0, sy0, Math.round(P.W * z), Math.round(P.H * z));
+      const Ssc = Math.round(gsy(cam, P.S));
+      const sxa = Math.max(0, Math.round(gsx(cam, kit.xl))), sxb = Math.min(cam.vw, Math.round(gsx(cam, kit.xr + 1)));
+      const w = sxb - sxa;
+      const D = Math.min(Ssc, Math.round((P.deep - P.S) * z));
+      if (w > 2 && D > 1) {
+        // the reflection: whatever is already above the water - sky, far
+        // dunes, the palms, the reeds - flipped into it, rippled, darker
+        if (!this._rcv || this._rcv.width < w || this._rcv.height < D) {
+          this._rcv = makeCanvas(Math.max(w, this._rcv?.width || 0), Math.max(D, this._rcv?.height || 0));
         }
-        const last = cam.worldToScreen(run[run.length - 1].x, lm.surface);
-        ctx.lineTo(last.x, last.y);
-        ctx.closePath();
+        const rg = this._rcv.getContext('2d');
+        rg.clearRect(0, 0, this._rcv.width, this._rcv.height);
+        rg.drawImage(ctx.canvas, sxa, Ssc - D, w, D, 0, 0, w, D);
+        ctx.save();
+        ctx.beginPath();
+        for (let x = kit.xl; x <= kit.xr; x++) {
+          const fy = GROUND.at(x);
+          if (fy <= P.S) continue;
+          const a = Math.round(gsx(cam, x)), b = Math.round(gsx(cam, x + 1));
+          ctx.rect(a, Ssc, b - a, Math.round(gsy(cam, fy)) - Ssc);
+        }
+        ctx.clip();
+        for (let j = 0; j < D; j++) {
+          const f = j / D;
+          const off = Math.round(Math.sin(this.t * 1.6 + j * 0.9 / Math.max(1, z * 0.5)) * (0.4 + f * 1.6) * Math.max(1, z * 0.6));
+          ctx.globalAlpha = 0.5 * (1 - f) * (1 - f) + 0.05;
+          ctx.drawImage(this._rcv, 0, D - 1 - j, w, 1, sxa + off, Ssc + j, w, 1);
+        }
+        // the water's own colour over the reflection
+        ctx.globalAlpha = 0.14;
+        ctx.fillStyle = '#2a9a9a';
+        ctx.fillRect(sxa, Ssc, w, D);
+        ctx.globalAlpha = 1;
+        // slow light bands across the surface
+        const p = Math.max(1, Math.round(z));
+        ctx.fillStyle = '#e4fbf6';
+        for (let i = 0; i < 9; i++) {
+          const ph = this.t * (0.25 + (i % 4) * 0.07) + i * 2.4;
+          const gx = sxa + ((Math.sin(ph) * 0.5 + 0.5) * w) | 0;
+          const gl = (3 + (i % 3) * 3) * p;
+          ctx.globalAlpha = 0.35 + 0.3 * Math.sin(this.t * 2.2 + i * 1.7) ** 2;
+          ctx.fillRect(gx - (gl >> 1), Ssc + p * (1 + (i % 3)), gl, p);
+        }
+        ctx.restore();
+        ctx.globalAlpha = 1;
+        // the surface line itself, broken by ripples
+        for (let x = sxa; x < sxb; x += p) {
+          const k = Math.sin(x * 0.21 / p + this.t * 1.3) + Math.sin(x * 0.07 / p - this.t * 0.7);
+          ctx.fillStyle = k > 1.1 ? '#ffffff' : k > -0.6 ? '#bfeee8' : '#7cc9c4';
+          ctx.fillRect(x, Ssc, p, p);
+        }
+        // sun glitter: a few hard white points that come and go
+        ctx.fillStyle = '#ffffff';
+        for (let i = 0; i < 6; i++) {
+          const ph = this.t * 1.3 + i * 4.1;
+          const k = Math.sin(ph);
+          if (k < 0.75) continue;
+          const gx = sxa + Math.floor(((Math.sin(i * 12.9 + Math.floor(ph / TAU) * 3.1) * 0.5 + 0.5) * w) / p) * p;
+          ctx.fillRect(gx, Ssc + p, p, p);
+          if (k > 0.92) { ctx.fillRect(gx - p, Ssc + p, p * 3, p); ctx.fillRect(gx, Ssc, p, p * 3); }
+        }
       }
-      const sy = cam.worldToScreen(lm.x, lm.surface).y;
-      const by = cam.worldToScreen(lm.x, t.baseY(lm.x)).y;
-      const grad = ctx.createLinearGradient(0, sy, 0, Math.max(by, sy + 4));
-      grad.addColorStop(0, '#7fd0dd');
-      grad.addColorStop(0.35, '#2b8ea3');
-      grad.addColorStop(1, '#0d3542');
-      ctx.fillStyle = grad;
-      ctx.fill();
-
-      // surface: a bright lip and slow glints, plus a smeared sky reflection
-      ctx.save();
-      ctx.clip();
-      const sxa = cam.worldToScreen(x0, 0).x, sxb = cam.worldToScreen(x1, 0).x;
-      ctx.globalAlpha = 0.18;
-      ctx.fillStyle = '#cfe8f2';
-      ctx.fillRect(sxa, sy, sxb - sxa, Math.max(2, 8 * z));
-      ctx.globalAlpha = 1;
-      ctx.fillStyle = '#d6f2f8';
-      ctx.fillRect(sxa, Math.round(sy), sxb - sxa, Math.max(1, Math.round(z)));
-      for (let i = 0; i < 14; i++) {
-        const ph = this.t * (0.35 + i * 0.07) + i * 1.9;
-        const gx = lerp(sxa, sxb, (Math.sin(ph) * 0.5 + 0.5));
-        ctx.globalAlpha = 0.45 - (i % 3) * 0.12;
-        ctx.fillStyle = '#eafbfd';
-        ctx.fillRect(Math.round(gx - 3 * z), Math.round(sy + (1 + (i % 4)) * z),
-          Math.round((5 + (i % 3) * 4) * z), Math.max(1, Math.round(z)));
+      // lily pads riding on it
+      for (const L of kit.lilies) {
+        const a = L.art();
+        const bob = Math.sin(this.t * 1.1 + L.ph) * 0.4;
+        this._blit(ctx, cam, a, L.x + Math.sin(this.t * 0.2 + L.ph) * 1.5, P.S + 1 + bob, 0, false, 0);
       }
-      ctx.globalAlpha = 1;
-      ctx.restore();
+      this._dragonfly(ctx, cam, lm, kit);
     }
+  }
+
+  /** One dragonfly, hunting over the water: darting, hovering, darting. */
+  _dragonfly(ctx, cam, lm, kit) {
+    const span = Math.max(20, kit.xr - kit.xl);
+    const seg = Math.floor(this.t / 1.6 + lm.seed % 7);
+    const f = (this.t / 1.6 + lm.seed % 7) - seg;
+    const at = (k) => {
+      const h1 = hash2i(k, 1, lm.seed), h2 = hash2i(k, 2, lm.seed);
+      return { x: kit.xl + h1 * span, y: kit.S - 6 - h2 * 16 };
+    };
+    const a = at(seg), b = at(seg + 1);
+    // most of each beat is a hover, then a quick dart to the next spot
+    const m = f < 0.7 ? 0 : (f - 0.7) / 0.3;
+    const e = m * m * (3 - 2 * m);
+    const x = lerp(a.x, b.x, e) + Math.sin(this.t * 9) * 0.6, y = lerp(a.y, b.y, e) + Math.sin(this.t * 13) * 0.5;
+    const p = Math.max(1, Math.round(cam.zoom));
+    const sx = Math.round(gsx(cam, x) / p) * p, sy = Math.round(gsy(cam, y) / p) * p;
+    const dir = b.x >= a.x ? 1 : -1;
+    ctx.fillStyle = '#1f6f9a';
+    ctx.fillRect(sx - 2 * p * dir, sy, p, p);
+    ctx.fillRect(sx - p * dir, sy, p, p);
+    ctx.fillRect(sx, sy, p, p);
+    ctx.fillStyle = '#3fb6d8';
+    ctx.fillRect(sx + p * dir, sy, p, p);
+    // wings: a flicker of pale pixels
+    ctx.globalAlpha = 0.55 + 0.4 * Math.abs(Math.sin(this.t * 40));
+    ctx.fillStyle = '#e8f6ff';
+    const up = (Math.floor(this.t * 30) & 1) ? 1 : 0;
+    ctx.fillRect(sx - p, sy - p - up * p, p * 2, p);
+    ctx.globalAlpha = 1;
   }
 
   /** Ground plants. Thin out on the pan, thick around water. */
   drawScatter(ctx, cam, layer) {
     const t = this.game.terrain;
+    GROUND.frame(cam, t);
     const z = cam.zoom;
     const b = cam.bounds(60);
     const c0 = Math.floor(b.x0 / 512), c1 = Math.floor(b.x1 / 512);
+    const sun = this._sun(), sdir = this.game.weather?.shadowDir || 1;
+    const list = [];
     for (let ci = c0; ci <= c1; ci++) {
       for (const v of this.chunkScatter(ci)) {
         if (v.x < b.x0 || v.x > b.x1) continue;
-        // big things go behind the crab, small things in front of it
+        // big things go in front of the crab, small things behind it
         const near = v.size > 0.58;
         if ((near ? 'near' : 'far') !== layer) continue;
         const def = FLORA_BY_ID[v.id];
         if (!def) continue;
         const art = buildPlant(def, v.stage, v.variant, v.size);
-        const gy = t.surfaceY(v.x);
-        this._contact(ctx, cam, v.x, 3 + v.size * 7, 0.55 + v.size * 0.4);
-        const s = cam.worldToScreen(v.x, gy);
-        ctx.save();
-        ctx.translate(Math.round(s.x), Math.round(s.y));
-        ctx.scale(z, z);
-        const sway = Math.sin(this.t * 1.4 + v.x * 0.1) * 0.03
-          * (this.game.weather ? 0.4 + this.game.weather.windSpeed : 1);
-        ctx.rotate(sway);
-        if (v.flip) ctx.scale(-1, 1);
-        ctx.globalAlpha = v.shade;
-        ctx.drawImage(art.cv, -art.ox, -art.oy);
-        ctx.restore();
+        list.push([v, art, Math.max(2, def.w * v.size * art.g * 0.22)]);
+        GROUND.shadow(ctx, cam, v.x, 3 + v.size * 6, 0.45 + v.size * 0.3, sun, sdir);
       }
     }
-    ctx.globalAlpha = 1;
+    ctx.save();
+    GROUND.clipAbove(ctx, cam, 1);
+    const wk = this.game.weather ? 0.4 + this.game.weather.windSpeed : 1;
+    for (const [v, art, foot] of list) {
+      const st = this._seat(v.x, { foot, bury: 3 }, true);
+      const sway = Math.sin(this.t * 1.4 + v.x * 0.1) * 0.03 * wk;
+      this._blit(ctx, cam, art, v.x, st.y, st.slope, v.flip, sway);
+    }
+    ctx.restore();
+    const wind = this._wind().dir;
+    for (const [v, , foot] of list) GROUND.drift(ctx, cam, v.x, foot + 2, 0.9 + v.size, wind, v.x | 0);
   }
 
   toJSON() { return { found: [...this.found], felled: [...this.felled.keys()] }; }

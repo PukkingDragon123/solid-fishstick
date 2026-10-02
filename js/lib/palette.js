@@ -216,6 +216,88 @@ def('wlAshSand', ['#201a1a', '#312827', '#433836', '#574a46', '#6c5d57', '#82726
   { rim: 0.1, ao: 0.06, diffuse: 0.68, normalScale: 0.4 });
 def('wlHardpan', ['#3e2a1a', '#523823', '#67482e', '#7c5a3a', '#906b47', '#a37d56', '#b59068', '#c6a47e'],
   { rim: 0.08, ao: 0.08, diffuse: 0.66, normalScale: 0.5 });
+// -- desert stone -----------------------------------------------------------
+// Real rock is never one colour. These ramps run cool in the shadow and warm
+// in the light, the way stone does under a desert sun with blue sky filling
+// the shade, so a boulder reads as lit form rather than as a brown blob.
+def('sandstone', ['#1e0f0e', '#341915', '#4f251b', '#6c3322', '#89452b', '#a35a36', '#b97344', '#cc8f58',
+  '#ddac74', '#ecca98'], { rim: 0.22, ao: 0.18, normalScale: 0.85, spec: 0.04 });
+def('sandstoneBuff', ['#231a16', '#3b2c22', '#57422f', '#735a3f', '#8e7350', '#a78d64', '#bea67b', '#d1bd95',
+  '#e2d3b2', '#f0e6cf'], { rim: 0.22, ao: 0.18, normalScale: 0.85, spec: 0.04 });
+def('limestone', ['#1f1e24', '#333238', '#4a4849', '#62605d', '#7c7872', '#969188', '#afa99e', '#c6c0b4',
+  '#dbd6cb', '#eeebe3'], { rim: 0.24, ao: 0.2, normalScale: 0.8, spec: 0.05 });
+def('basalt', ['#0c0d11', '#15161b', '#1f2026', '#2a2b31', '#36363c', '#434249', '#524f56', '#635f65',
+  '#77727a', '#8e8890'], { rim: 0.3, ao: 0.16, normalScale: 0.9, spec: 0.12 });
+def('granite', ['#1c1819', '#2f2828', '#453b3a', '#5c504d', '#746662', '#8d7e78', '#a5968f', '#bbaea6',
+  '#d0c5bd', '#e3dbd4'], { rim: 0.24, ao: 0.16, normalScale: 0.8, spec: 0.06 });
+// the black-brown skin the desert paints on any face that has stood still
+// for a few thousand years, glossy where the wind polished it
+def('varnish', ['#0f0807', '#1b0f0b', '#281611', '#361f17', '#46291e', '#573427', '#6a4232', '#7f523f'],
+  { rim: 0.3, ao: 0.12, normalScale: 0.85, spec: 0.35 });
+def('lichenGreen', ['#20271c', '#323d2b', '#47543b', '#5e6c4c', '#768560', '#8f9d76', '#a9b58f', '#c4cdaa'],
+  { rim: 0.16, ao: 0.1, normalScale: 0.4 });
+def('lichenOrange', ['#2e1a0c', '#4a2a12', '#663b18', '#824e20', '#9c632c', '#b27a3c', '#c69352', '#d6ad6e'],
+  { rim: 0.16, ao: 0.1, normalScale: 0.4 });
+def('desertSand', ['#4a2f1b', '#654125', '#815631', '#9c6c3e', '#b4834e', '#c99b62', '#d9b37b', '#e6c995',
+  '#f1ddb4'], { rim: 0.1, ao: 0.08, diffuse: 0.7, normalScale: 0.4 });
+
+// -- ore --------------------------------------------------------------------
+def('malachite', ['#061a14', '#0b2a1f', '#103d2c', '#16523a', '#1d6a4a', '#27845b', '#369e6e', '#4fb884',
+  '#76d0a2', '#aee8c9'], { rim: 0.34, ao: 0.1, spec: 0.35, normalScale: 0.6 });
+def('azurite', ['#09102a', '#0f1a43', '#16265e', '#1f357b', '#2a4797', '#3a5db2', '#5079c9', '#6e98dc',
+  '#97bbec'], { rim: 0.4, spec: 0.5, normalScale: 0.6 });
+def('hematite', ['#120a0b', '#1f1011', '#2f1716', '#40201c', '#532a23', '#67352a', '#7c4232', '#93523d',
+  '#ab6a4f'], { rim: 0.5, spec: 0.65, normalScale: 0.85 });
+def('jasper', ['#240a07', '#3d110b', '#59190f', '#762314', '#922f1a', '#ab3f22', '#c1542f', '#d46f43',
+  '#e38f62'], { rim: 0.3, ao: 0.14, spec: 0.2, normalScale: 0.75 });
+def('quartz', ['#2f363c', '#48525a', '#636f78', '#808c95', '#9eaab2', '#bac5cc', '#d3dce1', '#e8eef1',
+  '#ffffff'], { rim: 0.65, spec: 0.95, translucent: 0.45, diffuse: 0.6, normalScale: 0.95 });
+def('halite', ['#43393b', '#5f5355', '#7c6e6f', '#988a8a', '#b2a5a3', '#c9bebc', '#ddd4d2', '#eee9e7',
+  '#ffffff'], { rim: 0.5, spec: 0.7, translucent: 0.35, normalScale: 0.8 });
+def('brass', ['#2e1e05', '#4c330a', '#6f4c10', '#946917', '#b8881f', '#d4a72d', '#e9c44a', '#f7df7f',
+  '#fff3bd'], { rim: 0.6, spec: 0.95, diffuse: 0.6, normalScale: 0.9 });
+def('shale', ['#121011', '#1c191a', '#272223', '#332c2c', '#403736', '#4e4441', '#5d524e', '#6f625c',
+  '#827469'], { rim: 0.22, ao: 0.16, normalScale: 0.85, spec: 0.08 });
+
+// -- desert plants ----------------------------------------------------------
+def('creosote', ['#12170b', '#1d2510', '#2a3515', '#38471b', '#475a22', '#586d2a', '#6c8034', '#829341',
+  '#9ca854'], { rim: 0.22, translucent: 0.28, ao: 0.14, normalScale: 0.45 });
+def('saltbush', ['#161b19', '#232b27', '#323d37', '#424f48', '#54625a', '#68776d', '#7e8c81', '#96a397',
+  '#b2bcae'], { rim: 0.24, translucent: 0.2, ao: 0.14, normalScale: 0.45 });
+def('twig', ['#1a1410', '#2a211a', '#3c3025', '#4f4031', '#62513f', '#76634f', '#8b7762', '#a18d78'],
+  { rim: 0.22, ao: 0.12, normalScale: 0.7 });
+def('straw', ['#271d0f', '#3d2f17', '#57441f', '#725b2a', '#8c7337', '#a58b46', '#bba359', '#cfba70',
+  '#e1d092'], { rim: 0.26, translucent: 0.3, normalScale: 0.5 });
+def('pear', ['#0d1c15', '#152a20', '#1d3a2c', '#264c39', '#305f47', '#3c7356', '#4b8767', '#5f9c7b',
+  '#79b292', '#99c8ab'], { rim: 0.3, spec: 0.12, ao: 0.12, translucent: 0.12, normalScale: 0.55 });
+def('cactus', ['#0c1a0f', '#132818', '#1a3820', '#224a29', '#2c5d33', '#38713e', '#47854a', '#5a9a59',
+  '#73ae6c'], { rim: 0.3, spec: 0.14, ao: 0.14, normalScale: 0.6 });
+def('spine', ['#3a2410', '#5c3a17', '#82561f', '#a7742b', '#c6943b', '#ddb352', '#ecce73', '#f7e5a0'],
+  { rim: 0.4, spec: 0.3, normalScale: 0.5 });
+def('agave', ['#121a20', '#1c2830', '#283841', '#354a54', '#445d67', '#55717b', '#68858e', '#7e99a1',
+  '#98b0b5', '#b6c8ca'], { rim: 0.3, spec: 0.12, ao: 0.12, translucent: 0.1, normalScale: 0.55 });
+def('ocotillo', ['#191812', '#28261c', '#3a3728', '#4c4934', '#5f5b42', '#736e51', '#888262', '#9d9776'],
+  { rim: 0.24, ao: 0.1, normalScale: 0.6 });
+def('bloomRed', ['#2e0806', '#4d0e0a', '#70160e', '#951f13', '#b72c19', '#d34024', '#e75e37', '#f58456'],
+  { rim: 0.45, translucent: 0.4, spec: 0.2 });
+def('fruitMagenta', ['#2a0716', '#470c24', '#661233', '#861a44', '#a42556', '#bf3669', '#d6507f', '#e97399'],
+  { rim: 0.45, spec: 0.35 });
+
+// -- the oasis --------------------------------------------------------------
+def('palmLeaf', ['#08150c', '#0f2213', '#16311a', '#1e4121', '#285329', '#336631', '#41793a', '#518c43',
+  '#669f4f', '#83b462'], { rim: 0.28, translucent: 0.36, ao: 0.1, normalScale: 0.5 });
+def('palmDry', ['#1f150b', '#332211', '#4a3217', '#62441e', '#7a5727', '#926b33', '#a98042', '#bd9656',
+  '#cfab6e'], { rim: 0.26, translucent: 0.25, normalScale: 0.6 });
+def('palmBark', ['#17110d', '#261c15', '#36281d', '#473527', '#594332', '#6b523e', '#7e624c', '#91735c',
+  '#a5866f'], { rim: 0.26, ao: 0.18, normalScale: 0.85 });
+def('dates', ['#250d05', '#401508', '#5e1f0b', '#7e2c10', '#9c3d17', '#b75221', '#cd6b31', '#de8a48'],
+  { rim: 0.45, spec: 0.45 });
+def('reed', ['#0d1c0d', '#142a14', '#1c3b1b', '#254d23', '#2f612c', '#3b7535', '#4a8a40', '#5d9f4c',
+  '#76b45e', '#94c878'], { rim: 0.26, translucent: 0.34, normalScale: 0.5 });
+def('cattail', ['#180c07', '#28140b', '#3b1e10', '#4f2916', '#64351c', '#794324', '#8e532e', '#a2663c'],
+  { rim: 0.3, ao: 0.12, normalScale: 0.6 });
+def('lilypad', ['#0a1d14', '#0f2a1c', '#153a26', '#1c4b30', '#245d3b', '#2e7047', '#3b8354', '#4c9763'],
+  { rim: 0.3, spec: 0.3, normalScale: 0.4 });
 
 def('default', ['#1a1a1a', '#333', '#4d4d4d', '#666', '#808080', '#999', '#b3b3b3', '#ccc']);
 
