@@ -470,7 +470,7 @@ export class Person {
         if (this.jv < -60) { this.squash = -0.34; this.game.fx?.dust(this.x, this.y, 1.6); }
         this.jz = 0; this.jv = 0;
       }
-      this.squash = damp(this.squash, this.jv > 40 ? 0.18 : 0, 0.0008, dt);
+      this.squash = damp(this.squash, this.jv > 40 ? 0.08 : 0, 0.0008, dt);
     } else this.squash = damp(this.squash, 0, 0.0009, dt);
 
     const h = this.hatOff;
@@ -491,9 +491,9 @@ export class Person {
 
   /** The whole cartoon: straight up, hat off, face open. */
   startle(power = 1) {
-    this.jv = 150 * power;
+    this.jv = 128 * power;
     this.jz = 0.01;
-    this.squash = 0.24;
+    this.squash = 0.12;
     this.setPose(POSE.SHOCK);
     this.face = 8;
     this.mood = 'gasp';
