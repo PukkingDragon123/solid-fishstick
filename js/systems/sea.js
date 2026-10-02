@@ -73,6 +73,11 @@ export class Sea {
     // When the sea is the one that never left, its surface does not track the
     // ground - it is a level, the way a real body of water is.
     this.flat = null;
+    // The thousand years, while it is being shown as a timelapse (see
+    // js/systems/timelapse.js): { level, wet, bleach, collapse, life, bed }.
+    // The sea is a body of water with a surface you can see from outside it
+    // for the length of it, and that surface is what goes down.
+    this.lapse = null;
     this._col = null;
     this._scratch = null;
     this._prebake();
@@ -80,7 +85,11 @@ export class Sea {
 
   get active() { return this.on; }
   /** How much of the underwater treatment is still applied. */
-  get wet() { return this.on ? 1 - smoothstep(clamp01(this.drain * 1.15)) : 0; }
+  get wet() {
+    if (!this.on) return 0;
+    if (this.lapse) return this.lapse.wet;
+    return 1 - smoothstep(clamp01(this.drain * 1.15));
+  }
 
   /**
    * The far ranks take a moment each to paint, so they are painted while the
@@ -159,8 +168,56 @@ export class Sea {
     for (let i = 0; i < n; i++) this._spawnFish(lerp(b.x0, b.x1, (i + 0.5) / n + (Math.random() - 0.5) * 0.1));
   }
 
-  stop() { this.on = false; this.flat = null; }
+  stop() { this.on = false; this.flat = null; this.lapse = null; }
   beginDrain() { this.draining = true; }
+
+  /** Hand the level over to the timelapse; it drives everything from here. */
+  beginLapse(lapse) {
+    this.lapse = lapse;
+    this.flat = lapse.level;
+    this.draining = false;
+    this.drain = 0;
+  }
+
+  /**
+   * What is still exposed at x: 0 under the water, 1 once the surface has
+   * been gone from here for a while. The reef dies where the water leaves,
+   * not everywhere at once.
+   */
+  _dry(x) {
+    if (!this.lapse) return 0;
+    return clamp01((this.lapse.level - this.game.terrain.surfaceY(x)) / 46);
+  }
+
+  /** The sea emptying of animals while the timelapse runs. */
+  _lapseLife(dt, b) {
+    const L = this.lapse;
+    const life = L.life;
+    const cx = this.game.cam.x;
+    // the big ones go first, and they go somewhere: they turn for open water
+    const leave = (a, far) => {
+      if (life > 0.86 || a.left) return;
+      a.left = true;
+      a.dir = a.x < cx ? -1 : 1;
+      a.sp = Math.max(a.sp || 0, far);
+    };
+    for (const wh of this.whales) leave(wh, 150);
+    for (const sh of this.sharks) { leave(sh, 130); if (sh.left) sh.turn = 99; }
+    for (const m of this.mantas) leave(m, 60);
+    for (const tu of this.turtles) leave(tu, 40);
+    if (life < 0.8) this.giants.length = 0;
+    if (life < 0.62) this.schools.length = 0;
+    if (life < 0.5) this.jellies.length = 0;
+    const T = this.game.terrain;
+    for (let i = this.fish.length - 1; i >= 0; i--) {
+      const f = this.fish[i];
+      const shallow = T.surfaceY(f.x) - this.level(f.x) < 18;
+      if (shallow || Math.random() < dt * (1 - life) * 1.6) this.fish.splice(i, 1);
+    }
+    if (life < 0.3) {
+      this.whales.length = 0; this.sharks.length = 0; this.mantas.length = 0; this.turtles.length = 0;
+    }
+  }
 
   /** Where the surface is, in world Y. It walks down as the sea goes. */
   level(x = this.game.crab.x) {
@@ -230,7 +287,7 @@ export class Sea {
     if (!kind) {
       // in the sea you can fish, most of what swims past is something you can
       // catch; in the prologue it is whatever the reef had
-      if (this.flat !== null && Math.random() < 0.7) kind = seaSpecies(depth);
+      if (this.flat !== null && !this.lapse && Math.random() < 0.7) kind = seaSpecies(depth);
       else kind = CRUISERS[Math.floor(Math.random() * CRUISERS.length)];
     }
     const pel = PELAGIC.has(kind);
@@ -364,7 +421,8 @@ export class Sea {
       if (wet < 0.25 && Math.random() < dt * 2) this.fish.splice(i, 1);
     }
     const cruisers = this.fish.reduce((n, f) => n + (f.home ? 0 : 1), 0);
-    if (wet > 0.3 && cruisers < this._cruiserTarget(b) && Math.random() < dt * 0.8) {
+    if (wet > 0.3 && (!this.lapse || this.lapse.life > 0.85)
+      && cruisers < this._cruiserTarget(b) && Math.random() < dt * 0.8) {
       this._spawnFish(Math.random() < 0.5 ? b.x0 - 180 : b.x1 + 180);
       const f = this.fish[this.fish.length - 1];
       if (f && !f.home) f.dir = f.x < this.game.cam.x ? 1 : -1;
@@ -380,7 +438,7 @@ export class Sea {
         this.fish = this.fish.filter((f) => !f.home || f.home.zi !== zi);
       }
     }
-    if (this.wet < 0.4) return;
+    if (this.wet < 0.4 || (this.lapse && this.lapse.life < 0.9)) return;
     for (let zi = z0; zi <= z1; zi++) {
       if (this.homes.has(zi)) continue;
       this.homes.add(zi);
@@ -405,6 +463,7 @@ export class Sea {
     if (!this.on) return;
     this.t += dt;
     this.budget = this.t < 1.5 ? 40 : 6;
+    if (this.lapse) this.flat = this.lapse.level;
     if (this.draining) {
       this.drain = Math.min(1, this.drain + dt / DRAIN_SECS);
       this.yearShow = 1;
@@ -421,7 +480,7 @@ export class Sea {
       wh.x += wh.dir * wh.sp * dt;
       wh.ph += dt * 0.45;
       wh.y += Math.sin(wh.ph * 0.6) * 3 * dt;
-      if (wh.x > b.x1 + 2600) {
+      if (wh.x > b.x1 + 2600 && !wh.left) {
         wh.x = b.x0 - 2600;
         const t2 = this.level(wh.x), g2 = T.surfaceY(wh.x);
         wh.y = t2 + (g2 - t2) * (0.2 + Math.random() * 0.2);
@@ -434,7 +493,7 @@ export class Sea {
       sh.x += sh.dir * sh.sp * dt;
       sh.ph += dt * 1.4;
       sh.turn -= dt;
-      if (sh.turn <= 0 || sh.x < b.x0 - 900 || sh.x > b.x1 + 900) {
+      if (!sh.left && (sh.turn <= 0 || sh.x < b.x0 - 900 || sh.x > b.x1 + 900)) {
         sh.dir *= -1;
         sh.turn = 9 + Math.random() * 8;
         const t2 = this.level(sh.x), g2 = T.surfaceY(sh.x);
@@ -459,7 +518,7 @@ export class Sea {
       m.ph += dt * 0.5;
       const [t2, g2] = this._band(m.x);
       m.y = clamp(m.y + Math.sin(m.ph * 0.7) * 4 * dt, t2 + 30, g2 - 60);
-      if (m.x < b.x0 - 1200 || m.x > b.x1 + 1200) { m.dir *= -1; m.x = clamp(m.x, b.x0 - 1180, b.x1 + 1180); }
+      if (!m.left && (m.x < b.x0 - 1200 || m.x > b.x1 + 1200)) { m.dir *= -1; m.x = clamp(m.x, b.x0 - 1180, b.x1 + 1180); }
     }
     for (const tu of this.turtles) {
       tu.x += tu.dir * tu.sp * dt;
@@ -467,7 +526,7 @@ export class Sea {
       tu.bob += dt * 0.6;
       const [t2, g2] = this._band(tu.x);
       tu.y = clamp(tu.y + Math.sin(tu.bob) * 3 * dt, t2 + 30, g2 - 30);
-      if (tu.x < b.x0 - 900 || tu.x > b.x1 + 900) { tu.dir *= -1; tu.x = clamp(tu.x, b.x0 - 880, b.x1 + 880); }
+      if (!tu.left && (tu.x < b.x0 - 900 || tu.x > b.x1 + 900)) { tu.dir *= -1; tu.x = clamp(tu.x, b.x0 - 880, b.x1 + 880); }
     }
     for (const gi of this.giants) {
       gi.ph += dt * 0.35;
@@ -477,6 +536,7 @@ export class Sea {
     }
     if (wet < 0.3) { this.schools.length = 0; this.mantas.length = 0; this.turtles.length = 0; this.giants.length = 0; }
 
+    if (this.lapse) this._lapseLife(dt, b);
     this._updateHomes(b);
     this._updateFish(dt, b, wet);
 
@@ -677,6 +737,47 @@ export class Sea {
     this._drawRays(ctx, vw, vh, surfY, wet, 0.45, 0.32);
     if (solid && surfY > 0) ctx.restore();
     ctx.restore();
+    if (this.lapse) this._drawSurface(ctx, cam, vw, vh, wet);
+  }
+
+  /**
+   * The surface, seen from the side and from above it: a bright lit edge
+   * with the swell on it, a darker line just under that, and white where it
+   * runs up onto the sand. Only where there is water under it - this is what
+   * walks down the frame in the timelapse, and it should read as the sea's
+   * edge, not as a line ruled across the picture.
+   */
+  _drawSurface(ctx, cam, vw, vh, wet) {
+    const T = this.game.terrain;
+    const z = cam.zoom;
+    const L = this.lapse.level;
+    const p = Math.max(1, Math.round(z));
+    const step = 2;
+    ctx.save();
+    for (let sx = 0; sx < vw; sx += step) {
+      const wx = cam.screenToWorld(sx, 0).x;
+      const swell = Math.sin(wx * 0.011 + this.t * 1.3) * 1.6 + Math.sin(wx * 0.031 - this.t * 2.1) * 0.7;
+      const wy = L + swell;
+      const gy = T.surfaceY(wx);
+      if (gy < wy - 1) continue;
+      const sy = Math.round(cam.worldToScreen(wx, wy).y);
+      if (sy < -2 || sy > vh) continue;
+      const lit = 0.5 + 0.5 * Math.sin(wx * 0.07 + this.t * 2.6);
+      ctx.globalAlpha = wet * (0.55 + lit * 0.4);
+      ctx.fillStyle = '#e8fbff';
+      ctx.fillRect(sx, sy, step, p);
+      ctx.globalAlpha = wet * 0.5;
+      ctx.fillStyle = '#2d8fb0';
+      ctx.fillRect(sx, sy + p, step, p);
+      // the shore: where the bed comes up to meet it, it breaks white
+      const shallow = clamp01(1 - (gy - wy) / 22);
+      if (shallow > 0.05 && Math.sin(wx * 0.13 + this.t * 3.4) > -0.2) {
+        ctx.globalAlpha = wet * 0.75 * shallow;
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(sx, sy - p, step, p * 2);
+      }
+    }
+    ctx.restore();
   }
 
   /** Shafts of light from the surface, swaying, drawn additively. */
@@ -728,7 +829,8 @@ export class Sea {
       ctx.save();
       ctx.globalAlpha = wet * 0.7;
       ctx.translate(x, y);
-      if (gi.dir < 0) ctx.scale(-1, 1);
+      // painted nose-left, like the shark and the whale: mirror it to go right
+      if (gi.dir > 0) ctx.scale(-1, 1);
       ctx.drawImage(art.cv, -art.ox, -art.oy);
       ctx.restore();
     }
@@ -748,7 +850,8 @@ export class Sea {
       ctx.save();
       ctx.globalAlpha = wet * 0.78;
       ctx.translate(Math.round(s.x), Math.round(s.y));
-      ctx.scale(sc * (wh.dir < 0 ? -1 : 1), sc);
+      // the whale is painted facing left, so it is mirrored to swim right
+      ctx.scale(sc * (wh.dir > 0 ? -1 : 1), sc);
       ctx.drawImage(art.cv, -art.ox, -art.oy);
       ctx.restore();
     }
@@ -761,14 +864,31 @@ export class Sea {
    * covers it.
    */
   drawBed(ctx, cam, vw, vh) {
-    const wet = this.wet;
+    // in the timelapse the whole bed is painted, wet or dry, and dries out
+    // (fades back to the desert under it) on its own clock
+    const wet = this.lapse ? this.lapse.bed : this.wet;
     if (wet <= 0.02) return;
     const T = this.game.terrain;
     const z = cam.zoom;
     const b = cam.bounds(10);
-    const flat = this.flat;
+    const flat = this.lapse ? null : this.flat;
+    // Chunks overlap by a pixel so they never leave a gap, which is fine
+    // opaque and a ladder of seams half see-through. A bed that is fading is
+    // laid down whole first and faded as one.
+    const out = ctx;
+    let sc = null;
+    if (wet < 0.995) {
+      if (!this._bedCv || this._bedCv.width !== vw || this._bedCv.height !== vh) {
+        this._bedCv = document.createElement('canvas');
+        this._bedCv.width = vw; this._bedCv.height = vh;
+      }
+      sc = this._bedCv;
+      ctx = sc.getContext('2d');
+      ctx.imageSmoothingEnabled = false;
+      ctx.clearRect(0, 0, vw, vh);
+    }
     ctx.save();
-    ctx.globalAlpha = wet;
+    ctx.globalAlpha = sc ? 1 : wet;
     for (let ci = Math.floor(b.x0 / BED_W); ci <= Math.floor(b.x1 / BED_W); ci++) {
       const key = `${ci}:${flat === null ? 'p' : Math.round(flat)}`;
       let c = this.beds.get(key);
@@ -802,6 +922,12 @@ export class Sea {
       }
     }
     ctx.restore();
+    if (sc) {
+      out.save();
+      out.globalAlpha = wet;
+      out.drawImage(sc, 0, 0);
+      out.restore();
+    }
   }
 
   /**
@@ -828,7 +954,9 @@ export class Sea {
       if (s.x < -160 * k || s.x > vw + 160 * k) continue;
       const S = qs(k, 0.1), fr = Math.floor(sh.ph * 1.3) % SHARK_FRAMES;
       const art = this._big(`shark:${S}:${fr}`, () => sharkArt(S, fr));
-      if (art) blit(art, s.x, s.y, k, S, sh.dir < 0, wet * 0.95);
+      // Painted nose-left (see paintShark: the head is at x0). Flipping it
+      // when it swam LEFT is what had every shark in the sea going tail first.
+      if (art) blit(art, s.x, s.y, k, S, sh.dir > 0, wet * 0.95);
     }
     for (const m of this.mantas) {
       const s = cam.worldToScreen(m.x, m.y);
@@ -856,15 +984,25 @@ export class Sea {
     const b = cam.bounds(60);
     const z = cam.zoom;
     const T = this.game.terrain;
-    const bleach = clamp01(this.drain * 2.4);
+    const L = this.lapse;
+    const bleach0 = L ? L.bleach : clamp01(this.drain * 2.4);
     const r = this.game.renderer;
+    // In the timelapse the reef is drawn whether or not the water still
+    // covers it: it does not vanish when the surface goes past, it bleaches
+    // where it is left standing in the air and then slumps into the sand.
+    const vis = L ? 1 : wet;
     ctx.save();
-    if (this.flat !== null) { const top = Math.max(0, Math.round(this._surfY(cam))); ctx.beginPath(); ctx.rect(0, top, r.vw, r.vh - top); ctx.clip(); }
+    if (this.flat !== null && !L) { const top = Math.max(0, Math.round(this._surfY(cam))); ctx.beginPath(); ctx.rect(0, top, r.vw, r.vh - top); ctx.clip(); }
     const items = this.near(b.x0, b.x1);
     for (const it of items) {
       if (!!it.far !== far) continue;
-      const lvl = this.flat;
-      if (it.kind === 'kelp') { this._drawKelp(ctx, cam, it, wet, bleach); continue; }
+      const lvl = L ? null : this.flat;
+      const dry = L ? this._dry(it.x) : 0;
+      const bleach = Math.max(bleach0, dry);
+      // how far it has fallen down: the general die-back, and sooner where dry
+      const fall = L ? clamp01(Math.max(L.collapse, dry * 1.4 - 0.5)) : 0;
+      if (fall >= 0.98) continue;
+      if (it.kind === 'kelp') { this._drawKelp(ctx, cam, it, vis * (1 - fall), bleach, fall); continue; }
       if (it.kind === 'grass') {
         const y = T.surfaceY(it.x);
         if (lvl !== null && y < lvl + 4) continue;
@@ -872,8 +1010,8 @@ export class Sea {
         const g = grassClump(it.v, fr);
         const s = cam.worldToScreen(it.x, y);
         const k = z * it.s;
-        ctx.globalAlpha = wet * (1 - bleach * 0.6);
-        ctx.setTransform(k * (it.flip ? -1 : 1), 0, 0, k, Math.round(s.x), Math.round(s.y) + 1);
+        ctx.globalAlpha = vis * (1 - bleach * 0.6) * (1 - fall);
+        ctx.setTransform(k * (it.flip ? -1 : 1), 0, 0, k * (1 - fall * 0.85), Math.round(s.x), Math.round(s.y) + 1);
         ctx.drawImage(g.cv, -g.ox, -g.oy);
         ctx.setTransform(1, 0, 0, 1, 0, 0);
         continue;
@@ -897,15 +1035,19 @@ export class Sea {
       const s = cam.worldToScreen(it.x, y);
       const fx = it.flip ? -1 : 1;
       const ox = Math.round(s.x), oy = Math.round(s.y) + 1;
-      ctx.globalAlpha = wet;
-      ctx.setTransform(z * fx, 0, 0, z, ox, oy);
+      // rock does not slump the way coral does: it goes grey and the sand
+      // comes up round it
+      const sag = it.kind === 'form' ? fall * 0.5 : fall;
+      const fade = it.kind === 'form' ? 1 - fall : 1 - fall * 0.7;
+      ctx.globalAlpha = vis * fade;
+      ctx.setTransform(z * fx, 0, 0, z * (1 - sag * 0.8), ox, oy);
       ctx.drawImage(art.cv, -art.ox, -art.oy);
       if (bleach > 0.01 && art.bleach) {
-        ctx.globalAlpha = wet * bleach * 0.85;
+        ctx.globalAlpha = vis * fade * bleach * 0.85;
         ctx.drawImage(art.bleach, -art.ox, -art.oy);
       }
       ctx.setTransform(1, 0, 0, 1, 0, 0);
-      if (art.top && wet > 0.3) this._causticOn(ctx, cam, art, ox, oy, fx, wet);
+      if (art.top && wet > 0.3 && dry < 0.2) this._causticOn(ctx, cam, art, ox, oy, fx, wet);
     }
     ctx.globalAlpha = 1;
     ctx.restore();
@@ -942,12 +1084,13 @@ export class Sea {
   }
 
   /** A strand of kelp, a joint at a time, each joint shifted by the swell. */
-  _drawKelp(ctx, cam, it, wet, bleach) {
+  _drawKelp(ctx, cam, it, wet, bleach, fall = 0) {
     const T = this.game.terrain;
     const z = cam.zoom;
     const y0 = T.surfaceY(it.x);
-    if (this.flat !== null && y0 < this.flat + 10) return;
-    const n = Math.round(it.h / KELP_JOINT);
+    if (this.flat !== null && !this.lapse && y0 < this.flat + 10) return;
+    // out of the water a kelp forest cannot stand up: it lies down
+    const n = Math.max(1, Math.round(it.h / KELP_JOINT * (1 - fall * 0.9)));
     const base = cam.worldToScreen(it.x, y0);
     ctx.globalAlpha = wet * (1 - bleach * 0.7);
     let px = 0;

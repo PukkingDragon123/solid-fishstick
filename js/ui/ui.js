@@ -1813,8 +1813,11 @@ export class UI {
     // labels across the bottom of the screen for five things you learn in
     // thirty seconds. Now the words fade out on their own and the keys stay,
     // because a row of keys is a reminder and a row of sentences is a manual.
-    const caps = [['A D', 'walk'], ['SPC', 'pump'], ['R', 'pick'],
-      ['E', 'dig'], ['M', 'mode']];
+    // No E cap: E is whatever the place you are standing in offers (DIG on
+    // a dig site, MINE on a seam, SEARCH on a ruin), and that has its own
+    // slot above this row. A permanent "E dig" promised a verb that most of
+    // the desert does not have.
+    const caps = [['A D', 'walk'], ['SPC', 'pump'], ['R', 'pick'], ['M', 'mode']];
     const age = this.game.playT || 0;
     const near = this._hit(0, H - 16, W, 16);
     const a = near ? 1 : clamp01(1.3 - Math.max(0, age - 100) / 90);
@@ -3642,19 +3645,15 @@ export class UI {
           key: hint === 'TALK' ? 'c' : 'e', act: hint,
           colour: hint === 'CATCH' ? '#9de3ee' : '#e2b74a' });
       }
-      // the sand: DIG always, and POUR only beside it - never in front of it,
-      // so picking up your first grain cannot slide DIG out from under the
-      // thumb that is holding it down.
+      // the sand: POUR, once you are carrying some.
       //
       // There is no PLANT plate and no BUILT/GROWN/TAME strip. Everything you
       // do to your own back happens ON your own back: you touch the animal
       // and you are up there. One door, and it is the animal.
-      // SCOOP is the sand itself, held - not DIG, which is a dig site and is
-      // the plate above whenever there is one
-      if (!hint || (hint !== 'DIG' && hint !== 'MINE')) {
-        wanted.push({ icon: 'grit', chibi: 'dig', label: 'SCOOP', key: 'zdig',
-          colour: '#e0c188', hold: true });
-      }
+      // There is no standing dig plate. Digging into the sand is touching
+      // the animal's legs (see the tap on the crab in update), and digging a
+      // SITE is the context plate above, which only exists on one - a dig
+      // button on every patch of desert was a button that mostly did nothing.
       if ((g.sandHeld || 0) > 0.5) {
         wanted.push({ icon: 'drop', chibi: 'pour', label: 'POUR', key: 'zpour',
           colour: '#cfe89a', hold: true });

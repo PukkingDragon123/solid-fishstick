@@ -63,17 +63,30 @@ export class Backdrop {
     this._geo = null;
     this._budget = 0;
     this._t0 = performance.now();
+    // Three dials for a scene that wants the country to be somewhere else
+    // for a while (the thousand-year timelapse drives them; play leaves them
+    // alone): `wash` pulls every strip toward a colour, `fade` pushes them
+    // further into the air, and `sink` lowers the whole skyline, in world
+    // units, so the land can be seen coming up. `lifeOn` false empties it.
+    this.wash = null;          // { col: '#rrggbb', a: 0..1 }
+    this.fade = 0;
+    this.sink = 0;
+    this.lifeOn = true;
+    this.warp = 0;
   }
 
   /** Seconds since the backdrop was made: the clock everything alive runs on. */
-  get t() { return (performance.now() - this._t0) / 1000; }
+  // `warp` is seconds added on top, for a scene that runs the clouds and the
+  // herds faster than the wall clock (it only ever goes forward)
+  get t() { return (performance.now() - this._t0) / 1000 + (this.warp || 0); }
 
   // -- per-frame geometry -------------------------------------------------
 
   geometry(cam) {
     const vw = cam.vw, vh = cam.vh, z = cam.zoom;
     const yb = cam.yBias ?? 0.16;
-    const key = `${cam.x}|${cam.y}|${z}|${vw}|${vh}|${yb}`;
+    const sink = this.sink || 0;
+    const key = `${cam.x}|${cam.y}|${z}|${vw}|${vh}|${yb}|${sink}`;
     if (this._geo && this._geo.key === key) return this._geo;
     // where the camera keeps the animal's feet, and the horizon above that
     const R = vh / 2 + vh * yb;
@@ -85,7 +98,7 @@ export class Backdrop {
     const dY = (0 - cam.y) - vh * yb / z;
     const strips = DEPTHS.map((d) => {
       const { s, g } = stripScale(d, z);
-      const base = H + s * (lift / z + dY);
+      const base = H + s * (lift / z + dY + sink);
       return { d, s, g, base, uCam: cam.x * d.s };
     });
     this._geo = { key, R, H, lift, dY, strips, vw, vh, z };
@@ -119,10 +132,17 @@ export class Backdrop {
     const cool = mixHex(sc.col[1], sc.col[2], 0.6);
     const dust = sc.dust;
     const haze = clamp01(weather.haze ?? 0.5);
+    const wash = this.wash && this.wash.a > 0.01 ? this.wash : null;
+    const fade = this.fade || 0;
     this.air = {
       amb, hz, sc,
-      tints: DEPTHS.map((d) => quantHex(comp(mixHex(hz, cool, d.cool * (1 - dust * 0.8)), amb), 4)),
-      k: (d) => clamp01(d.fog * (0.86 + haze * 0.18) + dust * (0.25 + (6 - d.index) * 0.07) + (weather.fog || 0) * 0.2),
+      tints: DEPTHS.map((d) => {
+        let c = comp(mixHex(hz, cool, d.cool * (1 - dust * 0.8)), amb);
+        if (wash) c = mixHex(c, wash.col, clamp01(wash.a));
+        return quantHex(c, 4);
+      }),
+      k: (d) => clamp01(d.fog * (0.86 + haze * 0.18) + dust * (0.25 + (6 - d.index) * 0.07) + (weather.fog || 0) * 0.2
+        + fade * (0.4 + d.fog * 0.6)),
       night: sc.night,
     };
   }
@@ -201,7 +221,7 @@ export class Backdrop {
     for (const id of ids) {
       const di = DEPTH[id].index;
       this._drawStrip(ctx, geo, di);
-      this.life.drawAfter(ctx, cam, weather, geo, id, this);
+      if (this.lifeOn) this.life.drawAfter(ctx, cam, weather, geo, id, this);
     }
   }
 

@@ -219,7 +219,7 @@ function line(ctx, x0, y0, x1, y1) {
  * a long neck that it carries low; kind 1 is a broad shelled ox with horns.
  * `ph` is its stride, so the legs scissor as it goes.
  */
-function beast(ctx, x, gy, sz, ph, dir, kind) {
+export function beast(ctx, x, gy, sz, ph, dir, kind) {
   const P = (dx, dy, w = 1, h = 1) => ctx.fillRect(Math.round(x + dx * sz * dir - (dir < 0 ? w - 1 : 0)), Math.round(gy - dy * sz), w, h);
   const legH = kind === 0 ? 6 : 3.5;
   const s1 = Math.sin(ph), s2 = Math.sin(ph + Math.PI);
@@ -255,7 +255,7 @@ function beast(ctx, x, gy, sz, ph, dir, kind) {
   }
 }
 
-function bird(ctx, x, y, dir, flap, g) {
+export function bird(ctx, x, y, dir, flap, g) {
   const s = Math.max(1, Math.round(g));
   const X = Math.round(x), Y = Math.round(y);
   ctx.fillRect(X - s, Y, 3 * s, s);                     // body
